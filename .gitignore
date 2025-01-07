@@ -1,0 +1,58 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+env/
+ENV/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Project specific
+*.log
+.coverage
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+
+# MUS1 specific
+dlc_projects/*
+!dlc_projects/.gitkeep
+subjects/*
+!subjects/.gitkeep
+*.h5
+*.csv
+*.png
+*.jpg
+*.jpeg
+*.mp4
+*.avi
+
+# Keep example files
+!examples/**/*.csv
+!examples/**/*.png
+!examples/**/*.h5
+!examples/**/*.yaml 
