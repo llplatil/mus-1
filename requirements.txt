@@ -1,0 +1,13 @@
+# Core dependencies
+pyside6>=6.0.0
+numpy
+pandas
+pyyaml
+
+# Testing dependencies
+pytest
+pytest-qt
+pytest-xvfb
+
+# Install package in editable mode with all extras
+-e .[test,dev,docs] 

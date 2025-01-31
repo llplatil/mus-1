@@ -1,0 +1,52 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mus1"
+version = "0.1.0"
+authors = [
+    { name="Lukas Platil" }
+]
+description = "Mouse behavior analysis tool built on DeepLabCut"
+requires-python = ">=3.10,<3.14"
+dependencies = [
+    "pyside6>=6.0.0",
+    "numpy",
+    "pandas",
+    "pyyaml",
+    "scipy",
+    "h5py",
+    "scikit-learn",
+    "matplotlib",
+    "seaborn",
+    "opencv-python",
+    "pillow",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest",
+    "pytest-cov",
+    "pytest-qt",
+    "pytest-xvfb",
+]
+dev = [
+    "mypy",
+    "black",
+    "isort",
+    "jupyterlab",
+]
+docs = [
+    "sphinx",
+    "sphinx-rtd-theme",
+]
+
+[tool.setuptools]
+package-dir = {"" = "."}
+packages = ["mus1"]
+
+[tool.pytest.ini_options]
+testpaths = ["mus1/tests"]
+python_files = ["test_*.py"]
+addopts = "-v --capture=no --tb=short"

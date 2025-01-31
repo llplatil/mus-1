@@ -1,0 +1,37 @@
+# Python basics
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# Virtual Environment
+venv/
+env/
+ENV/
+.env
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+pytest.log
+mus1.log
+
+# External/Personal directories to ignore
+DeepLabCut-main/
+Recognition_Project*/
+dlc_results/
+mouse_analysis_app/
+old tests/
+resources/
+logs/
+
+# macOS
+.DS_Store 
