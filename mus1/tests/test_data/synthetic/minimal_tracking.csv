@@ -1,0 +1,6 @@
+scorer,DLC_Resnet50_Recognition_ProjectAug7shuffle1_snapshot_125,DLC_Resnet50_Recognition_ProjectAug7shuffle1_snapshot_125,DLC_Resnet50_Recognition_ProjectAug7shuffle1_snapshot_125,DLC_Resnet50_Recognition_ProjectAug7shuffle1_snapshot_125,DLC_Resnet50_Recognition_ProjectAug7shuffle1_snapshot_125,DLC_Resnet50_Recognition_ProjectAug7shuffle1_snapshot_125,DLC_Resnet50_Recognition_ProjectAug7shuffle1_snapshot_125,DLC_Resnet50_Recognition_ProjectAug7shuffle1_snapshot_125,DLC_Resnet50_Recognition_ProjectAug7shuffle1_snapshot_125,DLC_Resnet50_Recognition_ProjectAug7shuffle1_snapshot_125,DLC_Resnet50_Recognition_ProjectAug7shuffle1_snapshot_125,DLC_Resnet50_Recognition_ProjectAug7shuffle1_snapshot_125,DLC_Resnet50_Recognition_ProjectAug7shuffle1_snapshot_125,DLC_Resnet50_Recognition_ProjectAug7shuffle1_snapshot_125,DLC_Resnet50_Recognition_ProjectAug7shuffle1_snapshot_125
+bodyparts,nose,nose,nose,tail,tail,tail,spine1,spine1,spine1,Silo,Silo,Silo,Diamond,Diamond,Diamond
+coords,x,y,likelihood,x,y,likelihood,x,y,likelihood,x,y,likelihood,x,y,likelihood
+0,391.12,628.51,0.92,388.78,626.68,0.88,392.54,597.24,0.95,820.02,587.29,0.91,823.78,589.85,0.93
+1,391.12,628.53,0.45,388.78,627.01,0.89,392.54,597.32,0.94,820.02,587.41,0.92,823.78,590.07,0.91
+2,391.12,628.62,0.88,388.78,627.05,0.22,392.54,597.43,0.90,820.03,587.45,0.93,823.78,590.14,0.92 
