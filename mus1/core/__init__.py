@@ -1,35 +1,52 @@
 """Core functionality for MUS1"""
 
-# First ensure logging is available
-from ...utils.logging_config import get_class_logger, get_logger
+from ..utils import get_logger
 logger = get_logger("core")
 
-# Import metadata classes first
-from .metadata import (
-    MouseMetadata,
-    ExperimentMetadata,
-    BatchMetadata,
-    ProjectState
-    #TODO: add TrackingData once its integrated in core
-)
-
-# Then import managers in dependency order
-from .data_manager import DataManager
-from .state_manager import StateManager
-from .project_manager import ProjectManager
-
-logger.debug("Core module initialization")
-
-__all__ = [
-    # Metadata classes
-    'MouseMetadata',
-    'ExperimentMetadata',
-    'BatchMetadata',
-    'ProjectState',
+def init_core() -> bool:
+    """Initialize core system
     
-    # Managers
+    Returns:
+        bool: True if core system initialized successfully
+    """
+    try:
+        logger.info("Initializing core system")
+        
+        # First initialize metadata system
+        from .metadata import init_metadata
+        if not init_metadata():
+            logger.error("Failed to initialize metadata system")
+            return False
+            
+        # Then initialize managers in dependency order
+        from .data_manager import DataManager
+        from .state_manager import StateManager 
+        from .project_manager import ProjectManager
+        
+        # Verify manager classes are properly configured
+        managers = {
+            'data': DataManager,
+            'state': StateManager,
+            'project': ProjectManager
+        }
+        
+        for name, manager_cls in managers.items():
+            if not hasattr(manager_cls, '__init__'):
+                logger.error(f"{name} manager missing initialization")
+                return False
+                
+        logger.info("Core system initialized successfully")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Failed to initialize core system: {e}")
+        return False
+
+# Only export what's needed
+__all__ = [
+    'init_core',
     'DataManager',
-    'StateManager',
+    'StateManager', 
     'ProjectManager'
 ]
 

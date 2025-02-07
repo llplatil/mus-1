@@ -1,6 +1,6 @@
 # MUS1 Architecture Update
 
-## Key Implementations (v0.3) from 2/4/2025
+## Key Implementations (v0.1) from 2/4/2025
 1. **Unified Data Processing Pipeline**
    - Single `process_dlc_file()` method in DataManager
    - Schema-driven validation (YAML config)
@@ -152,20 +152,19 @@ experiment:
    
 ## 4. GUI Module Architecture
 
-### a. Overview 
-```
-gui/
-├── main_window.py      # Application's main window and central controller (house main vertical slider?) 
-├── widgets/           #tabs that populate main window 
-│   ├── base_widget.py     # Reusable UI components like dropdowns, buttons
-│   ├── methods_explorer.py # Analysis parameter testing interface
-│   └── project_view.py    # Project navigation and management
-    └── Batch_analysis  # Batch analysis tab 
-└── dialogs/           # Modal interaction windows
-    └── startup_dialog.py  # Project initialization
-```
-
-
+MainWindow                    Core                      BaseWidget
+    |                          |                           |
+    |<------- Core Ready ------|                          |
+    |                          |                          |
+    |------ Show Splash ------>|                          |
+    |                          |                          |
+    |---- Init Base Frame ---->|                          |
+    |                          |                          |
+    |                          |<---- Direct Updates ---->|
+    |                          |                          |
+    |<-- Project Selection ----|                          |
+    |                          |                          |
+    |-- Update Window State -->|                          |
 
 ### c. Widgets
 - Inherit from BaseWidget for common functionality
@@ -173,10 +172,6 @@ gui/
 - Communicate with core components through state_manager
 - Follow the Observer pattern for state updates
 
-
-### d. Dialogs
-- Startupdialog (depends on gui suite for initiation) (connects buttons to project manager) (redirects to project manager gui)
-## 5. State Management Between Core and GUI 
 
 
 ## 7. Testing Strategy
@@ -208,16 +203,20 @@ not sure atm
      - Sex
      - Birth date
      - Genotype
-     - Training set status
+     - #TODO: add treatment data 
 
 2. **Experiment Data**
    Required elements:
    - DLC tracking data (CSV)
-   - Arena image (for visualization and zone validation)
    - Date of experiment
    - Experiment type (e.g. "NOR, Open Field")
    - Mouse ID association
    - Frame rate and of interest video length (global or specified) TODO: make this more flexible in our metadata and core architecture 
+
+   optional elements:
+   - arena image 
+   - experiment notes
+   - training set status (was the model used to generate the tracking data trained on this experiment)
 
 3. **Project Configuration**
    - Global frame rate setting
@@ -237,10 +236,11 @@ not sure atm
 4. **Plugins**
    - Plugins are refrenced by methods explorer for user familirization with functinons available or processing optimizatio
    - Plugins fetch data from the data manager and project states fromstate manager and do actual calculations before returning them to state manager
-
+   - #TODO: create plugin hooks based on experiment type 
+   
    Current Plugins
    -Novel Object Recognition
-   -Open Field
+   -#TODO: Open Field
    
 
 ## Frame Rate Management
@@ -266,7 +266,7 @@ This hierarchy ensures:
 
 ## Application Startup Architecture
 
-see main and understand that main dev is why inits in main are defined the way they are (testing)
+see main, its incomplete
    
 ```
 
@@ -282,53 +282,4 @@ see main and understand that main dev is why inits in main are defined the way t
 8. state should house project state and project list the buttons and dropdowns that connect to this should be housed base widget (this needs to be somehow propagated from through gui consitently and globally)
 9. Gui actions connect directly to project manager core to add change or save 
 
-
-## Resolved Implementation Notes
-
-### Core Component Resolutions
-
-**State Manager**:
-- Unified query system implemented
-- Frame rate validation hierarchy established
-- Indexed relationship tracking
-
-**Data Manager**:
-- Centralized DLC processing pipeline
-- Schema-driven validation from YAML
-- Type-safe TrackingData class
-
-**Project Manager**:
-- Batch criteria serialization implemented
-- Object role management integrated with plugins
-
-### GUI Resolutions
-- Unified query interface across components
-- Real-time validation feedback
-- Arena tagging integrated with analysis
-
-### Plugin System Resolutions
-- Base validation interface standardized
-- Analysis prerequisites check
-- Result storage format defined
-
-### Metadata System Resolutions
-- Experiment-Mouse relationships formalized
-- Age calculation through DataManager
-- Duration handling unified
-
-### Critical Decisions Finalized
-1. **Frame Rate Handling**:
-   - Hierarchy: Experiment > Global > Fallback(60)
-   - Validation range 1-240 FPS
-   - Duration calculation priorities defined
-
-2. **Data Relationships**:
-   - Mouse-experiment indexes implemented
-   - Batch selection criteria serialized
-   - Object role validation in plugins
-
-3. **Plugin Integration**:
-   - Validation layers separated
-   - Analysis prerequisites check
-   - StateManager query integration
 

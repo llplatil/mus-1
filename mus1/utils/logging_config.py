@@ -84,16 +84,16 @@ def get_class_logger(cls) -> logging.Logger:
     """Get logger using class name"""
     root_logger = logging.getLogger("mus1")
     if not root_logger.handlers:  # If logging not initialized
-        setup_logging()
+        initialize_logging()  # Use initialize_logging instead of setup_logging
     # Convert CamelCase to dot.separated.lowercase
     name = re.sub('([a-z0-9])([A-Z])', r'\1.\2', cls.__name__).lower()
     return logging.getLogger(f"mus1.{name}")
 
 def get_logger(name: str) -> logging.Logger:
-    """Get logger with proper namespace (legacy support)"""
+    """Get logger with proper namespace"""
     root_logger = logging.getLogger("mus1")
     if not root_logger.handlers:
-        setup_logging()
+        initialize_logging()  # Use initialize_logging instead of setup_logging
     return logging.getLogger(f"mus1.{name}")
 
 def initialize_logging(

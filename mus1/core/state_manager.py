@@ -19,10 +19,15 @@ from .metadata import (
 class StateManager(QObject):
     """Centralized state management with Qt signals"""
     
+    # Startup coordination signals
+    core_ready = Signal()  # Core systems initialized
+    project_view_ready = Signal()  # Project view ready to display
+    
     # Project lifecycle signals
     project_created = Signal(Path)  # When new project created
     project_opened = Signal(Path)   # When existing project opened
     project_closed = Signal()       # When project closed
+    project_state_changed = Signal(bool)  # Project loaded/unloaded
 
     # DLC and global settings signals
     dlc_config_loaded = Signal(Path)  # When DLC config is loaded
@@ -48,12 +53,18 @@ class StateManager(QObject):
         """Initialize state manager"""
         super().__init__()
         self.logger = get_class_logger(self.__class__)
+        self.logger.info("Initializing StateManager")
         
         # Initialize empty project state
         self._project_state = ProjectState()
         self._current_project_path: Optional[Path] = None
         
-        self.logger.info("StateManager initialized")
+        # Initialize settings
+        self._global_frame_rate = 60  # Default
+        self._active_body_parts: List[str] = []
+        self._tracked_objects: List[str] = []
+        
+        self.logger.info("StateManager initialization complete")
     
     def initialize_state(self, state: ProjectState) -> None:
         """Initialize with new project state"""

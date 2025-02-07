@@ -1,46 +1,35 @@
 """Methods Explorer widget for parameter testing"""
 
+from PySide6.QtWidgets import (QListWidget, QPushButton, 
+                              QVBoxLayout, QHBoxLayout)
 from .base.base_widget import BaseWidget
-from PyQt5.QtWidgets import QListWidget, QPushButton
-from typing import List
 
 class MethodsExplorer(BaseWidget):
-    def __init__(self, state_manager, project_manager, data_manager):
-        super().__init__(state_manager, project_manager, data_manager)
+    """Tab for exploring and testing analysis methods"""
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)  # BaseWidget already sets up logger
+        self.logger.info("Initializing Methods Explorer")
         
     def setup_ui(self):
         """Initialize methods explorer UI"""
-        super().setup_ui()
+        super().setup_ui()  # Get common elements from BaseWidget
         
-        # Body parts management
-        self.bodyparts_list = QListWidget()
-        self.bodyparts_list.setSelectionMode(QListWidget.ExtendedSelection)
+        #TODO: Import lists from base widget 
         
-        # Object management
-        self.object_list = QListWidget()
-        self.add_object_btn = QPushButton("Add Object")
-        self.remove_object_btn = QPushButton("Remove Selected")
+        # Controls
+        controls_layout = QHBoxLayout()
+        self.run_btn = QPushButton("Run Analysis")
+        self.settings_btn = QPushButton("Method Settings")
+        controls_layout.addWidget(self.run_btn)
+        controls_layout.addWidget(self.settings_btn)
         
-        # Connect signals
-        self.state_manager.body_parts_updated.connect(self._update_bodyparts)
-        self.state_manager.tracked_objects_updated.connect(self._update_objects)
-        
-    def _update_bodyparts(self, parts: List[str]):
-        """Refresh available body parts"""
-        self.bodyparts_list.clear()
-        self.bodyparts_list.addItems(parts)
-        
-        # Preserve selections
-        current_active = self.state_manager.get_settings().get('active_body_parts', [])
-        for i in range(self.bodyparts_list.count()):
-            item = self.bodyparts_list.item(i)
-            item.setSelected(item.text() in current_active)
+        # Add to scroll layout
+        self.scroll_layout.addLayout(controls_layout)
 
-    def _update_objects(self, objects: List[str]):
-        """Refresh tracked objects"""
-        self.object_list.clear()
-        self.object_list.addItems(objects)
-        
-    def get_selected_bodyparts(self) -> List[str]:
-        """Get user-selected body parts"""
-        return [item.text() for item in self.bodyparts_list.selectedItems()] 
+    def _connect_core_signals(self):
+        """Connect to core state signals"""
+        super()._connect_core_signals()
+        # Connect to method-specific signals
+        self._state_manager.experiment_updated.connect(self._update_methods)
+        self._state_manager.batch_updated.connect(self._update_batch_methods)

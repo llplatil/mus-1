@@ -10,7 +10,7 @@ import pandas as pd
 import numpy as np
 import yaml
 import matplotlib.pyplot as plt
-from ...utils.logging_config import get_class_logger, get_logger
+from ...utils.logging_config import get_class_logger
 from . import metadata  # Import entire metadata module
 from .state_manager import StateManager
 from ..plugins import get_plugin
@@ -22,20 +22,18 @@ from .metadata import ProjectState, ExperimentMetadata, TrackingData
 class DataManager: 
     """Manages data validation, processing, and analysis"""
     
-    def __init__(self, state_manager: StateManager):
+    def __init__(self, state_manager: Optional['StateManager'] = None):
+        """Initialize data manager
+        
+        Args:
+            state_manager: Optional StateManager instance for state updates
+        """
         self.logger = get_class_logger(self.__class__)
         self.logger.info("Initializing DataManager")
         
-        if not isinstance(state_manager, StateManager):
-            raise TypeError("state_manager must be StateManager instance")
-            
-        self.state_manager = state_manager
-        self._likelihood_threshold = 0.9 #TODO: this is should be an optiona global setting that will be used to filter low confidence points in tracking data. We will need to make this a per experiment setting later. 
+        self._state_manager = state_manager
+        self._likelihood_threshold = 0.5  # Default confidence threshold
         self._schema = self._load_experiment_schema()
-        
-        # Will be set when DLC config is loaded
-        self.dlc_bodyparts = []
-        self.tracked_objects = []  # Store object names from DLC config
         
         self.logger.info("DataManager initialization complete")
 
@@ -48,14 +46,12 @@ class DataManager:
         except Exception as e:
             self.logger.error(f"Failed to load schema: {str(e)}")
             return {}
-
-    def validate_tracking_data(self, data: TrackingData) -> bool:
-        """Essential quality checks"""
-        return all([
-            data.frame_count > 0,
-            data.duration > 0,
-            len(data.coordinates) >= self._schema.get('min_body_parts', 1)
-        ])
+    def create_experiment_schema(self) -> Dict:
+        """Create experiment schema from YAML config"""
+        pass
+    def validate_existing_project(self) -> Tuple[bool, str]:
+        """Validate existing project and pass lists to state manager"""
+        pass
 
     def load_tracking_data(self, file_path: Path, body_parts: Optional[List[str]] = None) -> TrackingData:
         """Load and validate tracking data from file"""
@@ -112,11 +108,7 @@ class DataManager:
             return None
 
     def process_batch_data(self, batch_id: str, save_dir: Path) -> Dict:
-        """Use active body parts if specified"""
-        active_parts = self.state_manager._project_state.settings.get('active_body_parts')
-        body_parts = active_parts or self.get_body_parts()
-        
-        # Processing logic using filtered body_parts...
+        pass
 
     def _process_subject_experiments(
         self,
@@ -177,23 +169,7 @@ class DataManager:
     def _calculate_age_weeks(self, date: datetime, birth_date: datetime) -> int:
         """Calculate age in weeks at a given date"""
         age_delta = date - birth_date
-        return age_delta.days // 7  # Convert to weeks
-
-    def detect_frame_rate(self, df: pd.DataFrame) -> int:
-        """Detect frame rate from tracking data timestamps if available"""
-        try:
-            # If index is timestamp-based, calculate FPS
-            if isinstance(df.index, pd.DatetimeIndex):
-                time_diff = df.index.to_series().diff().median()
-                return int(round(1 / time_diff.total_seconds()))
-            # If index is frame numbers, try to detect from metadata
-            # ... add more detection methods as needed
-            
-            # If can't detect, return None to use global default
-            return None
-        except Exception as e:
-            self.logger.warning(f"Could not detect frame rate: {str(e)}")
-            return None
+        return age_delta.days // 7  
 
     def load_dlc_tracking(self, file_path: Path, frame_rate: Optional[int] = None) -> Dict[str, Any]:
         """Load and process DLC tracking data"""
@@ -267,25 +243,10 @@ class DataManager:
         """Extract unique body parts from DLC dataframe"""
         return list(set(df.columns.get_level_values(1)))
 
-    def get_frame_rate(self) -> int:
-        """Get current frame rate setting"""
-        return self._frame_rate
+    def get_recording_length(self, df: pd.DataFrame) -> int:
+        """Get experiment recording length in seconds with gloal frame rate or experiment specific frame rate"""
+        pass
 
-    def detect_frame_rate_for_experiment(self, experiment_id: str) -> Optional[int]:
-        """Lazy frame rate detection - only when requested"""
-        try:
-            exp = self.state_manager._experiments.get(experiment_id)
-            if not exp or not exp.tracking_data:
-                return None
-            
-            raw_data = exp.tracking_data.get('raw_data')
-            if not raw_data:
-                return None
-            
-            return self.detect_frame_rate(raw_data)
-        except Exception as e:
-            self.logger.warning(f"Frame rate detection failed: {str(e)}")
-            return None
 
     def reprocess_tracking_data(self, experiment_id: str) -> None:
         """Reprocess experiment data with current active body parts"""
@@ -333,39 +294,17 @@ class DataManager:
         }
 
     def _detect_objects(self, body_parts: List[str], keywords: List[str]) -> List[str]:
-        """Detect objects in body parts list"""
-        return [part for part in body_parts if any(keyword in part.lower() for keyword in keywords)]
+        pass
 
     def _match_experiment_requirements(self, config: Dict) -> Dict:
         """Match experiment requirements based on config"""
         # Implementation of this method depends on the structure of the config
         # This is a placeholder and should be implemented based on your specific config format
-        return {}
+        pass
 
-    def validate_dlc_csv(self, file_path: Path, exp_type: str) -> Tuple[bool, Optional[str]]:
-        """Validate DLC CSV matches config and has minimum required points"""
-        if not self.dlc_bodyparts:
-            return False, "No DLC config loaded - please load config first"
-            
-        try:
-            # Read CSV headers
-            df = pd.read_csv(file_path, header=[0,1,2], nrows=1)
-            csv_parts = set(df.columns.get_level_values(1))
-            
-            # Validate against DLC config
-            if not csv_parts.issubset(set(self.dlc_bodyparts)):
-                invalid = csv_parts - set(self.dlc_bodyparts)
-                return False, f"CSV contains parts not in DLC config: {invalid}"
-                
-            # Check minimum required points
-            required_count = self._schema["experiments"][exp_type]["required_count"]
-            if len(csv_parts) < required_count:
-                return False, f"Need at least {required_count} tracked points, found {len(csv_parts)}"
-                
-            return True, None
-            
-        except Exception as e:
-            return False, f"Failed to validate CSV: {str(e)}"
+    def experiment_csv_has_required_parts(self, file_path: Path, exp_type: str) -> Tuple[bool, Optional[str]]:
+        """Validate experiment CSV matches specified bodyparts(s)"""
+        pass
 
     def get_frame_count(self, file_path: Path) -> int:
         """Get total frame count without loading entire file"""
@@ -511,45 +450,7 @@ class DataManager:
             'optional_objects': self._schema["experiments"][exp_type]["object_roles"]["optional"],
             'default_length': self._schema["experiments"][exp_type]["default_length"]
         }
-
-    def validate_project_state(self) -> Tuple[bool, List[str]]:
-        """Validate loaded project state"""
-        errors = []
-        
-        # Check experiments have valid types/phases
-        for exp_id, exp in self.state_manager._experiments.items():
-            is_valid, error = self.validate_experiment_type(exp.type, exp.phase)
-            if not is_valid:
-                errors.append(f"Experiment {exp_id}: {error}")
-                
-        # Check required objects are in available body parts
-        available_parts = set(self.state_manager.get_available_body_parts())
-        for exp_type in self._schema["experiments"]:
-            required = set(self._schema["experiments"][exp_type]["required_body_parts"])
-            if not required.issubset(available_parts):
-                missing = required - available_parts
-                errors.append(f"Missing required body parts for {exp_type}: {missing}")
-                
-        return len(errors) == 0, errors
-
-    def calculate_age_at_date(self, birth_date: datetime, test_date: datetime) -> Optional[int]:
-        """Calculate age in weeks at test date"""
-        if not birth_date or not test_date:
-            return None
-        age_delta = test_date - birth_date
-        return age_delta.days // 7  # Convert to weeks
     
-    def get_experiment_age(self, experiment: ExperimentMetadata, subject: MouseMetadata) -> Optional[int]:
-        """Get subject age at time of experiment"""
-        if not subject.birth_date or not experiment.date:
-            return None
-        return self.calculate_age_at_date(subject.birth_date, experiment.date)
-
-    def set_data_root(self, project_root: Path) -> None:
-        """Set data root directory based on project location"""
-        self.data_root = project_root / "data"
-        self.data_root.mkdir(exist_ok=True)
-
     def prepare_project_directory(self, project_path: Path) -> None:
         """Prepare directory for new project"""
         try:
@@ -567,47 +468,6 @@ class DataManager:
         except Exception as e:
             self.logger.error(f"Failed to prepare project directory: {str(e)}")
             raise
-
-    def _create_project_structure(self, path: Path) -> None:
-        """Create standard project directory structure"""
-        try:
-            path.mkdir(parents=True)
-            (path / "subjects").mkdir()
-            (path / "experiments").mkdir()
-            (path / "config").mkdir()
-            (path / "data").mkdir()
-            (path / "batches").mkdir()
-            
-            self.logger.debug(f"Created project structure in {path}")
-            
-        except Exception as e:
-            raise RuntimeError(f"Failed to create project structure: {str(e)}")
-
-    def validate_project_directory(self, path: Path) -> bool:
-        """Checks path has MUS1 project structure"""
-        # Doesn't need to know about projects_root, just validates any given path
-        try:
-            if not path.is_dir():
-                self.logger.warning("Project path is not a directory")
-                return False
-            
-            # Check for required directories
-            required_dirs = ["subjects", "experiments", "config", "data", "batches"]
-            for dir_name in required_dirs:
-                if not (path / dir_name).is_dir():
-                    self.logger.warning(f"Missing required directory: {dir_name}")
-                    return False
-            
-            # Check for project config
-            if not (path / "config" / "project_config.yaml").exists():
-                self.logger.warning("Missing project configuration file")
-                return False
-            
-            return True
-            
-        except Exception as e:
-            self.logger.error(f"Project validation failed: {str(e)}")
-            return False
 
     def load_project_config(self, path: Path) -> Dict[str, Any]:
         """Load project configuration"""
@@ -640,16 +500,6 @@ class DataManager:
             
         return ProjectState(**state_dict)
 
-    def get_effective_frame_rate(self, experiment: ExperimentMetadata) -> int:
-        """Resolve frame rate hierarchy"""
-        return next((
-            rate for rate in [
-                experiment.frame_rate,
-                self.state_manager.settings.get('global_frame_rate'),
-                60  # Final fallback
-            ] if rate is not None
-        ), 60)
-
     def calculate_experiment_duration(self, experiment: ExperimentMetadata) -> float:
         """Calculate duration from available data"""
         # Priority 1: User-specified duration
@@ -665,59 +515,4 @@ class DataManager:
             return experiment.end_time - experiment.start_time
             
         return 0.0
-
-    def process_dlc_file(self, file_path: Path, experiment: ExperimentMetadata) -> TrackingData:
-        """End-to-end DLC file processing with validation"""
-        df = self._read_dlc_csv(file_path)
-        self._validate_dlc_structure(df)
-        
-        coordinates, likelihoods = self._parse_dlc_data(df)
-        frame_count = len(next(iter(coordinates.values())))
-        frame_rate = self.get_effective_frame_rate(experiment)
-        
-        tracking_data = TrackingData(
-            coordinates=coordinates,
-            likelihoods=likelihoods,
-            frame_count=frame_count,
-            frame_rate=frame_rate,
-            duration=frame_count / frame_rate
-        )
-        
-        if not self.validate_tracking_data(tracking_data):
-            raise ValueError("Tracking data validation failed")
-            
-        return tracking_data
-
-    def _read_dlc_csv(self, path: Path) -> pd.DataFrame:
-        """Read raw DLC CSV into DataFrame"""
-        try:
-            return pd.read_csv(path, header=[0,1,2], index_col=0)
-        except Exception as e:
-            self.logger.error(f"CSV read failed: {str(e)}")
-            raise
-
-    def _validate_dlc_structure(self, df: pd.DataFrame) -> None:
-        """Validate basic DLC file structure"""
-        if df.empty or len(df.columns.levels) != 3:
-            raise ValueError("Invalid DLC file structure")
-
-    def _parse_dlc_data(self, df: pd.DataFrame) -> Tuple[Dict, Dict]:
-        """Extract coordinates and likelihoods"""
-        scorer = df.columns.get_level_values(0)[0]
-        coordinates = {}
-        likelihoods = {}
-        
-        for bodypart in df.columns.get_level_values(1).unique():
-            coords = df[scorer][bodypart]
-            coordinates[bodypart] = {
-                'x': coords['x'].tolist(),
-                'y': coords['y'].tolist()
-            }
-            likelihoods[bodypart] = coords['likelihood'].tolist()
-            
-        return coordinates, likelihoods
-
-    def calculate_duration(self, frame_count: int, experiment: ExperimentMetadata) -> float:
-        """Pure duration calculation"""
-        return frame_count / self.get_effective_frame_rate(experiment)
 

@@ -11,7 +11,7 @@ import shutil
 import uuid
 import re
 
-from ...utils.logging_config import get_class_logger, get_logger
+from ...utils.logging_config import get_class_logger
 from .metadata import (
     MouseMetadata,
     ExperimentMetadata,
@@ -28,7 +28,12 @@ class ProjectManager:
     """Manages project configuration and file operations"""
     
     def __init__(self, state_manager: 'StateManager', data_manager: 'DataManager'):
-        """Initialize project manager"""
+        """Initialize project manager
+        
+        Args:
+            state_manager: StateManager instance for state updates
+            data_manager: DataManager instance for data operations
+        """
         self.logger = get_class_logger(self.__class__)
         self.logger.info("Initializing ProjectManager")
         
@@ -42,17 +47,15 @@ class ProjectManager:
         
         # Default to user's home directory
         self.projects_root = Path.home() / "mus1_projects"
-        self.projects_root.mkdir(exist_ok=True)  # Creates if missing
+        self.projects_root.mkdir(exist_ok=True)
         
         self.project_root = None
         self.dlc_config_path: Optional[Path] = None
-        self.logger.info(f"Projects directory: {self.projects_root}")
+        
+        # Connect signals after initialization
+        self._connect_signals()
         
         self.logger.info("ProjectManager initialization complete")
-        self.logger.debug("Connecting to StateManager signals")
-        
-        # Connect signals
-        self._connect_signals()
 
     def _connect_signals(self):
         """Connect to state manager signals"""

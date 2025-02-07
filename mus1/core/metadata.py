@@ -6,7 +6,50 @@ from pathlib import Path
 from typing import Dict, Set, List, Any, Optional, Tuple
 import re
 from collections import defaultdict
+from ..utils import get_logger
+import pandas as pd
 
+logger = get_logger("core.metadata")
+
+def init_metadata() -> bool:
+    """Initialize metadata system
+    
+    Returns:
+        bool: True if metadata system initialized successfully
+    """
+    try:
+        logger.info("Initializing metadata system")
+        
+        # Verify all required dataclasses are properly defined
+        required_classes = [
+            MouseMetadata,
+            ExperimentMetadata,
+            BatchMetadata,
+            ProjectState,
+            PluginMetadata,
+            TrackingData
+        ]
+        
+        for cls in required_classes:
+            if not hasattr(cls, '__dataclass_fields__'):
+                logger.error(f"{cls.__name__} is not a proper dataclass")
+                return False
+                
+        logger.info("Metadata system initialized successfully")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Failed to initialize metadata system: {e}")
+        return False
+
+@dataclass
+class PluginMetadata:
+    """Plugin metadata structure"""
+    name: str
+    version: str
+    description: str
+    author: str
+    
 @dataclass
 class TrackingData:
     """Processed DLC tracking data for an experiment"""
@@ -18,13 +61,27 @@ class TrackingData:
     @classmethod
     def from_dlc_csv(cls, csv_path: Path, body_parts: List[str], frame_rate: int) -> 'TrackingData':
         """Create from CSV with frame rate context"""
-        # During CSV processing:
+        # Read DLC CSV
+        data = pd.read_csv(csv_path)
         frame_count = len(data)
+        
+        # Process coordinates and likelihoods
+        coordinates = {}
+        likelihoods = {}
+        
+        for part in body_parts:
+            coordinates[part] = {
+                'x': data[f'{part}_x'].tolist(),
+                'y': data[f'{part}_y'].tolist()
+            }
+            likelihoods[part] = data[f'{part}_likelihood'].tolist()
+            
         return cls(
+            coordinates=coordinates,
+            likelihoods=likelihoods,
             frame_rate=frame_rate,
             frame_count=frame_count,
-            duration=frame_count / frame_rate,
-            # ... other fields
+            duration=frame_count / frame_rate
         )
 
 @dataclass
@@ -100,6 +157,19 @@ class ExperimentMetadata:
             self.arena_image_path.exists(),
             len(self.object_roles) >= 2
         ])
+
+    @property
+    def age(self) -> Optional[float]:
+        """Calculate age in weeks at experiment time"""
+        if not hasattr(self, '_mouse'):
+            return None
+        delta = self.date - self._mouse.birth_date
+        return delta.days / 7.0
+
+    def _get_valid_phases(self) -> List[str]:
+        """Get valid phases for this experiment type"""
+        # Could be extended based on experiment type
+        return ["habituation", "training", "test"]
 
 @dataclass
 class BatchMetadata:
@@ -218,3 +288,13 @@ class ProjectState:
             self._indexes['mouse_id'][exp.mouse_id].append(exp)
             self._indexes['exp_type'][exp.type].append(exp) 
             self._indexes['phase'][exp.phase].append(exp)
+
+__all__ = [
+    'init_metadata',
+    'MouseMetadata',
+    'ExperimentMetadata',
+    'BatchMetadata',
+    'ProjectState',
+    'PluginMetadata',
+    'TrackingData'
+]
