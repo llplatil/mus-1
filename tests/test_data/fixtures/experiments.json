@@ -1,0 +1,40 @@
+{
+    "841F_20230405_NOR": {
+        "id": "841F_20230405_NOR",
+        "date": "2023-04-05",
+        "type": "NOR",
+        "mouse_id": "841F",
+        "tracking_file": "841F_20230405_NOR_tracking.csv",
+        "arena_image": "841F_20230405_NOR_arena.png",
+        "batch_associations": {
+            "batch_001": {
+                "id": "batch_001",
+                "name": "NOR Analysis Batch 1",
+                "tracked_body_part": "nose",
+                "creation_date": "2023-04-06"
+            },
+            "batch_002": {
+                "id": "batch_002",
+                "name": "Full Body Analysis",
+                "tracked_body_part": "spine1",
+                "creation_date": "2023-04-06"
+            }
+        }
+    },
+    "842F_20230405_NOR": {
+        "id": "842F_20230405_NOR",
+        "date": "2023-04-05",
+        "type": "NOR",
+        "mouse_id": "842F",
+        "tracking_file": "842F_20230405_NOR_tracking.csv",
+        "arena_image": "842F_20230405_NOR_arena.png",
+        "batch_associations": {
+            "batch_001": {
+                "id": "batch_001",
+                "name": "NOR Analysis Batch 1",
+                "tracked_body_part": "nose",
+                "creation_date": "2023-04-06"
+            }
+        }
+    }
+} 

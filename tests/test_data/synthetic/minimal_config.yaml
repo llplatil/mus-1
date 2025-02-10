@@ -1,0 +1,27 @@
+# Minimal valid DLC config for testing
+Task: time facing area test
+scorer: DLC_resnet50_TestProject_shuffle1
+date: Feb24
+multianimalproject: false
+project_path: /path/to/test/project
+
+# Essential bodyparts for NOR testing
+bodyparts:
+- nose
+- tail
+- spine1
+- Silo      # Object marker
+- Diamond   # Object marker
+
+# Essential DLC parameters
+start: 0
+stop: 1
+pcutoff: 0.6
+skeleton_color: black
+TrainingFraction:
+- 0.95
+iteration: 0
+skeleton:
+- - tail
+  - spine1
+  - nose

@@ -1,63 +1,54 @@
-# MUS1 Architecture Update
+# MUS1 Architecture (Updated)
 
-## Key Implementations (v0.2) *(Revised on 2/8/2025)*
+## Key Implementations (Using Pydantic for Metadata)
 
-1. **Unify Data Processing Pipeline (JSON + Pydantic)**  #Not done
-   - Single `process_dlc_file()` method in `DataManager`  
-   - **Pydantic**-based data models for core validations instead of external YAML schemas for main data.  
-   - Uses `Enum` for experiment types (e.g., `"NOR"`, `"OpenField"`), allowing us to cleanly dispatch to the appropriate plugin or submodel.  
-   - use enum for sex of mouse
-   - Frame rate hierarchy: (1) Experiment-specific > (2) Global default (60).  
-   - Centralized duration calculation in `DataManager`.
+1. **Unified Data Processing and Metadata**  
+   - JSON-based data storage for mouse, experiment, and project-level metadata, validated by Pydantic models.  
+   - Enums capture discrete fields (e.g., `ExperimentType`, `Sex`, `NORSessions`, `OFSessions`).
+   - Frame rate logic uses either experiment-specific or a global default (60).
 
-2. **State Management Improvements**  *(Revised on 2/5/2025-2/9/2025)*
-   ```mermaid
-   graph TD
-       GUI-->StateManager
-       StateManager-->ProjectState
-       ProjectState-->IndexedQueries
-       IndexedQueries-->GUI
-   ```
-   - `StateManager` coordinates validation and data flow.  
-   - `ProjectState` organizes in-memory data (subjects, experiments, batches).  
-   - Queries (e.g., listing experiments by mouse) are not moved out of metadata classes and into `StateManager`.  
+2. **Plugin Submodels**  
+   - Each plugin defines a Pydantic submodel with fields and minimal logic.  
+   - **NORPluginParams**: includes `NORSessions` (FAMILIARIZATION, RECOGNITION) and object roles.  
+   - **OFPluginParams**: includes `OFSessions` (HABITUATION, RE-EXPOSURE) and optional arena markings.
 
-3. **Validation Strategy**  
-   - **Field-Level Validation**: Pydantic ensures required vs. optional fields (e.g. submodels for each experiment type).  
-   - **Plugin-Specific or "Submodel" Validation**: For each experiment type, a dedicated Pydantic submodel captures the required parameters (like `object_roles`, `arena_markings`). Cross-field or advanced checks happen in the plugin code or `StateManager`.  
-   - **UI Guidance**: Validation results are relayed to the UI so the user can correct issues before data is saved.  
+3. **State Management**  
+   - A `StateManager` orchestrates core validations and merges advanced logic.  
+   - A `ProjectState` holds in-memory data: mice, experiments, submodels, and more.  
+   - `ProjectManager` saves/loads JSON files and updates the filesystem accordingly.
 
-4. **Core Component Responsibilities**  
-   | Component          | Responsibilities                                                                                          |
-   |--------------------|----------------------------------------------------------------------------------------------------------|
-   | **StateManager**   | State mutation, orchestrates validations & updates (plugin submodel checks or advanced checks)           |
-   | **DataManager**    | Data processing (e.g. DLC file parsing, basic validation steps), frames/time calculations                |
-   | **ProjectState**   | In-memory data store (subjects, experiments, batches), plus indexing                                    |
-   | **Plugins**        | Experiment-type-specific checks & calculations (e.g. requiring objects, certain arena markings, etc.)   |
+4. **Validation Strategy**  
+   - **Field-Level Validation**: Pydantic checks for basic constraints (e.g., future birth_date disallowed).  
+   - **Plugin-Specific Validations**: Enforced through submodels (e.g., for NOR familiarization) or plugin business logic.  
+   - **Cross-Field or Complex Checks**: Handled by code in `StateManager` or each plugin's analysis functions.
 
-## Lessons Learned
+5. **Why Pydantic Over YAML**  
+   - **Consistency**: Single Pythonic approach for defining/enforcing schemas.  
+   - **Less Redundancy**: No extra YAML schema files to maintain.  
+   - **Enum Integration**: Clear definition of valid experiment types and stages.
 
-1. **Single Source of Truth**  
-   Moving all DLC processing to `DataManager` reduced plugin complexity by ~40%.
+## Data Flow
 
-2. **Move From YAML to JSON + Pydantic**  
-   - Eliminates overhead of maintaining separate schema files  
-   - Validation is now consistent and purely in Python (Enum-based type checks, submodels, and advanced validations)  
-   - Easier maintenance and debugging
+1. **Add Mouse**  
+   - Minimal fields: `id` required; `birth_date` is optional.  
+   - Stored in `ProjectState.subjects[mouse_id]`.
 
-3. **Query Optimization**  
-   Indexes in `ProjectState` improved common query performance:
-   - e.g., quickly listing all experiments for a given mouse or experiment type
+2. **Add Experiment**  
+   - You specify `ExperimentType` (e.g., `NOR` or `OpenField`).  
+   - A session stage enum (`NORSessions` or `OFSessions`) is stored in the plugin submodel.  
+   - `DataManager` processes the tracking file if needed.
 
-## Next Steps
+3. **Analyze Experiment**  
+   - Plugin logic checks required fields or advanced rules (e.g., two objects for NOR recognition).  
+   - Results are stored in plugin data or separate result objects.
 
-1. **Plugin Development**  
-   - Standardize NOR analysis interface (via dedicated submodel)  
-   - Implement Open Field plugin skeleton  
-   - Add plugin dependency checks as needed  
+4. **Project Saving**  
+   - `ProjectManager` or `StateManager` serializes `ProjectState` and writes JSON.  
+   - Re-loaded on next session.
 
-**MUS1 in one sentence**:  
-*Take a mouse movement file from a third-party app, display it over an arena image, let the user specify analysis options, and then scale that analysis to multiple experiments/subjects.*
+## Conclusion
+
+MUS1 organizes metadata via Pydantic-based models (for mice, experiments, plugin params, and project settings), combining them into a single in-memory state managed by `StateManager`. Each **plugin** (e.g., NOR, OF) interacts with these models for advanced validations or analysis steps.
 
 ---
 
@@ -93,7 +84,8 @@
   - A user-defined subset of **active** body parts for analysis  
   - A user-defined list of tracked objects  
   - A global frame rate (60 by default) used unless an experiment specifies otherwise  
-  - Other optional fields like project name or date created  
+  - Unique Project name 
+  - date created  
 
 **Why Project-Level?**  
 - These settings apply across all experiments and mice—reloaded when the user re-opens the project.  
@@ -192,8 +184,8 @@
 ## Required Data Elements (Summary)
 
 ### Mouse Data
-- **Required**: `id`  
-- **Optional**: `sex`, `birth_date`, `genotype`, `treatment`, `notes`
+- **Required**: `id`, `experiment.type` <- user specifies what type of experiments the mouse underwent (poluated by plugin submodels)
+- **Optional**: `sex`, `birth_date`, `genotype`, `treatment`, `notes`, `in_training_set`
 
 ### Experiment Data
 - **Required**:  
@@ -203,14 +195,13 @@
   - `date`  
   - A submodel (e.g. `NORPluginParams`) if the experiment's type demands it  
 - **Optional**:  
-  - Fields like `notes`, `time_of_recording`, `length_of_interest`, or `arena_image_path`  
-  - Additional plugin submodel fields (like `object_roles`) if marked optional  
+  - Fields like `notes`, `video_file_path`, `length_of_interest`, `arena_image_path`
+  - Additional plugin submodel fields (like `object_roles`, phases) if marked optional  
 
 ### Project Metadata
 - **Required**:  
   - A structure for global settings (e.g. `dlc_configs`, `bodyparts`, `active_bodyparts`, `tracked_objects`, `global_frame_rate`)  
-- **Optional**:  
-  - `project_name`, version info, date created  
+  - see above
 
 ### Batches
 - **Required**: `id`, plus a list of `experiment_ids`  
@@ -243,9 +234,46 @@
 - **Use Enum** to enforce valid experiment types (e.g., "NOR," "OpenField").  
 - **Introduce Submodels** for each experiment type to capture specialized fields.  
 - **Implement Pathlib** for metadata paths (e.g. DLC config files, tracking file paths).  
-- **Remove advanced query logic** from metadata classes, shifting it to `ProjectState` or `StateManager`.  
-- **Continue** removing or consolidating the old `ProjectManager` if desired, possibly letting `StateManager` handle loading/saving.  
+- **Moved advanced query logic** from metadata classes, shifting it to  `StateManager` but need to properly implement. 
+- **Continue** consolidating `ProjectManager` as point of defining project operations, and `DataManager` as point of technical operations, integration with plugins, and data processing.
 - **Validate** advanced, plugin-specific fields in plugin code or the appropriate submodel, rather than in the base metadata classes.
 - implement lists of mice, experiments, batches, and batches in the gui and in the state manager with clean up of old code
 
 
+## current thoughts
+- use age calc to figure out n of times mouse went through same experiment and temoral relationship between experiments
+- metadata needs to support lists of experiments, experiment types, mice, batches, images and projects
+- Use the Native QMainWindow Directly in Your “BaseWidget” and get rid of 'main window'
+      example of how to do this:
+      from PySide6.QtWidgets import QMainWindow, QTabWidget, QApplication
+      from PySide6.QtCore import Qt
+
+         class BaseWidget(QMainWindow):
+            def __init__(self):
+                  super().__init__()
+                  self.setWindowTitle("MUS1")
+                  self.resize(1200, 800)
+                  self.tab_widget = QTabWidget(self)
+                  self.tab_widget.setTabPosition(QTabWidget.West)
+                  self.setCentralWidget(self.tab_widget)
+                  
+                  # Initialize other components, core references, etc.
+
+            def connect_core(self, state_manager, data_manager, project_manager):
+                  # Setup references and signals here
+                  pass
+
+            # Additional methods for adding tabs, hooking up signals, etc.
+
+            def main() -> int:
+         app = QApplication(sys.argv)
+
+         # Initialize your systems (init_core, init_plugins, init_gui, etc.)
+         # Create the managers: state_manager, data_manager, project_manager
+
+         # Create the main window directly from BaseWidget
+         window = BaseWidget()
+         window.connect_core(state_manager, data_manager, project_manager)
+         window.show()
+
+         return app.exec()
