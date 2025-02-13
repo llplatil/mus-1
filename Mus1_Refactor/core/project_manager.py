@@ -6,6 +6,7 @@ from typing import Optional
 
 from .metadata import ProjectState, ProjectMetadata, MouseMetadata, Sex, ExperimentType, ExperimentMetadata, SessionStage, ArenaImageMetadata, VideoMetadata
 from .state_manager import StateManager  # so we can type hint or reference if needed
+from .plugins import PluginManager, NORPlugin, OpenFieldPlugin
 
 logger = logging.getLogger("mus1.core.project_manager")
 
@@ -17,6 +18,10 @@ class ProjectManager:
         """
         self.state_manager = state_manager
         self._current_project_root: Path | None = None
+        self.plugin_manager = PluginManager()
+        # Register plugins using ExperimentType values
+        self.plugin_manager.register_plugin("NOR", NORPlugin())
+        self.plugin_manager.register_plugin("OpenField", OpenFieldPlugin())
 
     def create_project(self, project_root: Path, project_name: str) -> None:
         """
@@ -171,8 +176,8 @@ class ProjectManager:
         experiment_type: ExperimentType,
         session_stage: SessionStage = SessionStage.FAMILIARIZATION,
         notes: str = "",
-        arena_image_id: Optional[str] = None,
-        video_id: Optional[str] = None
+        arena_image_id: str | None = None,
+        video_id: str | None = None
     ) -> None:
         """
         Creates or updates an ExperimentMetadata entry in the project's State.
@@ -203,6 +208,8 @@ class ProjectManager:
             existing.session_stage = session_stage
             existing.notes = notes
             self._link_image_and_video(existing, arena_image_id, video_id)
+            # Plugin-specific validation for the updated experiment
+            self.plugin_manager.validate_experiment(existing, ps)
         else:
             logger.info(f"Creating a new experiment: {experiment_id}")
             new_exp = ExperimentMetadata(
@@ -215,6 +222,8 @@ class ProjectManager:
             )
             ps.experiments[experiment_id] = new_exp
             self._link_image_and_video(new_exp, arena_image_id, video_id)
+            # Plugin-specific validation for the new experiment
+            self.plugin_manager.validate_experiment(new_exp, ps)
 
         # Optionally, you can do something like: mouse.experiment_ids.add(experiment_id)
         # ps.subjects[mouse_id] = mouse
@@ -225,8 +234,8 @@ class ProjectManager:
     def _link_image_and_video(
         self,
         experiment: ExperimentMetadata,
-        arena_image_id: Optional[str],
-        video_id: Optional[str]
+        arena_image_id: str | None,
+        video_id: str | None
     ) -> None:
         """
         Helper method to link an ArenaImage or a Video to the given experiment,

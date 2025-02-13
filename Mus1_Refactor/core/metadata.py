@@ -165,7 +165,7 @@ class ExperimentMetadata(BaseModel):
     type: ExperimentType
     mouse_id: str
     date: datetime
-    tracking_data: TrackingData
+    tracking_data: Optional[TrackingData] = None
 
     session_stage: SessionStage = SessionStage.FAMILIARIZATION
     """
@@ -188,7 +188,7 @@ class ExperimentMetadata(BaseModel):
     start_time: float = 0.0
     end_time: Optional[float] = None
     duration: Optional[float] = None
-    arena_image_path: Path = Path()
+    arena_image_path: Optional[Path] = None
     notes: str = ""
 
     # New override field for per-experiment threshold, if desired:
@@ -210,9 +210,9 @@ class ExperimentMetadata(BaseModel):
         Actual validations can be expanded or done in plugin code.
         """
         return (
-            bool(self.tracking_data)
-            and self.arena_image_path.exists()
-            and len(self.object_roles) >= 2
+            self.tracking_data is not None and
+            self.arena_image_path is not None and
+            self.arena_image_path.exists()
         )
 
 
