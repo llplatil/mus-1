@@ -77,3 +77,13 @@
 2025-02-15 22:21:12,603 [INFO] mus1.core.state_manager - Synced supported experiment types: ['NOR', 'OpenField', 'BasicCSVPlot']
 2025-02-15 22:21:12,604 [INFO] mus1.core.state_manager - Synced plugin metadata (sorted by 'name'): ['BasicCSVPlot', 'NOR', 'OF']
 2025-02-15 22:21:12,615 [INFO] __main__ - MUS1 init complete. Starting application event loop.
+2025-02-15 22:42:25,882 [INFO] __main__ - Launching MUS1...
+2025-02-15 22:42:25,882 [INFO] mus1.core.metadata - Initializing metadata system
+2025-02-15 22:42:25,882 [INFO] mus1.core.metadata - Metadata system initialized successfully
+2025-02-15 22:42:26,979 [INFO] __main__ - Core managers created. Setting up the MainWindow.
+2025-02-15 22:42:29,345 [INFO] mus1.core.project_manager - Loading project from projects/test_1
+2025-02-15 22:42:29,346 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
+2025-02-15 22:42:29,347 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
+2025-02-15 22:42:29,377 [INFO] mus1.core.state_manager - Synced supported experiment types: ['NOR', 'OpenField', 'BasicCSVPlot']
+2025-02-15 22:42:29,378 [INFO] mus1.core.state_manager - Synced plugin metadata (sorted by 'name'): ['BasicCSVPlot', 'NOR', 'OF']
+2025-02-15 22:42:29,382 [INFO] __main__ - MUS1 init complete. Starting application event loop.

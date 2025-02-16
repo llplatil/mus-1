@@ -1,2 +1,19 @@
-# Ignore the entire "copy of mus1 for refrence" directory
-copy\ of\ mus1\ for\ refrence/ 
+# Ignore everything at root
+/*
+!.gitignore
+!Mus1_Refactor/
+
+# Python cache files
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+**/.Python
+**/*.so
+
+# Logs
+**/mus1.log
+**/*.log
+
+# Projects directory
+**/projects/
