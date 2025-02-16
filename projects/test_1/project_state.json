@@ -1,0 +1,31 @@
+{
+  "version": "0.1.0",
+  "last_modified": "2025-02-12 22:38:36.432500",
+  "settings": {
+    "global_frame_rate": 60,
+    "global_frame_rate_enabled": true,
+    "body_parts": [],
+    "active_body_parts": [],
+    "tracked_objects": [],
+    "sort_projects": "date",
+    "sort_experiments": "subject",
+    "sort_subjects": "alphabetical"
+  },
+  "subjects": {},
+  "experiments": {},
+  "batches": {},
+  "arena_images": {},
+  "experiment_videos": {},
+  "external_configs": {},
+  "project_metadata": {
+    "dlc_configs": [],
+    "master_body_parts": [],
+    "active_body_parts": [],
+    "tracked_objects": [],
+    "global_frame_rate": 60,
+    "project_name": "test_1",
+    "date_created": "2025-02-12 22:38:36.432388"
+  },
+  "likelihood_filter_enabled": false,
+  "default_likelihood_threshold": 0.5
+}

@@ -1,6 +1,7 @@
 """Core metadata models for MUS1"""
 
 from __future__ import annotations
+from dataclasses import dataclass
 
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Any
@@ -31,6 +32,7 @@ def init_metadata() -> bool:
 class PluginMetadata:
     """Plugin metadata structure"""
     name: str
+    date_created: datetime
     version: str
     description: str
     author: str
@@ -38,6 +40,7 @@ class PluginMetadata:
 class ExperimentType(str, Enum):
     NOR = "NOR"
     OPEN_FIELD = "OpenField"
+    BASIC_CSV_PLOT = "BasicCSVPlot"
     # Add more as needed
 
 class SessionStage(str, Enum):
@@ -72,7 +75,7 @@ class ArenaImageSource(str, Enum):
     UNKNOWN = "Unknown"
 
 
-class NORSessions(str, Enum):
+class NORSessions(Enum):
     FAMILIARIZATION = "familiarization"
     RECOGNITION = "recognition"
 
@@ -90,13 +93,11 @@ class NORPluginParams(BaseModel):
     session_stage: NORSessions = NORSessions.FAMILIARIZATION
     object_roles: Dict[str, str] = {}
 
-    @root_validator
+    @root_validator(skip_on_failure=True)
     def ensure_objects_same_for_familiarization(cls, values):
         session_stage = values.get("session_stage")
         roles = values.get("object_roles", {})
         if session_stage == NORSessions.FAMILIARIZATION:
-            # e.g., enforce that all object roles are 'familiar' or the same
-            # This is just an example check — your real logic may differ
             unique_objects = set(roles.values())
             if len(unique_objects) > 1:
                 raise ValueError("Familiarization stage requires identical object roles.")
@@ -163,8 +164,9 @@ class ExperimentMetadata(BaseModel):
     """
     id: str
     type: ExperimentType
-    mouse_id: str
-    date: datetime
+    subject_id: str
+    date_recorded: datetime
+    date_added: datetime = Field(default_factory=datetime.now)
     tracking_data: Optional[TrackingData] = None
 
     session_stage: SessionStage = SessionStage.FAMILIARIZATION
@@ -190,9 +192,8 @@ class ExperimentMetadata(BaseModel):
     duration: Optional[float] = None
     arena_image_path: Optional[Path] = None
     notes: str = ""
-
-    # New override field for per-experiment threshold, if desired:
     likelihood_threshold: Optional[float] = None
+    plugin_params: Dict[str, Any] = Field(default_factory=dict)
 
     @property
     def phase_type(self) -> str:
@@ -307,7 +308,10 @@ class ProjectState(BaseModel):
             "global_frame_rate_enabled": True,
             "body_parts": [],
             "active_body_parts": [],
-            "tracked_objects": []
+            "tracked_objects": [],
+            "global_sort_mode": "name",      # experiment sorts
+            "plugin_sort_mode": "name",      # plugin sorts - "date" or "name"
+            "sort_subjects": "alphabetical"
         }
     )
 
@@ -323,5 +327,10 @@ class ProjectState(BaseModel):
     # New fields for controlling a global default threshold and whether to enforce it:
     likelihood_filter_enabled: bool = Field(default=False)
     default_likelihood_threshold: float = Field(default=0.5)
+
+    supported_experiment_types: List[str] = Field(default_factory=list)
+
+    # Store plugin metadata objects at runtime
+    registered_plugin_metadatas: List[PluginMetadata] = Field(default_factory=list)
 
     

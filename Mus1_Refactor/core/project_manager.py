@@ -3,10 +3,13 @@ import json
 from pathlib import Path
 from datetime import datetime
 from typing import Optional
+import os
 
 from .metadata import ProjectState, ProjectMetadata, MouseMetadata, Sex, ExperimentType, ExperimentMetadata, SessionStage, ArenaImageMetadata, VideoMetadata
 from .state_manager import StateManager  # so we can type hint or reference if needed
-from .plugins import PluginManager, NORPlugin, OpenFieldPlugin
+from plugins.base_plugin import PluginManager
+from plugins.NOR_plugin import NORPlugin
+from plugins.OF_plugin import OFPlugin
 
 logger = logging.getLogger("mus1.core.project_manager")
 
@@ -21,7 +24,9 @@ class ProjectManager:
         self.plugin_manager = PluginManager()
         # Register plugins using ExperimentType values
         self.plugin_manager.register_plugin("NOR", NORPlugin())
-        self.plugin_manager.register_plugin("OpenField", OpenFieldPlugin())
+        self.plugin_manager.register_plugin("OpenField", OFPlugin())
+        from plugins.BasicCSVPlot_plugin import BasicCSVPlotPlugin
+        self.plugin_manager.register_plugin("BasicCSVPlot", BasicCSVPlotPlugin())
 
     def create_project(self, project_root: Path, project_name: str) -> None:
         """
@@ -131,7 +136,7 @@ class ProjectManager:
         else:
             logger.info(f"Creating a new mouse: {mouse_id}")
             new_mouse = MouseMetadata(
-                id=mouse_id, 
+                id=mouse_id,
                 sex=sex,
                 genotype=genotype,
                 treatment=treatment,
@@ -139,118 +144,91 @@ class ProjectManager:
             )
             self.state_manager.project_state.subjects[mouse_id] = new_mouse
 
-    def get_sorted_mice(self, by: str = "id") -> list[MouseMetadata]:
+        self.save_project()
+
+        # Optionally refresh other views (experiments, etc.) if desired:
+        # self.refresh_all_lists()
+
+    def get_sorted_subjects(self, by: str = "id") -> list:
         """
-        Returns a list of MouseMetadata objects sorted either by 'id' or 'birthday'.
+        Returns a list of subject (mouse) metadata objects sorted either by 'id' or 'birthday'.
         If 'by' is 'id', numeric IDs appear first in ascending order, then alphabetical IDs.
         If 'by' is 'birthday', ascending order, with None birthdays at the end.
         """
-        mice_dict = self.state_manager.project_state.subjects
-        mice_list = list(mice_dict.values())
+        subjects_dict = self.state_manager.project_state.subjects
+        subjects_list = list(subjects_dict.values())
 
         if by == "birthday":
-            mice_list.sort(key=lambda m: (m.birth_date is None, m.birth_date))
+            subjects_list.sort(key=lambda s: (s.birth_date is None, s.birth_date))
         else:  # default to "id"
-            def parse_id_sort_key(m: MouseMetadata):
-                mouse_id = m.id
+            def parse_id_sort_key(subject):
+                subject_id = subject.id
                 index = 0
-                while index < len(mouse_id) and mouse_id[index].isdigit():
+                while index < len(subject_id) and subject_id[index].isdigit():
                     index += 1
                 if index > 0:
-                    numeric_str = mouse_id[:index]
+                    numeric_str = subject_id[:index]
                     numeric_prefix = int(numeric_str)
-                    remainder = mouse_id[index:]
+                    remainder = subject_id[index:]
                     return (0, numeric_prefix, remainder)
                 else:
-                    return (1, mouse_id)
+                    return (1, subject_id)
+            subjects_list.sort(key=parse_id_sort_key)
 
-            mice_list.sort(key=parse_id_sort_key)
+        return subjects_list
 
-        return mice_list
-
-    def add_experiment(
-        self,
-        experiment_id: str,
-        mouse_id: str,
-        experiment_date: datetime,
-        experiment_type: ExperimentType,
-        session_stage: SessionStage = SessionStage.FAMILIARIZATION,
-        notes: str = "",
-        arena_image_id: str | None = None,
-        video_id: str | None = None
-    ) -> None:
+    def get_sorted_experiments(self) -> list:
         """
-        Creates or updates an ExperimentMetadata entry in the project's State.
-        Includes validation to ensure the specified mouse exists and can do the experiment_type.
-        Optionally sets a session_stage, and can link an arena image or video if IDs are provided.
+        Returns experiments sorted according to the state manager's
+        global_sort_mode setting (either 'name' or 'date').
         """
-        ps = self.state_manager.project_state
+        return self.state_manager.get_experiments_list_sorted()
 
-        if mouse_id not in ps.subjects:
-            raise ValueError(f"Mouse ID '{mouse_id}' does not exist. Please add the mouse first.")
-
-        mouse = ps.subjects[mouse_id]
-
-        # Ensure this experiment type is allowed for this mouse (if the set is non-empty).
-        # If 'allowed_experiment_types' is empty, we might treat that as "all are allowed," or
-        # you could enforce that they must have the experiment in that set—your choice:
-        if mouse.allowed_experiment_types and (experiment_type not in mouse.allowed_experiment_types):
-            raise ValueError(
-                f"Mouse {mouse_id} is not allowed to perform experiment type {experiment_type}."
-            )
-
-        existing = ps.experiments.get(experiment_id)
-        if existing:
-            logger.info(f"Updating existing experiment: {experiment_id}")
-            existing.mouse_id = mouse_id
-            existing.date = experiment_date
-            existing.type = experiment_type
-            existing.session_stage = session_stage
-            existing.notes = notes
-            self._link_image_and_video(existing, arena_image_id, video_id)
-            # Plugin-specific validation for the updated experiment
-            self.plugin_manager.validate_experiment(existing, ps)
-        else:
-            logger.info(f"Creating a new experiment: {experiment_id}")
-            new_exp = ExperimentMetadata(
-                id=experiment_id,
-                mouse_id=mouse_id,
-                date=experiment_date,
-                type=experiment_type,
-                session_stage=session_stage,
-                notes=notes
-            )
-            ps.experiments[experiment_id] = new_exp
-            self._link_image_and_video(new_exp, arena_image_id, video_id)
-            # Plugin-specific validation for the new experiment
-            self.plugin_manager.validate_experiment(new_exp, ps)
-
-        # Optionally, you can do something like: mouse.experiment_ids.add(experiment_id)
-        # ps.subjects[mouse_id] = mouse
-
-        # Optionally save the project
-        # self.save_project()
-
-    def _link_image_and_video(
-        self,
-        experiment: ExperimentMetadata,
-        arena_image_id: str | None,
-        video_id: str | None
-    ) -> None:
+    def add_experiment(self, experiment_id, subject_id, date, exp_type, plugin_params):
         """
-        Helper method to link an ArenaImage or a Video to the given experiment,
-        updating both references if they exist.
+        Gathers the minimal experiment data, attaches plugin-specific fields,
+        validates, and saves to project_state.
         """
-        ps = self.state_manager.project_state
-        if arena_image_id:
-            if arena_image_id not in ps.arena_images:
-                raise ValueError(f"Arena image {arena_image_id} does not exist in the project.")
-            image_meta = ps.arena_images[arena_image_id]
-            image_meta.experiment_ids.add(experiment.id)
-            experiment.arena_image_path = image_meta.path
+        new_experiment = ExperimentMetadata(
+            id=experiment_id,
+            subject_id=subject_id,
+            date_recorded=date,
+            type=exp_type,
+            plugin_params=plugin_params
+        )
 
-        if video_id:
-            if video_id not in ps.experiment_videos:
-                raise ValueError(f"Video {video_id} does not exist in the project.")
-            vid_meta = ps.experiment_videos[video_id]
-            vid_meta.experiment_ids.add(experiment.id)
+        # Validate subject existence
+        if subject_id not in self.state_manager.project_state.subjects:
+            raise ValueError(f"Subject '{subject_id}' not found in this project.")
+
+        # Let PluginManager handle the check for a valid plugin
+        self.plugin_manager.validate_experiment(new_experiment, self.state_manager.project_state)
+
+        self.state_manager.project_state.experiments[experiment_id] = new_experiment
+        self.save_project()
+        return new_experiment
+
+    def refresh_all_lists(self):
+        """
+        Placeholder for any logic or notifications needed so the UI
+        can refresh both experiment and subject lists simultaneously.
+        In a larger application, this might emit signals or call
+        framework-specific update methods.
+        """
+        # For instance, you might:
+        #  - reload self.state_manager.get_subject_ids()
+        #  - reload self.state_manager.get_experiments_list()
+        #  - notify any relevant views or widgets
+        pass
+
+    def rename_project(self, new_name: str) -> None:
+        if not self._current_project_root:
+            raise ValueError("No current project loaded")
+        new_path = self._current_project_root.parent / new_name
+        if new_path.exists():
+            raise ValueError("A project with this name already exists")
+        os.rename(self._current_project_root, new_path)
+        self._current_project_root = new_path
+        if self.state_manager.project_state and self.state_manager.project_state.project_metadata:
+            self.state_manager.project_state.project_metadata.project_name = new_name
+        self.save_project()
