@@ -1,135 +1,225 @@
-from PySide6.QtWidgets import QWidget, QLabel, QVBoxLayout, QGroupBox, QFormLayout, QLineEdit, QCheckBox, QSpinBox, QPushButton, QHBoxLayout, QComboBox
+from PySide6.QtWidgets import QWidget, QHBoxLayout, QVBoxLayout, QStackedWidget, QListWidget, QFormLayout, QLineEdit, QComboBox, QPushButton, QTextEdit, QSpinBox, QCheckBox, QLabel, QFileDialog
+
 
 class ProjectView(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
-        main_layout = QVBoxLayout(self)
+        # Main horizontal layout
+        main_layout = QHBoxLayout(self)
 
-        # Title label
-        title_label = QLabel("Project Settings")
-        title_label.setStyleSheet("font-size: 18px; font-weight: bold;")
-        main_layout.addWidget(title_label)
+        # Left navigation pane
+        self.navigation_list = QListWidget()
+        self.navigation_list.addItems(["Current Project", "General Settings", "Body Parts", "Objects"])
+        self.navigation_list.currentRowChanged.connect(self.changePage)
+        main_layout.addWidget(self.navigation_list)
 
-        # Project Management Group: for switching and renaming projects
-        project_management_group = QGroupBox("Project Management")
-        pm_layout = QFormLayout()
+        # Right area: contains a stacked widget for pages and action buttons
+        right_area = QWidget()
+        right_layout = QVBoxLayout(right_area)
 
-        # Row 1: Switch Project (dropdown and button)
+        # Stacked widget to hold different pages
+        self.pages = QStackedWidget()
+
+        # ----- Page: Current Project -----
+        self.page_current_project = QWidget()
+        cp_layout = QFormLayout(self.page_current_project)
+        
+        # Row: Switch Project (combo box and button)
         self.switch_project_combo = QComboBox()
         self.populate_project_list()
         self.switch_project_button = QPushButton("Switch Project")
-        switch_layout = QHBoxLayout()
-        switch_layout.addWidget(self.switch_project_combo)
-        switch_layout.addWidget(self.switch_project_button)
-        pm_layout.addRow("Switch Project:", switch_layout)
+        cp_switch_layout = QHBoxLayout()
+        cp_switch_layout.addWidget(self.switch_project_combo)
+        cp_switch_layout.addWidget(self.switch_project_button)
+        cp_layout.addRow("Switch Project:", cp_switch_layout)
 
-        # Row 2: Rename Project (line edit prepopulated with current project name and a rename button)
+        # Row: Rename Project (line edit and button)
         self.rename_line_edit = QLineEdit()
-        # Attempt to get current project name from parent's project_manager if available
-        if self.parent() and hasattr(self.parent(), 'project_manager') and self.parent().project_manager.state_manager.project_state and self.parent().project_manager.state_manager.project_state.project_metadata:
+        if self.parent() and hasattr(self.parent(), 'project_manager') and \
+           self.parent().project_manager.state_manager.project_state and \
+           self.parent().project_manager.state_manager.project_state.project_metadata:
             current_name = self.parent().project_manager.state_manager.project_state.project_metadata.project_name
             self.rename_line_edit.setText(current_name)
         self.rename_project_button = QPushButton("Rename Project")
-        rename_layout = QHBoxLayout()
-        rename_layout.addWidget(self.rename_line_edit)
-        rename_layout.addWidget(self.rename_project_button)
-        pm_layout.addRow("Rename Project:", rename_layout)
+        cp_rename_layout = QHBoxLayout()
+        cp_rename_layout.addWidget(self.rename_line_edit)
+        cp_rename_layout.addWidget(self.rename_project_button)
+        cp_layout.addRow("Rename Project:", cp_rename_layout)
 
-        project_management_group.setLayout(pm_layout)
-        main_layout.addWidget(project_management_group)
+        # Row: Project Notes (multiline text edit)
+        self.project_notes_edit = QTextEdit()
+        self.project_notes_edit.setPlaceholderText("Enter project notes here...")
+        cp_layout.addRow("Project Notes:", self.project_notes_edit)
 
-        # Connect signals for project management
-        self.switch_project_button.clicked.connect(self.handle_switch_project)
-        self.rename_project_button.clicked.connect(self.handle_rename_project)
+        self.pages.addWidget(self.page_current_project)
 
-        # Group box for general settings
-        settings_group = QGroupBox("General Settings")
-        settings_layout = QFormLayout()
+        # ----- Page: General Settings -----
+        self.page_general_settings = QWidget()
+        gs_layout = QFormLayout(self.page_general_settings)
+        self.frame_rate_spin = QSpinBox()
+        self.frame_rate_spin.setRange(1, 240)
+        self.frame_rate_spin.setValue(60)
+        gs_layout.addRow("Global Frame Rate:", self.frame_rate_spin)
+        self.likelihood_filter_checkbox = QCheckBox("Enable Likelihood Filter")
+        gs_layout.addRow(self.likelihood_filter_checkbox)
+        self.pages.addWidget(self.page_general_settings)
 
-        # Project Name input
-        project_name_edit = QLineEdit()
-        project_name_edit.setPlaceholderText("Enter project name")
-        settings_layout.addRow("Project Name:", project_name_edit)
+        # ----- Page: Body Parts -----
+        self.page_body_parts = QWidget()
+        bp_layout = QVBoxLayout(self.page_body_parts)
+        # Label and list for current body parts
+        current_bp_label = QLabel("Current Body Parts:")
+        self.current_body_parts_list = QListWidget()
+        bp_layout.addWidget(current_bp_label)
+        bp_layout.addWidget(self.current_body_parts_list)
+        # Label and list for all body parts in project
+        all_bp_label = QLabel("All Body Parts in Project:")
+        self.all_body_parts_list = QListWidget()
+        bp_layout.addWidget(all_bp_label)
+        bp_layout.addWidget(self.all_body_parts_list)
+        # Button to extract body parts from DLC config
+        self.extract_bodyparts_button = QPushButton("Extract from DLC Config")
+        bp_layout.addWidget(self.extract_bodyparts_button)
+        self.pages.addWidget(self.page_body_parts)
 
-        # Global Frame Rate input using a spin box
-        frame_rate_spin = QSpinBox()
-        frame_rate_spin.setRange(1, 240)
-        frame_rate_spin.setValue(60)
-        settings_layout.addRow("Global Frame Rate:", frame_rate_spin)
+        # ----- Page: Objects -----
+        self.page_objects = QWidget()
+        obj_layout = QVBoxLayout(self.page_objects)
+        label_current_objects = QLabel("Current Objects:")
+        self.current_objects_list = QListWidget()
+        obj_layout.addWidget(label_current_objects)
+        obj_layout.addWidget(self.current_objects_list)
 
-        # Likelihood Filter switch (using a check box as a toggle)
-        likelihood_filter_checkbox = QCheckBox("Enable Likelihood Filter")
-        settings_layout.addRow(likelihood_filter_checkbox)
+        # Layout for adding new object
+        add_obj_layout = QHBoxLayout()
+        self.new_object_line_edit = QLineEdit()
+        self.new_object_line_edit.setPlaceholderText("Enter new object name")
+        self.add_object_button = QPushButton("Add Object")
+        add_obj_layout.addWidget(self.new_object_line_edit)
+        add_obj_layout.addWidget(self.add_object_button)
+        obj_layout.addLayout(add_obj_layout)
+        self.pages.addWidget(self.page_objects)
 
-        # Body Parts input (comma-separated values)
-        body_parts_edit = QLineEdit()
-        body_parts_edit.setPlaceholderText("e.g., head, tail, left_paw, right_paw")
-        settings_layout.addRow("Body Parts:", body_parts_edit)
+        right_layout.addWidget(self.pages)
 
-        settings_group.setLayout(settings_layout)
-        main_layout.addWidget(settings_group)
-
-        # Buttons for actions
-        button_layout = QHBoxLayout()
+        # Action Buttons at the bottom
+        buttons_layout = QHBoxLayout()
         save_button = QPushButton("Save Settings")
         cancel_button = QPushButton("Cancel")
-        button_layout.addWidget(save_button)
-        button_layout.addWidget(cancel_button)
-        main_layout.addLayout(button_layout)
+        buttons_layout.addWidget(save_button)
+        buttons_layout.addWidget(cancel_button)
+        right_layout.addLayout(buttons_layout)
 
-        main_layout.addStretch()
+        main_layout.addWidget(right_area)
 
-        # Connect button signals
+        # Set default selection
+        self.navigation_list.setCurrentRow(0)
+
+        # Connect signals
+        self.switch_project_button.clicked.connect(self.handle_switch_project)
+        self.rename_project_button.clicked.connect(self.handle_rename_project)
         save_button.clicked.connect(self.handle_save)
         cancel_button.clicked.connect(self.handle_cancel)
+        self.extract_bodyparts_button.clicked.connect(self.handle_extract_bodyparts)
+        self.add_object_button.clicked.connect(self.handle_add_object)
 
-        # Store widget references for later use
-        self.project_name_edit = project_name_edit
-        self.frame_rate_spin = frame_rate_spin
-        self.likelihood_filter_checkbox = likelihood_filter_checkbox
-        self.body_parts_edit = body_parts_edit
+    def changePage(self, index):
+        self.pages.setCurrentIndex(index)
+
+    def handle_extract_bodyparts(self):
+        from PySide6.QtWidgets import QFileDialog
+        from pathlib import Path
+        # Open a file dialog to let the user select a DLC config YAML file
+        config_file_path, _ = QFileDialog.getOpenFileName(self, "Select DLC Config", ".", "YAML Files (*.yaml *.yml)")
+        if not config_file_path:
+            print("No config file selected.")
+            return
+
+        try:
+            # Extract body parts from the selected config file using DataManager
+            extracted = self.window().data_manager.extract_bodyparts_from_dlc_config(Path(config_file_path))
+            print("Extracted body parts:", extracted)
+
+            # Update master body parts via ProjectManager core logic
+            self.window().project_manager.update_master_body_parts(extracted)
+
+            # Refresh the UI for 'All Body Parts in Project'
+            state = self.window().project_manager.state_manager.project_state
+            self.all_body_parts_list.clear()
+            if state.project_metadata and hasattr(state.project_metadata, "master_body_parts"):
+                for bp in state.project_metadata.master_body_parts:
+                    self.all_body_parts_list.addItem(bp)
+
+            print("Extraction complete. Updated master body parts:", state.project_metadata.master_body_parts)
+        except Exception as e:
+            print("Error extracting body parts:", e)
 
     def handle_save(self):
-        # Retrieve current settings from input widgets (ignoring the general Project Name field for renaming,
-        # as renaming is done in the Project Management section)
+        pm = self.window().project_manager
+        state = pm.state_manager.project_state
+
+        # Gather data from Current Project page
+        project_notes = self.project_notes_edit.toPlainText().strip()
+
+        # Gather data from General Settings
         frame_rate = self.frame_rate_spin.value()
         likelihood_enabled = self.likelihood_filter_checkbox.isChecked()
-        body_parts_str = self.body_parts_edit.text().strip()
-        body_parts_list = [bp.strip() for bp in body_parts_str.split(",") if bp.strip()]
 
-        # Update the core project state via project_manager
-        pm = self.parent().project_manager
-        state = pm.state_manager.project_state
+        # Gather data from Body Parts page (current body parts list)
+        current_body_parts = []
+        for i in range(self.current_body_parts_list.count()):
+            current_body_parts.append(self.current_body_parts_list.item(i).text())
+
+        # Gather data from Objects page (current objects list)
+        current_objects = []
+        for i in range(self.current_objects_list.count()):
+            current_objects.append(self.current_objects_list.item(i).text())
+
+        # Update state/settings
         state.settings["global_frame_rate"] = frame_rate
-        state.settings["body_parts"] = body_parts_list
+        state.settings["body_parts"] = current_body_parts
+        state.settings["tracked_objects"] = current_objects
+        state.settings["project_notes"] = project_notes
         state.likelihood_filter_enabled = likelihood_enabled
 
         print("Saving Project Settings:")
         print("Global Frame Rate:", frame_rate)
         print("Likelihood Filter Enabled:", likelihood_enabled)
-        print("Body Parts:", body_parts_list)
+        print("Body Parts:", current_body_parts)
+        print("Tracked Objects:", current_objects)
+        print("Project Notes:", project_notes)
 
-        # Persist changes to disk
         pm.save_project()
 
     def handle_cancel(self):
-        # Reset the UI input fields to reflect the current project state
-        pm = self.parent().project_manager
+        pm = self.window().project_manager
         state = pm.state_manager.project_state
 
-        # For the general settings Project Name field, use the project_metadata if available
         if state.project_metadata and state.project_metadata.project_name:
-            self.project_name_edit.setText(state.project_metadata.project_name)
+            self.rename_line_edit.setText(state.project_metadata.project_name)
         else:
-            self.project_name_edit.clear()
+            self.rename_line_edit.clear()
+
+        notes = state.settings.get("project_notes", "")
+        self.project_notes_edit.setPlainText(notes)
 
         self.frame_rate_spin.setValue(state.settings.get("global_frame_rate", 60))
         self.likelihood_filter_checkbox.setChecked(state.likelihood_filter_enabled)
-        body_parts = state.settings.get("body_parts", [])
-        if isinstance(body_parts, list):
-            self.body_parts_edit.setText(", ".join(body_parts))
-        else:
-            self.body_parts_edit.clear()
+
+        self.current_body_parts_list.clear()
+        for bp in state.settings.get("body_parts", []):
+            self.current_body_parts_list.addItem(bp)
+
+        self.all_body_parts_list.clear()
+        if state.project_metadata and hasattr(state.project_metadata, "master_body_parts"):
+            for bp in state.project_metadata.master_body_parts:
+                self.all_body_parts_list.addItem(bp)
+
+        self.current_objects_list.clear()
+        tracked_objects = state.settings.get("tracked_objects", [])
+        if isinstance(tracked_objects, list):
+            for obj in tracked_objects:
+                self.current_objects_list.addItem(obj)
 
         print("Cancelled changes. Reset UI to current project state.")
 
@@ -150,10 +240,24 @@ class ProjectView(QWidget):
             projects_dir = Path("projects")
             project_path = projects_dir / selected_project
             try:
-                # Call parent's project_manager to load the selected project
-                self.parent().project_manager.load_project(project_path)
-                # Update the rename field with the new project name
+                self.window().project_manager.load_project(project_path)
                 self.rename_line_edit.setText(selected_project)
+                state = self.window().project_manager.state_manager.project_state
+                notes = state.settings.get("project_notes", "")
+                self.project_notes_edit.setPlainText(notes)
+
+                self.current_body_parts_list.clear()
+                for bp in state.settings.get("body_parts", []):
+                    self.current_body_parts_list.addItem(bp)
+                self.all_body_parts_list.clear()
+                if state.project_metadata and hasattr(state.project_metadata, "master_body_parts"):
+                    for bp in state.project_metadata.master_body_parts:
+                        self.all_body_parts_list.addItem(bp)
+
+                self.current_objects_list.clear()
+                for obj in state.settings.get("tracked_objects", []):
+                    self.current_objects_list.addItem(obj)
+
                 print("Switched to project:", selected_project)
             except Exception as e:
                 print("Error switching project:", e)
@@ -164,13 +268,26 @@ class ProjectView(QWidget):
         new_name = self.rename_line_edit.text().strip()
         if new_name:
             try:
-                self.parent().project_manager.rename_project(new_name)
+                self.window().project_manager.rename_project(new_name)
                 print("Project renamed to:", new_name)
                 self.populate_project_list()
             except Exception as e:
                 print("Error renaming project:", e)
         else:
             print("New project name cannot be empty.")
+
+    def handle_add_object(self):
+        new_obj = self.new_object_line_edit.text().strip()
+        if not new_obj:
+            print("No object name entered.")
+            return
+        try:
+            self.window().project_manager.add_tracked_object(new_obj)
+            self.current_objects_list.addItem(new_obj)
+            self.new_object_line_edit.clear()
+            print("Added new object:", new_obj)
+        except Exception as e:
+            print("Error adding object:", e)
         
    
         

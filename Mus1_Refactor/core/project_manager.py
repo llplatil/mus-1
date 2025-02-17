@@ -232,3 +232,34 @@ class ProjectManager:
         if self.state_manager.project_state and self.state_manager.project_state.project_metadata:
             self.state_manager.project_state.project_metadata.project_name = new_name
         self.save_project()
+
+    def add_tracked_object(self, new_object: str) -> None:
+        # Core logic to add a tracked object ensuring uniqueness
+        if not new_object:
+            raise ValueError("Object name cannot be empty.")
+        state = self.state_manager.project_state
+        if state.project_metadata is not None:
+            if new_object in state.project_metadata.tracked_objects:
+                raise ValueError(f"Object '{new_object}' already exists.")
+            state.project_metadata.tracked_objects.append(new_object)
+        else:
+            objects = state.settings.get("tracked_objects", [])
+            if new_object in objects:
+                raise ValueError(f"Object '{new_object}' already exists.")
+            objects.append(new_object)
+            state.settings["tracked_objects"] = objects
+        self.save_project()
+
+    def update_master_body_parts(self, new_bodyparts: list) -> None:
+        # Update master body parts with unique entries from new_bodyparts
+        state = self.state_manager.project_state
+        if state.project_metadata is not None:
+            current_master = state.project_metadata.master_body_parts
+            # Merge while preserving order and uniqueness
+            updated = list(dict.fromkeys(current_master + new_bodyparts))
+            state.project_metadata.master_body_parts = updated
+        else:
+            current_master = state.settings.get("body_parts", [])
+            updated = list(dict.fromkeys(current_master + new_bodyparts))
+            state.settings["body_parts"] = updated
+        self.save_project()

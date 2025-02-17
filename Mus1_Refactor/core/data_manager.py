@@ -2,6 +2,7 @@ import logging
 from pathlib import Path
 import pandas as pd
 from typing import Optional
+import yaml
 
 logger = logging.getLogger("mus1.core.data_manager")
 
@@ -96,3 +97,16 @@ class DataManager:
 
         logger.info(f"Successfully processed DLC CSV: {file_path}")
         return df 
+
+    def extract_bodyparts_from_dlc_config(self, config_file: Path) -> list:
+        """Extracts body parts from a DLC config YAML file and returns a list of unique body parts."""
+        if not config_file.exists():
+            raise FileNotFoundError(f"Config file not found: {config_file}")
+        with open(config_file, 'r') as f:
+            config_data = yaml.safe_load(f)
+        bodyparts = config_data.get("bodyparts", [])
+        if not isinstance(bodyparts, list):
+            raise ValueError("Invalid format for bodyparts in config file")
+        # Return unique bodyparts while preserving order
+        unique_bodyparts = list(dict.fromkeys(bodyparts))
+        return unique_bodyparts 

@@ -6,10 +6,14 @@
     "global_frame_rate_enabled": true,
     "body_parts": [],
     "active_body_parts": [],
-    "tracked_objects": [],
+    "tracked_objects": [
+      "silo",
+      "pyramid"
+    ],
     "sort_projects": "date",
     "sort_experiments": "subject",
-    "sort_subjects": "alphabetical"
+    "sort_subjects": "alphabetical",
+    "project_notes": ""
   },
   "subjects": {},
   "experiments": {},
@@ -19,13 +23,60 @@
   "external_configs": {},
   "project_metadata": {
     "dlc_configs": [],
-    "master_body_parts": [],
+    "master_body_parts": [
+      "tail",
+      "spine4",
+      "spine3",
+      "spine2",
+      "spine1",
+      "head",
+      "nose",
+      "right_ear",
+      "left_ear",
+      "Silo",
+      "Diamond",
+      "Pyramid",
+      "Silo2",
+      "Diamond2",
+      "Pyramid2"
+    ],
     "active_body_parts": [],
-    "tracked_objects": [],
+    "tracked_objects": [
+      "silo",
+      "pyramid"
+    ],
     "global_frame_rate": 60,
     "project_name": "test_1",
     "date_created": "2025-02-12 22:38:36.432388"
   },
   "likelihood_filter_enabled": false,
-  "default_likelihood_threshold": 0.5
+  "default_likelihood_threshold": 0.5,
+  "supported_experiment_types": [
+    "NOR",
+    "OpenField",
+    "BasicCSVPlot"
+  ],
+  "registered_plugin_metadatas": [
+    {
+      "name": "BasicCSVPlot",
+      "date_created": "2025-02-15 00:00:00",
+      "version": "1.0",
+      "description": "A plugin for analyzing basic CSV files",
+      "author": "Lukash Platil"
+    },
+    {
+      "name": "NOR",
+      "date_created": "2025-02-15 00:00:00",
+      "version": "1.0",
+      "description": "A plugin for analyzing NOR experiments",
+      "author": "Lukash Platil"
+    },
+    {
+      "name": "OF",
+      "date_created": "2025-02-15 00:00:00",
+      "version": "1.0",
+      "description": "A plugin for analyzing OF experiments",
+      "author": "Lukash Platil"
+    }
+  ]
 }
