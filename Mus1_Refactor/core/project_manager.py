@@ -249,6 +249,18 @@ class ProjectManager:
             objects.append(new_object)
             state.settings["tracked_objects"] = objects
         self.save_project()
+    
+    def update_tracked_objects(self, new_objects: list[str]) -> None:
+        """
+        Update the project's tracked objects list.
+        """
+        state = self.state_manager.project_state
+        if state.project_metadata is not None:
+            state.project_metadata.tracked_objects = new_objects
+        else:
+            state.settings["tracked_objects"] = new_objects
+        self.save_project()
+        logger.info(f"Tracked objects updated to: {new_objects}")
 
     def update_master_body_parts(self, new_bodyparts: list) -> None:
         # Update master body parts with unique entries from new_bodyparts
@@ -263,3 +275,20 @@ class ProjectManager:
             updated = list(dict.fromkeys(current_master + new_bodyparts))
             state.settings["body_parts"] = updated
         self.save_project()
+
+    def update_active_body_parts(self, new_active_parts: list[str]) -> None:
+        """
+        Update the project's active body parts (subset of the master list).
+        """
+        state = self.state_manager.project_state
+        if state.project_metadata is not None:
+            # Overwrite the active_body_parts list with new_active_parts
+            state.project_metadata.active_body_parts = new_active_parts
+        else:
+            # Fallback if no project_metadata is loaded
+            state.settings["body_parts"] = new_active_parts
+
+        self.save_project()
+        logger.info(f"Active body parts updated to: {new_active_parts}")
+
+    

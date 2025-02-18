@@ -1,5 +1,5 @@
-from PySide6.QtWidgets import QWidget, QLabel, QVBoxLayout, QMessageBox
-from PySide6.QtWidgets import QComboBox, QPushButton, QLineEdit, QListWidget, QDateTimeEdit
+from PySide6.QtWidgets import QWidget, QLabel, QVBoxLayout, QMessageBox, QHBoxLayout, QStackedWidget, QListWidget
+from PySide6.QtWidgets import QComboBox, QPushButton, QLineEdit, QListWidget as QList, QDateTimeEdit
 from datetime import datetime
 
 class ExperimentView(QWidget):
@@ -8,54 +8,73 @@ class ExperimentView(QWidget):
         self.project_manager = None  # Will be set via set_core
         self.state_manager = None    # We'll pass this in from main_window or similarly
 
-        layout = QVBoxLayout(self)
-        layout.addWidget(QLabel("Experiments"))
+        main_layout = QHBoxLayout(self)
 
-        # Example UI controls
+        # Left navigation to pick sub-pages
+        self.nav_list = QListWidget()
+        self.nav_list.addItems(["View Experiments", "Add Experiment"])
+        self.nav_list.currentRowChanged.connect(self.change_subpage)
+        main_layout.addWidget(self.nav_list)
+
+        # Right side: stacked pages
+        self.pages = QStackedWidget()
+
+        # ----- Page: View Experiments -----
+        self.page_view_exps = QWidget()
+        ve_layout = QVBoxLayout(self.page_view_exps)
+        ve_layout.addWidget(QLabel("Experiments"))
         self.experimentListWidget = QListWidget()
-        layout.addWidget(self.experimentListWidget)
+        ve_layout.addWidget(self.experimentListWidget)
+        self.page_view_exps.setLayout(ve_layout)
+        self.pages.addWidget(self.page_view_exps)
 
+        # ----- Page: Add Experiment -----
+        self.page_add_exp = QWidget()
+        ae_layout = QVBoxLayout(self.page_add_exp)
+        
         self.expTypeCombo = QComboBox()
-        layout.addWidget(self.expTypeCombo)
+        ae_layout.addWidget(self.expTypeCombo)
 
         self.idLineEdit = QLineEdit()
-        layout.addWidget(self.idLineEdit)
+        ae_layout.addWidget(self.idLineEdit)
 
-        self.subjectLabel = QLabel("Subject ID:")
         self.subjectComboBox = QComboBox()
-        layout.addWidget(self.subjectLabel)
-        layout.addWidget(self.subjectComboBox)
+        ae_layout.addWidget(QLabel("Subject ID:"))
+        ae_layout.addWidget(self.subjectComboBox)
 
-        self.dateRecordedLabel = QLabel("Recorded Date:")
         self.dateRecordedEdit = QDateTimeEdit(datetime.now())
         self.dateRecordedEdit.setCalendarPopup(True)
-        layout.addWidget(self.dateRecordedLabel)
-        layout.addWidget(self.dateRecordedEdit)
+        ae_layout.addWidget(QLabel("Date Recorded:"))
+        ae_layout.addWidget(self.dateRecordedEdit)
 
-        self.csvPathLabel = QLabel("CSV Path:")
         self.csvPathLineEdit = QLineEdit()
-        self.csvPathLabel.setVisible(False)
-        self.csvPathLineEdit.setVisible(False)
-        layout.addWidget(self.csvPathLabel)
-        layout.addWidget(self.csvPathLineEdit)
+        ae_layout.addWidget(QLabel("CSV Path:"))
+        ae_layout.addWidget(self.csvPathLineEdit)
 
-        self.arenaPathLabel = QLabel("Arena Image:")
         self.arenaPathLineEdit = QLineEdit()
-        self.arenaPathLabel.setVisible(False)
-        self.arenaPathLineEdit.setVisible(False)
-        layout.addWidget(self.arenaPathLabel)
-        layout.addWidget(self.arenaPathLineEdit)
+        ae_layout.addWidget(QLabel("Arena Image:"))
+        ae_layout.addWidget(self.arenaPathLineEdit)
 
         self.saveButton = QPushButton("Add Experiment")
         self.saveButton.clicked.connect(self.saveExperiment)
-        layout.addWidget(self.saveButton)
+        ae_layout.addWidget(self.saveButton)
 
-        # Hook up the combo box change signal to show/hide required fields
-        self.expTypeCombo.currentIndexChanged.connect(self.updatePluginFields)
+        self.page_add_exp.setLayout(ae_layout)
+        self.pages.addWidget(self.page_add_exp)
+
+        main_layout.addWidget(self.pages)
+        self.setLayout(main_layout)
+
+        self.nav_list.setCurrentRow(0)
 
     def set_core(self, project_manager, state_manager):
         self.project_manager = project_manager
         self.state_manager = state_manager
+
+    def change_subpage(self, index: int):
+        self.pages.setCurrentIndex(index)
+        if index == 0:
+            self.refresh_data()  # refresh experiment list when viewing them
 
     def refresh_data(self):
         if not self.state_manager:
@@ -75,45 +94,7 @@ class ExperimentView(QWidget):
         for sid in self.state_manager.get_subject_ids():
             self.subjectComboBox.addItem(sid)
 
-        self.updatePluginFields()
-
-    def updatePluginFields(self):
-        """
-        UPDATED: Replace 'SomeArenaPlugin' with 'NOR'. 
-        Optional: Show/hide fields differently for each plugin type.
-        """
-        plugin_type = self.expTypeCombo.currentText()
-
-        if plugin_type == "BasicCSVPlot":
-            self.csvPathLabel.setVisible(True)
-            self.csvPathLineEdit.setVisible(True)
-            self.arenaPathLabel.setVisible(True)
-            self.arenaPathLineEdit.setVisible(True)
-
-        elif plugin_type == "NOR":  # Replaces "SomeArenaPlugin"
-            self.arenaPathLabel.setVisible(True)
-            self.arenaPathLineEdit.setVisible(True)
-            self.csvPathLabel.setVisible(True)
-            self.csvPathLineEdit.setVisible(True)
-
-        # (Optional) If you'd like to handle "OpenField" as well:
-        # elif plugin_type == "OpenField":
-        #     self.arenaPathLabel.setVisible(True)
-        #     self.arenaPathLineEdit.setVisible(True)
-        #     self.csvPathLabel.setVisible(False)
-        #     self.csvPathLineEdit.setVisible(False)
-
-        else:
-            # Default: hide everything if not recognized
-            self.csvPathLabel.setVisible(False)
-            self.csvPathLineEdit.setVisible(False)
-            self.arenaPathLabel.setVisible(False)
-            self.arenaPathLineEdit.setVisible(False)
-
     def saveExperiment(self):
-        """
-        UPDATED: Replace 'SomeArenaPlugin' references with 'NOR'.
-        """
         if not self.project_manager:
             QMessageBox.warning(self, "Error", "No ProjectManager is set.")
             return
@@ -121,30 +102,17 @@ class ExperimentView(QWidget):
         experiment_id = self.idLineEdit.text().strip()
         exp_type = self.expTypeCombo.currentText()
         subject_id = self.subjectComboBox.currentText().strip()
-
-        if not experiment_id:
-            QMessageBox.warning(self, "Error", "You must specify an experiment ID.")
-            return
-        if not subject_id:
-            QMessageBox.warning(self, "Error", "You must select a subject ID.")
-            return
+        recorded_date = self.dateRecordedEdit.dateTime().toPython()
 
         plugin_params = {}
-        if exp_type == "BasicCSVPlot":
-            csv_path = self.csvPathLineEdit.text().strip()
-            if not csv_path:
-                QMessageBox.warning(self, "Error", "You must specify a CSV path for BasicCSVPlot.")
-                return
+        csv_path = self.csvPathLineEdit.text().strip()
+        arena_path = self.arenaPathLineEdit.text().strip()
+        if csv_path:
             plugin_params["csv_path"] = csv_path
+        if arena_path:
+            plugin_params["arena_path"] = arena_path
 
-        elif exp_type == "NOR":  # Replaces 'SomeArenaPlugin'
-            arena_path = self.arenaPathLineEdit.text().strip()
-            if arena_path:
-                plugin_params["arena_path"] = arena_path
-
-        recorded_date = self.dateRecordedEdit.dateTime().toPython()
         try:
-            # Assuming add_experiment expects: experiment_id, subject_id, date, exp_type, plugin_params
             new_experiment = self.project_manager.add_experiment(
                 experiment_id,
                 subject_id,
@@ -153,11 +121,7 @@ class ExperimentView(QWidget):
                 plugin_params
             )
             QMessageBox.information(self, "Success", f"Experiment '{new_experiment.id}' added.")
-
-            # Refresh both subject and experiment lists
-            self.project_manager.refresh_all_lists()
-            self.refresh_data()
-
+            self.nav_list.setCurrentRow(0)  # Go back to "View Experiments"
         except Exception as e:
             QMessageBox.warning(self, "Error", str(e))
 

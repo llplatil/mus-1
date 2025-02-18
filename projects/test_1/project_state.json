@@ -8,12 +8,13 @@
     "active_body_parts": [],
     "tracked_objects": [
       "silo",
-      "pyramid"
+      "pyramid",
+      "diamond"
     ],
     "sort_projects": "date",
     "sort_experiments": "subject",
     "sort_subjects": "alphabetical",
-    "project_notes": ""
+    "project_notes": "testing the box"
   },
   "subjects": {},
   "experiments": {},
@@ -43,13 +44,14 @@
     "active_body_parts": [],
     "tracked_objects": [
       "silo",
-      "pyramid"
+      "pyramid",
+      "diamond"
     ],
     "global_frame_rate": 60,
     "project_name": "test_1",
     "date_created": "2025-02-12 22:38:36.432388"
   },
-  "likelihood_filter_enabled": false,
+  "likelihood_filter_enabled": true,
   "default_likelihood_threshold": 0.5,
   "supported_experiment_types": [
     "NOR",

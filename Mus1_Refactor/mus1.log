@@ -163,3 +163,194 @@
 2025-02-16 22:11:34,549 [INFO] mus1.core.project_manager - Project saved to projects/test_1/project_state.json
 2025-02-16 22:11:40,100 [INFO] mus1.core.project_manager - Project saved to projects/test_1/project_state.json
 2025-02-16 22:11:50,349 [INFO] mus1.core.project_manager - Project saved to projects/test_1/project_state.json
+2025-02-17 16:56:37,429 [INFO] __main__ - Launching MUS1...
+2025-02-17 16:56:37,430 [INFO] mus1.core.metadata - Initializing metadata system
+2025-02-17 16:56:37,430 [INFO] mus1.core.metadata - Metadata system initialized successfully
+2025-02-17 16:56:38,526 [INFO] __main__ - Core managers created. Setting up the MainWindow.
+2025-02-17 16:56:48,756 [INFO] mus1.core.project_manager - Created project directory at projects/test_3
+2025-02-17 16:56:48,757 [INFO] mus1.core.project_manager - Created standard subfolders: subjects, experiments, batches, data, media, external_configs, project_notes
+2025-02-17 16:56:48,759 [INFO] mus1.core.project_manager - Project saved to projects/test_3/project_state.json
+2025-02-17 16:56:48,791 [INFO] mus1.core.state_manager - Synced supported experiment types: ['NOR', 'OpenField', 'BasicCSVPlot']
+2025-02-17 16:56:48,792 [INFO] mus1.core.state_manager - Synced plugin metadata (sorted by 'name'): ['BasicCSVPlot', 'NOR', 'OF']
+2025-02-17 16:56:48,801 [INFO] __main__ - MUS1 init complete. Starting application event loop.
+2025-02-17 16:57:03,086 [INFO] mus1.core.project_manager - Project saved to projects/test_3/project_state.json
+2025-02-17 16:57:25,260 [INFO] mus1.core.project_manager - Project saved to projects/test_3/project_state.json
+2025-02-17 16:57:27,413 [INFO] mus1.core.project_manager - Project saved to projects/test_3/project_state.json
+2025-02-17 16:57:42,338 [INFO] mus1.core.project_manager - Project saved to projects/test_3/project_state.json
+2025-02-17 16:57:46,140 [INFO] mus1.core.project_manager - Project saved to projects/test_3/project_state.json
+2025-02-17 16:57:54,414 [INFO] mus1.core.project_manager - Project saved to projects/test_3/project_state.json
+2025-02-17 16:57:55,293 [INFO] mus1.core.project_manager - Project saved to projects/test_3/project_state.json
+2025-02-17 16:58:13,963 [INFO] mus1.core.project_manager - Loading project from projects/test_1
+2025-02-17 16:58:13,966 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
+2025-02-17 16:58:13,966 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
+2025-02-17 16:58:23,975 [INFO] mus1.core.project_manager - Loading project from projects/test_2
+2025-02-17 16:58:23,977 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
+2025-02-17 16:58:23,977 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
+2025-02-17 16:58:31,490 [INFO] mus1.core.project_manager - Project saved to projects/test_2/project_state.json
+2025-02-17 16:58:52,621 [INFO] __main__ - Launching MUS1...
+2025-02-17 16:58:52,621 [INFO] mus1.core.metadata - Initializing metadata system
+2025-02-17 16:58:52,621 [INFO] mus1.core.metadata - Metadata system initialized successfully
+2025-02-17 16:58:53,715 [INFO] __main__ - Core managers created. Setting up the MainWindow.
+2025-02-17 16:58:59,044 [INFO] mus1.core.project_manager - Loading project from projects/test_3
+2025-02-17 16:58:59,046 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
+2025-02-17 16:58:59,046 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
+2025-02-17 16:58:59,066 [INFO] mus1.core.state_manager - Synced supported experiment types: ['NOR', 'OpenField', 'BasicCSVPlot']
+2025-02-17 16:58:59,067 [INFO] mus1.core.state_manager - Synced plugin metadata (sorted by 'name'): ['BasicCSVPlot', 'NOR', 'OF']
+2025-02-17 16:58:59,079 [INFO] __main__ - MUS1 init complete. Starting application event loop.
+2025-02-17 16:59:12,200 [INFO] mus1.core.project_manager - Loading project from projects/test_1
+2025-02-17 16:59:12,201 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
+2025-02-17 16:59:12,202 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
+2025-02-17 16:59:18,173 [INFO] mus1.core.project_manager - Project saved to projects/test_1/project_state.json
+2025-02-17 16:59:18,742 [INFO] mus1.core.project_manager - Project saved to projects/test_1/project_state.json
+2025-02-17 16:59:18,961 [INFO] mus1.core.project_manager - Project saved to projects/test_1/project_state.json
+2025-02-17 16:59:22,857 [INFO] mus1.core.project_manager - Loading project from projects/test_2
+2025-02-17 16:59:22,857 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
+2025-02-17 16:59:22,857 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
+2025-02-17 16:59:26,727 [INFO] mus1.core.project_manager - Project saved to projects/test_2/project_state.json
+2025-02-17 16:59:29,158 [INFO] mus1.core.project_manager - Loading project from projects/test_1
+2025-02-17 16:59:29,159 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
+2025-02-17 16:59:29,159 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
+2025-02-17 16:59:36,193 [INFO] mus1.core.project_manager - Project saved to projects/test_1/project_state.json
+2025-02-17 16:59:43,365 [INFO] mus1.core.project_manager - Loading project from projects/test_3
+2025-02-17 16:59:43,365 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
+2025-02-17 16:59:43,365 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
+2025-02-17 16:59:46,275 [INFO] mus1.core.project_manager - Loading project from projects/test_3
+2025-02-17 16:59:46,277 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
+2025-02-17 16:59:46,277 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
+2025-02-17 16:59:46,973 [INFO] mus1.core.project_manager - Loading project from projects/test_3
+2025-02-17 16:59:46,974 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
+2025-02-17 16:59:46,974 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
+2025-02-17 16:59:51,943 [INFO] mus1.core.project_manager - Loading project from projects/test_1
+2025-02-17 16:59:51,944 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
+2025-02-17 16:59:51,944 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
+2025-02-17 17:00:03,333 [INFO] mus1.core.project_manager - Project saved to projects/test_1/project_state.json
+2025-02-17 17:00:05,930 [INFO] mus1.core.project_manager - Project saved to projects/test_1/project_state.json
+2025-02-17 17:07:42,920 [INFO] __main__ - Launching MUS1...
+2025-02-17 17:07:42,920 [INFO] mus1.core.metadata - Initializing metadata system
+2025-02-17 17:07:42,920 [INFO] mus1.core.metadata - Metadata system initialized successfully
+2025-02-17 17:07:44,018 [INFO] __main__ - Core managers created. Setting up the MainWindow.
+2025-02-17 17:07:49,252 [INFO] mus1.core.project_manager - Loading project from projects/test_1
+2025-02-17 17:07:49,254 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
+2025-02-17 17:07:49,254 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
+2025-02-17 17:07:49,292 [INFO] mus1.core.state_manager - Synced supported experiment types: ['NOR', 'OpenField', 'BasicCSVPlot']
+2025-02-17 17:07:49,293 [INFO] mus1.core.state_manager - Synced plugin metadata (sorted by 'name'): ['BasicCSVPlot', 'NOR', 'OF']
+2025-02-17 17:07:49,301 [INFO] __main__ - MUS1 init complete. Starting application event loop.
+2025-02-17 17:07:57,686 [INFO] mus1.core.project_manager - Loading project from projects/test_3
+2025-02-17 17:07:57,686 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
+2025-02-17 17:07:57,687 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
+2025-02-17 17:08:20,369 [INFO] mus1.core.project_manager - Project saved to projects/test_3/project_state.json
+2025-02-17 17:08:20,369 [INFO] mus1.core.project_manager - Active body parts updated to: ['tail', 'spine4', 'spine3', 'spine2']
+2025-02-17 17:08:31,039 [INFO] mus1.core.project_manager - Project saved to projects/test_3/project_state.json
+2025-02-17 17:08:41,294 [INFO] mus1.core.project_manager - Project saved to projects/test_3/project_state.json
+2025-02-17 17:08:41,294 [INFO] mus1.core.project_manager - Active body parts updated to: ['tail', 'spine4', 'spine3', 'spine2', 'spine1', 'head', 'nose']
+2025-02-17 17:08:42,628 [INFO] mus1.core.project_manager - Project saved to projects/test_3/project_state.json
+2025-02-17 17:08:55,032 [INFO] mus1.core.project_manager - Project saved to projects/test_3/project_state.json
+2025-02-17 17:08:57,354 [INFO] mus1.core.project_manager - Loading project from projects/test_3
+2025-02-17 17:08:57,355 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
+2025-02-17 17:08:57,355 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
+2025-02-17 17:08:59,467 [INFO] mus1.core.project_manager - Loading project from projects/test_1
+2025-02-17 17:08:59,467 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
+2025-02-17 17:08:59,468 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
+2025-02-17 17:09:12,031 [INFO] mus1.core.project_manager - Loading project from projects/test_3
+2025-02-17 17:09:12,032 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
+2025-02-17 17:09:12,033 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
+2025-02-17 17:12:21,023 [INFO] __main__ - Launching MUS1...
+2025-02-17 17:12:21,023 [INFO] mus1.core.metadata - Initializing metadata system
+2025-02-17 17:12:21,023 [INFO] mus1.core.metadata - Metadata system initialized successfully
+2025-02-17 17:12:22,118 [INFO] __main__ - Core managers created. Setting up the MainWindow.
+2025-02-17 17:12:24,462 [INFO] mus1.core.project_manager - Loading project from projects/test_1
+2025-02-17 17:12:24,463 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
+2025-02-17 17:12:24,464 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
+2025-02-17 17:12:24,500 [INFO] mus1.core.state_manager - Synced supported experiment types: ['NOR', 'OpenField', 'BasicCSVPlot']
+2025-02-17 17:12:24,500 [INFO] mus1.core.state_manager - Synced plugin metadata (sorted by 'name'): ['BasicCSVPlot', 'NOR', 'OF']
+2025-02-17 17:12:24,507 [INFO] __main__ - MUS1 init complete. Starting application event loop.
+2025-02-17 17:12:32,068 [INFO] mus1.core.project_manager - Loading project from projects/test_3
+2025-02-17 17:12:32,069 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
+2025-02-17 17:12:32,069 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
+2025-02-17 17:17:02,180 [INFO] __main__ - Launching MUS1...
+2025-02-17 17:17:02,180 [INFO] mus1.core.metadata - Initializing metadata system
+2025-02-17 17:17:02,180 [INFO] mus1.core.metadata - Metadata system initialized successfully
+2025-02-17 17:17:03,272 [INFO] __main__ - Core managers created. Setting up the MainWindow.
+2025-02-17 17:17:06,844 [INFO] mus1.core.project_manager - Loading project from projects/test_3
+2025-02-17 17:17:06,845 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
+2025-02-17 17:17:06,845 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
+2025-02-17 17:17:06,868 [INFO] mus1.core.state_manager - Synced supported experiment types: ['NOR', 'OpenField', 'BasicCSVPlot']
+2025-02-17 17:17:06,868 [INFO] mus1.core.state_manager - Synced plugin metadata (sorted by 'name'): ['BasicCSVPlot', 'NOR', 'OF']
+2025-02-17 17:17:06,880 [INFO] __main__ - MUS1 init complete. Starting application event loop.
+2025-02-17 17:17:16,348 [INFO] mus1.core.project_manager - Loading project from projects/test_3
+2025-02-17 17:17:16,348 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
+2025-02-17 17:17:16,348 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
+2025-02-17 17:17:32,167 [INFO] mus1.core.project_manager - Project saved to projects/test_3/project_state.json
+2025-02-17 17:17:37,258 [INFO] mus1.core.project_manager - Project saved to projects/test_3/project_state.json
+2025-02-17 17:17:37,258 [INFO] mus1.core.project_manager - Tracked objects updated to: ['pyramid', 'silo', 'diamond']
+2025-02-17 17:17:38,719 [INFO] mus1.core.project_manager - Project saved to projects/test_3/project_state.json
+2025-02-17 17:25:54,353 [INFO] __main__ - Launching MUS1...
+2025-02-17 17:25:54,353 [INFO] mus1.core.metadata - Initializing metadata system
+2025-02-17 17:25:54,353 [INFO] mus1.core.metadata - Metadata system initialized successfully
+2025-02-17 17:25:55,444 [INFO] __main__ - Core managers created. Setting up the MainWindow.
+2025-02-17 17:26:00,330 [INFO] mus1.core.project_manager - Loading project from projects/test_3
+2025-02-17 17:26:00,331 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
+2025-02-17 17:26:00,331 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
+2025-02-17 17:26:00,349 [INFO] mus1.core.state_manager - Synced supported experiment types: ['NOR', 'OpenField', 'BasicCSVPlot']
+2025-02-17 17:26:00,349 [INFO] mus1.core.state_manager - Synced plugin metadata (sorted by 'name'): ['BasicCSVPlot', 'NOR', 'OF']
+2025-02-17 17:26:00,360 [INFO] __main__ - MUS1 init complete. Starting application event loop.
+2025-02-17 17:26:10,838 [INFO] mus1.core.project_manager - Loading project from projects/test_3
+2025-02-17 17:26:10,839 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
+2025-02-17 17:26:10,840 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
+2025-02-17 17:35:02,757 [INFO] __main__ - Launching MUS1...
+2025-02-17 17:35:02,757 [INFO] mus1.core.metadata - Initializing metadata system
+2025-02-17 17:35:02,757 [INFO] mus1.core.metadata - Metadata system initialized successfully
+2025-02-17 17:35:03,848 [INFO] __main__ - Core managers created. Setting up the MainWindow.
+2025-02-17 17:35:43,697 [INFO] __main__ - Launching MUS1...
+2025-02-17 17:35:43,697 [INFO] mus1.core.metadata - Initializing metadata system
+2025-02-17 17:35:43,697 [INFO] mus1.core.metadata - Metadata system initialized successfully
+2025-02-17 17:35:44,786 [INFO] __main__ - Core managers created. Setting up the MainWindow.
+2025-02-17 17:35:56,556 [INFO] mus1.core.project_manager - Loading project from projects/test_3
+2025-02-17 17:35:56,558 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
+2025-02-17 17:35:56,558 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
+2025-02-17 17:35:56,579 [INFO] mus1.core.state_manager - Synced supported experiment types: ['NOR', 'OpenField', 'BasicCSVPlot']
+2025-02-17 17:35:56,579 [INFO] mus1.core.state_manager - Synced plugin metadata (sorted by 'name'): ['BasicCSVPlot', 'NOR', 'OF']
+2025-02-17 17:35:56,592 [INFO] __main__ - MUS1 init complete. Starting application event loop.
+2025-02-17 17:35:59,319 [INFO] mus1.core.project_manager - Loading project from projects/test_3
+2025-02-17 17:35:59,320 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
+2025-02-17 17:35:59,320 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
+2025-02-17 17:41:52,816 [INFO] __main__ - Launching MUS1...
+2025-02-17 17:41:52,816 [INFO] mus1.core.metadata - Initializing metadata system
+2025-02-17 17:41:52,816 [INFO] mus1.core.metadata - Metadata system initialized successfully
+2025-02-17 17:41:53,910 [INFO] __main__ - Core managers created. Setting up the MainWindow.
+2025-02-17 17:41:58,874 [INFO] mus1.core.project_manager - Loading project from projects/test_3
+2025-02-17 17:41:58,875 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
+2025-02-17 17:41:58,875 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
+2025-02-17 17:41:58,895 [INFO] mus1.core.state_manager - Synced supported experiment types: ['NOR', 'OpenField', 'BasicCSVPlot']
+2025-02-17 17:41:58,895 [INFO] mus1.core.state_manager - Synced plugin metadata (sorted by 'name'): ['BasicCSVPlot', 'NOR', 'OF']
+2025-02-17 17:41:58,905 [INFO] __main__ - MUS1 init complete. Starting application event loop.
+2025-02-17 17:42:01,542 [INFO] mus1.core.project_manager - Loading project from projects/test_3
+2025-02-17 17:42:01,543 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
+2025-02-17 17:42:01,543 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
+2025-02-17 17:42:04,569 [INFO] mus1.core.project_manager - Loading project from projects/test_3
+2025-02-17 17:42:04,569 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
+2025-02-17 17:42:04,570 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
+2025-02-17 17:57:29,781 [INFO] __main__ - Launching MUS1...
+2025-02-17 17:57:29,781 [INFO] mus1.core.metadata - Initializing metadata system
+2025-02-17 17:57:29,781 [INFO] mus1.core.metadata - Metadata system initialized successfully
+2025-02-17 17:57:30,881 [INFO] __main__ - Core managers created. Setting up the MainWindow.
+2025-02-17 17:57:34,938 [INFO] mus1.core.project_manager - Loading project from projects/test_3
+2025-02-17 17:57:34,939 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
+2025-02-17 17:57:34,939 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
+2025-02-17 17:57:34,958 [INFO] mus1.core.state_manager - Synced supported experiment types: ['NOR', 'OpenField', 'BasicCSVPlot']
+2025-02-17 17:57:34,959 [INFO] mus1.core.state_manager - Synced plugin metadata (sorted by 'name'): ['BasicCSVPlot', 'NOR', 'OF']
+2025-02-17 17:57:34,972 [INFO] __main__ - MUS1 init complete. Starting application event loop.
+2025-02-17 18:04:58,230 [INFO] __main__ - Launching MUS1...
+2025-02-17 18:04:58,230 [INFO] mus1.core.metadata - Initializing metadata system
+2025-02-17 18:04:58,230 [INFO] mus1.core.metadata - Metadata system initialized successfully
+2025-02-17 18:04:59,321 [INFO] __main__ - Core managers created. Setting up the MainWindow.
+2025-02-17 18:07:07,905 [INFO] __main__ - Launching MUS1...
+2025-02-17 18:07:07,905 [INFO] mus1.core.metadata - Initializing metadata system
+2025-02-17 18:07:07,905 [INFO] mus1.core.metadata - Metadata system initialized successfully
+2025-02-17 18:07:08,995 [INFO] __main__ - Core managers created. Setting up the MainWindow.
+2025-02-17 18:07:11,374 [INFO] mus1.core.project_manager - Loading project from projects/test_1
+2025-02-17 18:07:11,376 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
+2025-02-17 18:07:11,376 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
+2025-02-17 18:07:11,410 [INFO] mus1.core.state_manager - Synced supported experiment types: ['NOR', 'OpenField', 'BasicCSVPlot']
+2025-02-17 18:07:11,410 [INFO] mus1.core.state_manager - Synced plugin metadata (sorted by 'name'): ['BasicCSVPlot', 'NOR', 'OF']
+2025-02-17 18:07:11,415 [INFO] __main__ - MUS1 init complete. Starting application event loop.
