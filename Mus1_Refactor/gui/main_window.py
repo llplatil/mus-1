@@ -39,16 +39,25 @@ class MainWindow(QMainWindow):
     def perform_project_selection(self):
         dialog = ProjectSelectionDialog(self.project_manager, self)
         if dialog.exec() == QDialog.Accepted:
-            # 1) Sync experiment types
+            # 1) The user picked a project, so do any needed sync
             self.state_manager.sync_supported_experiment_types(self.project_manager.plugin_manager)
-            # 2) Sync plugin metadata
             self.state_manager.sync_plugin_metadatas(self.project_manager.plugin_manager)
 
-            # 3) Set cores
+            # 2) Set up experiment view with new core references
             if hasattr(self.experiment_view, 'set_core'):
                 self.experiment_view.set_core(self.project_manager, self.state_manager)
 
-            # 4) Refresh experiment view
+            # 3) IMPORTANT: now tell the ProjectView which project was chosen
+            #    (assuming you stored the chosen name in dialog.selected_project_name)
+            chosen_project = getattr(dialog, 'selected_project_name', None)
+            if chosen_project:
+                # A: Either call set_initial_project directly:
+                self.project_view.set_initial_project(chosen_project)
+
+                # Or B: Wrap it in a "set_current_project" method:
+                # self.set_current_project(chosen_project)
+
+            # 4) Refresh
             if hasattr(self.experiment_view, 'refresh_data'):
                 self.experiment_view.refresh_data()
         else:

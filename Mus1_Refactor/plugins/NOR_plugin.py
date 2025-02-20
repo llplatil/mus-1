@@ -7,7 +7,7 @@ class NORPlugin(BasePlugin):
     def plugin_self_metadata(self) -> PluginMetadata:
         return PluginMetadata(
             name="NOR",
-            date_created=datetime(2025, 2, 15),
+            date_created=datetime(2025, 2, 16),
             version="1.0",
             description="A plugin for analyzing NOR experiments",
             author="Lukash Platil"

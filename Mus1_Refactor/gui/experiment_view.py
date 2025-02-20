@@ -1,6 +1,7 @@
 from PySide6.QtWidgets import QWidget, QLabel, QVBoxLayout, QMessageBox, QHBoxLayout, QStackedWidget, QListWidget
 from PySide6.QtWidgets import QComboBox, QPushButton, QLineEdit, QListWidget as QList, QDateTimeEdit
 from datetime import datetime
+from gui.navigation_pane import NavigationPane 
 
 class ExperimentView(QWidget):
     def __init__(self, parent=None):
@@ -10,23 +11,16 @@ class ExperimentView(QWidget):
 
         main_layout = QHBoxLayout(self)
 
-        # Left navigation to pick sub-pages
-        self.nav_list = QListWidget()
-        self.nav_list.addItems(["View Experiments", "Add Experiment"])
-        self.nav_list.currentRowChanged.connect(self.change_subpage)
-        main_layout.addWidget(self.nav_list)
+        # Left navigation (using NavigationPane)
+        self.navigation_pane = NavigationPane(self)
+        self.navigation_pane.add_button("Add Experiment")
+        self.navigation_pane.add_button("View Experiments")
+        self.navigation_pane.connect_button_group()
+        self.navigation_pane.button_clicked.connect(self.change_subpage)
+        main_layout.addWidget(self.navigation_pane)
 
         # Right side: stacked pages
         self.pages = QStackedWidget()
-
-        # ----- Page: View Experiments -----
-        self.page_view_exps = QWidget()
-        ve_layout = QVBoxLayout(self.page_view_exps)
-        ve_layout.addWidget(QLabel("Experiments"))
-        self.experimentListWidget = QListWidget()
-        ve_layout.addWidget(self.experimentListWidget)
-        self.page_view_exps.setLayout(ve_layout)
-        self.pages.addWidget(self.page_view_exps)
 
         # ----- Page: Add Experiment -----
         self.page_add_exp = QWidget()
@@ -62,10 +56,19 @@ class ExperimentView(QWidget):
         self.page_add_exp.setLayout(ae_layout)
         self.pages.addWidget(self.page_add_exp)
 
+        # ----- Page: View Experiments -----
+        self.page_view_exps = QWidget()
+        ve_layout = QVBoxLayout(self.page_view_exps)
+        ve_layout.addWidget(QLabel("Experiments"))
+        self.experimentListWidget = QListWidget()
+        ve_layout.addWidget(self.experimentListWidget)
+        self.page_view_exps.setLayout(ve_layout)
+        self.pages.addWidget(self.page_view_exps)
+
         main_layout.addWidget(self.pages)
         self.setLayout(main_layout)
 
-        self.nav_list.setCurrentRow(0)
+        self.navigation_pane.set_button_checked(0) # Set initial selection
 
     def set_core(self, project_manager, state_manager):
         self.project_manager = project_manager
@@ -73,7 +76,7 @@ class ExperimentView(QWidget):
 
     def change_subpage(self, index: int):
         self.pages.setCurrentIndex(index)
-        if index == 0:
+        if index == 1:
             self.refresh_data()  # refresh experiment list when viewing them
 
     def refresh_data(self):
@@ -121,7 +124,7 @@ class ExperimentView(QWidget):
                 plugin_params
             )
             QMessageBox.information(self, "Success", f"Experiment '{new_experiment.id}' added.")
-            self.nav_list.setCurrentRow(0)  # Go back to "View Experiments"
+            self.navigation_pane.set_button_checked(1)  # Go to "View Experiments" after adding
         except Exception as e:
             QMessageBox.warning(self, "Error", str(e))
 

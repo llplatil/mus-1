@@ -122,6 +122,8 @@ class ProjectManager:
         genotype: Optional[str] = None,
         treatment: Optional[str] = None,
         notes: str = "",
+        birth_date: Optional[datetime] = None,
+        in_training_set: bool = False,
     ) -> None:
         """
         Create or update a MouseMetadata entry in the project's State.
@@ -133,6 +135,8 @@ class ProjectManager:
             existing.genotype = genotype
             existing.treatment = treatment
             existing.notes = notes
+            existing.birth_date = birth_date
+            existing.in_training_set = in_training_set
         else:
             logger.info(f"Creating a new mouse: {mouse_id}")
             new_mouse = MouseMetadata(
@@ -140,49 +144,44 @@ class ProjectManager:
                 sex=sex,
                 genotype=genotype,
                 treatment=treatment,
-                notes=notes
+                notes=notes,
+                birth_date=birth_date,
+                in_training_set=in_training_set
             )
             self.state_manager.project_state.subjects[mouse_id] = new_mouse
 
         self.save_project()
+        self.refresh_all_lists()
 
-        # Optionally refresh other views (experiments, etc.) if desired:
-        # self.refresh_all_lists()
-
-    def get_sorted_subjects(self, by: str = "id") -> list:
+    def list_subjects(self) -> list:
         """
-        Returns a list of subject (mouse) metadata objects sorted either by 'id' or 'birthday'.
-        If 'by' is 'id', numeric IDs appear first in ascending order, then alphabetical IDs.
-        If 'by' is 'birthday', ascending order, with None birthdays at the end.
+        Example: returns the sorted subjects by calling a unified method in StateManager.
         """
-        subjects_dict = self.state_manager.project_state.subjects
-        subjects_list = list(subjects_dict.values())
+        return self.state_manager.get_sorted_list("subjects")
 
-        if by == "birthday":
-            subjects_list.sort(key=lambda s: (s.birth_date is None, s.birth_date))
-        else:  # default to "id"
-            def parse_id_sort_key(subject):
-                subject_id = subject.id
-                index = 0
-                while index < len(subject_id) and subject_id[index].isdigit():
-                    index += 1
-                if index > 0:
-                    numeric_str = subject_id[:index]
-                    numeric_prefix = int(numeric_str)
-                    remainder = subject_id[index:]
-                    return (0, numeric_prefix, remainder)
-                else:
-                    return (1, subject_id)
-            subjects_list.sort(key=parse_id_sort_key)
-
-        return subjects_list
-
-    def get_sorted_experiments(self) -> list:
+    def list_experiments(self) -> list:
         """
-        Returns experiments sorted according to the state manager's
-        global_sort_mode setting (either 'name' or 'date').
+        Example: returns experiments sorted by the global sort mode.
         """
-        return self.state_manager.get_experiments_list_sorted()
+        return self.state_manager.get_sorted_list("experiments")
+
+    def get_experiments_sorted_by(self, criterion: str) -> list:
+        """
+        Example of specialized sorting or grouping, 
+        but still final sort is done by state_manager.get_sorted_list(...).
+        """
+        all_exps = self.state_manager.project_state.experiments.values()
+
+        # Filter or regroup if needed:
+        if criterion == "mouse":
+            # for demonstration, let's just filter or group, then sort
+            # user might want to actually group or reorder by subject_id, etc.
+            filtered = sorted(all_exps, key=lambda e: e.subject_id)
+            # Then let the global sort do the final pass if you like:
+            # or skip global sort if you prefer a custom approach:
+            return filtered
+        # etc. ...
+        return list(all_exps)
 
     def add_experiment(self, experiment_id, subject_id, date, exp_type, plugin_params):
         """
@@ -202,24 +201,23 @@ class ProjectManager:
             raise ValueError(f"Subject '{subject_id}' not found in this project.")
 
         # Let PluginManager handle the check for a valid plugin
-        self.plugin_manager.validate_experiment(new_experiment, self.state_manager.project_state)
+        validation_errors = self.plugin_manager.validate_experiment(new_experiment, self.state_manager.project_state)
 
+        if validation_errors:
+            raise ValueError(f"Experiment plugin validation failed: {validation_errors}")
+
+        # Add experiment to the state
         self.state_manager.project_state.experiments[experiment_id] = new_experiment
         self.save_project()
-        return new_experiment
+        logger.info(f"Experiment {experiment_id} added successfully.")
+        self.refresh_all_lists()
 
     def refresh_all_lists(self):
         """
-        Placeholder for any logic or notifications needed so the UI
-        can refresh both experiment and subject lists simultaneously.
-        In a larger application, this might emit signals or call
-        framework-specific update methods.
+        Centralized point to trigger UI refresh callbacks after state changes.
+        In a full application, this may emit signals or call registered UI update functions.
         """
-        # For instance, you might:
-        #  - reload self.state_manager.get_subject_ids()
-        #  - reload self.state_manager.get_experiments_list()
-        #  - notify any relevant views or widgets
-        pass
+        logger.info("UI refresh triggered: updating subject and experiment lists.")
 
     def rename_project(self, new_name: str) -> None:
         if not self._current_project_root:
@@ -290,5 +288,17 @@ class ProjectManager:
 
         self.save_project()
         logger.info(f"Active body parts updated to: {new_active_parts}")
+
+    def list_available_projects(self) -> list[Path]:
+        base_dir = Path("projects")
+        project_paths = []
+        for item in base_dir.iterdir():
+            if item.is_dir() and (item / "project_state.json").exists():
+                project_paths.append(item)
+
+        # Example: Sort alphabetically by folder name
+        project_paths.sort(key=lambda p: p.name.lower())
+
+        return project_paths
 
     

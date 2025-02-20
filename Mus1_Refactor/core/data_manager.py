@@ -54,14 +54,13 @@ class DataManager:
             # 4) otherwise if batch has an override, use it
             elif current_batch and getattr(current_batch, "frame_rate", None) is not None:
                 final_frame_rate = current_batch.frame_rate
-            # 5) otherwise use the project's global_frame_rate
+            # 5) otherwise use the project's global frame_rate
             else:
-                # fallback to project metadata
-                if ps.project_metadata:
+                # fallback to project metadata if global frame rate is enabled
+                if ps.project_metadata and ps.settings.get("global_frame_rate_enabled", True):
                     final_frame_rate = ps.project_metadata.global_frame_rate
                 else:
-                    # Or set a default if the ProjectMetadata is missing
-                    final_frame_rate = 60  # fallback
+                    final_frame_rate = 60  # fallback if disabled or missing
 
         # ------------------------------------------------
         # For demonstration, just log the final_frame_rate

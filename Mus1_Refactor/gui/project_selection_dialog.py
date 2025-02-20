@@ -52,19 +52,24 @@ class ProjectSelectionDialog(QDialog):
 
     def refresh_project_list(self):
         self.project_combo.clear()
-        # List directories in self.base_dir that contain a project_state.json
-        for item in self.base_dir.iterdir():
-            if item.is_dir() and (item / "project_state.json").exists():
-                self.project_combo.addItem(item.name)
+        for path in self.project_manager.list_available_projects():
+            self.project_combo.addItem(path.name)
 
     def open_project(self):
         selected = self.project_combo.currentText()
         if not selected:
             QMessageBox.warning(self, "Warning", "No project selected.")
             return
-        project_path = self.base_dir / selected
+        # Use the project_manager's list of available projects to find the project directory
+        available_projects = self.project_manager.list_available_projects()
+        project_path = next((p for p in available_projects if p.name == selected), None)
+        if project_path is None:
+            QMessageBox.warning(self, "Warning", f"Project directory for '{selected}' not found.")
+            return
         try:
             self.project_manager.load_project(project_path)
+            # Store it in a property so the main window can read it
+            self.selected_project_name = selected
             self.accept()
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to load project: {e}")

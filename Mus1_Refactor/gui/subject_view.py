@@ -1,9 +1,10 @@
 from PySide6.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QStackedWidget, QListWidget,
-    QGroupBox, QFormLayout, QLineEdit, QComboBox, QTextEdit, QPushButton, QLabel
+    QGroupBox, QFormLayout, QLineEdit, QComboBox, QTextEdit, QPushButton, QLabel, QDateTimeEdit, QCheckBox
 )
 from core.metadata import Sex
 from gui.navigation_pane import NavigationPane  # Import the new NavigationPane
+from PySide6.QtCore import QDateTime
 
 class SubjectView(QWidget):
     def __init__(self, parent=None):
@@ -34,6 +35,11 @@ class SubjectView(QWidget):
         self.genotype_edit = QLineEdit()
         self.treatment_edit = QLineEdit()
         self.subject_notes_edit = QTextEdit()
+        self.birth_date_edit = QDateTimeEdit()
+        self.birth_date_edit.setCalendarPopup(True)
+        self.birth_date_edit.setDisplayFormat("yyyy-MM-dd HH:mm:ss")
+        self.birth_date_edit.setDateTime(QDateTime.currentDateTime())
+        self.in_training_set_checkbox = QCheckBox("In Training Set")
         self.add_subject_button = QPushButton("Add Subject")
         self.add_subject_button.clicked.connect(self.handle_add_subject)
 
@@ -42,6 +48,8 @@ class SubjectView(QWidget):
         subject_form_layout.addRow("Genotype:", self.genotype_edit)
         subject_form_layout.addRow("Treatment:", self.treatment_edit)
         subject_form_layout.addRow("Notes:", self.subject_notes_edit)
+        subject_form_layout.addRow("Birth Date:", self.birth_date_edit)
+        subject_form_layout.addRow(self.in_training_set_checkbox)
         subject_form_layout.addWidget(self.add_subject_button)
         self.subject_group.setLayout(subject_form_layout)
 
@@ -109,21 +117,36 @@ class SubjectView(QWidget):
         genotype = self.genotype_edit.text().strip()
         treatment = self.treatment_edit.text().strip()
         notes = self.subject_notes_edit.toPlainText().strip()
+        birth_date = self.birth_date_edit.dateTime().toPython()
+        in_training_set = self.in_training_set_checkbox.isChecked()
 
-        # 3) Call ProjectManager to add the mouse
+        # Retrieve additional fields from UI
+        birth_date = self.birth_date_edit.dateTime().toPython()
+        in_training_set = self.in_training_set_checkbox.isChecked()
+
+        # Call ProjectManager to add the mouse with additional metadata
         self.project_manager.add_mouse(
             mouse_id=subject_id,
             sex=sex_enum,
             genotype=genotype,
             treatment=treatment,
             notes=notes,
+            birth_date=birth_date,
+            in_training_set=in_training_set,
         )
 
-        # 4) Refresh the subject list
-        self.refresh_subject_list_display()
-        # (Optional) self.project_manager.refresh_all_lists()
+        # Clear the input fields for new entry after successful addition
+        self.subject_id_edit.clear()
+        self.genotype_edit.clear()
+        self.treatment_edit.clear()
+        self.subject_notes_edit.clear()
+        self.birth_date_edit.setDateTime(QDateTime.currentDateTime())
+        self.in_training_set_checkbox.setChecked(False)
 
-        # Optionally switch to the "View Subjects" page:
+        # Refresh the displayed subject list based on current global sort preference
+        self.refresh_subject_list_display()
+
+        # Switch to the "View Subjects" page to show the updated list
         self.nav_pane.set_button_checked(1)
 
     def refresh_subject_list_display(self):

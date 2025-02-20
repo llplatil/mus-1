@@ -7,7 +7,7 @@ class OFPlugin(BasePlugin):
     def plugin_self_metadata(self) -> PluginMetadata:
         return PluginMetadata(
             name="OF",
-            date_created=datetime(2025, 2, 15),
+            date_created=datetime(2025, 2, 17),
             version="1.0",
             description="A plugin for analyzing OF experiments",
             author="Lukash Platil"

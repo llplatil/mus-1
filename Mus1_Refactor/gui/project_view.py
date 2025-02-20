@@ -1,4 +1,4 @@
-from PySide6.QtWidgets import QWidget, QHBoxLayout, QVBoxLayout, QStackedWidget, QListWidget, QFormLayout, QLineEdit, QComboBox, QPushButton, QTextEdit, QSpinBox, QCheckBox, QLabel, QFileDialog, QAbstractItemView
+from PySide6.QtWidgets import QWidget, QHBoxLayout, QVBoxLayout, QStackedWidget, QListWidget, QFormLayout, QLineEdit, QComboBox, QPushButton, QTextEdit, QSpinBox, QCheckBox, QLabel, QFileDialog, QAbstractItemView, QSizePolicy
 from gui.navigation_pane import NavigationPane
 
 
@@ -27,18 +27,26 @@ class ProjectView(QWidget):
 
         # ----- Page: Current Project -----
         self.page_current_project = QWidget()
-        cp_layout = QFormLayout(self.page_current_project)
-        
+        cp_layout = QVBoxLayout(self.page_current_project)
+
+        # Display current project label at the top
+        self.current_project_label = QLabel("Current Project: None")
+        cp_layout.addWidget(self.current_project_label)
+
         # Row: Switch Project (combo box and button)
+        switch_project_layout = QHBoxLayout()
+        switch_project_label = QLabel("Switch Project:")
         self.switch_project_combo = QComboBox()
         self.populate_project_list()
         self.switch_project_button = QPushButton("Switch Project")
-        cp_switch_layout = QHBoxLayout()
-        cp_switch_layout.addWidget(self.switch_project_combo)
-        cp_switch_layout.addWidget(self.switch_project_button)
-        cp_layout.addRow("Switch Project:", cp_switch_layout)
+        switch_project_layout.addWidget(switch_project_label)
+        switch_project_layout.addWidget(self.switch_project_combo)
+        switch_project_layout.addWidget(self.switch_project_button)
+        cp_layout.addLayout(switch_project_layout)
 
         # Row: Rename Project (line edit and button)
+        rename_layout = QHBoxLayout()
+        rename_label = QLabel("Rename Project:")
         self.rename_line_edit = QLineEdit()
         if self.parent() and hasattr(self.parent(), 'project_manager') and \
            self.parent().project_manager.state_manager.project_state and \
@@ -46,15 +54,19 @@ class ProjectView(QWidget):
             current_name = self.parent().project_manager.state_manager.project_state.project_metadata.project_name
             self.rename_line_edit.setText(current_name)
         self.rename_project_button = QPushButton("Rename Project")
-        cp_rename_layout = QHBoxLayout()
-        cp_rename_layout.addWidget(self.rename_line_edit)
-        cp_rename_layout.addWidget(self.rename_project_button)
-        cp_layout.addRow("Rename Project:", cp_rename_layout)
+        rename_layout.addWidget(rename_label)
+        rename_layout.addWidget(self.rename_line_edit)
+        rename_layout.addWidget(self.rename_project_button)
+        cp_layout.addLayout(rename_layout)
 
         # Row: Project Notes (multiline text edit)
+        notes_label = QLabel("Project Notes:")
         self.project_notes_edit = QTextEdit()
         self.project_notes_edit.setPlaceholderText("Enter project notes here...")
-        cp_layout.addRow("Project Notes:", self.project_notes_edit)
+        self.project_notes_edit.setMinimumHeight(150)
+        self.project_notes_edit.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        cp_layout.addWidget(notes_label)
+        cp_layout.addWidget(self.project_notes_edit)
 
         self.pages.addWidget(self.page_current_project)
 
@@ -65,8 +77,18 @@ class ProjectView(QWidget):
         self.frame_rate_spin.setRange(1, 240)
         self.frame_rate_spin.setValue(60)
         gs_layout.addRow("Global Frame Rate:", self.frame_rate_spin)
+        self.enable_frame_rate_checkbox = QCheckBox("Enable Global Frame Rate")
+        self.enable_frame_rate_checkbox.setChecked(True)
+        self.enable_frame_rate_checkbox.toggled.connect(lambda checked: self.frame_rate_spin.setEnabled(checked))
+        gs_layout.addRow("Global Frame Rate Enabled:", self.enable_frame_rate_checkbox)
         self.likelihood_filter_checkbox = QCheckBox("Enable Likelihood Filter")
         gs_layout.addRow(self.likelihood_filter_checkbox)
+        self.sort_mode_combo = QComboBox()
+        self.sort_mode_combo.addItem("Natural Order (Numbers as Numbers)")
+        self.sort_mode_combo.addItem("Lexicographical Order (Numbers as Characters)")
+        self.sort_mode_combo.addItem("Date Added")
+        gs_layout.addRow("Global Sort Mode:", self.sort_mode_combo)
+        self.sort_mode_combo.currentIndexChanged.connect(self.on_sort_mode_changed)
         self.pages.addWidget(self.page_general_settings)
 
         # ----- Page: Body Parts -----
@@ -220,10 +242,14 @@ class ProjectView(QWidget):
         state.settings["body_parts"] = current_body_parts
         state.settings["tracked_objects"] = current_objects
         state.settings["project_notes"] = project_notes
+        state.settings["global_frame_rate_enabled"] = self.enable_frame_rate_checkbox.isChecked()
+        state.settings["global_sort_mode"] = self.sort_mode_combo.currentText()
         state.likelihood_filter_enabled = likelihood_enabled
 
         print("Saving all project changes:")
         print("Global Frame Rate:", frame_rate)
+        print("Global Frame Rate Enabled:", self.enable_frame_rate_checkbox.isChecked())
+        print("Global Sort Mode:", self.sort_mode_combo.currentText())
         print("Likelihood Filter Enabled:", likelihood_enabled)
         print("Active Body Parts:", current_body_parts)
         print("Tracked Objects:", current_objects)
@@ -247,6 +273,14 @@ class ProjectView(QWidget):
 
         self.frame_rate_spin.setValue(state.settings.get("global_frame_rate", 60))
         self.likelihood_filter_checkbox.setChecked(state.likelihood_filter_enabled)
+        self.enable_frame_rate_checkbox.setChecked(state.settings.get("global_frame_rate_enabled", True))
+        self.frame_rate_spin.setEnabled(state.settings.get("global_frame_rate_enabled", True))
+
+        # Restore sort mode from state
+        sort_mode = state.settings.get("global_sort_mode", "Natural Order (Numbers as Numbers)")
+        index = self.sort_mode_combo.findText(sort_mode)
+        if index >= 0:
+            self.sort_mode_combo.setCurrentIndex(index)
 
         self.current_body_parts_list.clear()
         for bp in state.settings.get("body_parts", []):
@@ -266,23 +300,22 @@ class ProjectView(QWidget):
         print("Cancelled changes. Reset UI to current project state.")
 
     def populate_project_list(self):
-        from pathlib import Path
-        projects_dir = Path("projects")
-        if not projects_dir.exists():
-            projects_dir.mkdir(parents=True, exist_ok=True)
         self.switch_project_combo.clear()
-        for item in projects_dir.iterdir():
-            if item.is_dir() and (item / "project_state.json").exists():
-                self.switch_project_combo.addItem(item.name)
+        for path in self.window().project_manager.list_available_projects():
+            self.switch_project_combo.addItem(path.name)
 
     def handle_switch_project(self):
-        from pathlib import Path
         selected_project = self.switch_project_combo.currentText()
         if selected_project:
-            projects_dir = Path("projects")
-            project_path = projects_dir / selected_project
+            # Use the project_manager's list of available projects instead of building the path manually
+            available_projects = self.window().project_manager.list_available_projects()
+            project_path = next((p for p in available_projects if p.name == selected_project), None)
+            if project_path is None:
+                print(f"Project directory for '{selected_project}' not found.")
+                return
             try:
                 self.window().project_manager.load_project(project_path)
+                self.current_project_label.setText("Current Project: " + selected_project)
                 self.rename_line_edit.setText(selected_project)
                 state = self.window().project_manager.state_manager.project_state
                 notes = state.settings.get("project_notes", "")
@@ -366,6 +399,22 @@ class ProjectView(QWidget):
         # Update the project state with the new objects list
         self.window().project_manager.update_tracked_objects(new_objects)
         print("Saved objects only. (Entire project not fully re-saved.)")
+
+    def set_initial_project(self, project_name: str):
+        index = self.switch_project_combo.findText(project_name)
+        if index >= 0:
+            self.switch_project_combo.setCurrentIndex(index)
+            self.handle_switch_project()
+        else:
+            print(f"Project '{project_name}' was not found in combo box; selection unchanged.")
+
+    def on_sort_mode_changed(self):
+        new_sort_mode = self.sort_mode_combo.currentText()
+        # Update the project state's global_sort_mode if project_manager is accessible via parent
+        if self.parent() and hasattr(self.parent(), 'project_manager'):
+            self.parent().project_manager.state_manager.project_state.settings["global_sort_mode"] = new_sort_mode
+            # Refresh lists to reflect new sorting
+            self.parent().project_manager.refresh_all_lists()
         
    
         

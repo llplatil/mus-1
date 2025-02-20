@@ -138,8 +138,7 @@ class MouseMetadata(BaseModel):
     treatment: Optional[str] = None
     notes: str = ""
     in_training_set: bool = False
-
-    # This field defines which experiment types this mouse is allowed to participate in:
+    date_added: datetime = Field(default_factory=datetime.now)
     allowed_experiment_types: Set[ExperimentType] = Field(default_factory=set)
 
     @validator("id")
@@ -224,6 +223,7 @@ class BatchMetadata(BaseModel):
     selection_criteria: Dict[str, Any]
     experiment_ids: Set[str] = set()
     analysis_type: Optional[ExperimentType] = None
+    date_added: datetime = Field(default_factory=datetime.now)
     parameters: Dict[str, Any] = {}
     likelihood_cutoff: float = 0.5
 
@@ -237,9 +237,9 @@ class ProjectMetadata(BaseModel):
     across all mice/experiments (like DLC configs, bodyparts, etc.).
     """
     dlc_configs: List[Path] = []
-    master_body_parts: List[str] = []
-    active_body_parts: List[str] = []
-    tracked_objects: List[str] = []
+    master_body_parts: List[BodyPartMetadata] = Field(default_factory=list)
+    active_body_parts: List[BodyPartMetadata] = Field(default_factory=list)
+    tracked_objects: List[ObjectMetadata] = Field(default_factory=list)
 
     # Global frame rate used unless an experiment specifies otherwise
     global_frame_rate: int = 60
@@ -309,9 +309,7 @@ class ProjectState(BaseModel):
             "body_parts": [],
             "active_body_parts": [],
             "tracked_objects": [],
-            "global_sort_mode": "name",      # experiment sorts
-            "plugin_sort_mode": "name",      # plugin sorts - "date" or "name"
-            "sort_subjects": "alphabetical"
+            "global_sort_mode": "Natural Order (Numbers as Numbers)"
         }
     )
 
@@ -332,5 +330,17 @@ class ProjectState(BaseModel):
 
     # Store plugin metadata objects at runtime
     registered_plugin_metadatas: List[PluginMetadata] = Field(default_factory=list)
+
+
+class BodyPartMetadata(BaseModel):
+    name: str
+    date_added: datetime = Field(default_factory=datetime.now)
+    coordinates: Optional[dict] = None  # e.g., {'x': value, 'y': value}
+
+
+class ObjectMetadata(BaseModel):
+    name: str
+    date_added: datetime = Field(default_factory=datetime.now)
+    bounding_box: Optional[dict] = None  # e.g., {'x': value, 'y': value, 'width': w, 'height': h}
 
     

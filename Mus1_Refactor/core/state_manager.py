@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import logging
-from typing import Optional, List
+from typing import Optional, List, Union
 from .metadata import ProjectState, MouseMetadata, ExperimentMetadata, PluginMetadata
+from .sort_manager import sort_items
 
 logger = logging.getLogger("mus1.core.state_manager")
 
@@ -32,9 +33,6 @@ class StateManager:
         self._project_state.supported_experiment_types = types_list
         logger.info(f"Synced supported experiment types: {types_list}")
 
-    # ----------------------------------------------------------------------
-    # NEW: Methods for retrieving experiments and experiment types
-    # ----------------------------------------------------------------------
     def get_supported_experiment_types(self) -> List[str]:
         """
         Return a copy of the current supported_experiment_types from the ProjectState.
@@ -64,27 +62,68 @@ class StateManager:
         """
         return self._project_state.experiments.get(experiment_id)
 
-    def get_experiments_list_sorted(self) -> List[ExperimentMetadata]:
+    def get_sorted_list(self, item_type: str):
         """
-        Return a list of all experiments in the project, sorted according
-        to ProjectState.settings["global_sort_mode"]. Possible modes:
-          - 'name' (alphabetical by experiment ID)
-          - 'date'
+        A unified method to fetch and return sorted items for a given type:
+          - 'subjects'    -> returns sorted MouseMetadata objects
+          - 'experiments' -> returns sorted ExperimentMetadata objects
+          - 'plugins'     -> returns sorted PluginMetadata
+          - 'body_parts'  -> returns sorted list of BodyPartMetadata
+          - 'objects'     -> returns sorted list of ObjectMetadata
+        We rely on project_state and the global sort mode to do so.
         """
-        all_exps = list(self._project_state.experiments.values())
-        sort_mode = self._project_state.settings.get("global_sort_mode", "name")
+        sort_mode = self._project_state.settings.get("global_sort_mode", "Natural Order (Numbers as Numbers)")
 
-        if sort_mode == "date":
-            all_exps.sort(key=lambda e: e.date)
+        # We'll gather items based on item_type:
+        if item_type == "subjects":
+            all_items = list(self._project_state.subjects.values())
+            # Example key functions: date_added for "Date Added", else by ID
+            if sort_mode == "Date Added":
+                key_func = lambda s: s.date_added
+            else:
+                key_func = lambda s: s.id
+
+        elif item_type == "experiments":
+            all_items = list(self._project_state.experiments.values())
+            if sort_mode == "Date Added":
+                key_func = lambda e: e.date_added
+            else:
+                key_func = lambda e: e.id
+
+        elif item_type == "plugins":
+            all_items = self._project_state.registered_plugin_metadatas
+            if sort_mode == "Date Added":
+                key_func = lambda pm: pm.date_created
+            else:
+                key_func = lambda pm: pm.name.lower()
+
+        elif item_type == "body_parts":
+            if self._project_state.project_metadata is not None:
+                all_items = self._project_state.project_metadata.master_body_parts
+            else:
+                all_items = self._project_state.settings.get("body_parts", [])
+            if sort_mode == "Date Added":
+                key_func = lambda bp: bp.date_added
+            else:
+                key_func = lambda bp: bp.name.lower()
+
+        elif item_type == "objects":
+            if self._project_state.project_metadata is not None:
+                all_items = self._project_state.project_metadata.tracked_objects
+            else:
+                all_items = self._project_state.settings.get("tracked_objects", [])
+            if sort_mode == "Date Added":
+                key_func = lambda obj: obj.date_added
+            else:
+                key_func = lambda obj: obj.name.lower()
+
         else:
-            # Default: alphabetical by experiment ID
-            all_exps.sort(key=lambda e: e.id.lower())
+            # If we don't recognize the item_type, return empty or handle differently
+            logger.warning(f"Unrecognized item_type in get_sorted_list: {item_type}")
+            return []
 
-        return all_exps
+        return sort_items(all_items, sort_mode, key_func=key_func)
 
-    # --------------------------------------------
-    # NEW: sync and store plugin metadata
-    # --------------------------------------------
     def sync_plugin_metadatas(self, plugin_manager) -> None:
         """
         Pull all plugin metadata from the plugin_manager, optionally sort them,
@@ -92,21 +131,51 @@ class StateManager:
         """
         all_metadata = plugin_manager.get_all_plugin_metadata()
 
-        # Suppose we also have a "plugin_sort_mode" in settings for consistency.
-        plugin_sort_mode = self._project_state.settings.get("plugin_sort_mode", "name")
+        # Use the global sort setting
+        sort_mode = self._project_state.settings.get("global_sort_mode", "Lexicographical Order (Numbers as Characters)")
 
-        if plugin_sort_mode == "date":
+        if sort_mode == "Date Added":
             all_metadata.sort(key=lambda pm: pm.date_created)
         else:
             # Default: sort by name (case-insensitive)
             all_metadata.sort(key=lambda pm: pm.name.lower())
 
         self._project_state.registered_plugin_metadatas = all_metadata
-        logger.info(f"Synced plugin metadata (sorted by '{plugin_sort_mode}'): {[m.name for m in all_metadata]}")
+        logger.info(f"Synced plugin metadata (sorted by '{sort_mode}'): {[m.name for m in all_metadata]}")
 
     def get_plugin_metadatas(self) -> List[PluginMetadata]:
         """
-        Return the plugin metadata objects currently stored (already sorted).
+        Return the plugin metadata objects currently stored (unsorted).
         """
         return list(self._project_state.registered_plugin_metadatas)
+
+    def get_sorted_body_parts(self) -> List:
+        """Return a sorted list of BodyPartMetadata using the global sort mode."""
+        if self._project_state.project_metadata is not None:
+            all_parts = self._project_state.project_metadata.master_body_parts
+        else:
+            all_parts = self._project_state.settings.get("body_parts", [])
+
+        sort_mode = self._project_state.settings.get("global_sort_mode", "Natural Order (Numbers as Numbers)")
+        if sort_mode == "Date Added":
+            key_func = lambda bp: bp.date_added
+        else:
+            key_func = lambda bp: bp.name.lower()
+        from .sort_manager import sort_items
+        return sort_items(all_parts, sort_mode, key_func=key_func)
+
+    def get_sorted_objects(self) -> List:
+        """Return a sorted list of ObjectMetadata using the global sort mode."""
+        if self._project_state.project_metadata is not None:
+            all_objects = self._project_state.project_metadata.tracked_objects
+        else:
+            all_objects = self._project_state.settings.get("tracked_objects", [])
+
+        sort_mode = self._project_state.settings.get("global_sort_mode", "Natural Order (Numbers as Numbers)")
+        if sort_mode == "Date Added":
+            key_func = lambda obj: obj.date_added
+        else:
+            key_func = lambda obj: obj.name.lower()
+        from .sort_manager import sort_items
+        return sort_items(all_objects, sort_mode, key_func=key_func)
 

@@ -3,7 +3,7 @@
   "last_modified": "2025-02-15 22:19:36.093985",
   "settings": {
     "global_frame_rate": 60,
-    "global_frame_rate_enabled": true,
+    "global_frame_rate_enabled": false,
     "body_parts": [],
     "active_body_parts": [],
     "tracked_objects": [],
