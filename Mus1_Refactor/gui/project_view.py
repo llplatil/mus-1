@@ -182,6 +182,12 @@ class ProjectView(QWidget):
         self.save_all_button.clicked.connect(self.handle_save_all)
         self.cancel_button.clicked.connect(self.handle_cancel)
 
+        # Subscribe to state changes for automatic UI refresh if supported
+        if hasattr(self.window().project_manager.state_manager, "subscribe"):
+            self.window().project_manager.state_manager.subscribe(self.refresh_lists)
+        else:
+            print("State manager does not support subscription; manual refresh needed.")
+
     def changePage(self, index):
         self.pages.setCurrentIndex(index)
 
@@ -202,14 +208,7 @@ class ProjectView(QWidget):
             # Update master body parts via ProjectManager core logic
             self.window().project_manager.update_master_body_parts(extracted)
 
-            # Refresh the UI for 'All Body Parts in Project'
-            state = self.window().project_manager.state_manager.project_state
-            self.all_body_parts_list.clear()
-            if state.project_metadata and hasattr(state.project_metadata, "master_body_parts"):
-                for bp in state.project_metadata.master_body_parts:
-                    self.all_body_parts_list.addItem(bp)
-
-            print("Extraction complete. Updated master body parts:", state.project_metadata.master_body_parts)
+            self.refresh_lists()
         except Exception as e:
             print("Error extracting body parts:", e)
 
@@ -258,6 +257,7 @@ class ProjectView(QWidget):
         # Persist to disk
         pm.save_project()
         print("All project changes have been saved successfully.")
+        self.refresh_lists()
 
     def handle_cancel(self):
         pm = self.window().project_manager
@@ -298,6 +298,7 @@ class ProjectView(QWidget):
                 self.current_objects_list.addItem(obj)
 
         print("Cancelled changes. Reset UI to current project state.")
+        self.refresh_lists()
 
     def populate_project_list(self):
         self.switch_project_combo.clear()
@@ -334,6 +335,7 @@ class ProjectView(QWidget):
                     self.current_objects_list.addItem(obj)
 
                 print("Switched to project:", selected_project)
+                self.refresh_lists()
             except Exception as e:
                 print("Error switching project:", e)
         else:
@@ -356,49 +358,71 @@ class ProjectView(QWidget):
         if not new_obj:
             print("No object name entered.")
             return
-        try:
-            self.window().project_manager.add_tracked_object(new_obj)
-            self.current_objects_list.addItem(new_obj)
-            self.new_object_line_edit.clear()
-            print("Added new object:", new_obj)
-        except Exception as e:
-            print("Error adding object:", e)
+        pm = self.window().project_manager
+        state = pm.state_manager.project_state
+        tracked_objects = state.settings.get("tracked_objects", [])
+        if new_obj in tracked_objects:
+            print("Object already exists in tracked objects.")
+            return
+        tracked_objects.append(new_obj)
+        pm.update_tracked_objects(tracked_objects)
+        self.new_object_line_edit.clear()
+        print("Added new object:", new_obj)
+        self.refresh_lists()
 
     def handle_add_to_active(self):
         selected_items = self.all_body_parts_list.selectedItems()
-        for item in selected_items:
-            text = item.text()
-            # Avoid duplicates in 'current_body_parts_list'
-            existing_active = [self.current_body_parts_list.item(i).text() for i in range(self.current_body_parts_list.count())]
-            if text not in existing_active:
-                self.current_body_parts_list.addItem(text)
-        print("Added selected body parts to the active list.")
+        if not selected_items:
+            print("No body parts selected to add.")
+            return
+        pm = self.window().project_manager
+        state = pm.state_manager.project_state
+        current_active = state.settings.get("body_parts", [])
+        selected = [item.text() for item in selected_items]
+        new_active = list(set(current_active) | set(selected))
+        pm.update_active_body_parts(new_active)
+        print("Added selected body parts to active list.")
+        self.refresh_lists()
 
     def handle_remove_from_active(self):
         selected_items = self.current_body_parts_list.selectedItems()
-        for item in selected_items:
-            self.current_body_parts_list.takeItem(self.current_body_parts_list.row(item))
-        print("Removed selected body parts from the active list.")
+        if not selected_items:
+            print("No body parts selected for removal.")
+            return
+        pm = self.window().project_manager
+        state = pm.state_manager.project_state
+        current_active = state.settings.get("body_parts", [])
+        to_remove = [item.text() for item in selected_items]
+        new_active = [bp for bp in current_active if bp not in to_remove]
+        pm.update_active_body_parts(new_active)
+        print("Removed selected body parts from active list.")
+        self.refresh_lists()
 
     def handle_save_body_parts(self):
-        # Gather current items in current_body_parts_list
         new_active = [self.current_body_parts_list.item(i).text() for i in range(self.current_body_parts_list.count())]
-        # Call project_manager to update the active body parts
         self.window().project_manager.update_active_body_parts(new_active)
         print("Saved active body parts only. (Entire project not fully re-saved.)")
+        self.refresh_lists()
 
     def handle_remove_object(self):
         selected_items = self.current_objects_list.selectedItems()
-        for item in selected_items:
-            self.current_objects_list.takeItem(self.current_objects_list.row(item))
-        print("Removed selected object(s) from current list.")
+        if not selected_items:
+            print("No objects selected for removal.")
+            return
+        pm = self.window().project_manager
+        state = pm.state_manager.project_state
+        tracked_objects = state.settings.get("tracked_objects", [])
+        to_remove = [item.text() for item in selected_items]
+        new_objects = [obj for obj in tracked_objects if obj not in to_remove]
+        pm.update_tracked_objects(new_objects)
+        print("Removed selected object(s) from tracked objects.")
+        self.refresh_lists()
 
     def handle_save_objects(self):
-        # Gather current items in current_objects_list
         new_objects = [self.current_objects_list.item(i).text() for i in range(self.current_objects_list.count())]
-        # Update the project state with the new objects list
         self.window().project_manager.update_tracked_objects(new_objects)
         print("Saved objects only. (Entire project not fully re-saved.)")
+        self.refresh_lists()
 
     def set_initial_project(self, project_name: str):
         index = self.switch_project_combo.findText(project_name)
@@ -415,6 +439,32 @@ class ProjectView(QWidget):
             self.parent().project_manager.state_manager.project_state.settings["global_sort_mode"] = new_sort_mode
             # Refresh lists to reflect new sorting
             self.parent().project_manager.refresh_all_lists()
+        
+    def refresh_lists(self):
+        pm = self.window().project_manager
+        state = pm.state_manager.project_state
+        sort_mode = state.settings.get("global_sort_mode", "Natural Order (Numbers as Numbers)")
+
+        # Refresh current active body parts list
+        self.current_body_parts_list.clear()
+        current_bps = state.settings.get("body_parts", [])
+        sorted_bps = pm.sort_manager.sort_items(current_bps, sort_mode)
+        for bp in sorted_bps:
+            self.current_body_parts_list.addItem(bp)
+
+        # Refresh all body parts (master) list
+        self.all_body_parts_list.clear()
+        if state.project_metadata and hasattr(state.project_metadata, "master_body_parts"):
+            sorted_master = pm.sort_manager.sort_items(state.project_metadata.master_body_parts, sort_mode)
+            for bp in sorted_master:
+                self.all_body_parts_list.addItem(bp)
+
+        # Refresh tracked objects list
+        self.current_objects_list.clear()
+        tracked_objects = state.settings.get("tracked_objects", [])
+        sorted_objects = pm.sort_manager.sort_items(tracked_objects, sort_mode)
+        for obj in sorted_objects:
+            self.current_objects_list.addItem(obj)
         
    
         

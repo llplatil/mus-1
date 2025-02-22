@@ -1,0 +1,134 @@
+    # Project definitions (do not edit)
+Task: time facing area test
+scorer: Luk
+date: Jun22
+multianimalproject: false
+identity:
+
+    # Project path (change when moving around)
+project_path: /Users/lukashplatil/Desktop/time facing area test-Luk-2024-06-22
+
+    # Annotation data set configuration (and individual video cropping parameters)
+video_sets:
+  /Users/lukashplatil/Desktop/recognition videos /841F 04.05.23 Recognition.mp4:
+    crop: 0, 1080, 0, 1080
+  /Users/lukashplatil/Desktop/recognition videos /866M 06.05.23 Recognitiion.mp4:
+    crop: 0, 1080, 0, 1080
+  /Users/lukashplatil/Desktop/recognition videos /844F 04.05.23 Recognition.mp4:
+    crop: 0, 1080, 0, 1080
+  /Users/lukashplatil/Desktop/recognition videos /842F 04.05.23 Recognition.mp4:
+    crop: 0, 1080, 0, 1080
+  /Users/lukashplatil/Desktop/recognition videos /868M 06.05.23 Recognition.mp4:
+    crop: 0, 1080, 0, 1080
+  /Users/lukashplatil/Desktop/recognition videos /865M 06.05.23 Recognition.mp4:
+    crop: 0, 1080, 0, 1080
+  /Users/lukashplatil/Desktop/recognition videos /Copy of 2023-07-18_995novel.mp4:
+    crop: 0, 1080, 0, 1080
+  /Users/lukashplatil/Desktop/recognition videos /2024-04-04_166NOV.mp4:
+    crop: 0, 1080, 0, 1080
+  /Users/lukashplatil/Desktop/recognition videos /Copy of 2023-07-18_977novel.mp4:
+    crop: 0, 1080, 0, 1080
+  /Users/lukashplatil/Desktop/recognition videos /Copy of 2023-07-18_976novel.mp4:
+    crop: 0, 1080, 0, 1080
+  /Users/lukashplatil/Desktop/recognition videos /Copy of 2023-07-18_985novel.mp4:
+    crop: 0, 1080, 0, 1080
+  /Users/lukashplatil/Desktop/recognition videos /Copy of 2023-07-18_990novel.mp4:
+    crop: 0, 1080, 0, 1080
+  /Users/lukashplatil/Desktop/time facing area test-Luk-2024-06-22/videos/Mouse 842F_06.04.23ORFamiliarization.mp4:
+    crop: 0, 1080, 0, 1080
+  /Users/lukashplatil/Desktop/time facing area test-Luk-2024-06-22/videos/866M 06.05.23Familiarization.mp4:
+    crop: 0, 1080, 0, 1080
+  /Users/lukashplatil/Desktop/time facing area test-Luk-2024-06-22/videos/868M 06.05.23 Familiarization.mp4:
+    crop: 0, 1080, 0, 1080
+  /Users/lukashplatil/Desktop/time facing area test-Luk-2024-06-22/videos/Mouse 844F_06.04.23ORFamiliarization.mp4:
+    crop: 0, 1080, 0, 1080
+  /Users/lukashplatil/Desktop/time facing area test-Luk-2024-06-22/videos/Mouse 841F_06.04.23ORFamiliarization.mp4:
+    crop: 0, 1080, 0, 1080
+bodyparts:
+- tail
+- spine4
+- spine3
+- spine2
+- spine1
+- head
+- nose
+- right_ear
+- left_ear
+- Silo
+- Diamond
+- Pyramid
+- Silo2
+- Diamond2
+- Pyramid2
+    # Fraction of video to start/stop when extracting frames for labeling/refinement
+
+
+    # Fraction of video to start/stop when extracting frames for labeling/refinement
+
+    # Fraction of video to start/stop when extracting frames for labeling/refinement
+
+    # Fraction of video to start/stop when extracting frames for labeling/refinement
+
+    # Fraction of video to start/stop when extracting frames for labeling/refinement
+
+    # Fraction of video to start/stop when extracting frames for labeling/refinement
+
+    # Fraction of video to start/stop when extracting frames for labeling/refinement
+
+
+    # Fraction of video to start/stop when extracting frames for labeling/refinement
+
+    # Fraction of video to start/stop when extracting frames for labeling/refinement
+
+    # Fraction of video to start/stop when extracting frames for labeling/refinement
+
+    # Fraction of video to start/stop when extracting frames for labeling/refinement
+
+    # Fraction of video to start/stop when extracting frames for labeling/refinement
+
+    # Fraction of video to start/stop when extracting frames for labeling/refinement
+start: 0
+stop: 1
+numframes2pick: 20
+
+    # Plotting configuration
+skeleton:
+- - tail
+  - spine4
+  - spine4
+  - spine3
+  - spine3
+  - spine2
+  - spine2
+  - spine1
+  - spine1
+  - head
+  - Nose
+skeleton_color: black
+pcutoff: 0.6
+dotsize: 12
+alphavalue: 0.7
+colormap: rainbow
+
+    # Training,Evaluation and Analysis configuration
+TrainingFraction:
+- 0.95
+iteration: 0
+default_net_type: resnet_50
+default_augmenter: default
+snapshotindex: -1
+batch_size: 8
+
+    # Cropping Parameters (for analysis and outlier frame detection)
+cropping: false
+    #if cropping is true for analysis, then set the values here:
+x1: 0
+x2: 640
+y1: 277
+y2: 624
+
+    # Refinement configuration (parameters from annotation dataset configuration also relevant in this stage)
+corner2move2:
+- 50
+- 50
+move2corner: true

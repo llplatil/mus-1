@@ -1,0 +1,33 @@
+{
+    "batch_001": {
+        "id": "batch_001",
+        "name": "NOR Analysis Batch 1",
+        "description": "Novel Object Recognition analysis using nose tracking",
+        "creation_date": "2023-04-06",
+        "tracked_body_part": "nose",
+        "experiment_ids": [
+            "841F_20230405_NOR",
+            "842F_20230405_NOR"
+        ],
+        "analysis_params": {
+            "min_likelihood": 0.9,
+            "zone_radius": 100,
+            "time_bins": 60
+        }
+    },
+    "batch_002": {
+        "id": "batch_002",
+        "name": "Full Body Analysis",
+        "description": "Analysis using spine1 for body position",
+        "creation_date": "2023-04-06",
+        "tracked_body_part": "spine1",
+        "experiment_ids": [
+            "841F_20230405_NOR"
+        ],
+        "analysis_params": {
+            "min_likelihood": 0.85,
+            "zone_radius": 120,
+            "time_bins": 30
+        }
+    }
+} 

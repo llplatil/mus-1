@@ -1,0 +1,16 @@
+{
+    "841F": {
+        "id": "841F",
+        "sex": "F",
+        "birth_date": "2023-04-05",
+        "genotype": "WT",
+        "in_training_set": false
+    },
+    "842F": {
+        "id": "842F",
+        "sex": "F",
+        "birth_date": "2023-04-05",
+        "genotype": "WT",
+        "in_training_set": true
+    }
+} 

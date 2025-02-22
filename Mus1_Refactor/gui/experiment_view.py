@@ -1,7 +1,8 @@
-from PySide6.QtWidgets import QWidget, QLabel, QVBoxLayout, QMessageBox, QHBoxLayout, QStackedWidget, QListWidget
+from PySide6.QtWidgets import QWidget, QLabel, QVBoxLayout, QMessageBox, QHBoxLayout, QStackedWidget, QListWidget, QFormLayout
 from PySide6.QtWidgets import QComboBox, QPushButton, QLineEdit, QListWidget as QList, QDateTimeEdit
 from datetime import datetime
 from gui.navigation_pane import NavigationPane 
+from PySide6.QtCore import QTimer
 
 class ExperimentView(QWidget):
     def __init__(self, parent=None):
@@ -41,17 +42,20 @@ class ExperimentView(QWidget):
         ae_layout.addWidget(QLabel("Date Recorded:"))
         ae_layout.addWidget(self.dateRecordedEdit)
 
-        self.csvPathLineEdit = QLineEdit()
-        ae_layout.addWidget(QLabel("CSV Path:"))
-        ae_layout.addWidget(self.csvPathLineEdit)
+        # Plugin-specific fields will be added dynamically based on the selected experiment type
+        self.pluginFieldsContainer = QWidget()
+        self.pluginFieldsLayout = QFormLayout(self.pluginFieldsContainer)
+        ae_layout.addWidget(self.pluginFieldsContainer)
 
-        self.arenaPathLineEdit = QLineEdit()
-        ae_layout.addWidget(QLabel("Arena Image:"))
-        ae_layout.addWidget(self.arenaPathLineEdit)
+        self.expTypeCombo.currentIndexChanged.connect(self.update_plugin_fields_display)
 
-        self.saveButton = QPushButton("Add Experiment")
-        self.saveButton.clicked.connect(self.saveExperiment)
-        ae_layout.addWidget(self.saveButton)
+        self.add_experiment_button = QPushButton("Add Experiment")
+        self.add_experiment_button.clicked.connect(self.handle_add_experiment)
+        ae_layout.addWidget(self.add_experiment_button)
+
+        # Add a notification label to show experiment addition success message
+        self.experiment_notification_label = QLabel("")
+        ae_layout.addRow("", self.experiment_notification_label)
 
         self.page_add_exp.setLayout(ae_layout)
         self.pages.addWidget(self.page_add_exp)
@@ -73,6 +77,7 @@ class ExperimentView(QWidget):
     def set_core(self, project_manager, state_manager):
         self.project_manager = project_manager
         self.state_manager = state_manager
+        self.state_manager.register_observer(self.refresh_data)
 
     def change_subpage(self, index: int):
         self.pages.setCurrentIndex(index)
@@ -97,7 +102,7 @@ class ExperimentView(QWidget):
         for sid in self.state_manager.get_subject_ids():
             self.subjectComboBox.addItem(sid)
 
-    def saveExperiment(self):
+    def handle_add_experiment(self):
         if not self.project_manager:
             QMessageBox.warning(self, "Error", "No ProjectManager is set.")
             return
@@ -108,12 +113,11 @@ class ExperimentView(QWidget):
         recorded_date = self.dateRecordedEdit.dateTime().toPython()
 
         plugin_params = {}
-        csv_path = self.csvPathLineEdit.text().strip()
-        arena_path = self.arenaPathLineEdit.text().strip()
-        if csv_path:
-            plugin_params["csv_path"] = csv_path
-        if arena_path:
-            plugin_params["arena_path"] = arena_path
+        # Gather plugin-specific parameters from dynamic fields
+        if (hasattr(self, 'plugin_field_widgets')):
+            for field, widget in self.plugin_field_widgets.items():
+                value = widget.text().strip()
+                plugin_params[field] = value
 
         try:
             new_experiment = self.project_manager.add_experiment(
@@ -125,12 +129,55 @@ class ExperimentView(QWidget):
             )
             QMessageBox.information(self, "Success", f"Experiment '{new_experiment.id}' added.")
             self.navigation_pane.set_button_checked(1)  # Go to "View Experiments" after adding
+            self.refresh_experiment_list_display()
+            # Set notification text
+            self.experiment_notification_label.setText("Experiment added successfully!")
+            QTimer.singleShot(3000, lambda: self.experiment_notification_label.setText(""))
         except Exception as e:
             QMessageBox.warning(self, "Error", str(e))
 
     def refresh_experiment_list_display(self):
-        sorted_exps = self.project_manager.get_sorted_experiments()
+        sorted_exps = self.state_manager.get_sorted_list("experiments")
         self.experimentListWidget.clear()
         for e in sorted_exps:
             self.experimentListWidget.addItem(f"{e.id} ({e.type})")
+
+    def update_plugin_fields_display(self):
+        # Clear any existing fields in the plugin fields layout
+        while self.pluginFieldsLayout.count() > 0:
+            child = self.pluginFieldsLayout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+
+        exp_type = self.expTypeCombo.currentText()
+        if not exp_type or not self.project_manager:
+            return
+        try:
+            # Attempt to retrieve the plugin for the selected experiment type
+            if hasattr(self.project_manager.plugin_manager, 'get_plugin'):
+                plugin = self.project_manager.plugin_manager.get_plugin(exp_type)
+            else:
+                plugin = self.project_manager.plugin_manager.plugins.get(exp_type)
+            if not plugin:
+                raise KeyError(f"Plugin for experiment type '{exp_type}' not found.")
+        except Exception as e:
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.warning(self, "Error", str(e))
+            return
+
+        req_fields = plugin.required_fields()
+        opt_fields = plugin.optional_fields()
+
+        self.plugin_field_widgets = {}
+        for field in req_fields:
+            label = QLabel(f"{field} (required):")
+            line_edit = QLineEdit()
+            self.plugin_field_widgets[field] = line_edit
+            self.pluginFieldsLayout.addRow(label, line_edit)
+
+        for field in opt_fields:
+            label = QLabel(f"{field} (optional):")
+            line_edit = QLineEdit()
+            self.plugin_field_widgets[field] = line_edit
+            self.pluginFieldsLayout.addRow(label, line_edit)
         

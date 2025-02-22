@@ -1,5 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Optional, Dict, Any, List
+from pathlib import Path
+import pandas as pd
 
 from core.metadata import ExperimentMetadata, ProjectState, PluginMetadata
 
@@ -22,51 +24,30 @@ class BasePlugin(ABC):
         """
         pass
 
-
-class PluginManager:
-    def __init__(self):
-        self._plugins: Dict[str, BasePlugin] = {}
-
-    def register_plugin(self, experiment_type: str, plugin: BasePlugin) -> None:
-        self._plugins[experiment_type] = plugin
-
-    def get_plugin(self, experiment_type: str) -> Optional[BasePlugin]:
-        return self._plugins.get(experiment_type)
-
-   
-    def get_supported_experiment_types(self) -> List[str]:
+    def required_fields(self) -> list:
         """
-        Return a list of all experiment types for which a plugin is registered.
+        Return a list of required field names for this plugin's experiment.
+        These fields are used mainly for UI validation. The core experiment fields are defined in ExperimentMetadata,
+        so there is no need to register them with the global state.
+        Default is empty, override if needed.
         """
-        return list(self._plugins.keys())
+        return []
 
-    def validate_experiment(self, experiment: ExperimentMetadata, project_state: ProjectState) -> None:
+    def optional_fields(self) -> list:
         """
-        Retrieve the plugin for experiment.type; raise an error if not found,
-        otherwise delegate validation to that plugin.
+        Return a list of optional field names for this plugin's experiment.
+        These extra fields can further extend the core ExperimentMetadata if needed.
+        Default is empty, override if needed.
         """
-        # experiment.type might be an Enum or string, so .value if needed:
-        exp_type_str = experiment.type.value if hasattr(experiment.type, 'value') else str(experiment.type)
-        plugin = self.get_plugin(exp_type_str)
-        if not plugin:
-            raise ValueError(f"No registered plugin found for experiment type '{exp_type_str}'")
+        return []
 
-        plugin.validate_experiment(experiment, project_state)
-
-    def analyze_experiment(self, experiment: ExperimentMetadata) -> Dict[str, Any]:
-        plugin = self.get_plugin(experiment.type.value)
-        if plugin:
-            return plugin.analyze_experiment(experiment)
-        return {}
-
-    # ---------------------------------------------------------
-    # NEW: method that returns an unsorted list of PluginMetadata
-    # ---------------------------------------------------------
-    def get_all_plugin_metadata(self) -> List[PluginMetadata]:
-        """
-        Gather plugin metadata from all registered plugins.
-        """
-        metadata_list = []
-        for etype, plugin in self._plugins.items():
-            metadata_list.append(plugin.plugin_self_metadata())
-        return metadata_list 
+    @staticmethod
+    def extract_bodyparts_from_dlc_csv(csv_file: Path) -> set:
+        """Extracts body parts from a DLC CSV file by reading the header (level 1) and returning a set of unique body parts."""
+        if not csv_file.exists():
+            raise FileNotFoundError(f"CSV file not found: {csv_file}")
+        try:
+            df = pd.read_csv(csv_file, header=[0,1,2], index_col=0)
+        except Exception as e:
+            raise ValueError(f"Error reading CSV file: {e}")
+        return set(df.columns.get_level_values(1)) 

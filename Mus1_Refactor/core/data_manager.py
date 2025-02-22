@@ -3,6 +3,10 @@ from pathlib import Path
 import pandas as pd
 from typing import Optional
 import yaml
+import numpy as np
+import matplotlib.pyplot as plt
+from PIL import Image
+from io import BytesIO
 
 logger = logging.getLogger("mus1.core.data_manager")
 
@@ -109,3 +113,15 @@ class DataManager:
         # Return unique bodyparts while preserving order
         unique_bodyparts = list(dict.fromkeys(bodyparts))
         return unique_bodyparts 
+
+    def extract_bodyparts_from_dlc_csv(self, csv_file: Path) -> set:
+        """Extracts body parts from a DLC CSV file by reading the header (level 1) and returning a set of unique body parts."""
+        if not csv_file.exists():
+            raise FileNotFoundError(f"CSV file not found: {csv_file}")
+        try:
+            df = pd.read_csv(csv_file, header=[0,1,2], index_col=0)
+        except Exception as e:
+            raise ValueError(f"Error reading CSV file: {e}")
+        return set(df.columns.get_level_values(1)) 
+
+    

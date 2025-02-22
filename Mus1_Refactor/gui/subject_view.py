@@ -42,6 +42,8 @@ class SubjectView(QWidget):
         self.in_training_set_checkbox = QCheckBox("In Training Set")
         self.add_subject_button = QPushButton("Add Subject")
         self.add_subject_button.clicked.connect(self.handle_add_subject)
+        # Notification label to show success messages for subject addition
+        self.subject_notification_label = QLabel("")
 
         subject_form_layout.addRow("Subject ID:", self.subject_id_edit)
         subject_form_layout.addRow("Sex:", self.sex_combo)
@@ -51,6 +53,7 @@ class SubjectView(QWidget):
         subject_form_layout.addRow("Birth Date:", self.birth_date_edit)
         subject_form_layout.addRow(self.in_training_set_checkbox)
         subject_form_layout.addWidget(self.add_subject_button)
+        subject_form_layout.addRow("", self.subject_notification_label)
         self.subject_group.setLayout(subject_form_layout)
 
         add_layout.addWidget(self.subject_group)
@@ -146,19 +149,35 @@ class SubjectView(QWidget):
         # Refresh the displayed subject list based on current global sort preference
         self.refresh_subject_list_display()
 
+        # Show success notification
+        self.subject_notification_label.setText("Subject added successfully!")
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(3000, lambda: self.subject_notification_label.setText(""))
+
         # Switch to the "View Subjects" page to show the updated list
         self.nav_pane.set_button_checked(1)
 
     def refresh_subject_list_display(self):
-        """Refresh the list of all subjects in the project."""
+        """Refresh the list of all subjects in the project with full metadata details."""
         if not self.project_manager:
             return
         self.subject_list_widget.clear()
         all_subjects = self.project_manager.get_sorted_subjects()
         for subj in all_subjects:
-            self.subject_list_widget.addItem(subj.id)
+            birth_str = subj.birth_date.strftime('%Y-%m-%d %H:%M:%S') if subj.birth_date else 'N/A'
+            details = (f"ID: {subj.id} | Sex: {subj.sex.value} | Genotype: {subj.genotype or 'N/A'} "
+                       f"| Treatment: {subj.treatment or 'N/A'} | Birth: {birth_str} "
+                       f"| Training: {subj.in_training_set}")
+            self.subject_list_widget.addItem(details)
 
     def refresh_experiment_list_by_subject_display(self):
         """Refresh the list widget displaying experiments by subject."""
         # Implementation pending
         pass
+
+    def set_project_manager(self, project_manager):
+        """Assign the project_manager and subscribe for automatic refresh from state changes."""
+        self.project_manager = project_manager
+        if hasattr(project_manager.state_manager, 'subscribe'):
+            project_manager.state_manager.subscribe(self.refresh_subject_list_display)
+        self.refresh_subject_list_display()

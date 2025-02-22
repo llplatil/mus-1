@@ -1,6 +1,6 @@
 # MUS1: Mouse Behavior Analysis Tool
 
-A Python-based tool designed to streamline the analysis of DeepLabCut-processed mouse behavior data.
+A Python-based tool designed to streamline the analysis of mouse behavior data.
 
 ## Overview
 

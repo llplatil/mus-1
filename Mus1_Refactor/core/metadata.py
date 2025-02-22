@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 from dataclasses import dataclass
+from typing import Protocol
+from datetime import datetime
 
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Any
 from enum import Enum
-from datetime import datetime
 from pydantic import BaseModel, Field, validator, root_validator
 from collections import defaultdict
 import logging
@@ -28,6 +29,12 @@ def init_metadata() -> bool:
         logger.error(f"Failed: {e}")
         return False
 
+class HasDateAdded(Protocol):
+    date_added: datetime
+
+class HasName(Protocol):
+    name: str
+
 @dataclass
 class PluginMetadata:
     """Plugin metadata structure"""
@@ -36,6 +43,7 @@ class PluginMetadata:
     version: str
     description: str
     author: str
+    plugin_type: Optional[str] = None
 
 class ExperimentType(str, Enum):
     NOR = "NOR"
@@ -85,34 +93,6 @@ class OFSessions(str, Enum):
     REEXPOSURE = "re-exposure"
 
 
-class NORPluginParams(BaseModel):
-    """
-    NOR-specific params, including the session stage and object roles.
-    Example logic: if stage = FAMILIARIZATION, both objects must be the same.
-    """
-    session_stage: NORSessions = NORSessions.FAMILIARIZATION
-    object_roles: Dict[str, str] = {}
-
-    @root_validator(skip_on_failure=True)
-    def ensure_objects_same_for_familiarization(cls, values):
-        session_stage = values.get("session_stage")
-        roles = values.get("object_roles", {})
-        if session_stage == NORSessions.FAMILIARIZATION:
-            unique_objects = set(roles.values())
-            if len(unique_objects) > 1:
-                raise ValueError("Familiarization stage requires identical object roles.")
-        return values
-
-
-class OFPluginParams(BaseModel):
-    """
-    Open Field-specific params, focusing on stage (habituation or re-exposure)
-    and optional arena markings, etc.
-    """
-    session_stage: OFSessions = OFSessions.HABITUATION
-    arena_markings: Dict[str, Any] = {}
-
-
 class TrackingData(BaseModel):
     """
     Minimal representation of tracking-file info for an experiment.
@@ -154,45 +134,40 @@ class MouseMetadata(BaseModel):
         return v
 
 
-class ExperimentMetadata(BaseModel):
-    """
-    Represents a single experiment session.
-    By adding a 'session_stage' and possibly 'session_index',
-    we allow multiple sessions in the same environment or with the same type,
-    but vary the stage/time as needed.
-    """
-    id: str
-    type: ExperimentType
-    subject_id: str
-    date_recorded: datetime
-    date_added: datetime = Field(default_factory=datetime.now)
-    tracking_data: Optional[TrackingData] = None
-
-    session_stage: SessionStage = SessionStage.FAMILIARIZATION
-    """
-    E.g., for NOR on the same day you could do:
-       - session_stage=SessionStage.FAMILIARIZATION at 9 AM
-       - session_stage=SessionStage.RECOGNITION at 10 AM
-    For OF, when re-tested weeks later, you might still mark
-    session_stage=SessionStage.FAMILIARIZATION (since it's a new environment or time).
-    """
-
-    # If you want to track repeated exposures over time, consider a session_index:
-    session_index: int = 1
-    """
-    For example, if the mouse sees the same arena a second or third time,
-    you can increment session_index=2, session_index=3, etc.
-    """
-
-    # Optional or plugin-specific fields
-    frame_rate: Optional[int] = None
-    start_time: float = 0.0
-    end_time: Optional[float] = None
-    duration: Optional[float] = None
-    arena_image_path: Optional[Path] = None
-    notes: str = ""
-    likelihood_threshold: Optional[float] = None
-    plugin_params: Dict[str, Any] = Field(default_factory=dict)
+    class ExperimentMetadata(BaseModel):
+        """
+        Represents a single experiment session.
+        
+        Core properties (always required):
+          - id: unique experiment ID
+          - type: experiment type (as an ExperimentType enum)
+          - subject_id: ID of the subject (mouse) undergoing experiment
+          - date_recorded: when the experiment was recorded
+          
+        Optional or plugin-specific properties:
+          - plugin_params: Dictionary holding dynamic plugin-specific fields (as defined by the plugin's required_fields and optional_fields)
+          - plugin_metadata: Static plugin metadata (plugin name, version, plugin_type, etc.) as returned by plugin_self_metadata()
+          
+        Other properties provide default values for experiment state.
+        """
+        id: str
+        type: ExperimentType
+        subject_id: str
+        date_recorded: datetime
+        date_added: datetime = Field(default_factory=datetime.now)
+        tracking_data: Optional[TrackingData] = None
+        
+        session_stage: SessionStage = SessionStage.FAMILIARIZATION
+        session_index: int = 1
+        frame_rate: Optional[int] = None
+        start_time: float = 0.0
+        end_time: Optional[float] = None
+        duration: Optional[float] = None
+        arena_image_path: Optional[Path] = None
+        notes: str = ""
+        likelihood_threshold: Optional[float] = None
+        plugin_params: Dict[str, Any] = Field(default_factory=dict)
+        plugin_metadata: Optional[PluginMetadata] = None
 
     @property
     def phase_type(self) -> str:
@@ -230,6 +205,10 @@ class BatchMetadata(BaseModel):
     # New override field for per-batch threshold, if desired:
     likelihood_threshold: Optional[float] = None
 
+class GlobalSortMode(str, Enum):
+    NATURAL_ORDER = "Natural Order (Numbers as Numbers)"
+    ALPHABETICAL = "Lexicographical Order (Numbers as Characters)"
+    DATE_ADDED = "Date Added"
 
 class ProjectMetadata(BaseModel):
     """
@@ -240,6 +219,9 @@ class ProjectMetadata(BaseModel):
     master_body_parts: List[BodyPartMetadata] = Field(default_factory=list)
     active_body_parts: List[BodyPartMetadata] = Field(default_factory=list)
     tracked_objects: List[ObjectMetadata] = Field(default_factory=list)
+
+    # Global sort mode stored with the project
+    global_sort_mode: GlobalSortMode = GlobalSortMode.NATURAL_ORDER
 
     # Global frame rate used unless an experiment specifies otherwise
     global_frame_rate: int = 60

@@ -138,7 +138,7 @@ class ProjectManager:
             existing.birth_date = birth_date
             existing.in_training_set = in_training_set
         else:
-            logger.info(f"Creating a new mouse: {mouse_id}")
+            # New mouse addition
             new_mouse = MouseMetadata(
                 id=mouse_id,
                 sex=sex,
@@ -148,40 +148,12 @@ class ProjectManager:
                 birth_date=birth_date,
                 in_training_set=in_training_set
             )
-            self.state_manager.project_state.subjects[mouse_id] = new_mouse
+            self.state_manager._project_state.subjects[mouse_id] = new_mouse
+            logger.info(f"Added new mouse: {mouse_id}")
+            self.refresh_all_lists()
 
+        # Refresh UI lists to immediately display the updated subject list
         self.save_project()
-        self.refresh_all_lists()
-
-    def list_subjects(self) -> list:
-        """
-        Example: returns the sorted subjects by calling a unified method in StateManager.
-        """
-        return self.state_manager.get_sorted_list("subjects")
-
-    def list_experiments(self) -> list:
-        """
-        Example: returns experiments sorted by the global sort mode.
-        """
-        return self.state_manager.get_sorted_list("experiments")
-
-    def get_experiments_sorted_by(self, criterion: str) -> list:
-        """
-        Example of specialized sorting or grouping, 
-        but still final sort is done by state_manager.get_sorted_list(...).
-        """
-        all_exps = self.state_manager.project_state.experiments.values()
-
-        # Filter or regroup if needed:
-        if criterion == "mouse":
-            # for demonstration, let's just filter or group, then sort
-            # user might want to actually group or reorder by subject_id, etc.
-            filtered = sorted(all_exps, key=lambda e: e.subject_id)
-            # Then let the global sort do the final pass if you like:
-            # or skip global sort if you prefer a custom approach:
-            return filtered
-        # etc. ...
-        return list(all_exps)
 
     def add_experiment(self, experiment_id, subject_id, date, exp_type, plugin_params):
         """
@@ -192,6 +164,7 @@ class ProjectManager:
             id=experiment_id,
             subject_id=subject_id,
             date_recorded=date,
+            date_added=datetime.now(),
             type=exp_type,
             plugin_params=plugin_params
         )
@@ -201,24 +174,30 @@ class ProjectManager:
             raise ValueError(f"Subject '{subject_id}' not found in this project.")
 
         # Let PluginManager handle the check for a valid plugin
-        validation_errors = self.plugin_manager.validate_experiment(new_experiment, self.state_manager.project_state)
+        self.plugin_manager.validate_experiment(new_experiment, self.state_manager.project_state)
 
-        if validation_errors:
-            raise ValueError(f"Experiment plugin validation failed: {validation_errors}")
+        # Attach plugin metadata to the experiment, based on the experiment type
+        plugin = self.plugin_manager.get_plugin(exp_type)
+        if plugin:
+            new_experiment.plugin_metadata = plugin.plugin_self_metadata()
 
-        # Add experiment to the state
-        self.state_manager.project_state.experiments[experiment_id] = new_experiment
+        # Add the new experiment to the project state
+        self.state_manager._project_state.experiments[experiment_id] = new_experiment
+
+        # Update the corresponding subject with the new experiment id for immediate UI feedback
+        if subject_id in self.state_manager._project_state.subjects:
+            self.state_manager._project_state.subjects[subject_id].experiment_ids.add(experiment_id)
+            logger.info(f"Experiment {experiment_id} added to subject {subject_id}.")
+        else:
+            logger.warning(f"Subject {subject_id} not found when adding experiment {experiment_id}.")
+
+        # Save project and notify observers
         self.save_project()
-        logger.info(f"Experiment {experiment_id} added successfully.")
-        self.refresh_all_lists()
+        if hasattr(self.state_manager, 'notify_observers'):
+            self.state_manager.notify_observers()
+        return new_experiment
 
-    def refresh_all_lists(self):
-        """
-        Centralized point to trigger UI refresh callbacks after state changes.
-        In a full application, this may emit signals or call registered UI update functions.
-        """
-        logger.info("UI refresh triggered: updating subject and experiment lists.")
-
+ 
     def rename_project(self, new_name: str) -> None:
         if not self._current_project_root:
             raise ValueError("No current project loaded")
