@@ -7,7 +7,7 @@ import os
 
 from .metadata import ProjectState, ProjectMetadata, MouseMetadata, Sex, ExperimentType, ExperimentMetadata, SessionStage, ArenaImageMetadata, VideoMetadata
 from .state_manager import StateManager  # so we can type hint or reference if needed
-from plugins.base_plugin import PluginManager
+from core.plugin_manager import PluginManager
 from plugins.NOR_plugin import NORPlugin
 from plugins.OF_plugin import OFPlugin
 
@@ -238,35 +238,55 @@ class ProjectManager:
             state.settings["tracked_objects"] = new_objects
         self.save_project()
         logger.info(f"Tracked objects updated to: {new_objects}")
+        # Notify observers about the change in tracked objects
+        self.state_manager.notify_observers()
 
     def update_master_body_parts(self, new_bodyparts: list) -> None:
-        # Update master body parts with unique entries from new_bodyparts
+        from core.metadata import BodyPartMetadata
         state = self.state_manager.project_state
         if state.project_metadata is not None:
-            current_master = state.project_metadata.master_body_parts
-            # Merge while preserving order and uniqueness
-            updated = list(dict.fromkeys(current_master + new_bodyparts))
-            state.project_metadata.master_body_parts = updated
+            master_list = []
+            # Convert existing entries to BodyPartMetadata if they are strings
+            for bp in state.project_metadata.master_body_parts:
+                if isinstance(bp, str):
+                    master_list.append(BodyPartMetadata(name=bp))
+                else:
+                    master_list.append(bp)
+
+            # Add new body parts, converting strings if needed and avoiding duplicates
+            for bp in new_bodyparts:
+                if isinstance(bp, str):
+                    if not any(existing.name == bp for existing in master_list):
+                        master_list.append(BodyPartMetadata(name=bp))
+                elif hasattr(bp, 'name'):
+                    if not any(existing.name == bp.name for existing in master_list):
+                        master_list.append(bp)
+
+            state.project_metadata.master_body_parts = master_list
         else:
-            current_master = state.settings.get("body_parts", [])
-            updated = list(dict.fromkeys(current_master + new_bodyparts))
-            state.settings["body_parts"] = updated
+            state.settings["body_parts"] = new_bodyparts
         self.save_project()
+        # Notify observers that master body parts have been updated
+        self.state_manager.notify_observers()
 
     def update_active_body_parts(self, new_active_parts: list[str]) -> None:
-        """
-        Update the project's active body parts (subset of the master list).
-        """
+        from core.metadata import BodyPartMetadata
         state = self.state_manager.project_state
         if state.project_metadata is not None:
-            # Overwrite the active_body_parts list with new_active_parts
-            state.project_metadata.active_body_parts = new_active_parts
+            active_list = []
+            for bp in new_active_parts:
+                if isinstance(bp, str):
+                    active_list.append(BodyPartMetadata(name=bp))
+                elif hasattr(bp, 'name'):
+                    active_list.append(bp)
+            state.project_metadata.active_body_parts = active_list
         else:
-            # Fallback if no project_metadata is loaded
             state.settings["body_parts"] = new_active_parts
 
         self.save_project()
         logger.info(f"Active body parts updated to: {new_active_parts}")
+        # Notify observers that active body parts have been updated
+        self.state_manager.notify_observers()
 
     def list_available_projects(self) -> list[Path]:
         base_dir = Path("projects")

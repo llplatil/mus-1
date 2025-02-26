@@ -18,27 +18,17 @@ class BasePlugin(ABC):
 
     @abstractmethod
     def plugin_self_metadata(self) -> PluginMetadata:
-        """
-        Return the PluginMetadata object that describes this plugin
-        (name, creation_date, version, etc.).
-        """
+        """Return the PluginMetadata object that describes this plugin, including the high-level plugin_type
+        which indicates which experiment type this plugin supports. Must be implemented by subclasses."""
         pass
 
-    def required_fields(self) -> list:
-        """
-        Return a list of required field names for this plugin's experiment.
-        These fields are used mainly for UI validation. The core experiment fields are defined in ExperimentMetadata,
-        so there is no need to register them with the global state.
-        Default is empty, override if needed.
-        """
+    def required_fields(self) -> List[str]:
+        """Return a list of required field names for this plugin's experiment. These will be used for UI validation.
+        Override if needed. Default is empty list."""
         return []
 
-    def optional_fields(self) -> list:
-        """
-        Return a list of optional field names for this plugin's experiment.
-        These extra fields can further extend the core ExperimentMetadata if needed.
-        Default is empty, override if needed.
-        """
+    def optional_fields(self) -> List[str]:
+        """Return a list of optional field names for this plugin's experiment. Override if needed. Default is empty list."""
         return []
 
     @staticmethod
@@ -50,4 +40,18 @@ class BasePlugin(ABC):
             df = pd.read_csv(csv_file, header=[0,1,2], index_col=0)
         except Exception as e:
             raise ValueError(f"Error reading CSV file: {e}")
-        return set(df.columns.get_level_values(1)) 
+        return set(df.columns.get_level_values(1))
+
+class PluginManager:
+    """A simple plugin manager to register and retrieve plugins."""
+    def __init__(self):
+        self.plugins = []
+
+    def register_plugin(self, plugin_class):
+        """Register a plugin class by instantiating it and storing the instance."""
+        plugin_instance = plugin_class()
+        self.plugins.append(plugin_instance)
+
+    def get_plugins(self):
+        """Return the list of registered plugin instances."""
+        return self.plugins 

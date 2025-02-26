@@ -55,7 +55,7 @@ class ExperimentView(QWidget):
 
         # Add a notification label to show experiment addition success message
         self.experiment_notification_label = QLabel("")
-        ae_layout.addRow("", self.experiment_notification_label)
+        ae_layout.addWidget(self.experiment_notification_label)
 
         self.page_add_exp.setLayout(ae_layout)
         self.pages.addWidget(self.page_add_exp)

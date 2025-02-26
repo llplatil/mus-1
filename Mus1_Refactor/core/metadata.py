@@ -48,8 +48,6 @@ class PluginMetadata:
 class ExperimentType(str, Enum):
     NOR = "NOR"
     OPEN_FIELD = "OpenField"
-    BASIC_CSV_PLOT = "BasicCSVPlot"
-    # Add more as needed
 
 class SessionStage(str, Enum):
     """
@@ -134,61 +132,52 @@ class MouseMetadata(BaseModel):
         return v
 
 
-    class ExperimentMetadata(BaseModel):
-        """
-        Represents a single experiment session.
-        
-        Core properties (always required):
-          - id: unique experiment ID
-          - type: experiment type (as an ExperimentType enum)
-          - subject_id: ID of the subject (mouse) undergoing experiment
-          - date_recorded: when the experiment was recorded
-          
-        Optional or plugin-specific properties:
-          - plugin_params: Dictionary holding dynamic plugin-specific fields (as defined by the plugin's required_fields and optional_fields)
-          - plugin_metadata: Static plugin metadata (plugin name, version, plugin_type, etc.) as returned by plugin_self_metadata()
-          
-        Other properties provide default values for experiment state.
-        """
-        id: str
-        type: ExperimentType
-        subject_id: str
-        date_recorded: datetime
-        date_added: datetime = Field(default_factory=datetime.now)
-        tracking_data: Optional[TrackingData] = None
-        
-        session_stage: SessionStage = SessionStage.FAMILIARIZATION
-        session_index: int = 1
-        frame_rate: Optional[int] = None
-        start_time: float = 0.0
-        end_time: Optional[float] = None
-        duration: Optional[float] = None
-        arena_image_path: Optional[Path] = None
-        notes: str = ""
-        likelihood_threshold: Optional[float] = None
-        plugin_params: Dict[str, Any] = Field(default_factory=dict)
-        plugin_metadata: Optional[PluginMetadata] = None
-
+class ExperimentMetadata(BaseModel):
+    """
+    Represents a single experiment session.
+    
+    Core properties:
+      - id: unique experiment ID
+      - type: experiment type (as an ExperimentType enum)
+      - subject_id: ID of the subject (mouse) undergoing experiment
+      - date_recorded: when the experiment was recorded
+    
+    Optional or plugin-specific properties:
+      - plugin_params: Dictionary holding dynamic plugin-specific fields.
+      - plugin_metadata: Static plugin metadata as returned by plugin_self_metadata.
+    
+    Additional fields help with experiment state and analysis.
+    """
+    id: str
+    type: ExperimentType
+    subject_id: str
+    date_recorded: datetime
+    date_added: datetime = Field(default_factory=datetime.now)
+    tracking_data: Optional[TrackingData] = None
+    
+    session_stage: SessionStage = SessionStage.FAMILIARIZATION
+    session_index: int = 1
+    frame_rate: Optional[int] = None
+    start_time: float = 0.0
+    end_time: Optional[float] = None
+    duration: Optional[float] = None
+    arena_image_path: Optional[Path] = None
+    notes: str = ""
+    likelihood_threshold: Optional[float] = None
+    plugin_params: Dict[str, Any] = Field(default_factory=dict)
+    plugin_metadata: Optional[PluginMetadata] = None
+    
     @property
     def phase_type(self) -> str:
-        """
-        A normalized phase type (lowercased).
-        More specialized validation or enumerations
-        should occur in plugin or advanced logic.
-        """
+        """Return a normalized phase type (lowercased) based on the session_stage."""
         return self.session_stage.value.lower() if self.session_stage else "unset"
-
+    
     @property
     def analysis_ready(self) -> bool:
-        """
-        A quick check to see if this experiment is typically 'ready' for analysis.
-        Actual validations can be expanded or done in plugin code.
-        """
-        return (
-            self.tracking_data is not None and
-            self.arena_image_path is not None and
-            self.arena_image_path.exists()
-        )
+        """Return True if the experiment is ready for analysis (i.e. tracking_data is present and arena_image_path exists)."""
+        return (self.tracking_data is not None and 
+                self.arena_image_path is not None and 
+                self.arena_image_path.exists())
 
 
 class BatchMetadata(BaseModel):
