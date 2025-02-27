@@ -1,8 +1,13 @@
 from plugins.base_plugin import BasePlugin
 from typing import Dict, Any
-from core.metadata import PluginMetadata, ExperimentMetadata, ProjectState, OFSessions
+from core.metadata import PluginMetadata, ExperimentMetadata, ProjectState
 from datetime import datetime
 from pathlib import Path
+from enum import Enum
+
+class OFSessions(Enum):
+    HABITUATION = "habituation"
+    REEXPOSURE = "re-exposure"
 
 class OFPlugin(BasePlugin):
     def plugin_self_metadata(self) -> PluginMetadata:

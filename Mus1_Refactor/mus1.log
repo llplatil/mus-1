@@ -3,3 +3,20 @@
 2025-02-23 21:41:03,212 [INFO] mus1.core.metadata - Metadata system initialized successfully
 2025-02-23 21:41:04,318 [INFO] __main__ - Core managers created. Setting up the MainWindow.
 2025-02-23 21:41:06,351 [INFO] mus1.core.project_manager - Loading project from projects/test_1
+2025-02-27 00:23:55,593 [INFO] __main__ - Launching MUS1...
+2025-02-27 00:23:55,593 [INFO] mus1.core.metadata - Initializing metadata system
+2025-02-27 00:23:55,593 [INFO] mus1.core.metadata - Metadata system initialized successfully
+2025-02-27 00:26:08,950 [INFO] __main__ - Launching MUS1...
+2025-02-27 00:26:08,950 [INFO] mus1.core.metadata - Initializing metadata system
+2025-02-27 00:26:08,950 [INFO] mus1.core.metadata - Metadata system initialized successfully
+2025-02-27 00:26:10,057 [INFO] mus1.core.project_manager - Registered 3 plugins
+2025-02-27 00:26:10,057 [INFO] mus1.core.state_manager - Synced supported experiment types: ['NOR']
+2025-02-27 00:26:10,057 [INFO] mus1.core.state_manager - Synced plugin metadata (sorted by 'Natural Order (Numbers as Numbers)'): ['BasicCSVPlot', 'NOR', 'OF']
+2025-02-27 00:26:10,057 [INFO] __main__ - Core managers created. Setting up the MainWindow.
+2025-02-27 00:26:23,892 [INFO] mus1.core.project_manager - Created project directory at projects/refactor_test1
+2025-02-27 00:26:23,894 [INFO] mus1.core.project_manager - Created standard subfolders: subjects, experiments, batches, data, media, external_configs, project_notes
+2025-02-27 00:26:23,898 [INFO] mus1.core.project_manager - Project saved to projects/refactor_test1/project_state.json
+2025-02-27 00:26:23,928 [INFO] mus1.core.state_manager - Synced supported experiment types: ['NOR']
+2025-02-27 00:26:23,928 [INFO] mus1.core.state_manager - Synced plugin metadata (sorted by 'Natural Order (Numbers as Numbers)'): ['BasicCSVPlot', 'NOR', 'OF']
+2025-02-27 00:26:23,938 [INFO] __main__ - MUS1 init complete. Starting application event loop.
+2025-02-27 00:26:43,408 [INFO] mus1.core.project_manager - Project saved to projects/refactor_test1/project_state.json

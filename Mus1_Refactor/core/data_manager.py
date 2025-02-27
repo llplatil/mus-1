@@ -124,4 +124,57 @@ class DataManager:
             raise ValueError(f"Error reading CSV file: {e}")
         return set(df.columns.get_level_values(1)) 
 
+    def validate_file_for_plugins(self, file_path: Path, plugins: list) -> dict:
+        """Validate a file against the requirements of the given plugins.
+
+        Args:
+            file_path: Path to the file to validate.
+            plugins: A list of plugin instances to validate against.
+
+        Returns:
+            A dict mapping plugin names to validation results.
+        """
+        results = {}
+        for plugin in plugins:
+            plugin_name = plugin.plugin_self_metadata().name
+            try:
+                # For demonstration, assume each plugin's validation is encapsulated in its validate_experiment method.
+                # Here we simply check if the file exists and is a CSV (example logic).
+                if not file_path.exists():
+                    raise ValueError(f"File not found: {file_path}")
+                if file_path.suffix.lower() != '.csv':
+                    raise ValueError(f"Expected a CSV file, got: {file_path.suffix}")
+                # If no exception, mark as valid
+                results[plugin_name] = {"valid": True}
+            except Exception as e:
+                results[plugin_name] = {"valid": False, "error": str(e)}
+        return results
+
+    def validate_arena_image(self, image_path: Path, allowed_sources: list, project_state) -> dict:
+        """Validate an arena image against allowed sources and project state.
+
+        Args:
+            image_path: Path to the arena image.
+            allowed_sources: List of allowed arena sources (strings).
+            project_state: Current project state (used to determine the image source).
+
+        Returns:
+            A dict with validation results.
+
+        Raises:
+            ValueError: If validation fails.
+        """
+        if not image_path.exists():
+            raise ValueError(f"Arena image not found: {image_path}")
+
+        # For demonstration, assume we derive the arena source from the image filename or metadata.
+        # This is a placeholder logic. In practice, use proper image analysis or metadata extraction.
+        arena_source = "DLC_Export" if "DLC" in image_path.stem else "Manual"
+
+        if arena_source not in allowed_sources:
+            supported = ", ".join(allowed_sources)
+            raise ValueError(f"Arena image source '{arena_source}' not supported. Must be one of: {supported}")
+
+        return {"valid": True, "source": arena_source, "path": str(image_path)}
+
     

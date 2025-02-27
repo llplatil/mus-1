@@ -88,7 +88,7 @@ class StateManager:
                 if custom_sort == "mouse":
                     key_func = lambda e: e.subject_id
                 elif custom_sort == "plugin":
-                    key_func = lambda e: str(e.type).lower()
+                    key_func = lambda e: e.type  # Now using string directly instead of enum
                 elif custom_sort == "date":
                     key_func = lambda e: e.date_added
                 else:
@@ -140,6 +140,15 @@ class StateManager:
         Return the plugin metadata objects currently stored (unsorted).
         """
         return list(self._project_state.registered_plugin_metadatas)
+    
+    def get_plugins_for_experiment_type(self, exp_type: str) -> List[PluginMetadata]:
+        """
+        Return a list of plugin metadata for plugins that support the given experiment type.
+        """
+        return [pm for pm in self._project_state.registered_plugin_metadatas 
+                if hasattr(pm, 'supported_experiment_types') and 
+                pm.supported_experiment_types and 
+                exp_type in pm.supported_experiment_types]
 
     def get_sorted_body_parts(self) -> List:
         """Return a sorted list of BodyPartMetadata using the global sort mode."""
@@ -218,4 +227,27 @@ class StateManager:
         """Notify all registered observers about a state change."""
         for callback in self._observers:
             callback()
+
+    def get_compatible_processing_stages(self, plugin_manager, exp_type: str) -> list:
+        """Return processing stages compatible with the given experiment type using the plugin manager."""
+        stages = set()
+        for plugin in plugin_manager.get_all_plugins():
+            if exp_type in plugin.get_supported_experiment_types():
+                stages.update(plugin.get_supported_processing_stages())
+        return sorted(list(stages))
+
+    def get_compatible_data_sources(self, plugin_manager, exp_type: str, stage: str) -> list:
+        """Return data sources compatible with the given experiment type and processing stage."""
+        sources = set()
+        for plugin in plugin_manager.get_all_plugins():
+            if exp_type in plugin.get_supported_experiment_types() and stage in plugin.get_supported_processing_stages():
+                sources.update(plugin.get_supported_data_sources())
+        return sorted(list(sources))
+
+    def compile_required_fields(self, plugins: list) -> list:
+        """Compile and return a sorted list of unique required fields from the given plugins."""
+        fields = set()
+        for plugin in plugins:
+            fields.update(plugin.required_fields())
+        return sorted(list(fields))
 

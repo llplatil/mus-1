@@ -1,8 +1,13 @@
 from plugins.base_plugin import BasePlugin
 from typing import Dict, Any
-from core.metadata import PluginMetadata, ExperimentMetadata, ProjectState, NORSessions
+from core.metadata import PluginMetadata, ExperimentMetadata, ProjectState
 from datetime import datetime
 from pathlib import Path
+from enum import Enum
+
+class NORSessions(Enum):
+    FAMILIARIZATION = "familiarization"
+    RECOGNITION = "recognition"
 
 class NORPlugin(BasePlugin):
     def plugin_self_metadata(self) -> PluginMetadata:
@@ -11,7 +16,8 @@ class NORPlugin(BasePlugin):
             date_created=datetime(2025, 2, 16),
             version="1.0",
             description="A plugin for analyzing NOR experiments. Note: Validation not complete; additional fields like image and video may be required.",
-            author="Lukash Platil"
+            author="Lukash Platil",
+            supported_experiment_types=["NOR"]
         )
     
     def required_fields(self):

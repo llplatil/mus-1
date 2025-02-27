@@ -2,14 +2,15 @@ import logging
 import json
 from pathlib import Path
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
 import os
+import importlib.util
+import inspect
 
-from .metadata import ProjectState, ProjectMetadata, MouseMetadata, Sex, ExperimentType, ExperimentMetadata, SessionStage, ArenaImageMetadata, VideoMetadata
+from .metadata import ProjectState, ProjectMetadata, MouseMetadata, Sex, ExperimentMetadata, ArenaImageMetadata, VideoMetadata
 from .state_manager import StateManager  # so we can type hint or reference if needed
 from core.plugin_manager import PluginManager
-from plugins.NOR_plugin import NORPlugin
-from plugins.OF_plugin import OFPlugin
+from plugins.base_plugin import BasePlugin
 
 logger = logging.getLogger("mus1.core.project_manager")
 
@@ -22,11 +23,38 @@ class ProjectManager:
         self.state_manager = state_manager
         self._current_project_root: Path | None = None
         self.plugin_manager = PluginManager()
-        # Register plugins using ExperimentType values
-        self.plugin_manager.register_plugin("NOR", NORPlugin())
-        self.plugin_manager.register_plugin("OpenField", OFPlugin())
-        from plugins.BasicCSVPlot_plugin import BasicCSVPlotPlugin
-        self.plugin_manager.register_plugin("BasicCSVPlot", BasicCSVPlotPlugin())
+        
+        # Plugins will be registered dynamically by scanning the plugins directory
+        self._discover_and_register_plugins()
+        
+        # Sync state manager with plugin information
+        self.state_manager.sync_supported_experiment_types(self.plugin_manager)
+        self.state_manager.sync_plugin_metadatas(self.plugin_manager)
+    
+    def _discover_and_register_plugins(self):
+        """Discover and register all available plugins dynamically by scanning the plugins directory."""
+        # Determine the plugins directory relative to the current file
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        plugins_dir = os.path.join(current_dir, "..", "plugins")
+
+        # Iterate over all Python files in the plugins directory except base_plugin.py and __init__.py
+        for filename in os.listdir(plugins_dir):
+            if filename.endswith(".py") and filename not in ["base_plugin.py", "__init__.py"]:
+                module_name = filename[:-3]
+                module_path = os.path.join(plugins_dir, filename)
+
+                spec = importlib.util.spec_from_file_location(module_name, module_path)
+                if spec and spec.loader:
+                    module = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(module)
+
+                    # Import BasePlugin for checking subclass
+                    from plugins.base_plugin import BasePlugin
+                    for name, obj in inspect.getmembers(module, inspect.isclass):
+                        if issubclass(obj, BasePlugin) and obj is not BasePlugin:
+                            self.plugin_manager.register_plugin(obj())
+
+        logger.info(f"Registered {len(self.plugin_manager.get_all_plugins())} plugins")
 
     def create_project(self, project_root: Path, project_name: str) -> None:
         """
@@ -148,56 +176,46 @@ class ProjectManager:
                 birth_date=birth_date,
                 in_training_set=in_training_set
             )
-            self.state_manager._project_state.subjects[mouse_id] = new_mouse
+            self.state_manager.project_state.subjects[mouse_id] = new_mouse
             logger.info(f"Added new mouse: {mouse_id}")
             self.refresh_all_lists()
 
         # Refresh UI lists to immediately display the updated subject list
         self.save_project()
 
-    def add_experiment(self, experiment_id, subject_id, date, exp_type, plugin_params):
-        """
-        Gathers the minimal experiment data, attaches plugin-specific fields,
-        validates, and saves to project_state.
-        """
+    def add_experiment(self, experiment_id, subject_id, date_recorded, exp_type, processing_stage, data_source, plugin_selections, plugin_params):
+        # Core logic to add an experiment with hierarchical workflow
+        # Compile associated plugin names from the selected plugins
+        associated_plugins = [plugin.plugin_self_metadata().name for plugin in plugin_selections]
+
         new_experiment = ExperimentMetadata(
             id=experiment_id,
-            subject_id=subject_id,
-            date_recorded=date,
-            date_added=datetime.now(),
             type=exp_type,
+            subject_id=subject_id,
+            date_recorded=date_recorded,
+            processing_stage=processing_stage,
+            data_source=data_source,
+            associated_plugins=associated_plugins,
             plugin_params=plugin_params
         )
 
-        # Validate subject existence
-        if subject_id not in self.state_manager.project_state.subjects:
-            raise ValueError(f"Subject '{subject_id}' not found in this project.")
+        # Assign experiment to project state
+        self.state_manager.project_state.experiments[experiment_id] = new_experiment
 
-        # Let PluginManager handle the check for a valid plugin
-        self.plugin_manager.validate_experiment(new_experiment, self.state_manager.project_state)
-
-        # Attach plugin metadata to the experiment, based on the experiment type
-        plugin = self.plugin_manager.get_plugin(exp_type)
-        if plugin:
-            new_experiment.plugin_metadata = plugin.plugin_self_metadata()
-
-        # Add the new experiment to the project state
-        self.state_manager._project_state.experiments[experiment_id] = new_experiment
-
-        # Update the corresponding subject with the new experiment id for immediate UI feedback
-        if subject_id in self.state_manager._project_state.subjects:
-            self.state_manager._project_state.subjects[subject_id].experiment_ids.add(experiment_id)
+        # Update the corresponding subject with the new experiment id
+        if subject_id in self.state_manager.project_state.subjects:
+            self.state_manager.project_state.subjects[subject_id].experiment_ids.add(experiment_id)
             logger.info(f"Experiment {experiment_id} added to subject {subject_id}.")
         else:
             logger.warning(f"Subject {subject_id} not found when adding experiment {experiment_id}.")
 
-        # Save project and notify observers
+        # Refresh UI and persist project data
+        self.refresh_all_lists()
         self.save_project()
-        if hasattr(self.state_manager, 'notify_observers'):
-            self.state_manager.notify_observers()
+        self.state_manager.notify_observers()
+
         return new_experiment
 
- 
     def rename_project(self, new_name: str) -> None:
         if not self._current_project_root:
             raise ValueError("No current project loaded")
@@ -299,5 +317,10 @@ class ProjectManager:
         project_paths.sort(key=lambda p: p.name.lower())
 
         return project_paths
+
+    def refresh_all_lists(self):
+        """Helper method to notify UI components that data has changed."""
+        if hasattr(self.state_manager, 'notify_observers'):
+            self.state_manager.notify_observers()
 
     

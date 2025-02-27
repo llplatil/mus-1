@@ -35,6 +35,12 @@ class HasDateAdded(Protocol):
 class HasName(Protocol):
     name: str
 
+# Removed legacy enums for experiment sessions and arena image source
+# Define constants instead
+ARENA_SOURCE_DLC_EXPORT = "DLC_Export"
+ARENA_SOURCE_MANUAL = "Manual"
+ARENA_SOURCE_UNKNOWN = "Unknown"
+
 @dataclass
 class PluginMetadata:
     """Plugin metadata structure"""
@@ -43,41 +49,14 @@ class PluginMetadata:
     version: str
     description: str
     author: str
-    plugin_type: Optional[str] = None
-
-class ExperimentType(str, Enum):
-    NOR = "NOR"
-    OPEN_FIELD = "OpenField"
-
-class SessionStage(str, Enum):
-    """
-    Enumerates the typical 'stage' or 'phase' of an experiment session.
-    For NOR, we often have:
-      - FAMILIARIZATION (familiar)
-      - RECOGNITION (test)
-    For Open Field, the second session might also be
-      "re-test" after a period of weeks, etc.
-    """
-    FAMILIARIZATION = "familiarization"
-    RECOGNITION = "recognition"
-    HABITUATION = "habituation"
-    REEXPOSURE = "re-exposure"
-    # You can add other stages like "retest", "baseline", "habituation", etc.
+    supported_experiment_types: Optional[List[str]] = None
+    supported_processing_stages: Optional[List[str]] = None
+    supported_data_sources: Optional[List[str]] = None
+    plugin_type: Optional[str] = None  # delinites plugin type (eg experiment type, batch type, etc.) and has supported_experiment_types as sub classes
 
 class Sex(str, Enum):
     M = "M"
     F = "F"
-    UNKNOWN = "Unknown"
-
-
-class TrackingSource(str, Enum):
-    DLC = "DLC"
-    UNKNOWN = "Unknown"
-
-
-class ArenaImageSource(str, Enum):
-    DLC_EXPORT = "DLC_Export"
-    MANUAL = "Manual"
     UNKNOWN = "Unknown"
 
 
@@ -98,7 +77,7 @@ class TrackingData(BaseModel):
     """
     file_path: Path
     file_type: str = "csv"
-    source: TrackingSource = TrackingSource.UNKNOWN
+    source: str = "Unknown"
 
 
 class MouseMetadata(BaseModel):
@@ -117,7 +96,7 @@ class MouseMetadata(BaseModel):
     notes: str = ""
     in_training_set: bool = False
     date_added: datetime = Field(default_factory=datetime.now)
-    allowed_experiment_types: Set[ExperimentType] = Field(default_factory=set)
+    allowed_experiment_types: Set[str] = Field(default_factory=set)
 
     @validator("id")
     def validate_id(cls, v: str) -> str:
@@ -138,60 +117,61 @@ class ExperimentMetadata(BaseModel):
     
     Core properties:
       - id: unique experiment ID
-      - type: experiment type (as an ExperimentType enum)
+      - type: experiment type (as a string, e.g., "NOR", "OpenField")
       - subject_id: ID of the subject (mouse) undergoing experiment
       - date_recorded: when the experiment was recorded
+      - date_added: when the experiment was added to the project
     
-    Optional or plugin-specific properties:
-      - plugin_params: Dictionary holding dynamic plugin-specific fields.
-      - plugin_metadata: Static plugin metadata as returned by plugin_self_metadata.
+    Plugin-specific properties:
+      - plugin_params: Dictionary holding dynamic plugin-specific fields,
+                      organized by plugin name (e.g., {"NORPlugin": {"session_stage": "familiarization"}})
+      - plugin_metadata: List of PluginMetadata objects for the plugins used in this experiment
     
-    Additional fields help with experiment state and analysis.
+    Relationships:
+      - batch_ids: IDs of batches this experiment belongs to
+      - file_ids: IDs of files associated with this experiment
     """
     id: str
-    type: ExperimentType
+    type: str  # Used to be ExperimentType enum at metadata level now it should be ENUM at base plugin level
     subject_id: str
     date_recorded: datetime
     date_added: datetime = Field(default_factory=datetime.now)
+    
+    # Optional tracking data
     tracking_data: Optional[TrackingData] = None
     
-    session_stage: SessionStage = SessionStage.FAMILIARIZATION
-    session_index: int = 1
-    frame_rate: Optional[int] = None
-    start_time: float = 0.0
-    end_time: Optional[float] = None
-    duration: Optional[float] = None
-    arena_image_path: Optional[Path] = None
-    notes: str = ""
-    likelihood_threshold: Optional[float] = None
-    plugin_params: Dict[str, Any] = Field(default_factory=dict)
-    plugin_metadata: Optional[PluginMetadata] = None
+    # Plugin-specific parameters and metadata
+    plugin_params: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
+    plugin_metadata: List[PluginMetadata] = Field(default_factory=list)
     
-    @property
-    def phase_type(self) -> str:
-        """Return a normalized phase type (lowercased) based on the session_stage."""
-        return self.session_stage.value.lower() if self.session_stage else "unset"
+    # New fields for hierarchical experiment creation
+    processing_stage: str = ""
+    data_source: str = ""
+    associated_plugins: List[str] = Field(default_factory=list)
+    
+    # Relationships
+    batch_ids: Set[str] = Field(default_factory=set)
+    file_ids: Set[str] = Field(default_factory=set)
     
     @property
     def analysis_ready(self) -> bool:
-        """Return True if the experiment is ready for analysis (i.e. tracking_data is present and arena_image_path exists)."""
-        return (self.tracking_data is not None and 
-                self.arena_image_path is not None and 
-                self.arena_image_path.exists())
+        """Return True if the experiment is ready for analysis (i.e. tracking_data is present)."""
+        return self.tracking_data is not None
 
 
 class BatchMetadata(BaseModel):
     """
     Represents a group of experiments selected through some UI or search criteria.
     """
+    id: str
     selection_criteria: Dict[str, Any]
     experiment_ids: Set[str] = set()
-    analysis_type: Optional[ExperimentType] = None
+    analysis_type: Optional[str] = None  # Was ExperimentType enum
     date_added: datetime = Field(default_factory=datetime.now)
     parameters: Dict[str, Any] = {}
     likelihood_cutoff: float = 0.5
 
-    # New override field for per-batch threshold, if desired:
+    # should be an override field of global threshold if selected and global on:
     likelihood_threshold: Optional[float] = None
 
 class GlobalSortMode(str, Enum):
@@ -206,23 +186,43 @@ class ProjectMetadata(BaseModel):
     """
     dlc_configs: List[Path] = []
     master_body_parts: List[BodyPartMetadata] = Field(default_factory=list)
+
+    @validator('master_body_parts', pre=True, each_item=True)
+    def fix_master_body_parts(cls, v):
+        if isinstance(v, str):
+            return BodyPartMetadata(name=v)
+        return v
+
     active_body_parts: List[BodyPartMetadata] = Field(default_factory=list)
+
+    @validator('active_body_parts', pre=True, each_item=True)
+    def fix_active_body_parts(cls, v):
+        if isinstance(v, str):
+            return BodyPartMetadata(name=v)
+        return v
+
     tracked_objects: List[ObjectMetadata] = Field(default_factory=list)
+
+    @validator('tracked_objects', pre=True, each_item=True)
+    def fix_tracked_objects(cls, v):
+        if isinstance(v, str):
+            return ObjectMetadata(name=v)
+        return v
 
     # Global sort mode stored with the project
     global_sort_mode: GlobalSortMode = GlobalSortMode.NATURAL_ORDER
 
     # Global frame rate used unless an experiment specifies otherwise
     global_frame_rate: int = 60
-
+    
     # Basic metadata about the project
     project_name: str
     date_created: datetime
 
     @validator("project_name")
     def check_project_name(cls, v: str) -> str:
-        if not v or len(v) < 3:
-            raise ValueError("Project name must be at least 3 characters.")
+        if not v or len(v.strip()) < 3:
+            raise ValueError("Project name must be at least 3 characters")
         return v
 
 
@@ -236,7 +236,7 @@ class ArenaImageMetadata(BaseModel):
     arena_markings: Dict[str, Any] = {}
     in_training_set: bool = False
     experiment_ids: Set[str] = set()
-    source: ArenaImageSource = ArenaImageSource.UNKNOWN
+    source: str = ARENA_SOURCE_UNKNOWN
 
     # Distinguish between "image" and "video"
     media_type: str = "image"  # "image" or "video"

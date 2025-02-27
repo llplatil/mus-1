@@ -1,7 +1,7 @@
 from pathlib import Path
 from datetime import datetime
 from core.metadata import PluginMetadata
-from .base_plugin import BasePlugin
+from plugins.base_plugin import BasePlugin
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -35,6 +35,7 @@ class BasicCSVPlotPlugin(BasePlugin):
         """
         Validate the experiment by checking:
         - The CSV file path is valid (exists).
+        - use data manager to extracts body parts from a DLC CSV file by reading the header (level 1) and returning a set of unique body parts.
         - If a body_part is provided in plugin_params, it exists in the project's master body parts.
         - The CSV file contains tracked body parts that match at least one of the project's master body parts.
         """
