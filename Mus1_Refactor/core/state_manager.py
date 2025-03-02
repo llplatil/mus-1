@@ -4,6 +4,7 @@ import logging
 from typing import Optional, List, Union, Callable
 from .metadata import ProjectState, MouseMetadata, ExperimentMetadata, PluginMetadata
 from .sort_manager import sort_items
+from .logging_bus import LoggingEventBus
 
 logger = logging.getLogger("mus1.core.state_manager")
 
@@ -15,6 +16,8 @@ class StateManager:
     def __init__(self, project_state: Optional[ProjectState] = None):
         self._project_state = project_state or ProjectState()
         self._observers: List[Callable[[], None]] = []  # Added list to track observer callbacks
+        self.log_bus = LoggingEventBus.get_instance()
+        self.log_bus.log("StateManager initialized", "info", "StateManager")
 
     @property
     def project_state(self) -> ProjectState:
@@ -24,6 +27,7 @@ class StateManager:
         """Update the current project state with a new ProjectState."""
         self._project_state = new_state
         logger.info("Project state updated.")
+        self.log_bus.log("Project state updated", "info", "StateManager")
         self.notify_observers()  # Notify observers on state change
 
     def sync_supported_experiment_types(self, plugin_manager) -> None:
@@ -34,6 +38,7 @@ class StateManager:
         types_list = plugin_manager.get_supported_experiment_types()
         self._project_state.supported_experiment_types = types_list
         logger.info(f"Synced supported experiment types: {types_list}")
+        self.log_bus.log(f"Synced supported experiment types: {len(types_list)} types", "info", "StateManager")
 
     def get_supported_experiment_types(self) -> List[str]:
         """
@@ -227,6 +232,8 @@ class StateManager:
         """Notify all registered observers about a state change."""
         for callback in self._observers:
             callback()
+        # Log notification to the LoggingEventBus
+        self.log_bus.log(f"Notified {len(self._observers)} observers of state change", "info", "StateManager")
 
     def get_compatible_processing_stages(self, plugin_manager, exp_type: str) -> list:
         """Return processing stages compatible with the given experiment type using the plugin manager."""

@@ -3,22 +3,29 @@ from PySide6.QtWidgets import (
     QGroupBox, QFormLayout, QLineEdit, QComboBox, QTextEdit, QPushButton, QLabel, QDateTimeEdit, QCheckBox
 )
 from core.metadata import Sex
-from gui.navigation_pane import NavigationPane  # Import the new NavigationPane
+from gui.navigation_pane import NavigationPane  
 from PySide6.QtCore import QDateTime
+from core.logging_bus import LoggingEventBus
 
 class SubjectView(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
 
         main_layout = QHBoxLayout(self)
+        
+        # Get the LoggingEventBus singleton
+        self.log_bus = LoggingEventBus.get_instance()
 
         # Left navigation (using NavigationPane)
-        self.nav_pane = NavigationPane(self)
-        self.nav_pane.add_button("Add Subject")
-        self.nav_pane.add_button("View Subjects")
-        self.nav_pane.connect_button_group()
-        self.nav_pane.button_clicked.connect(self.on_nav_change)
-        main_layout.addWidget(self.nav_pane)
+        self.navigation_pane = NavigationPane(self)
+        self.navigation_pane.add_button("Add Subject")
+        self.navigation_pane.add_button("View Subjects")
+        self.navigation_pane.connect_button_group()
+        self.navigation_pane.button_clicked.connect(self.on_nav_change)
+        main_layout.addWidget(self.navigation_pane)
+        
+        # Log initialization
+        self.log_bus.log("SubjectView initialized", "info", "SubjectView")
 
         # Right area: a stacked widget with multiple sub-pages
         self.pages = QStackedWidget()
@@ -28,34 +35,61 @@ class SubjectView(QWidget):
         add_layout = QVBoxLayout(self.page_add_subject)
 
         self.subject_group = QGroupBox("Add Subject")
-        subject_form_layout = QFormLayout()
+        
+        # Switch to a horizontal layout with two columns to make better use of space
+        subject_layout = QHBoxLayout()
+        
+        # Left column
+        left_form_layout = QFormLayout()
         self.subject_id_edit = QLineEdit()
         self.sex_combo = QComboBox()
         self.sex_combo.addItems([Sex.M.value, Sex.F.value, Sex.UNKNOWN.value])
         self.genotype_edit = QLineEdit()
         self.treatment_edit = QLineEdit()
+        
+        left_form_layout.addRow("Subject ID:", self.subject_id_edit)
+        left_form_layout.addRow("Sex:", self.sex_combo)
+        left_form_layout.addRow("Genotype:", self.genotype_edit)
+        left_form_layout.addRow("Treatment:", self.treatment_edit)
+        
+        # Right column
+        right_form_layout = QFormLayout()
         self.subject_notes_edit = QTextEdit()
+        self.subject_notes_edit.setMaximumHeight(80)  # Limit height to save space
         self.birth_date_edit = QDateTimeEdit()
         self.birth_date_edit.setCalendarPopup(True)
         self.birth_date_edit.setDisplayFormat("yyyy-MM-dd HH:mm:ss")
         self.birth_date_edit.setDateTime(QDateTime.currentDateTime())
         self.in_training_set_checkbox = QCheckBox("In Training Set")
+        
+        right_form_layout.addRow("Notes:", self.subject_notes_edit)
+        right_form_layout.addRow("Birth Date:", self.birth_date_edit)
+        right_form_layout.addRow(self.in_training_set_checkbox)
+        
+        # Add columns to the layout
+        left_column = QWidget()
+        left_column.setLayout(left_form_layout)
+        right_column = QWidget()
+        right_column.setLayout(right_form_layout)
+        
+        subject_layout.addWidget(left_column)
+        subject_layout.addWidget(right_column)
+        
+        # Add the button and notification label below the columns
+        button_layout = QFormLayout()
         self.add_subject_button = QPushButton("Add Subject")
         self.add_subject_button.clicked.connect(self.handle_add_subject)
-        # Notification label to show success messages for subject addition
         self.subject_notification_label = QLabel("")
-
-        subject_form_layout.addRow("Subject ID:", self.subject_id_edit)
-        subject_form_layout.addRow("Sex:", self.sex_combo)
-        subject_form_layout.addRow("Genotype:", self.genotype_edit)
-        subject_form_layout.addRow("Treatment:", self.treatment_edit)
-        subject_form_layout.addRow("Notes:", self.subject_notes_edit)
-        subject_form_layout.addRow("Birth Date:", self.birth_date_edit)
-        subject_form_layout.addRow(self.in_training_set_checkbox)
-        subject_form_layout.addWidget(self.add_subject_button)
-        subject_form_layout.addRow("", self.subject_notification_label)
-        self.subject_group.setLayout(subject_form_layout)
-
+        
+        button_layout.addWidget(self.add_subject_button)
+        button_layout.addRow("", self.subject_notification_label)
+        
+        # Set up the overall layout
+        main_subject_layout = QVBoxLayout()
+        main_subject_layout.addLayout(subject_layout)
+        main_subject_layout.addLayout(button_layout)
+        
+        self.subject_group.setLayout(main_subject_layout)
         add_layout.addWidget(self.subject_group)
         self.page_add_subject.setLayout(add_layout)
         self.pages.addWidget(self.page_add_subject)
@@ -79,7 +113,7 @@ class SubjectView(QWidget):
         self.setLayout(main_layout)
 
         # If you want to default to the first page:
-        self.nav_pane.set_button_checked(0)
+        self.navigation_pane.set_button_checked(0)
 
         # (Optionally) we might have a reference to project_manager set later
         self.project_manager = None
@@ -94,18 +128,21 @@ class SubjectView(QWidget):
     def handle_add_subject(self):
         """Handle the logic for adding a new subject, as before."""
         if not self.project_manager:
+            self.log_bus.log("Error: No ProjectManager is set", "error", "SubjectView")
             return
 
         subject_id = self.subject_id_edit.text().strip()
         if not subject_id:
             # You might show a dialog or warning here
+            self.log_bus.log("Error: Subject ID cannot be empty", "error", "SubjectView")
             return
 
         # 1) Verify the subject ID is unique
-        existing_ids = [subj.id for subj in self.project_manager.get_sorted_subjects()]
+        existing_ids = [subj.id for subj in self.project_manager.state_manager.get_sorted_list("subjects")]
         if subject_id in existing_ids:
             # You could show a dialog, e.g.: QMessageBox.warning(self, "Error", "Subject ID already exists.")
             print("Subject ID already exists!")  # placeholder
+            self.log_bus.log(f"Error: Subject ID '{subject_id}' already exists", "error", "SubjectView")
             return
 
         # 2) Retrieve the sex enum from the combo
@@ -148,6 +185,9 @@ class SubjectView(QWidget):
 
         # Refresh the displayed subject list based on current global sort preference
         self.refresh_subject_list_display()
+        
+        # Log successful addition
+        self.log_bus.log(f"Subject '{subject_id}' added successfully", "success", "SubjectView")
 
         # Show success notification
         self.subject_notification_label.setText("Subject added successfully!")
@@ -155,7 +195,7 @@ class SubjectView(QWidget):
         QTimer.singleShot(3000, lambda: self.subject_notification_label.setText(""))
 
         # Switch to the "View Subjects" page to show the updated list
-        self.nav_pane.set_button_checked(1)
+        self.navigation_pane.set_button_checked(1)
 
     def refresh_subject_list_display(self):
         """Refresh the list of all subjects in the project with full metadata details."""
@@ -163,6 +203,10 @@ class SubjectView(QWidget):
             return
         self.subject_list_widget.clear()
         all_subjects = self.project_manager.get_sorted_subjects()
+        
+        # Log the refresh activity
+        self.log_bus.log(f"Refreshing subject list: {len(all_subjects)} subjects found", "info", "SubjectView")
+        
         for subj in all_subjects:
             birth_str = subj.birth_date.strftime('%Y-%m-%d %H:%M:%S') if subj.birth_date else 'N/A'
             details = (f"ID: {subj.id} | Sex: {subj.sex.value} | Genotype: {subj.genotype or 'N/A'} "

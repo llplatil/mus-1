@@ -132,6 +132,8 @@ class ExperimentView(QWidget):
         if not self.state_manager:
             return
 
+        self.navigation_pane.add_log_message("Refreshing experiment data...", 'info')
+
         # Update experiment types dropdown
         self.expTypeCombo.clear()
         supported_types = sorted(self.state_manager.get_supported_experiment_types())
@@ -153,12 +155,17 @@ class ExperimentView(QWidget):
         if self.expTypeCombo.count() > 0:
             self.on_experiment_type_changed(0)
 
+        self.navigation_pane.add_log_message(f"Found {len(supported_types)} experiment types and {len(all_experiments)} experiments", 'success')
+
     def on_experiment_type_changed(self, index):
         """When experiment type changes, update processing stages, data sources, and plugin selection."""
         if index < 0 or not self.project_manager:
             return
 
         exp_type = self.expTypeCombo.currentText()
+        
+        # Add log message
+        self.navigation_pane.add_log_message(f"Selected experiment type: {exp_type}", 'info')
 
         # Clear plugin selections
         self.clear_plugin_selection()
@@ -166,8 +173,14 @@ class ExperimentView(QWidget):
         # Update Processing Stage combo based on exp_type
         stages = self.state_manager.get_compatible_processing_stages(self.project_manager.plugin_manager, exp_type)
         self.stageCombo.clear()
-        for stage in stages:
-            self.stageCombo.addItem(stage)
+        
+        if not stages:
+            self.navigation_pane.add_log_message(f"No processing stages found for {exp_type}", 'warning')
+            self.stageCombo.setEnabled(False)
+        else:
+            self.stageCombo.setEnabled(True)
+            for stage in stages:
+                self.stageCombo.addItem(stage)
 
         # Trigger update of Data Source combo
         self.on_stage_changed(0)
@@ -254,10 +267,19 @@ class ExperimentView(QWidget):
             return
 
         stage = self.stageCombo.currentText()
+        if stage:
+            self.navigation_pane.add_log_message(f"Selected processing stage: {stage}", 'info')
+        
         sources = self.state_manager.get_compatible_data_sources(self.project_manager.plugin_manager, exp_type, stage)
         self.sourceCombo.clear()
-        for src in sources:
-            self.sourceCombo.addItem(src)
+        
+        if not sources:
+            self.navigation_pane.add_log_message(f"No data sources found for {exp_type} at {stage} stage", 'warning')
+            self.sourceCombo.setEnabled(False)
+        else:
+            self.sourceCombo.setEnabled(True)
+            for src in sources:
+                self.sourceCombo.addItem(src)
 
         self.update_plugin_selection()
 
@@ -266,12 +288,20 @@ class ExperimentView(QWidget):
         exp_type = self.expTypeCombo.currentText()
         stage = self.stageCombo.currentText()
         source = self.sourceCombo.currentText()
+        
+        if source:
+            self.navigation_pane.add_log_message(f"Selected data source: {source}", 'info')
 
         # Clear previous plugin selection UI
         self.clear_plugin_selection()
 
         # Get compatible plugins based on criteria
         compatible_plugins = self.project_manager.plugin_manager.get_plugins_by_criteria(exp_type, stage, source)
+        
+        if not compatible_plugins:
+            self.navigation_pane.add_log_message(f"No compatible plugins found for the selected criteria", 'warning')
+        else:
+            self.navigation_pane.add_log_message(f"Found {len(compatible_plugins)} compatible plugins", 'success')
 
         for plugin in compatible_plugins:
             metadata = plugin.plugin_self_metadata()
@@ -298,6 +328,7 @@ class ExperimentView(QWidget):
         """Handle adding a new experiment."""
         if not self.project_manager:
             QMessageBox.warning(self, "Error", "No ProjectManager is set.")
+            self.navigation_pane.add_log_message("Error: No ProjectManager is set", 'error')
             return
 
         # Get basic experiment info
@@ -320,15 +351,18 @@ class ExperimentView(QWidget):
 
         if not selected_plugins:
             QMessageBox.warning(self, "Error", "Please select at least one plugin.")
+            self.navigation_pane.add_log_message("Error: No plugins selected", 'error')
             return
 
         # Validate basic fields
         if not experiment_id:
             QMessageBox.warning(self, "Error", "Please enter an experiment ID.")
+            self.navigation_pane.add_log_message("Error: Missing experiment ID", 'error')
             return
 
         if not subject_id:
             QMessageBox.warning(self, "Error", "Please select a subject.")
+            self.navigation_pane.add_log_message("Error: No subject selected", 'error')
             return
 
         # Gather plugin parameters
@@ -341,6 +375,8 @@ class ExperimentView(QWidget):
 
         try:
             # Add the experiment with hierarchical workflow
+            self.navigation_pane.add_log_message(f"Adding experiment '{experiment_id}' with {len(selected_plugins)} plugins...", 'info')
+            
             new_experiment = self.project_manager.add_experiment(
                 experiment_id,
                 subject_id,
@@ -353,12 +389,15 @@ class ExperimentView(QWidget):
             )
 
             QMessageBox.information(self, "Success", f"Experiment '{new_experiment.id}' added.")
+            self.navigation_pane.add_log_message(f"Successfully added experiment '{new_experiment.id}'", 'success')
             self.navigation_pane.set_button_checked(1)
             self.refresh_experiment_list_display()
             self.experiment_notification_label.setText("Experiment added successfully!")
             QTimer.singleShot(3000, lambda: self.experiment_notification_label.setText(""))
         except Exception as e:
-            QMessageBox.warning(self, "Error", str(e))
+            error_msg = str(e)
+            QMessageBox.warning(self, "Error", error_msg)
+            self.navigation_pane.add_log_message(f"Error adding experiment: {error_msg}", 'error')
 
     def refresh_experiment_list_display(self):
         sorted_exps = self.state_manager.get_sorted_list("experiments")

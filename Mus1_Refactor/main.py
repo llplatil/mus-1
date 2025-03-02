@@ -13,6 +13,7 @@ logging.basicConfig(
 
 from PySide6.QtWidgets import QApplication, QSplashScreen
 from PySide6.QtGui import QPixmap
+from PySide6.QtTest import QTest
 
 # 1) Bring in relevant classes/functions from core
 from core import (
@@ -21,6 +22,10 @@ from core import (
     DataManager,
     ProjectManager
 )
+from core.logging_bus import LoggingEventBus
+
+# Import the project selection dialog
+from gui.project_selection_dialog import ProjectSelectionDialog
 
 def main():
     logger = logging.getLogger(__name__)
@@ -35,26 +40,53 @@ def main():
     app = QApplication(sys.argv)
 
     # Show a splash screen
-    splash_pix = QPixmap("path_or_resource_for_splash.png")  # Replace with your image path
+    splash_pix = QPixmap("assets/m1logo.jpg")  # Updated path to use the assets directory
+    # Try fallback paths if the image isn't found
+    if splash_pix.isNull():
+        alternate_paths = [
+            "Mus1_Refactor/assets/m1logo.jpg",
+            "../assets/m1logo.jpg",
+            "m1logo.jpg"
+        ]
+        for path in alternate_paths:
+            splash_pix = QPixmap(path)
+            if not splash_pix.isNull():
+                break
+        
     splash = QSplashScreen(splash_pix)
     splash.show()
     # Process events so that the splash screen is displayed immediately
     app.processEvents()
+    QTest.qWait(1000)  # Wait for 1 second
+    splash.close()  # Close splash before proceeding
 
-    # Create the core managers
+    # Initialize the LoggingEventBus singleton
+    log_bus = LoggingEventBus.get_instance()
+    log_bus.log("LoggingEventBus initialized", "info", "MainApp")
+
+    # Create the core managers (no longer need to pass log_bus)
     state_manager = StateManager()
     data_manager = DataManager(state_manager)
     project_manager = ProjectManager(state_manager)
 
-    logger.info("Core managers created. Setting up the MainWindow.")
+    logger.info("Core managers created. Launching Project Selection Dialog.")
 
-    # Create and launch our MainWindow
+    # Show the project selection dialog
+    from PySide6.QtWidgets import QDialog
+    dialog = ProjectSelectionDialog(project_manager)
+    if dialog.exec() != QDialog.Accepted:
+        logger.info("Project selection was cancelled. Exiting application.")
+        sys.exit(0)
+
+    logger.info("Project selected: {}".format(getattr(dialog, 'selected_project_name', 'Unknown')))
+
+    # Create and launch our MainWindow after project selection
     from gui.main_window import MainWindow
-    main_window = MainWindow(state_manager, data_manager, project_manager)
+    selected_project = getattr(dialog, 'selected_project_name', None)
+    main_window = MainWindow(state_manager, data_manager, project_manager, selected_project=selected_project)
     main_window.show()
 
-    # Once the project is selected/loaded, we close the splash screen
-    splash.finish(main_window)
+    # Splash already closed; no need to finish splash
 
     logger.info("MUS1 init complete. Starting application event loop.")
     sys.exit(app.exec())

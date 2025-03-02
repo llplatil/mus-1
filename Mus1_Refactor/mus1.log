@@ -20,3 +20,405 @@
 2025-02-27 00:26:23,928 [INFO] mus1.core.state_manager - Synced plugin metadata (sorted by 'Natural Order (Numbers as Numbers)'): ['BasicCSVPlot', 'NOR', 'OF']
 2025-02-27 00:26:23,938 [INFO] __main__ - MUS1 init complete. Starting application event loop.
 2025-02-27 00:26:43,408 [INFO] mus1.core.project_manager - Project saved to projects/refactor_test1/project_state.json
+2025-02-27 12:16:42,959 [INFO] __main__ - Launching MUS1...
+2025-02-27 12:16:42,959 [INFO] mus1.core.metadata - Initializing metadata system
+2025-02-27 12:16:42,959 [INFO] mus1.core.metadata - Metadata system initialized successfully
+2025-02-27 12:16:44,064 [INFO] mus1.core.project_manager - Registered 3 plugins
+2025-02-27 12:16:44,064 [INFO] mus1.core.state_manager - Synced supported experiment types: ['NOR']
+2025-02-27 12:16:44,064 [INFO] mus1.core.state_manager - Synced plugin metadata (sorted by 'Natural Order (Numbers as Numbers)'): ['BasicCSVPlot', 'NOR', 'OF']
+2025-02-27 12:16:44,064 [INFO] __main__ - Core managers created. Setting up the MainWindow.
+2025-02-27 12:17:37,009 [INFO] mus1.core.project_manager - Loading project from projects/refactor_test1
+2025-02-27 12:17:37,010 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
+2025-02-27 12:17:37,011 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
+2025-02-27 12:17:37,030 [INFO] mus1.core.state_manager - Synced supported experiment types: ['NOR']
+2025-02-27 12:17:37,030 [INFO] mus1.core.state_manager - Synced plugin metadata (sorted by 'Natural Order (Numbers as Numbers)'): ['BasicCSVPlot', 'NOR', 'OF']
+2025-02-27 12:17:37,036 [INFO] mus1.core.project_manager - Loading project from projects/refactor_test1
+2025-02-27 12:17:37,036 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
+2025-02-27 12:17:37,037 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
+2025-02-27 12:17:37,045 [INFO] __main__ - MUS1 init complete. Starting application event loop.
+2025-02-27 14:14:45,018 [INFO] __main__ - Launching MUS1...
+2025-02-27 14:14:45,018 [INFO] mus1.core.metadata - Initializing metadata system
+2025-02-27 14:14:45,018 [INFO] mus1.core.metadata - Metadata system initialized successfully
+2025-02-27 14:14:46,112 [INFO] mus1 - [MainApp] LoggingEventBus initialized
+2025-02-27 14:14:46,125 [INFO] mus1 - [StateManager] StateManager initialized
+2025-02-27 14:14:46,125 [INFO] mus1 - [ProjectManager] ProjectManager initialized
+2025-02-27 14:14:46,127 [INFO] mus1 - [ProjectManager] Registered 3 plugins
+2025-02-27 14:14:46,127 [INFO] mus1.core.project_manager - Registered 3 plugins
+2025-02-27 14:14:46,127 [INFO] mus1.core.state_manager - Synced supported experiment types: ['NOR']
+2025-02-27 14:14:46,127 [INFO] mus1 - [StateManager] Synced supported experiment types: 1 types
+2025-02-27 14:14:46,127 [INFO] mus1.core.state_manager - Synced plugin metadata (sorted by 'Natural Order (Numbers as Numbers)'): ['BasicCSVPlot', 'NOR', 'OF']
+2025-02-27 14:14:46,127 [INFO] __main__ - Core managers created. Setting up the MainWindow.
+2025-02-27 14:14:46,156 [INFO] mus1 - [MainWindow] MainWindow initializing
+2025-02-27 14:14:46,217 [INFO] mus1 - [SubjectView] SubjectView initialized
+2025-02-27 14:14:46,222 [INFO] mus1 - [MainWindow] Switched to Project tab
+2025-02-27 14:14:48,233 [INFO] mus1.core.project_manager - Loading project from projects/refactor_test1
+2025-02-27 14:14:48,234 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
+2025-02-27 14:14:48,235 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
+2025-02-27 14:14:48,264 [INFO] mus1.core.state_manager - Synced supported experiment types: ['NOR']
+2025-02-27 14:14:48,264 [INFO] mus1 - [StateManager] Synced supported experiment types: 1 types
+2025-02-27 14:14:48,264 [INFO] mus1.core.state_manager - Synced plugin metadata (sorted by 'Natural Order (Numbers as Numbers)'): ['BasicCSVPlot', 'NOR', 'OF']
+2025-02-27 14:14:48,269 [INFO] mus1.core.project_manager - Loading project from projects/refactor_test1
+2025-02-27 14:14:48,269 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
+2025-02-27 14:14:48,269 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
+2025-02-27 14:14:48,269 [INFO] mus1 - [MainWindow] Project 'refactor_test1' selected
+2025-02-27 14:14:48,277 [INFO] __main__ - MUS1 init complete. Starting application event loop.
+2025-02-27 14:14:49,658 [INFO] mus1 - [MainWindow] Switched to Subjects tab
+2025-02-27 14:15:00,337 [INFO] mus1 - [MainWindow] Switched to Project tab
+2025-02-27 14:15:04,085 [INFO] mus1 - [MainWindow] Switched to Subjects tab
+2025-02-27 14:15:06,103 [INFO] mus1 - [MainWindow] Switched to Experiments tab
+2025-02-27 14:15:07,547 [INFO] mus1 - [MainWindow] Switched to Subjects tab
+2025-02-27 14:15:08,359 [INFO] mus1 - [MainWindow] Switched to Project tab
+2025-02-27 14:15:10,098 [INFO] mus1 - [MainWindow] Switched to Subjects tab
+2025-02-27 14:15:43,805 [INFO] mus1 - [MainWindow] Switched to Experiments tab
+2025-02-27 14:15:44,348 [INFO] mus1 - [MainWindow] Switched to Subjects tab
+2025-02-27 14:15:45,053 [INFO] mus1 - [MainWindow] Switched to Project tab
+2025-02-27 14:15:47,854 [INFO] mus1 - [MainWindow] Switched to Subjects tab
+2025-02-27 14:15:48,350 [INFO] mus1 - [MainWindow] Switched to Experiments tab
+2025-02-27 14:20:45,440 [INFO] mus1 - [MainWindow] Switched to Subjects tab
+2025-02-27 14:42:19,505 [INFO] __main__ - Launching MUS1...
+2025-02-27 14:42:19,505 [INFO] mus1.core.metadata - Initializing metadata system
+2025-02-27 14:42:19,505 [INFO] mus1.core.metadata - Metadata system initialized successfully
+2025-02-27 14:42:20,608 [INFO] mus1 - [MainApp] LoggingEventBus initialized
+2025-02-27 14:42:20,622 [INFO] mus1 - [StateManager] StateManager initialized
+2025-02-27 14:42:20,622 [INFO] mus1 - [ProjectManager] ProjectManager initialized
+2025-02-27 14:42:20,623 [INFO] mus1 - [ProjectManager] Registered 3 plugins
+2025-02-27 14:42:20,623 [INFO] mus1.core.project_manager - Registered 3 plugins
+2025-02-27 14:42:20,623 [INFO] mus1.core.state_manager - Synced supported experiment types: ['NOR']
+2025-02-27 14:42:20,623 [INFO] mus1 - [StateManager] Synced supported experiment types: 1 types
+2025-02-27 14:42:20,623 [INFO] mus1.core.state_manager - Synced plugin metadata (sorted by 'Natural Order (Numbers as Numbers)'): ['BasicCSVPlot', 'NOR', 'OF']
+2025-02-27 14:42:20,623 [INFO] __main__ - Core managers created. Setting up the MainWindow.
+2025-02-27 14:42:20,646 [INFO] mus1 - [MainWindow] MainWindow initializing
+2025-02-27 14:45:52,929 [INFO] __main__ - Launching MUS1...
+2025-02-27 14:45:52,929 [INFO] mus1.core.metadata - Initializing metadata system
+2025-02-27 14:45:52,929 [INFO] mus1.core.metadata - Metadata system initialized successfully
+2025-02-27 14:45:54,032 [INFO] mus1 - [MainApp] LoggingEventBus initialized
+2025-02-27 14:45:54,043 [INFO] mus1 - [StateManager] StateManager initialized
+2025-02-27 14:45:54,043 [INFO] mus1 - [ProjectManager] ProjectManager initialized
+2025-02-27 14:45:54,044 [INFO] mus1 - [ProjectManager] Registered 3 plugins
+2025-02-27 14:45:54,044 [INFO] mus1.core.project_manager - Registered 3 plugins
+2025-02-27 14:45:54,044 [INFO] mus1.core.state_manager - Synced supported experiment types: ['NOR']
+2025-02-27 14:45:54,044 [INFO] mus1 - [StateManager] Synced supported experiment types: 1 types
+2025-02-27 14:45:54,044 [INFO] mus1.core.state_manager - Synced plugin metadata (sorted by 'Natural Order (Numbers as Numbers)'): ['BasicCSVPlot', 'NOR', 'OF']
+2025-02-27 14:45:54,044 [INFO] __main__ - Core managers created. Setting up the MainWindow.
+2025-02-27 14:45:54,064 [INFO] mus1 - [MainWindow] MainWindow initializing
+2025-02-27 14:45:54,126 [INFO] mus1 - [SubjectView] SubjectView initialized
+2025-02-27 14:45:54,130 [INFO] mus1 - [MainWindow] Switched to Project tab
+2025-02-27 14:46:03,597 [INFO] mus1.core.project_manager - Loading project from projects/refactor_test1
+2025-02-27 14:46:03,598 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
+2025-02-27 14:46:03,598 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
+2025-02-27 14:46:03,633 [INFO] mus1.core.state_manager - Synced supported experiment types: ['NOR']
+2025-02-27 14:46:03,633 [INFO] mus1 - [StateManager] Synced supported experiment types: 1 types
+2025-02-27 14:46:03,634 [INFO] mus1.core.state_manager - Synced plugin metadata (sorted by 'Natural Order (Numbers as Numbers)'): ['BasicCSVPlot', 'NOR', 'OF']
+2025-02-27 14:46:03,638 [INFO] mus1.core.project_manager - Loading project from projects/refactor_test1
+2025-02-27 14:46:03,638 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
+2025-02-27 14:46:03,638 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
+2025-02-27 14:46:03,639 [INFO] mus1 - [MainWindow] Project 'refactor_test1' selected
+2025-02-27 14:46:03,646 [INFO] __main__ - MUS1 init complete. Starting application event loop.
+2025-02-27 14:46:21,466 [INFO] mus1 - [MainWindow] Switched to Subjects tab
+2025-02-27 14:46:25,075 [INFO] mus1 - [MainWindow] Switched to Experiments tab
+2025-02-27 14:46:25,955 [INFO] mus1 - [MainWindow] Switched to Subjects tab
+2025-02-27 14:46:26,708 [INFO] mus1 - [MainWindow] Switched to Project tab
+2025-02-27 14:46:27,576 [INFO] mus1 - [MainWindow] Switched to Subjects tab
+2025-02-27 14:46:28,250 [INFO] mus1 - [MainWindow] Switched to Experiments tab
+2025-02-27 14:48:13,070 [INFO] __main__ - Launching MUS1...
+2025-02-27 14:48:13,071 [INFO] mus1.core.metadata - Initializing metadata system
+2025-02-27 14:48:13,071 [INFO] mus1.core.metadata - Metadata system initialized successfully
+2025-02-27 14:48:14,162 [INFO] mus1 - [MainApp] LoggingEventBus initialized
+2025-02-27 14:48:14,178 [INFO] mus1 - [StateManager] StateManager initialized
+2025-02-27 14:48:14,178 [INFO] mus1 - [ProjectManager] ProjectManager initialized
+2025-02-27 14:48:14,179 [INFO] mus1 - [ProjectManager] Registered 3 plugins
+2025-02-27 14:48:14,179 [INFO] mus1.core.project_manager - Registered 3 plugins
+2025-02-27 14:48:14,179 [INFO] mus1.core.state_manager - Synced supported experiment types: ['NOR']
+2025-02-27 14:48:14,179 [INFO] mus1 - [StateManager] Synced supported experiment types: 1 types
+2025-02-27 14:48:14,179 [INFO] mus1.core.state_manager - Synced plugin metadata (sorted by 'Natural Order (Numbers as Numbers)'): ['BasicCSVPlot', 'NOR', 'OF']
+2025-02-27 14:48:14,179 [INFO] __main__ - Core managers created. Setting up the MainWindow.
+2025-02-27 14:48:14,199 [INFO] mus1 - [MainWindow] MainWindow initializing
+2025-02-27 14:48:14,260 [INFO] mus1 - [SubjectView] SubjectView initialized
+2025-02-27 14:48:14,264 [INFO] mus1 - [MainWindow] Switched to Project tab
+2025-02-27 14:48:16,169 [INFO] mus1.core.project_manager - Loading project from projects/refactor_test1
+2025-02-27 14:48:16,170 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
+2025-02-27 14:48:16,170 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
+2025-02-27 14:48:16,204 [INFO] mus1.core.state_manager - Synced supported experiment types: ['NOR']
+2025-02-27 14:48:16,204 [INFO] mus1 - [StateManager] Synced supported experiment types: 1 types
+2025-02-27 14:48:16,205 [INFO] mus1.core.state_manager - Synced plugin metadata (sorted by 'Natural Order (Numbers as Numbers)'): ['BasicCSVPlot', 'NOR', 'OF']
+2025-02-27 14:48:16,210 [INFO] mus1.core.project_manager - Loading project from projects/refactor_test1
+2025-02-27 14:48:16,210 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
+2025-02-27 14:48:16,210 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
+2025-02-27 14:48:16,210 [INFO] mus1 - [MainWindow] Project 'refactor_test1' selected
+2025-02-27 14:48:16,220 [INFO] __main__ - MUS1 init complete. Starting application event loop.
+2025-02-27 14:48:18,581 [INFO] mus1 - [MainWindow] Switched to Subjects tab
+2025-02-27 14:48:19,974 [INFO] mus1 - [MainWindow] Switched to Experiments tab
+2025-02-27 14:48:20,542 [INFO] mus1 - [MainWindow] Switched to Subjects tab
+2025-02-27 14:48:21,200 [INFO] mus1 - [MainWindow] Switched to Project tab
+2025-02-27 18:17:03,386 [INFO] __main__ - Launching MUS1...
+2025-02-27 18:17:03,386 [INFO] mus1.core.metadata - Initializing metadata system
+2025-02-27 18:17:03,386 [INFO] mus1.core.metadata - Metadata system initialized successfully
+2025-02-27 18:17:04,498 [INFO] mus1 - [MainApp] LoggingEventBus initialized
+2025-02-27 18:17:04,514 [INFO] mus1 - [StateManager] StateManager initialized
+2025-02-27 18:17:04,514 [INFO] mus1 - [ProjectManager] ProjectManager initialized
+2025-02-27 18:17:04,517 [INFO] mus1 - [ProjectManager] Registered 3 plugins
+2025-02-27 18:17:04,517 [INFO] mus1.core.project_manager - Registered 3 plugins
+2025-02-27 18:17:04,517 [INFO] mus1.core.state_manager - Synced supported experiment types: ['NOR']
+2025-02-27 18:17:04,517 [INFO] mus1 - [StateManager] Synced supported experiment types: 1 types
+2025-02-27 18:17:04,517 [INFO] mus1.core.state_manager - Synced plugin metadata (sorted by 'Natural Order (Numbers as Numbers)'): ['BasicCSVPlot', 'NOR', 'OF']
+2025-02-27 18:17:04,517 [INFO] __main__ - Core managers created. Setting up the MainWindow.
+2025-02-27 18:17:04,543 [INFO] mus1 - [MainWindow] MainWindow initializing
+2025-02-27 18:17:04,614 [INFO] mus1 - [SubjectView] SubjectView initialized
+2025-02-27 18:17:04,619 [INFO] mus1 - [MainWindow] Switched to Project tab
+2025-02-27 18:26:22,899 [WARNING] mus1 - [MainWindow] No project selected, closing application
+2025-02-27 18:26:22,912 [INFO] __main__ - MUS1 init complete. Starting application event loop.
+2025-02-27 18:26:28,360 [INFO] __main__ - Launching MUS1...
+2025-02-27 18:26:28,361 [INFO] mus1.core.metadata - Initializing metadata system
+2025-02-27 18:26:28,361 [INFO] mus1.core.metadata - Metadata system initialized successfully
+2025-02-27 18:26:29,454 [INFO] mus1 - [MainApp] LoggingEventBus initialized
+2025-02-27 18:26:29,470 [INFO] mus1 - [StateManager] StateManager initialized
+2025-02-27 18:26:29,470 [INFO] mus1 - [ProjectManager] ProjectManager initialized
+2025-02-27 18:26:29,471 [INFO] mus1 - [ProjectManager] Registered 3 plugins
+2025-02-27 18:26:29,471 [INFO] mus1.core.project_manager - Registered 3 plugins
+2025-02-27 18:26:29,471 [INFO] mus1.core.state_manager - Synced supported experiment types: ['NOR']
+2025-02-27 18:26:29,471 [INFO] mus1 - [StateManager] Synced supported experiment types: 1 types
+2025-02-27 18:26:29,471 [INFO] mus1.core.state_manager - Synced plugin metadata (sorted by 'Natural Order (Numbers as Numbers)'): ['BasicCSVPlot', 'NOR', 'OF']
+2025-02-27 18:26:29,471 [INFO] __main__ - Core managers created. Setting up the MainWindow.
+2025-02-27 18:26:29,495 [INFO] mus1 - [MainWindow] MainWindow initializing
+2025-02-27 18:26:29,556 [INFO] mus1 - [SubjectView] SubjectView initialized
+2025-02-27 18:26:29,560 [INFO] mus1 - [MainWindow] Switched to Project tab
+2025-02-27 18:30:44,537 [WARNING] mus1 - [MainWindow] No project selected, closing application
+2025-02-27 18:30:44,544 [INFO] __main__ - MUS1 init complete. Starting application event loop.
+2025-02-27 18:31:16,380 [INFO] __main__ - Launching MUS1...
+2025-02-27 18:31:16,380 [INFO] mus1.core.metadata - Initializing metadata system
+2025-02-27 18:31:16,380 [INFO] mus1.core.metadata - Metadata system initialized successfully
+2025-02-27 18:31:17,482 [INFO] mus1 - [MainApp] LoggingEventBus initialized
+2025-02-27 18:31:17,496 [INFO] mus1 - [StateManager] StateManager initialized
+2025-02-27 18:31:17,497 [INFO] mus1 - [ProjectManager] ProjectManager initialized
+2025-02-27 18:31:17,498 [INFO] mus1 - [ProjectManager] Registered 3 plugins
+2025-02-27 18:31:17,498 [INFO] mus1.core.project_manager - Registered 3 plugins
+2025-02-27 18:31:17,498 [INFO] mus1.core.state_manager - Synced supported experiment types: ['NOR']
+2025-02-27 18:31:17,498 [INFO] mus1 - [StateManager] Synced supported experiment types: 1 types
+2025-02-27 18:31:17,498 [INFO] mus1.core.state_manager - Synced plugin metadata (sorted by 'Natural Order (Numbers as Numbers)'): ['BasicCSVPlot', 'NOR', 'OF']
+2025-02-27 18:31:17,498 [INFO] __main__ - Core managers created. Setting up the MainWindow.
+2025-02-27 18:31:17,517 [INFO] mus1 - [MainWindow] MainWindow initializing
+2025-02-27 18:31:17,578 [INFO] mus1 - [SubjectView] SubjectView initialized
+2025-02-27 18:31:17,582 [INFO] mus1 - [MainWindow] Switched to Project tab
+2025-02-27 18:37:41,329 [WARNING] mus1 - [MainWindow] No project selected, closing application
+2025-02-27 18:37:41,343 [INFO] __main__ - MUS1 init complete. Starting application event loop.
+2025-02-27 18:40:56,119 [INFO] __main__ - Launching MUS1...
+2025-02-27 18:40:56,119 [INFO] mus1.core.metadata - Initializing metadata system
+2025-02-27 18:40:56,119 [INFO] mus1.core.metadata - Metadata system initialized successfully
+2025-02-27 18:40:57,239 [INFO] mus1 - [MainApp] LoggingEventBus initialized
+2025-02-27 18:40:57,249 [INFO] mus1 - [StateManager] StateManager initialized
+2025-02-27 18:40:57,249 [INFO] mus1 - [ProjectManager] ProjectManager initialized
+2025-02-27 18:40:57,251 [INFO] mus1 - [ProjectManager] Registered 3 plugins
+2025-02-27 18:40:57,251 [INFO] mus1.core.project_manager - Registered 3 plugins
+2025-02-27 18:40:57,251 [INFO] mus1.core.state_manager - Synced supported experiment types: ['NOR']
+2025-02-27 18:40:57,251 [INFO] mus1 - [StateManager] Synced supported experiment types: 1 types
+2025-02-27 18:40:57,251 [INFO] mus1.core.state_manager - Synced plugin metadata (sorted by 'Natural Order (Numbers as Numbers)'): ['BasicCSVPlot', 'NOR', 'OF']
+2025-02-27 18:40:57,251 [INFO] __main__ - Core managers created. Setting up the MainWindow.
+2025-02-27 18:40:57,271 [INFO] mus1 - [MainWindow] MainWindow initializing
+2025-02-27 18:40:57,332 [INFO] mus1 - [SubjectView] SubjectView initialized
+2025-02-27 18:40:57,336 [INFO] mus1 - [MainWindow] Switched to Project tab
+2025-02-27 18:41:09,392 [WARNING] mus1 - [MainWindow] No project selected, closing application
+2025-02-27 18:41:09,429 [INFO] __main__ - MUS1 init complete. Starting application event loop.
+2025-02-27 18:41:41,743 [INFO] __main__ - Launching MUS1...
+2025-02-27 18:41:41,743 [INFO] mus1.core.metadata - Initializing metadata system
+2025-02-27 18:41:41,743 [INFO] mus1.core.metadata - Metadata system initialized successfully
+2025-02-27 18:41:42,852 [INFO] mus1 - [MainApp] LoggingEventBus initialized
+2025-02-27 18:41:42,861 [INFO] mus1 - [StateManager] StateManager initialized
+2025-02-27 18:41:42,861 [INFO] mus1 - [ProjectManager] ProjectManager initialized
+2025-02-27 18:41:42,862 [INFO] mus1 - [ProjectManager] Registered 3 plugins
+2025-02-27 18:41:42,862 [INFO] mus1.core.project_manager - Registered 3 plugins
+2025-02-27 18:41:42,862 [INFO] mus1.core.state_manager - Synced supported experiment types: ['NOR']
+2025-02-27 18:41:42,862 [INFO] mus1 - [StateManager] Synced supported experiment types: 1 types
+2025-02-27 18:41:42,862 [INFO] mus1.core.state_manager - Synced plugin metadata (sorted by 'Natural Order (Numbers as Numbers)'): ['BasicCSVPlot', 'NOR', 'OF']
+2025-02-27 18:41:42,862 [INFO] __main__ - Core managers created. Setting up the MainWindow.
+2025-02-27 18:41:42,879 [INFO] mus1 - [MainWindow] MainWindow initializing
+2025-02-27 18:41:42,938 [INFO] mus1 - [SubjectView] SubjectView initialized
+2025-02-27 18:41:42,942 [INFO] mus1 - [MainWindow] Switched to Project tab
+2025-02-27 18:51:50,282 [WARNING] mus1 - [MainWindow] No project selected, closing application
+2025-02-27 18:51:50,293 [INFO] __main__ - MUS1 init complete. Starting application event loop.
+2025-02-27 18:52:49,837 [INFO] __main__ - Launching MUS1...
+2025-02-27 18:52:49,837 [INFO] mus1.core.metadata - Initializing metadata system
+2025-02-27 18:52:49,837 [INFO] mus1.core.metadata - Metadata system initialized successfully
+2025-02-27 18:52:50,951 [INFO] mus1 - [MainApp] LoggingEventBus initialized
+2025-02-27 18:52:50,957 [INFO] mus1 - [StateManager] StateManager initialized
+2025-02-27 18:52:50,957 [INFO] mus1 - [ProjectManager] ProjectManager initialized
+2025-02-27 18:52:50,958 [INFO] mus1 - [ProjectManager] Registered 3 plugins
+2025-02-27 18:52:50,958 [INFO] mus1.core.project_manager - Registered 3 plugins
+2025-02-27 18:52:50,958 [INFO] mus1.core.state_manager - Synced supported experiment types: ['NOR']
+2025-02-27 18:52:50,958 [INFO] mus1 - [StateManager] Synced supported experiment types: 1 types
+2025-02-27 18:52:50,958 [INFO] mus1.core.state_manager - Synced plugin metadata (sorted by 'Natural Order (Numbers as Numbers)'): ['BasicCSVPlot', 'NOR', 'OF']
+2025-02-27 18:52:50,958 [INFO] __main__ - Core managers created. Launching Project Selection Dialog.
+2025-02-27 18:53:09,396 [INFO] mus1.core.project_manager - Created project directory at projects/refactor_test2
+2025-02-27 18:53:09,396 [INFO] mus1 - [ProjectManager] Created project directory at projects/refactor_test2
+2025-02-27 18:53:09,398 [INFO] mus1.core.project_manager - Created standard subfolders: subjects, experiments, batches, data, media, external_configs, project_notes
+2025-02-27 18:53:09,406 [INFO] mus1.core.project_manager - Project saved to projects/refactor_test2/project_state.json
+2025-02-27 18:55:55,978 [INFO] __main__ - Launching MUS1...
+2025-02-27 18:55:55,978 [INFO] mus1.core.metadata - Initializing metadata system
+2025-02-27 18:55:55,978 [INFO] mus1.core.metadata - Metadata system initialized successfully
+2025-02-27 18:55:57,088 [INFO] mus1 - [MainApp] LoggingEventBus initialized
+2025-02-27 18:55:57,094 [INFO] mus1 - [StateManager] StateManager initialized
+2025-02-27 18:55:57,094 [INFO] mus1 - [ProjectManager] ProjectManager initialized
+2025-02-27 18:55:57,095 [INFO] mus1 - [ProjectManager] Registered 3 plugins
+2025-02-27 18:55:57,095 [INFO] mus1.core.project_manager - Registered 3 plugins
+2025-02-27 18:55:57,095 [INFO] mus1.core.state_manager - Synced supported experiment types: ['NOR']
+2025-02-27 18:55:57,095 [INFO] mus1 - [StateManager] Synced supported experiment types: 1 types
+2025-02-27 18:55:57,095 [INFO] mus1.core.state_manager - Synced plugin metadata (sorted by 'Natural Order (Numbers as Numbers)'): ['BasicCSVPlot', 'NOR', 'OF']
+2025-02-27 18:55:57,095 [INFO] __main__ - Core managers created. Launching Project Selection Dialog.
+2025-02-27 18:56:12,531 [INFO] mus1.core.project_manager - Loading project from projects/refactor_test2
+2025-02-27 18:56:12,531 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
+2025-02-27 18:56:12,532 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
+2025-02-27 18:56:12,556 [INFO] __main__ - Project selected: refactor_test2
+2025-02-27 18:56:12,566 [INFO] mus1 - [MainWindow] MainWindow initializing
+2025-02-27 18:56:12,571 [INFO] mus1 - [SubjectView] SubjectView initialized
+2025-02-27 18:56:12,577 [INFO] mus1 - [MainWindow] Switched to Project tab
+2025-02-27 18:56:17,752 [INFO] mus1.core.project_manager - Loading project from projects/refactor_test1
+2025-02-27 18:56:17,755 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
+2025-02-27 18:56:17,755 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
+2025-02-27 18:56:17,779 [INFO] mus1.core.state_manager - Synced supported experiment types: ['NOR']
+2025-02-27 18:56:17,779 [INFO] mus1 - [StateManager] Synced supported experiment types: 1 types
+2025-02-27 18:56:17,780 [INFO] mus1.core.state_manager - Synced plugin metadata (sorted by 'Natural Order (Numbers as Numbers)'): ['BasicCSVPlot', 'NOR', 'OF']
+2025-02-27 18:56:17,788 [INFO] mus1.core.project_manager - Loading project from projects/refactor_test1
+2025-02-27 18:56:17,788 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
+2025-02-27 18:56:17,788 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
+2025-02-27 18:56:17,788 [INFO] mus1 - [MainWindow] Project 'refactor_test1' selected
+2025-02-27 18:56:17,797 [INFO] __main__ - MUS1 init complete. Starting application event loop.
+2025-02-27 18:56:23,002 [INFO] mus1.core.project_manager - Loading project from projects/refactor_test2
+2025-02-27 18:56:23,003 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
+2025-02-27 18:56:23,003 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
+2025-02-27 18:56:31,061 [INFO] __main__ - Launching MUS1...
+2025-02-27 18:56:31,061 [INFO] mus1.core.metadata - Initializing metadata system
+2025-02-27 18:56:31,061 [INFO] mus1.core.metadata - Metadata system initialized successfully
+2025-02-27 18:56:32,174 [INFO] mus1 - [MainApp] LoggingEventBus initialized
+2025-02-27 18:56:32,180 [INFO] mus1 - [StateManager] StateManager initialized
+2025-02-27 18:56:32,180 [INFO] mus1 - [ProjectManager] ProjectManager initialized
+2025-02-27 18:56:32,181 [INFO] mus1 - [ProjectManager] Registered 3 plugins
+2025-02-27 18:56:32,181 [INFO] mus1.core.project_manager - Registered 3 plugins
+2025-02-27 18:56:32,181 [INFO] mus1.core.state_manager - Synced supported experiment types: ['NOR']
+2025-02-27 18:56:32,181 [INFO] mus1 - [StateManager] Synced supported experiment types: 1 types
+2025-02-27 18:56:32,181 [INFO] mus1.core.state_manager - Synced plugin metadata (sorted by 'Natural Order (Numbers as Numbers)'): ['BasicCSVPlot', 'NOR', 'OF']
+2025-02-27 18:56:32,181 [INFO] __main__ - Core managers created. Launching Project Selection Dialog.
+2025-02-27 18:57:23,211 [INFO] mus1.core.project_manager - Loading project from projects/refactor_test2
+2025-02-27 18:57:23,212 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
+2025-02-27 18:57:23,212 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
+2025-02-27 18:57:23,240 [INFO] __main__ - Project selected: refactor_test2
+2025-02-27 18:57:23,247 [INFO] mus1 - [MainWindow] MainWindow initializing
+2025-02-27 18:57:23,252 [INFO] mus1 - [SubjectView] SubjectView initialized
+2025-02-27 18:57:23,257 [INFO] mus1 - [MainWindow] Switched to Project tab
+2025-02-27 18:57:29,322 [INFO] mus1.core.project_manager - Created project directory at projects/test3
+2025-02-27 18:57:29,322 [INFO] mus1 - [ProjectManager] Created project directory at projects/test3
+2025-02-27 18:57:29,323 [INFO] mus1.core.project_manager - Created standard subfolders: subjects, experiments, batches, data, media, external_configs, project_notes
+2025-02-27 18:57:29,326 [INFO] mus1.core.project_manager - Project saved to projects/test3/project_state.json
+2025-02-27 18:57:29,347 [INFO] mus1.core.state_manager - Synced supported experiment types: ['NOR']
+2025-02-27 18:57:29,347 [INFO] mus1 - [StateManager] Synced supported experiment types: 1 types
+2025-02-27 18:57:29,347 [INFO] mus1.core.state_manager - Synced plugin metadata (sorted by 'Natural Order (Numbers as Numbers)'): ['BasicCSVPlot', 'NOR', 'OF']
+2025-02-27 18:57:29,363 [INFO] __main__ - MUS1 init complete. Starting application event loop.
+2025-02-27 19:06:23,456 [INFO] __main__ - Launching MUS1...
+2025-02-27 19:06:23,456 [INFO] mus1.core.metadata - Initializing metadata system
+2025-02-27 19:06:23,456 [INFO] mus1.core.metadata - Metadata system initialized successfully
+2025-02-27 19:06:25,566 [INFO] mus1 - [MainApp] LoggingEventBus initialized
+2025-02-27 19:06:25,579 [INFO] mus1 - [StateManager] StateManager initialized
+2025-02-27 19:06:25,579 [INFO] mus1 - [ProjectManager] ProjectManager initialized
+2025-02-27 19:06:25,580 [INFO] mus1 - [ProjectManager] Registered 3 plugins
+2025-02-27 19:06:25,580 [INFO] mus1.core.project_manager - Registered 3 plugins
+2025-02-27 19:06:25,580 [INFO] mus1.core.state_manager - Synced supported experiment types: ['NOR']
+2025-02-27 19:06:25,580 [INFO] mus1 - [StateManager] Synced supported experiment types: 1 types
+2025-02-27 19:06:25,581 [INFO] mus1.core.state_manager - Synced plugin metadata (sorted by 'Natural Order (Numbers as Numbers)'): ['BasicCSVPlot', 'NOR', 'OF']
+2025-02-27 19:06:25,581 [INFO] __main__ - Core managers created. Launching Project Selection Dialog.
+2025-02-27 19:11:33,914 [INFO] __main__ - Launching MUS1...
+2025-02-27 19:11:33,914 [INFO] mus1.core.metadata - Initializing metadata system
+2025-02-27 19:11:33,914 [INFO] mus1.core.metadata - Metadata system initialized successfully
+2025-02-27 19:11:36,037 [INFO] mus1 - [MainApp] LoggingEventBus initialized
+2025-02-27 19:11:36,043 [INFO] mus1 - [StateManager] StateManager initialized
+2025-02-27 19:11:36,044 [INFO] mus1 - [ProjectManager] ProjectManager initialized
+2025-02-27 19:11:36,045 [INFO] mus1 - [ProjectManager] Registered 3 plugins
+2025-02-27 19:11:36,045 [INFO] mus1.core.project_manager - Registered 3 plugins
+2025-02-27 19:11:36,045 [INFO] mus1.core.state_manager - Synced supported experiment types: ['NOR']
+2025-02-27 19:11:36,045 [INFO] mus1 - [StateManager] Synced supported experiment types: 1 types
+2025-02-27 19:11:36,045 [INFO] mus1.core.state_manager - Synced plugin metadata (sorted by 'Natural Order (Numbers as Numbers)'): ['BasicCSVPlot', 'NOR', 'OF']
+2025-02-27 19:11:36,045 [INFO] __main__ - Core managers created. Launching Project Selection Dialog.
+2025-02-27 19:11:47,557 [INFO] __main__ - Project selection was cancelled. Exiting application.
+2025-02-27 19:25:58,168 [INFO] __main__ - Launching MUS1...
+2025-02-27 19:25:58,168 [INFO] mus1.core.metadata - Initializing metadata system
+2025-02-27 19:25:58,168 [INFO] mus1.core.metadata - Metadata system initialized successfully
+2025-02-27 19:26:00,278 [INFO] mus1 - [MainApp] LoggingEventBus initialized
+2025-02-27 19:26:00,283 [INFO] mus1 - [StateManager] StateManager initialized
+2025-02-27 19:26:00,283 [INFO] mus1 - [ProjectManager] ProjectManager initialized
+2025-02-27 19:26:00,284 [INFO] mus1 - [ProjectManager] Registered 3 plugins
+2025-02-27 19:26:00,284 [INFO] mus1.core.project_manager - Registered 3 plugins
+2025-02-27 19:26:00,284 [INFO] mus1.core.state_manager - Synced supported experiment types: ['NOR']
+2025-02-27 19:26:00,284 [INFO] mus1 - [StateManager] Synced supported experiment types: 1 types
+2025-02-27 19:26:00,284 [INFO] mus1.core.state_manager - Synced plugin metadata (sorted by 'Natural Order (Numbers as Numbers)'): ['BasicCSVPlot', 'NOR', 'OF']
+2025-02-27 19:26:00,284 [INFO] __main__ - Core managers created. Launching Project Selection Dialog.
+2025-02-27 19:26:14,977 [INFO] mus1.core.project_manager - Loading project from projects/refactor_test2
+2025-02-27 19:26:14,978 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
+2025-02-27 19:26:14,978 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
+2025-02-27 19:26:15,001 [INFO] __main__ - Project selected: refactor_test2
+2025-02-27 19:26:15,010 [INFO] mus1 - [MainWindow] MainWindow initializing
+2025-02-27 19:26:15,014 [INFO] mus1 - [SubjectView] SubjectView initialized
+2025-02-27 19:26:15,020 [INFO] mus1 - [MainWindow] Switched to Project tab
+2025-02-27 19:26:22,823 [INFO] mus1.core.project_manager - Loading project from projects/refactor_test2
+2025-02-27 19:26:22,824 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
+2025-02-27 19:26:22,824 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
+2025-02-27 19:26:22,849 [INFO] mus1.core.state_manager - Synced supported experiment types: ['NOR']
+2025-02-27 19:26:22,849 [INFO] mus1 - [StateManager] Synced supported experiment types: 1 types
+2025-02-27 19:26:22,849 [INFO] mus1.core.state_manager - Synced plugin metadata (sorted by 'Natural Order (Numbers as Numbers)'): ['BasicCSVPlot', 'NOR', 'OF']
+2025-02-27 19:26:22,856 [INFO] mus1.core.project_manager - Loading project from projects/refactor_test2
+2025-02-27 19:26:22,856 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
+2025-02-27 19:26:22,856 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
+2025-02-27 19:26:22,856 [INFO] mus1 - [MainWindow] Project 'refactor_test2' selected
+2025-02-27 19:26:22,861 [INFO] __main__ - MUS1 init complete. Starting application event loop.
+2025-02-27 19:30:40,975 [INFO] __main__ - Launching MUS1...
+2025-02-27 19:30:40,975 [INFO] mus1.core.metadata - Initializing metadata system
+2025-02-27 19:30:40,975 [INFO] mus1.core.metadata - Metadata system initialized successfully
+2025-02-27 19:30:43,095 [INFO] mus1 - [MainApp] LoggingEventBus initialized
+2025-02-27 19:30:43,106 [INFO] mus1 - [StateManager] StateManager initialized
+2025-02-27 19:30:43,106 [INFO] mus1 - [ProjectManager] ProjectManager initialized
+2025-02-27 19:30:43,107 [INFO] mus1 - [ProjectManager] Registered 3 plugins
+2025-02-27 19:30:43,107 [INFO] mus1.core.project_manager - Registered 3 plugins
+2025-02-27 19:30:43,107 [INFO] mus1.core.state_manager - Synced supported experiment types: ['NOR']
+2025-02-27 19:30:43,107 [INFO] mus1 - [StateManager] Synced supported experiment types: 1 types
+2025-02-27 19:30:43,107 [INFO] mus1.core.state_manager - Synced plugin metadata (sorted by 'Natural Order (Numbers as Numbers)'): ['BasicCSVPlot', 'NOR', 'OF']
+2025-02-27 19:30:43,107 [INFO] __main__ - Core managers created. Launching Project Selection Dialog.
+2025-02-27 19:31:07,581 [INFO] mus1.core.project_manager - Created project directory at projects/test4
+2025-02-27 19:31:07,581 [INFO] mus1 - [ProjectManager] Created project directory at projects/test4
+2025-02-27 19:31:07,583 [INFO] mus1.core.project_manager - Created standard subfolders: subjects, experiments, batches, data, media, external_configs, project_notes
+2025-02-27 19:31:07,588 [INFO] mus1.core.project_manager - Project saved to projects/test4/project_state.json
+2025-02-27 19:31:07,607 [INFO] __main__ - Project selected: test4
+2025-02-27 19:31:07,613 [INFO] mus1 - [MainWindow] MainWindow initializing
+2025-02-27 19:31:07,617 [INFO] mus1 - [SubjectView] SubjectView initialized
+2025-02-27 19:31:07,622 [INFO] mus1 - [MainWindow] Switched to Project tab
+2025-02-27 19:31:07,623 [INFO] mus1.core.state_manager - Synced supported experiment types: ['NOR']
+2025-02-27 19:31:07,623 [INFO] mus1 - [StateManager] Synced supported experiment types: 1 types
+2025-02-27 19:31:07,623 [INFO] mus1.core.state_manager - Synced plugin metadata (sorted by 'Natural Order (Numbers as Numbers)'): ['BasicCSVPlot', 'NOR', 'OF']
+2025-02-27 19:31:07,627 [INFO] mus1.core.project_manager - Loading project from projects/test4
+2025-02-27 19:31:07,627 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
+2025-02-27 19:31:07,627 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
+2025-02-27 19:31:07,627 [INFO] mus1 - [MainWindow] Project 'test4' selected
+2025-02-27 19:31:07,635 [INFO] __main__ - MUS1 init complete. Starting application event loop.
+2025-02-27 19:31:20,428 [INFO] __main__ - Launching MUS1...
+2025-02-27 19:31:20,428 [INFO] mus1.core.metadata - Initializing metadata system
+2025-02-27 19:31:20,428 [INFO] mus1.core.metadata - Metadata system initialized successfully
+2025-02-27 19:31:22,553 [INFO] mus1 - [MainApp] LoggingEventBus initialized
+2025-02-27 19:31:22,564 [INFO] mus1 - [StateManager] StateManager initialized
+2025-02-27 19:31:22,564 [INFO] mus1 - [ProjectManager] ProjectManager initialized
+2025-02-27 19:31:22,565 [INFO] mus1 - [ProjectManager] Registered 3 plugins
+2025-02-27 19:31:22,565 [INFO] mus1.core.project_manager - Registered 3 plugins
+2025-02-27 19:31:22,565 [INFO] mus1.core.state_manager - Synced supported experiment types: ['NOR']
+2025-02-27 19:31:22,565 [INFO] mus1 - [StateManager] Synced supported experiment types: 1 types
+2025-02-27 19:31:22,565 [INFO] mus1.core.state_manager - Synced plugin metadata (sorted by 'Natural Order (Numbers as Numbers)'): ['BasicCSVPlot', 'NOR', 'OF']
+2025-02-27 19:31:22,565 [INFO] __main__ - Core managers created. Launching Project Selection Dialog.
+2025-02-27 19:31:34,275 [INFO] __main__ - Project selected: refactor_test1
+2025-02-27 19:31:34,284 [INFO] mus1 - [MainWindow] MainWindow initializing
+2025-02-27 19:31:34,289 [INFO] mus1 - [SubjectView] SubjectView initialized
+2025-02-27 19:31:34,295 [INFO] mus1 - [MainWindow] Switched to Project tab
+2025-02-27 19:31:34,296 [INFO] mus1.core.state_manager - Synced supported experiment types: ['NOR']
+2025-02-27 19:31:34,296 [INFO] mus1 - [StateManager] Synced supported experiment types: 1 types
+2025-02-27 19:31:34,296 [INFO] mus1.core.state_manager - Synced plugin metadata (sorted by 'Natural Order (Numbers as Numbers)'): ['BasicCSVPlot', 'NOR', 'OF']
+2025-02-27 19:31:34,300 [INFO] mus1.core.project_manager - Loading project from projects/refactor_test1
+2025-02-27 19:31:34,301 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
+2025-02-27 19:31:34,301 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
+2025-02-27 19:31:34,301 [INFO] mus1 - [MainWindow] Project 'refactor_test1' selected
+2025-02-27 19:31:34,311 [INFO] __main__ - MUS1 init complete. Starting application event loop.
+2025-02-27 19:31:37,899 [INFO] mus1 - [MainWindow] Switched to Subjects tab
+2025-02-27 19:31:39,387 [INFO] mus1 - [MainWindow] Switched to Experiments tab
+2025-02-27 19:31:40,044 [INFO] mus1 - [MainWindow] Switched to Subjects tab
+2025-02-27 19:31:40,685 [INFO] mus1 - [MainWindow] Switched to Project tab

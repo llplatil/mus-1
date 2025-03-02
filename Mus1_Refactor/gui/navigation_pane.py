@@ -1,5 +1,7 @@
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QPushButton, QButtonGroup, QListWidget, QListWidgetItem, QSizePolicy
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QPushButton, QButtonGroup, QListWidget, QListWidgetItem, QSizePolicy, QTextEdit, QLabel
 from PySide6.QtCore import Signal, Qt
+from PySide6.QtGui import QColor, QTextCharFormat, QFont
+from datetime import datetime
 
 class NavigationPane(QWidget):
     """
@@ -44,6 +46,47 @@ class NavigationPane(QWidget):
         self.list_widget.setMaximumWidth(180)
         self.list_widget.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff) #Added
 
+        # Add a spacer to push everything up
+        self.layout.addStretch()
+        
+        # Remove log section header and update log display area
+        self.log_display = QTextEdit(self)
+        self.log_display.setReadOnly(True)
+        self.log_display.setMaximumHeight(120)  # Make it more compact
+        self.log_display.setMinimumHeight(80)   # Ensure it's always visible
+        self.log_display.setStyleSheet("""
+            QTextEdit {
+                border: none;
+                background-color: transparent;  /* transparent background */
+                color: #cccccc;             /* default text color: light gray */
+                font-size: 11px;
+                font-weight: normal;
+                padding: 4px;
+            }
+        """)
+        self.layout.addWidget(self.log_display)
+        
+        # Update log message formats for different levels - using grayscale colors
+        self.log_formats = {
+            'info': self._create_format(QColor('#d3d3d3')),      # Light gray
+            'success': self._create_format(QColor('#a9a9a9')),   # Medium gray
+            'warning': self._create_format(QColor('#808080')),   # Gray
+            'error': self._create_format(QColor('#505050'))      # Dark gray
+        }
+        
+        # Maximum number of log entries to keep
+        self.max_log_entries = 3
+        self.log_entries = []
+
+    def _create_format(self, color):
+        """Create a text format with the specified color"""
+        fmt = QTextCharFormat()
+        fmt.setForeground(color)
+        # Create a lighter font (normal weight)
+        font = QFont()
+        font.setWeight(QFont.Normal)
+        fmt.setFont(font)
+        return fmt
 
     def add_button(self, text: str) -> QListWidgetItem:
         """
@@ -76,3 +119,61 @@ class NavigationPane(QWidget):
         margins = self.list_widget.contentsMargins()
         size += margins.top() + margins.bottom()
         self.list_widget.setFixedHeight(size) 
+        
+    def add_log_message(self, message, level='info'):
+        """
+        Add a new log message to the log display area.
+        
+        Args:
+            message: The message to log
+            level: Log level ('info', 'success', 'warning', 'error')
+        """
+        # Get current timestamp
+        timestamp = datetime.now().strftime('%H:%M:%S')
+        
+        # Create the formatted log entry
+        log_entry = f"[{timestamp}] {message}"
+        
+        # Add to our log entries list
+        self.log_entries.append((log_entry, level))
+        
+        # Limit number of entries
+        if len(self.log_entries) > self.max_log_entries:
+            self.log_entries = self.log_entries[-self.max_log_entries:]
+            
+        # Update the display
+        self._update_log_display()
+            
+    def _update_log_display(self):
+        """Update the log display text with all current entries"""
+        self.log_display.clear()
+        cursor = self.log_display.textCursor()
+        
+        for entry, level in self.log_entries:
+            cursor.insertText(entry + '\n', self.log_formats.get(level, self.log_formats['info']))
+            
+        # Scroll to the bottom to show the most recent messages
+        self.log_display.verticalScrollBar().setValue(self.log_display.verticalScrollBar().maximum())
+        
+    def clear_log(self):
+        """Clear all log messages"""
+        self.log_entries = []
+        self.log_display.clear()
+
+    def on_log_event(self, message: str, level: str, source: str, timestamp=None):
+        """
+        Receive log events from the LoggingEventBus.
+        
+        Args:
+            message: The log message
+            level: Log level ('info', 'success', 'warning', 'error')
+            source: Source component that generated the log
+            timestamp: When the log was generated
+        """
+        # Format message with source if provided
+        formatted_message = message
+        if source:
+            formatted_message = f"{message} [{source}]"
+            
+        # Use existing add_log_message method to display the log
+        self.add_log_message(formatted_message, level) 

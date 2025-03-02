@@ -1,5 +1,6 @@
 from PySide6.QtWidgets import QWidget, QHBoxLayout, QVBoxLayout, QStackedWidget, QListWidget, QFormLayout, QLineEdit, QComboBox, QPushButton, QTextEdit, QSpinBox, QCheckBox, QLabel, QFileDialog, QAbstractItemView, QSizePolicy
 from gui.navigation_pane import NavigationPane
+from core.sort_manager import sort_items
 
 
 class ProjectView(QWidget):
@@ -197,25 +198,33 @@ class ProjectView(QWidget):
         # Open a file dialog to let the user select a DLC config YAML file
         config_file_path, _ = QFileDialog.getOpenFileName(self, "Select DLC Config", ".", "YAML Files (*.yaml *.yml)")
         if not config_file_path:
-            print("No config file selected.")
+            msg = "No config file selected."
+            print(msg)
+            self.navigation_pane.add_log_message(msg, 'warning')
             return
 
         try:
+            self.navigation_pane.add_log_message(f"Extracting body parts from DLC config...", 'info')
             # Extract body parts from the selected config file using DataManager
             extracted = self.window().data_manager.extract_bodyparts_from_dlc_config(Path(config_file_path))
-            print("Extracted body parts:", extracted)
+            self.navigation_pane.add_log_message(f"Extracted {len(extracted)} body parts from config", 'success')
 
             # Update master body parts via ProjectManager core logic
             self.window().project_manager.update_master_body_parts(extracted)
+            self.navigation_pane.add_log_message("Updated master body parts list", 'success')
 
             self.refresh_lists()
         except Exception as e:
-            print("Error extracting body parts:", e)
+            error_msg = f"Error extracting body parts: {e}"
+            print(error_msg)
+            self.navigation_pane.add_log_message(error_msg, 'error')
 
     def handle_save_all(self):
         """
         Gather data from all portions of the UI and save it all at once.
         """
+        self.navigation_pane.add_log_message("Saving all project changes...", 'info')
+        
         pm = self.window().project_manager
         state = pm.state_manager.project_state
 
@@ -245,18 +254,9 @@ class ProjectView(QWidget):
         state.settings["global_sort_mode"] = self.sort_mode_combo.currentText()
         state.likelihood_filter_enabled = likelihood_enabled
 
-        print("Saving all project changes:")
-        print("Global Frame Rate:", frame_rate)
-        print("Global Frame Rate Enabled:", self.enable_frame_rate_checkbox.isChecked())
-        print("Global Sort Mode:", self.sort_mode_combo.currentText())
-        print("Likelihood Filter Enabled:", likelihood_enabled)
-        print("Active Body Parts:", current_body_parts)
-        print("Tracked Objects:", current_objects)
-        print("Project Notes:", project_notes)
-
         # Persist to disk
         pm.save_project()
-        print("All project changes have been saved successfully.")
+        self.navigation_pane.add_log_message("All project changes saved successfully", 'success')
         self.refresh_lists()
 
     def handle_cancel(self):
@@ -312,9 +312,12 @@ class ProjectView(QWidget):
             available_projects = self.window().project_manager.list_available_projects()
             project_path = next((p for p in available_projects if p.name == selected_project), None)
             if project_path is None:
-                print(f"Project directory for '{selected_project}' not found.")
+                error_msg = f"Project directory for '{selected_project}' not found."
+                print(error_msg)
+                self.navigation_pane.add_log_message(error_msg, 'error')
                 return
             try:
+                self.navigation_pane.add_log_message(f"Switching to project: {selected_project}", 'info')
                 self.window().project_manager.load_project(project_path)
                 self.current_project_label.setText("Current Project: " + selected_project)
                 self.rename_line_edit.setText(selected_project)
@@ -334,46 +337,61 @@ class ProjectView(QWidget):
                 for obj in state.settings.get("tracked_objects", []):
                     self.current_objects_list.addItem(obj)
 
-                print("Switched to project:", selected_project)
+                self.navigation_pane.add_log_message(f"Successfully switched to project: {selected_project}", 'success')
                 self.refresh_lists()
             except Exception as e:
-                print("Error switching project:", e)
+                error_msg = f"Error switching project: {e}"
+                print(error_msg)
+                self.navigation_pane.add_log_message(error_msg, 'error')
         else:
-            print("No project selected to switch.")
+            msg = "No project selected to switch."
+            print(msg)
+            self.navigation_pane.add_log_message(msg, 'warning')
 
     def handle_rename_project(self):
         new_name = self.rename_line_edit.text().strip()
         if new_name:
             try:
+                self.navigation_pane.add_log_message(f"Renaming project to: {new_name}", 'info')
                 self.window().project_manager.rename_project(new_name)
-                print("Project renamed to:", new_name)
+                self.navigation_pane.add_log_message(f"Project successfully renamed to: {new_name}", 'success')
                 self.populate_project_list()
             except Exception as e:
-                print("Error renaming project:", e)
+                error_msg = f"Error renaming project: {e}"
+                print(error_msg)
+                self.navigation_pane.add_log_message(error_msg, 'error')
         else:
-            print("New project name cannot be empty.")
+            msg = "New project name cannot be empty."
+            print(msg)
+            self.navigation_pane.add_log_message(msg, 'warning')
 
     def handle_add_object(self):
         new_obj = self.new_object_line_edit.text().strip()
         if not new_obj:
-            print("No object name entered.")
+            msg = "No object name entered."
+            print(msg)
+            self.navigation_pane.add_log_message(msg, 'warning')
             return
         pm = self.window().project_manager
         state = pm.state_manager.project_state
         tracked_objects = state.settings.get("tracked_objects", [])
         if new_obj in tracked_objects:
-            print("Object already exists in tracked objects.")
+            msg = "Object already exists in tracked objects."
+            print(msg)
+            self.navigation_pane.add_log_message(msg, 'warning')
             return
         tracked_objects.append(new_obj)
         pm.update_tracked_objects(tracked_objects)
         self.new_object_line_edit.clear()
-        print("Added new object:", new_obj)
+        self.navigation_pane.add_log_message(f"Added new object: {new_obj}", 'success')
         self.refresh_lists()
 
     def handle_add_to_active(self):
         selected_items = self.all_body_parts_list.selectedItems()
         if not selected_items:
-            print("No body parts selected to add.")
+            msg = "No body parts selected to add."
+            print(msg)
+            self.navigation_pane.add_log_message(msg, 'warning')
             return
         pm = self.window().project_manager
         state = pm.state_manager.project_state
@@ -381,13 +399,15 @@ class ProjectView(QWidget):
         selected = [item.text() for item in selected_items]
         new_active = list(set(current_active) | set(selected))
         pm.update_active_body_parts(new_active)
-        print("Added selected body parts to active list.")
+        self.navigation_pane.add_log_message(f"Added {len(selected)} body parts to active list", 'success')
         self.refresh_lists()
 
     def handle_remove_from_active(self):
         selected_items = self.current_body_parts_list.selectedItems()
         if not selected_items:
-            print("No body parts selected for removal.")
+            msg = "No body parts selected for removal."
+            print(msg)
+            self.navigation_pane.add_log_message(msg, 'warning')
             return
         pm = self.window().project_manager
         state = pm.state_manager.project_state
@@ -395,7 +415,7 @@ class ProjectView(QWidget):
         to_remove = [item.text() for item in selected_items]
         new_active = [bp for bp in current_active if bp not in to_remove]
         pm.update_active_body_parts(new_active)
-        print("Removed selected body parts from active list.")
+        self.navigation_pane.add_log_message(f"Removed {len(to_remove)} body parts from active list", 'success')
         self.refresh_lists()
 
     def handle_save_body_parts(self):
@@ -407,7 +427,9 @@ class ProjectView(QWidget):
     def handle_remove_object(self):
         selected_items = self.current_objects_list.selectedItems()
         if not selected_items:
-            print("No objects selected for removal.")
+            msg = "No objects selected for removal."
+            print(msg)
+            self.navigation_pane.add_log_message(msg, 'warning')
             return
         pm = self.window().project_manager
         state = pm.state_manager.project_state
@@ -415,7 +437,7 @@ class ProjectView(QWidget):
         to_remove = [item.text() for item in selected_items]
         new_objects = [obj for obj in tracked_objects if obj not in to_remove]
         pm.update_tracked_objects(new_objects)
-        print("Removed selected object(s) from tracked objects.")
+        self.navigation_pane.add_log_message(f"Removed {len(to_remove)} object(s) from tracked objects", 'success')
         self.refresh_lists()
 
     def handle_save_objects(self):
@@ -441,30 +463,37 @@ class ProjectView(QWidget):
             self.parent().project_manager.refresh_all_lists()
         
     def refresh_lists(self):
+        self.navigation_pane.add_log_message("Refreshing project lists...", 'info')
+        
         pm = self.window().project_manager
         state = pm.state_manager.project_state
         sort_mode = state.settings.get("global_sort_mode", "Natural Order (Numbers as Numbers)")
-
+        
         # Refresh current active body parts list
         self.current_body_parts_list.clear()
         current_bps = state.settings.get("body_parts", [])
-        sorted_bps = pm.sort_manager.sort_items(current_bps, sort_mode)
+        sorted_bps = sort_items(current_bps, sort_mode)
         for bp in sorted_bps:
             self.current_body_parts_list.addItem(bp)
-
+        
         # Refresh all body parts (master) list
         self.all_body_parts_list.clear()
         if state.project_metadata and hasattr(state.project_metadata, "master_body_parts"):
-            sorted_master = pm.sort_manager.sort_items(state.project_metadata.master_body_parts, sort_mode)
+            sorted_master = sort_items(state.project_metadata.master_body_parts, sort_mode)
             for bp in sorted_master:
                 self.all_body_parts_list.addItem(bp)
-
+        
         # Refresh tracked objects list
         self.current_objects_list.clear()
         tracked_objects = state.settings.get("tracked_objects", [])
-        sorted_objects = pm.sort_manager.sort_items(tracked_objects, sort_mode)
+        sorted_objects = sort_items(tracked_objects, sort_mode)
         for obj in sorted_objects:
             self.current_objects_list.addItem(obj)
+        
+        self.navigation_pane.add_log_message(
+            f"Lists refreshed: {len(sorted_bps)} active body parts, {len(sorted_objects)} objects",
+            'success'
+        )
         
    
         

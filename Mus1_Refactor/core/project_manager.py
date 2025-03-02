@@ -11,6 +11,7 @@ from .metadata import ProjectState, ProjectMetadata, MouseMetadata, Sex, Experim
 from .state_manager import StateManager  # so we can type hint or reference if needed
 from core.plugin_manager import PluginManager
 from plugins.base_plugin import BasePlugin
+from core.logging_bus import LoggingEventBus
 
 logger = logging.getLogger("mus1.core.project_manager")
 
@@ -23,6 +24,8 @@ class ProjectManager:
         self.state_manager = state_manager
         self._current_project_root: Path | None = None
         self.plugin_manager = PluginManager()
+        self.log_bus = LoggingEventBus.get_instance()
+        self.log_bus.log("ProjectManager initialized", "info", "ProjectManager")
         
         # Plugins will be registered dynamically by scanning the plugins directory
         self._discover_and_register_plugins()
@@ -54,6 +57,7 @@ class ProjectManager:
                         if issubclass(obj, BasePlugin) and obj is not BasePlugin:
                             self.plugin_manager.register_plugin(obj())
 
+        self.log_bus.log(f"Registered {len(self.plugin_manager.get_all_plugins())} plugins", "success", "ProjectManager")
         logger.info(f"Registered {len(self.plugin_manager.get_all_plugins())} plugins")
 
     def create_project(self, project_root: Path, project_name: str) -> None:
@@ -66,11 +70,13 @@ class ProjectManager:
         """
         # 1) Make sure the directory does not already exist
         if project_root.exists():
+            self.log_bus.log(f"Error creating project: Directory '{project_root}' already exists", "error", "ProjectManager")
             raise FileExistsError(f"Directory '{project_root}' already exists.")
 
         # 2) Create the folder
         project_root.mkdir(parents=True, exist_ok=False)
         logger.info(f"Created project directory at {project_root}")
+        self.log_bus.log(f"Created project directory at {project_root}", "info", "ProjectManager")
 
         # 3) (Optional) Create subfolders for organization
         #    You can remove these if you do not need subfolders by default
@@ -159,6 +165,7 @@ class ProjectManager:
         existing = self.state_manager.project_state.subjects.get(mouse_id)
         if existing:
             logger.info(f"Updating existing mouse: {mouse_id}")
+            self.log_bus.log(f"Updating existing mouse: {mouse_id}", "info", "ProjectManager")
             existing.sex = sex
             existing.genotype = genotype
             existing.treatment = treatment
@@ -178,6 +185,7 @@ class ProjectManager:
             )
             self.state_manager.project_state.subjects[mouse_id] = new_mouse
             logger.info(f"Added new mouse: {mouse_id}")
+            self.log_bus.log(f"Added new mouse: {mouse_id}", "success", "ProjectManager")
             self.refresh_all_lists()
 
         # Refresh UI lists to immediately display the updated subject list
