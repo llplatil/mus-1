@@ -96,3 +96,93 @@ class BasePlugin(ABC):
         except Exception as e:
             raise ValueError(f"Error reading CSV file: {e}")
         return set(df.columns.get_level_values(1))
+
+    def plugin_custom_style(self) -> Optional[str]:
+        """Return an optional CSS snippet for plugin-specific styling. Default is None."""
+        return None
+
+    def get_styling_preferences(self) -> Dict[str, Any]:
+        """
+        Return standardized styling preferences for this plugin.
+        
+        This replaces the need for custom CSS by providing a structured way
+        for plugins to specify their styling needs.
+        
+        Returns:
+            Dictionary with styling preferences using standardized keys:
+            {
+                "colors": {
+                    "primary": "default"|"accent"|"custom-hex",  # Primary color theme
+                    "secondary": "default"|"accent"|"custom-hex", # Secondary color
+                    "backgrounds": {
+                        "preprocessing": "default"|"subtle"|"prominent",
+                        "analysis": "default"|"subtle"|"prominent", 
+                        "results": "default"|"subtle"|"prominent"
+                    }
+                },
+                "borders": {
+                    "style": "default"|"rounded"|"sharp"|"none",
+                    "width": "thin"|"medium"|"thick"
+                },
+                "spacing": {
+                    "internal": "compact"|"default"|"spacious",
+                    "between_elements": "compact"|"default"|"spacious"
+                }
+            }
+        """
+        # Default values - plugins can override this method to customize
+        return {
+            "colors": {
+                "primary": "default", 
+                "secondary": "default",
+                "backgrounds": {
+                    "preprocessing": "default",
+                    "analysis": "default",
+                    "results": "default"
+                }
+            },
+            "borders": {
+                "style": "default",
+                "width": "medium"
+            },
+            "spacing": {
+                "internal": "default",
+                "between_elements": "default"
+            }
+        }
+
+    def get_field_styling(self, field_name: str, processing_stage: str = None) -> Dict[str, str]:
+        """
+        Get styling properties for a field based on its status.
+        
+        Args:
+            field_name: The name of the field to style
+            processing_stage: Override the processing stage (uses field_stage_map by default)
+            
+        Returns:
+            Dictionary with styling class names
+        """
+        is_required = field_name in self.required_fields()
+        field_stage = processing_stage or self._get_field_processing_stage(field_name)
+        plugin_id = self.plugin_self_metadata().name.replace(" ", "_").lower()
+        
+        styling = {
+            "widget_class": f"plugin-field plugin-{plugin_id}-field",
+            "status_class": "plugin-field-required" if is_required else "plugin-field-optional",
+            "stage_class": f"plugin-stage-{field_stage}"
+        }
+        
+        return styling
+    
+    def _get_field_processing_stage(self, field_name: str) -> str:
+        """
+        Determine processing stage for a field.
+        
+        Args:
+            field_name: The field name to check
+            
+        Returns:
+            String representing the processing stage ('preprocessing', 'analysis', 'results', or 'unknown')
+        """
+        field_to_stage_map = getattr(self, "field_stage_map", {})
+        return field_to_stage_map.get(field_name, "unknown")

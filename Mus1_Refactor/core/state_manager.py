@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Optional, List, Union, Callable
+from typing import Optional, List, Union, Callable, Dict, Any
 from .metadata import ProjectState, MouseMetadata, ExperimentMetadata, PluginMetadata
 from .sort_manager import sort_items
 from .logging_bus import LoggingEventBus
@@ -138,7 +138,67 @@ class StateManager:
             all_metadata.sort(key=lambda pm: pm.name.lower())
 
         self._project_state.registered_plugin_metadatas = all_metadata
+        
+        # Also sync plugin styling preferences
+        self.sync_plugin_styling(plugin_manager)
+        
         logger.info(f"Synced plugin metadata (sorted by '{sort_mode}'): {[m.name for m in all_metadata]}")
+
+    def sync_plugin_styling(self, plugin_manager) -> None:
+        """
+        Sync plugin styling preferences from the plugin_manager to the project state.
+        
+        This retrieves standardized styling preferences from all plugins and 
+        stores them in the project state for UI components to use.
+        """
+        styling_preferences = plugin_manager.get_all_plugin_styling_preferences()
+        styling_classes = plugin_manager.get_plugin_styling_classes()
+        
+        # Store in project state - ensure settings exists
+        if not hasattr(self._project_state, 'settings'):
+            self._project_state.settings = {}
+        
+        # Store both the raw preferences and the processed CSS classes
+        self._project_state.settings['plugin_styling_preferences'] = styling_preferences
+        self._project_state.settings['plugin_styling_classes'] = styling_classes
+        
+        logger.info(f"Synced styling preferences for {len(styling_preferences)} plugins")
+        self.log_bus.log(f"Synced styling for {len(styling_preferences)} plugins", "info", "StateManager")
+    
+    def get_plugin_styling_classes(self, plugin_id: str) -> List[str]:
+        """
+        Get the CSS classes to apply for a specific plugin.
+        
+        Args:
+            plugin_id: The ID (name) of the plugin
+            
+        Returns:
+            List of CSS class names to apply to this plugin's UI elements
+        """
+        # Get styling classes from project state
+        styling_classes = self._project_state.settings.get('plugin_styling_classes', {})
+        
+        # Return classes for this plugin, or empty list if not found
+        return styling_classes.get(plugin_id, [])
+    
+    def get_plugin_styling_preferences(self, plugin_id: str = None) -> Dict:
+        """
+        Get styling preferences for a specific plugin or all plugins.
+        
+        Args:
+            plugin_id: Optional - the ID of the plugin to get preferences for.
+                     If None, returns all plugin preferences.
+                     
+        Returns:
+            Dictionary of styling preferences
+        """
+        # Get all styling preferences from project state
+        all_preferences = self._project_state.settings.get('plugin_styling_preferences', {})
+        
+        # Return preferences for specific plugin or all plugins
+        if plugin_id:
+            return all_preferences.get(plugin_id, {})
+        return all_preferences
 
     def get_plugin_metadatas(self) -> List[PluginMetadata]:
         """
@@ -224,6 +284,80 @@ class StateManager:
 
         return grouped_sorted
 
+    def get_experiments_for_batch(self, batch_id):
+        """
+        Returns a list of experiments in a specific batch.
+        
+        Args:
+            batch_id (str): The ID of the batch to fetch experiments for
+            
+        Returns:
+            list: List of ExperimentMetadata objects in the batch
+        """
+        if batch_id not in self._project_state.batches:
+            return []
+            
+        batch = self._project_state.batches[batch_id]
+        return [self._project_state.experiments[exp_id] for exp_id in batch.experiment_ids 
+                if exp_id in self._project_state.experiments]
+    
+    def get_batches_for_experiment(self, experiment_id):
+        """
+        Returns a list of batches that contain a specific experiment.
+        
+        Args:
+            experiment_id (str): The ID of the experiment
+            
+        Returns:
+            list: List of BatchMetadata objects containing the experiment
+        """
+        if experiment_id not in self._project_state.experiments:
+            return []
+            
+        exp = self._project_state.experiments[experiment_id]
+        return [self._project_state.batches[batch_id] for batch_id in exp.batch_ids 
+                if batch_id in self._project_state.batches]
+    
+    def get_batches_list(self):
+        """
+        Returns a list of all batches in the project.
+        
+        Returns:
+            list: List of all BatchMetadata objects
+        """
+        return list(self._project_state.batches.values())
+    
+    def get_sorted_batches(self, sort_key=None):
+        """
+        Returns a sorted list of batches.
+        
+        Args:
+            sort_key (str, optional): Key to sort by ('id', 'name', 'date_added')
+            
+        Returns:
+            list: Sorted list of BatchMetadata objects
+        """
+        # Get the global sort mode if not provided
+        if sort_key is None:
+            sort_mode = self.get_global_sort_mode()
+            if sort_mode == "Date Added":
+                sort_key = "date_added"
+            else:
+                sort_key = "id"
+        
+        # Get all batches
+        batches = list(self._project_state.batches.values())
+        
+        # Sort based on key
+        if sort_key == "date_added":
+            return sorted(batches, key=lambda b: b.date_added)
+        elif sort_key == "name":
+            return sorted(batches, key=lambda b: b.name)
+        elif sort_key == "size":
+            return sorted(batches, key=lambda b: len(b.experiment_ids))
+        else:  # Default to ID
+            return sorted(batches, key=lambda b: b.id)
+
     def register_observer(self, callback: Callable[[], None]) -> None:
         """Register an observer callback to be notified when the state changes."""
         self._observers.append(callback)
@@ -257,4 +391,34 @@ class StateManager:
         for plugin in plugins:
             fields.update(plugin.required_fields())
         return sorted(list(fields))
+
+    def subscribe(self, callback: Callable[[], None]) -> None:
+        """Subscribe an observer callback to be notified of state changes."""
+        self.register_observer(callback)
+
+    def unsubscribe(self, callback: Callable[[], None]) -> None:
+        """Unsubscribe an observer callback from state changes."""
+        if callback in self._observers:
+            self._observers.remove(callback)
+
+    def get_theme_preference(self) -> str:
+        """Retrieve the user's theme preference."""
+        if self.project_state and self.project_state.project_metadata:
+            return self.project_state.project_metadata.theme_mode
+        return "dark"  # default fallback
+
+    def set_theme_preference(self, theme_choice: str) -> None:
+        """Store the user's theme preference."""
+        if self.project_state and self.project_state.project_metadata:
+            self.project_state.project_metadata.theme_mode = theme_choice
+            self.notify_observers()
+
+    def set_plugin_styling_preferences(self, styling_preferences: Dict[str, Dict[str, Any]]) -> None:
+        """Store plugin styling preferences."""
+        self.project_state.settings['plugin_styling_preferences'] = styling_preferences
+        self.notify_observers()
+
+    def get_plugin_styling_preferences(self) -> Dict[str, Dict[str, Any]]:
+        """Retrieve plugin styling preferences."""
+        return self.project_state.settings.get('plugin_styling_preferences', {})
 

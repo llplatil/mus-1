@@ -164,6 +164,8 @@ class BatchMetadata(BaseModel):
     Represents a group of experiments selected through some UI or search criteria.
     """
     id: str
+    name: str = ""  # Added explicit name field separate from ID
+    description: str = ""  # Added description field
     selection_criteria: Dict[str, Any]
     experiment_ids: Set[str] = set()
     analysis_type: Optional[str] = None  # Was ExperimentType enum
@@ -173,6 +175,25 @@ class BatchMetadata(BaseModel):
 
     # should be an override field of global threshold if selected and global on:
     likelihood_threshold: Optional[float] = None
+    
+    # Optional field for batch status tracking
+    status: str = "created"  # Possible values: created, processing, completed
+    processing_date: Optional[datetime] = None
+    completion_date: Optional[datetime] = None
+    
+    # Notes and results fields
+    notes: str = ""
+    results_summary: Optional[str] = None
+    
+    @property
+    def experiment_count(self) -> int:
+        """Returns the number of experiments in this batch."""
+        return len(self.experiment_ids)
+    
+    @property
+    def is_empty(self) -> bool:
+        """Returns True if the batch contains no experiments."""
+        return len(self.experiment_ids) == 0
 
 class GlobalSortMode(str, Enum):
     NATURAL_ORDER = "Natural Order (Numbers as Numbers)"
@@ -214,6 +235,9 @@ class ProjectMetadata(BaseModel):
 
     # Global frame rate used unless an experiment specifies otherwise
     global_frame_rate: int = 60
+    
+    # Theme preference (dark or light)
+    theme_mode: str = "dark"
     
     # Basic metadata about the project
     project_name: str

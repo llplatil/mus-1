@@ -168,7 +168,6 @@ class DataManager:
             raise ValueError(f"Arena image not found: {image_path}")
 
         # For demonstration, assume we derive the arena source from the image filename or metadata.
-        # This is a placeholder logic. In practice, use proper image analysis or metadata extraction.
         arena_source = "DLC_Export" if "DLC" in image_path.stem else "Manual"
 
         if arena_source not in allowed_sources:
@@ -176,5 +175,27 @@ class DataManager:
             raise ValueError(f"Arena image source '{arena_source}' not supported. Must be one of: {supported}")
 
         return {"valid": True, "source": arena_source, "path": str(image_path)}
+
+    def import_mouse_metadata_from_excel(self, excel_path: Path):
+        """Import mouse metadata from an Excel file and update the project state with MouseMetadata entries."""
+        from .metadata import MouseMetadata
+        df = pd.read_excel(excel_path)
+        for _, row in df.iterrows():
+            mouse_id = row["Mouse ID"]
+            sex = row.get("Sex", "UNKNOWN")
+            genotype = row.get("Genotype", "")
+            treatment = row.get("Treatment", "")
+            birth_date = pd.to_datetime(row.get("Birth Date"), errors='coerce')
+            notes = row.get("Notes", "")
+            self.state_manager.project_state.subjects[mouse_id] = MouseMetadata(
+                id=mouse_id,
+                sex=sex,
+                genotype=genotype,
+                treatment=treatment,
+                notes=notes,
+                birth_date=birth_date,
+                in_training_set=False
+            )
+        self.state_manager.notify_observers()
 
     

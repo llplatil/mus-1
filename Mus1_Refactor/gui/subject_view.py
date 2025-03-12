@@ -4,48 +4,63 @@ from PySide6.QtWidgets import (
 )
 from core.metadata import Sex
 from gui.navigation_pane import NavigationPane  
+from gui.base_view import BaseView
 from PySide6.QtCore import QDateTime
 from core.logging_bus import LoggingEventBus
 
-class SubjectView(QWidget):
+class SubjectView(BaseView):
     def __init__(self, parent=None):
-        super().__init__(parent)
-
-        main_layout = QHBoxLayout(self)
-        
-        # Get the LoggingEventBus singleton
-        self.log_bus = LoggingEventBus.get_instance()
-
-        # Left navigation (using NavigationPane)
-        self.navigation_pane = NavigationPane(self)
-        self.navigation_pane.add_button("Add Subject")
-        self.navigation_pane.add_button("View Subjects")
-        self.navigation_pane.connect_button_group()
-        self.navigation_pane.button_clicked.connect(self.on_nav_change)
-        main_layout.addWidget(self.navigation_pane)
+        # Initialize with base view and specific name
+        super().__init__(parent, view_name="subject")
         
         # Log initialization
+        self.log_bus = LoggingEventBus.get_instance()
         self.log_bus.log("SubjectView initialized", "info", "SubjectView")
 
-        # Right area: a stacked widget with multiple sub-pages
-        self.pages = QStackedWidget()
+        # Setup navigation for this view
+        self.setup_navigation([
+            "Add Subject",
+            "View Subjects"
+        ])
+        
+        # Create pages
+        self.setup_add_subject_page()
+        self.setup_view_subjects_page()
+        
+        # Set default selection
+        self.change_page(0)
 
-        # ----- Page: Add Subject -----
+        # Insert the following line:
+        self.project_manager = self.window().project_manager
+        
+    def setup_add_subject_page(self):
+        """Setup the Add Subject page."""
+        # Create the page widget
         self.page_add_subject = QWidget()
         add_layout = QVBoxLayout(self.page_add_subject)
+        add_layout.setContentsMargins(10, 10, 10, 10)
+        add_layout.setSpacing(10)
 
         self.subject_group = QGroupBox("Add Subject")
+        self.subject_group.setProperty("class", "mus1-input-group")
         
         # Switch to a horizontal layout with two columns to make better use of space
-        subject_layout = QHBoxLayout()
+        subject_layout = QHBoxLayout(self.subject_group)
         
         # Left column
         left_form_layout = QFormLayout()
         self.subject_id_edit = QLineEdit()
+        self.subject_id_edit.setProperty("class", "mus1-text-input")
+        
         self.sex_combo = QComboBox()
+        self.sex_combo.setProperty("class", "mus1-combo-box")
         self.sex_combo.addItems([Sex.M.value, Sex.F.value, Sex.UNKNOWN.value])
+        
         self.genotype_edit = QLineEdit()
+        self.genotype_edit.setProperty("class", "mus1-text-input")
+        
         self.treatment_edit = QLineEdit()
+        self.treatment_edit.setProperty("class", "mus1-text-input")
         
         left_form_layout.addRow("Subject ID:", self.subject_id_edit)
         left_form_layout.addRow("Sex:", self.sex_combo)
@@ -54,77 +69,57 @@ class SubjectView(QWidget):
         
         # Right column
         right_form_layout = QFormLayout()
-        self.subject_notes_edit = QTextEdit()
-        self.subject_notes_edit.setMaximumHeight(80)  # Limit height to save space
-        self.birth_date_edit = QDateTimeEdit()
-        self.birth_date_edit.setCalendarPopup(True)
-        self.birth_date_edit.setDisplayFormat("yyyy-MM-dd HH:mm:ss")
-        self.birth_date_edit.setDateTime(QDateTime.currentDateTime())
-        self.in_training_set_checkbox = QCheckBox("In Training Set")
+        self.birthdate_edit = QDateTimeEdit(QDateTime.currentDateTime())
+        self.birthdate_edit.setCalendarPopup(True)
+        self.birthdate_edit.setDisplayFormat("yyyy-MM-dd")
         
-        right_form_layout.addRow("Notes:", self.subject_notes_edit)
-        right_form_layout.addRow("Birth Date:", self.birth_date_edit)
-        right_form_layout.addRow(self.in_training_set_checkbox)
+        self.training_set_check = QCheckBox()
         
-        # Add columns to the layout
-        left_column = QWidget()
-        left_column.setLayout(left_form_layout)
-        right_column = QWidget()
-        right_column.setLayout(right_form_layout)
+        self.notes_edit = QTextEdit()
+        self.notes_edit.setMaximumHeight(80)
+        self.notes_edit.setProperty("class", "mus1-text-input")
         
-        subject_layout.addWidget(left_column)
-        subject_layout.addWidget(right_column)
+        right_form_layout.addRow("Birth Date:", self.birthdate_edit)
+        right_form_layout.addRow("Training Set:", self.training_set_check)
+        right_form_layout.addRow("Notes:", self.notes_edit)
         
-        # Add the button and notification label below the columns
-        button_layout = QFormLayout()
-        self.add_subject_button = QPushButton("Add Subject")
-        self.add_subject_button.clicked.connect(self.handle_add_subject)
-        self.subject_notification_label = QLabel("")
+        # Add layouts to main subject layout
+        subject_layout.addLayout(left_form_layout)
+        subject_layout.addLayout(right_form_layout)
         
-        button_layout.addWidget(self.add_subject_button)
-        button_layout.addRow("", self.subject_notification_label)
-        
-        # Set up the overall layout
-        main_subject_layout = QVBoxLayout()
-        main_subject_layout.addLayout(subject_layout)
-        main_subject_layout.addLayout(button_layout)
-        
-        self.subject_group.setLayout(main_subject_layout)
+        # Add the subject group to the page layout
         add_layout.addWidget(self.subject_group)
-        self.page_add_subject.setLayout(add_layout)
-        self.pages.addWidget(self.page_add_subject)
-
-        # ----- Page: View Subjects -----
+        
+        # Add subject button
+        self.add_subject_button = QPushButton("Add Subject")
+        self.add_subject_button.setProperty("class", "mus1-primary-button")
+        self.add_subject_button.clicked.connect(self.handle_add_subject)
+        
+        # Add button at the bottom
+        add_layout.addWidget(self.add_subject_button)
+        
+        # Add a stretch to push content to the top
+        add_layout.addStretch(1)
+        
+        # Add the page to the stacked widget
+        self.add_page(self.page_add_subject, "Add Subject")
+    
+    def setup_view_subjects_page(self):
+        """Setup the View Subjects page."""
+        # Create the page widget
         self.page_view_subjects = QWidget()
-        vs_layout = QVBoxLayout(self.page_view_subjects)
-
-        self.subject_list_label = QLabel("All Subjects:")
-        vs_layout.addWidget(self.subject_list_label)
-
-        # For example, a list widget to show all subject IDs
-        self.subject_list_widget = QListWidget()
-        vs_layout.addWidget(self.subject_list_widget)
-
-        self.page_view_subjects.setLayout(vs_layout)
-        self.pages.addWidget(self.page_view_subjects)
-
-        # Finally, add the stacked widget to the layout
-        main_layout.addWidget(self.pages)
-        self.setLayout(main_layout)
-
-        # If you want to default to the first page:
-        self.navigation_pane.set_button_checked(0)
-
-        # (Optionally) we might have a reference to project_manager set later
-        self.project_manager = None
-
-    def on_nav_change(self, index: int):
-        """Switch between Add Subject vs. View Subjects pages."""
-        self.pages.setCurrentIndex(index)
-        if index == 1:
-            # If user navigates to "View Subjects," refresh the list
-            self.refresh_subject_list_display()
-
+        view_subjects_layout = QVBoxLayout(self.page_view_subjects)
+        view_subjects_layout.setContentsMargins(10, 10, 10, 10)
+        view_subjects_layout.setSpacing(10)
+        
+        # Subjects list
+        self.subjects_list = QListWidget()
+        view_subjects_layout.addWidget(QLabel("Subjects:"))
+        view_subjects_layout.addWidget(self.subjects_list)
+        
+        # Add the page to the stacked widget
+        self.add_page(self.page_view_subjects, "View Subjects")
+        
     def handle_add_subject(self):
         """Handle the logic for adding a new subject, as before."""
         if not self.project_manager:
@@ -156,13 +151,9 @@ class SubjectView(QWidget):
 
         genotype = self.genotype_edit.text().strip()
         treatment = self.treatment_edit.text().strip()
-        notes = self.subject_notes_edit.toPlainText().strip()
-        birth_date = self.birth_date_edit.dateTime().toPython()
-        in_training_set = self.in_training_set_checkbox.isChecked()
-
-        # Retrieve additional fields from UI
-        birth_date = self.birth_date_edit.dateTime().toPython()
-        in_training_set = self.in_training_set_checkbox.isChecked()
+        notes = self.notes_edit.toPlainText().strip()
+        birth_date = self.birthdate_edit.dateTime().toPython()
+        in_training_set = self.training_set_check.isChecked()
 
         # Call ProjectManager to add the mouse with additional metadata
         self.project_manager.add_mouse(
@@ -179,9 +170,9 @@ class SubjectView(QWidget):
         self.subject_id_edit.clear()
         self.genotype_edit.clear()
         self.treatment_edit.clear()
-        self.subject_notes_edit.clear()
-        self.birth_date_edit.setDateTime(QDateTime.currentDateTime())
-        self.in_training_set_checkbox.setChecked(False)
+        self.notes_edit.clear()
+        self.birthdate_edit.setDateTime(QDateTime.currentDateTime())
+        self.training_set_check.setChecked(False)
 
         # Refresh the displayed subject list based on current global sort preference
         self.refresh_subject_list_display()
@@ -195,14 +186,14 @@ class SubjectView(QWidget):
         QTimer.singleShot(3000, lambda: self.subject_notification_label.setText(""))
 
         # Switch to the "View Subjects" page to show the updated list
-        self.navigation_pane.set_button_checked(1)
+        self.change_page(1)
 
     def refresh_subject_list_display(self):
         """Refresh the list of all subjects in the project with full metadata details."""
         if not self.project_manager:
             return
-        self.subject_list_widget.clear()
-        all_subjects = self.project_manager.get_sorted_subjects()
+        self.subjects_list.clear()
+        all_subjects = self.project_manager.state_manager.get_sorted_list("subjects")
         
         # Log the refresh activity
         self.log_bus.log(f"Refreshing subject list: {len(all_subjects)} subjects found", "info", "SubjectView")
@@ -212,16 +203,49 @@ class SubjectView(QWidget):
             details = (f"ID: {subj.id} | Sex: {subj.sex.value} | Genotype: {subj.genotype or 'N/A'} "
                        f"| Treatment: {subj.treatment or 'N/A'} | Birth: {birth_str} "
                        f"| Training: {subj.in_training_set}")
-            self.subject_list_widget.addItem(details)
+            self.subjects_list.addItem(details)
 
     def refresh_experiment_list_by_subject_display(self):
         """Refresh the list widget displaying experiments by subject."""
         # Implementation pending
         pass
 
-    def set_project_manager(self, project_manager):
+    def assign_project_manager(self, project_manager):
         """Assign the project_manager and subscribe for automatic refresh from state changes."""
         self.project_manager = project_manager
-        if hasattr(project_manager.state_manager, 'subscribe'):
-            project_manager.state_manager.subscribe(self.refresh_subject_list_display)
-        self.refresh_subject_list_display()
+        # Set the observer callback to refresh_subject_list_display
+        self._state_subscription = self.refresh_subject_list_display
+        # Store reference to state_manager for cleaner access
+        self._state_manager = project_manager.state_manager
+        self._state_manager.subscribe(self._state_subscription)
+
+    def closeEvent(self, event):
+        """Clean up when the view is closed."""
+        # Unsubscribe the observer when the view is closed
+        if hasattr(self, '_state_manager') and hasattr(self, '_state_subscription'):
+            self._state_manager.unsubscribe(self._state_subscription)
+        super().closeEvent(event)
+
+    def update_theme(self, theme):
+        """Update the theme for this view and its components.
+        Args:
+            theme: The theme name ('dark' or 'light') passed from MainWindow
+        """
+        # Propagate theme changes using the base update_theme method
+        super().update_theme(theme)
+
+        # Optionally, perform additional view-specific theme updates
+        # For example, refresh the view based on new theme settings
+        # Log the theme update if navigation pane is available
+        if hasattr(self, 'navigation_pane'):
+            self.navigation_pane.add_log_message(f"Updated to {theme} theme", 'info')
+
+    def change_page(self, index):
+        """
+        Override change_page to refresh data when switching to the View Subjects page.
+        """
+        super().change_page(index)
+        
+        # If switching to View Subjects page, refresh the subject list
+        if index == 1:
+            self.refresh_subject_list_display()

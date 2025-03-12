@@ -1,71 +1,100 @@
-from PySide6.QtWidgets import (QWidget, QLabel, QVBoxLayout, QMessageBox, QHBoxLayout, 
-                           QStackedWidget, QListWidget, QFormLayout, QComboBox, QPushButton, 
-                           QLineEdit, QListWidget as QList, QDateTimeEdit, QGroupBox, 
-                           QCheckBox, QScrollArea)
+from PySide6.QtWidgets import (QWidget, QVBoxLayout, QFormLayout, QLabel, QLineEdit, 
+                         QComboBox, QDateTimeEdit, QPushButton, QGroupBox, QScrollArea, 
+                         QCheckBox, QMessageBox, QListWidget, QTextEdit, QHBoxLayout,
+                         QFileDialog, QTableWidget, QTableWidgetItem, QHeaderView)
 from PySide6.QtCore import QTimer, Qt
 from datetime import datetime
 from gui.navigation_pane import NavigationPane 
+from gui.base_view import BaseView
+from gui.metadata_display import MetadataGridDisplay
+import os
+import json
+from pathlib import Path
 
-class ExperimentView(QWidget):
+class ExperimentView(BaseView):
     def __init__(self, parent=None):
-        super().__init__(parent)
-        self.project_manager = None  # Will be set via set_core
-        self.state_manager = None    # We'll pass this in from main_window or similarly
+        # Initialize with base view and specific name
+        super().__init__(parent, view_name="experiment")
+        
+        # Store reference to state_manager for cleaner access
+        if parent and hasattr(parent, 'project_manager'):
+            self._state_manager = parent.project_manager.state_manager
+            # Subscribe to state changes
+            self._state_manager.subscribe(self.refresh_data)
 
-        main_layout = QHBoxLayout(self)
-
-        # Left navigation (using NavigationPane)
-        self.navigation_pane = NavigationPane(self)
-        self.navigation_pane.add_button("Add Experiment")
-        self.navigation_pane.add_button("View Experiments")
-        self.navigation_pane.connect_button_group()
-        self.navigation_pane.button_clicked.connect(self.change_subpage)
-        main_layout.addWidget(self.navigation_pane)
-
-        # Right side: stacked pages
-        self.pages = QStackedWidget()
-
-        # ----- Page: Add Experiment -----
+        # Setup navigation for this view
+        self.setup_navigation([
+            "Add Experiment",
+            "View Experiments",
+            "Create Batch"
+        ])
+        
+        # Create pages
+        self.setup_add_experiment_page()
+        self.setup_view_experiments_page()
+        self.setup_create_batch_page()
+        
+        # Set default selection
+        self.change_page(0)
+        
+    def setup_add_experiment_page(self):
+        """Setup the Add Experiment page."""
+        # Create the page widget
         self.page_add_exp = QWidget()
         ae_layout = QVBoxLayout(self.page_add_exp)
+        ae_layout.setContentsMargins(10, 10, 10, 10)
+        ae_layout.setSpacing(10)
+        
+        # Basic experiment info group
+        basic_info_group = QGroupBox("Experiment Information")
+        basic_info_group.setProperty("class", "mus1-input-group")
+        basic_info_layout = QVBoxLayout(basic_info_group)
         
         # Experiment Type Selection
-        ae_layout.addWidget(QLabel("Experiment Type:"))
+        basic_info_layout.addWidget(QLabel("Experiment Type:"))
         self.expTypeCombo = QComboBox()
+        self.expTypeCombo.setProperty("class", "mus1-combo-box")
         self.expTypeCombo.currentIndexChanged.connect(self.on_experiment_type_changed)
-        ae_layout.addWidget(self.expTypeCombo)
+        basic_info_layout.addWidget(self.expTypeCombo)
 
         # Processing Stage Selection
-        ae_layout.addWidget(QLabel("Processing Stage:"))
+        basic_info_layout.addWidget(QLabel("Processing Stage:"))
         self.stageCombo = QComboBox()
+        self.stageCombo.setProperty("class", "mus1-combo-box")
         self.stageCombo.currentIndexChanged.connect(self.on_stage_changed)
-        ae_layout.addWidget(self.stageCombo)
+        basic_info_layout.addWidget(self.stageCombo)
 
         # Data Source Selection
-        ae_layout.addWidget(QLabel("Data Source:"))
+        basic_info_layout.addWidget(QLabel("Data Source:"))
         self.sourceCombo = QComboBox()
+        self.sourceCombo.setProperty("class", "mus1-combo-box")
         self.sourceCombo.currentIndexChanged.connect(self.update_plugin_selection)
-        ae_layout.addWidget(self.sourceCombo)
-
+        basic_info_layout.addWidget(self.sourceCombo)
+        
         # Basic Experiment Info
         form_layout = QFormLayout()
         
         self.idLineEdit = QLineEdit()
+        self.idLineEdit.setProperty("class", "mus1-text-input")
         form_layout.addRow(QLabel("Experiment ID:"), self.idLineEdit)
-
+        
         self.subjectComboBox = QComboBox()
+        self.subjectComboBox.setProperty("class", "mus1-combo-box")
         form_layout.addRow(QLabel("Subject ID:"), self.subjectComboBox)
-
+        
         self.dateRecordedEdit = QDateTimeEdit(datetime.now())
         self.dateRecordedEdit.setCalendarPopup(True)
         form_layout.addRow(QLabel("Date Recorded:"), self.dateRecordedEdit)
         
-        ae_layout.addLayout(form_layout)
+        basic_info_layout.addLayout(form_layout)
+        
+        # Add basic info group to page layout
+        ae_layout.addWidget(basic_info_group)
         
         # Plugin Selection Section
         self.plugin_selection_group = QGroupBox("Available Plugins")
-        plugin_selection_layout = QVBoxLayout()
-        self.plugin_selection_group.setLayout(plugin_selection_layout)
+        self.plugin_selection_group.setProperty("class", "mus1-input-group")
+        plugin_selection_layout = QVBoxLayout(self.plugin_selection_group)
         
         self.plugin_checkboxes = {}  # Will store plugin checkboxes
         self.plugin_info_labels = {}  # Will store plugin descriptions
@@ -90,55 +119,167 @@ class ExperimentView(QWidget):
         
         # Add Experiment Button
         self.add_experiment_button = QPushButton("Add Experiment")
+        self.add_experiment_button.setProperty("class", "mus1-primary-button")
         self.add_experiment_button.clicked.connect(self.handle_add_experiment)
         ae_layout.addWidget(self.add_experiment_button)
-
+        
         # Add a notification label to show experiment addition success message
         self.experiment_notification_label = QLabel("")
         ae_layout.addWidget(self.experiment_notification_label)
-
-        self.page_add_exp.setLayout(ae_layout)
-        self.pages.addWidget(self.page_add_exp)
-
-        # ----- Page: View Experiments -----
-        self.page_view_exps = QWidget()
-        ve_layout = QVBoxLayout(self.page_view_exps)
-        ve_layout.addWidget(QLabel("Experiments"))
-        self.experimentListWidget = QListWidget()
-        ve_layout.addWidget(self.experimentListWidget)
-        self.page_view_exps.setLayout(ve_layout)
-        self.pages.addWidget(self.page_view_exps)
-
-        main_layout.addWidget(self.pages)
-        self.setLayout(main_layout)
-
-        self.navigation_pane.set_button_checked(0) # Set initial selection
         
         # Storage for plugin field widgets
         self.plugin_field_widgets = {}
-
+        
+        # Add the page to the stacked widget
+        self.add_page(self.page_add_exp, "Add Experiment")
+        
+    def setup_view_experiments_page(self):
+        """Setup the View Experiments page."""
+        # Create the page widget
+        self.page_view_exp = QWidget()
+        view_exp_layout = QVBoxLayout(self.page_view_exp)
+        view_exp_layout.setContentsMargins(10, 10, 10, 10)
+        view_exp_layout.setSpacing(10)
+        
+        # Add title
+        view_exp_layout.addWidget(QLabel("Experiments"))
+        
+        # Create experiment list
+        self.experimentListWidget = QListWidget()
+        view_exp_layout.addWidget(self.experimentListWidget)
+        
+        # Add the page to the stacked widget
+        self.add_page(self.page_view_exp, "View Experiments")
+        
+    def setup_create_batch_page(self):
+        """Setup the Create Batch page."""
+        # Create the page widget
+        self.page_create_batch = QWidget()
+        create_batch_layout = QVBoxLayout(self.page_create_batch)
+        create_batch_layout.setContentsMargins(10, 10, 10, 10)
+        create_batch_layout.setSpacing(10)
+        
+        # Batch info section
+        batch_info_group = QGroupBox("Batch Information")
+        batch_info_group.setProperty("class", "mus1-input-group")
+        batch_info_layout = QFormLayout(batch_info_group)
+        
+        self.batchIdLineEdit = QLineEdit()
+        self.batchIdLineEdit.setProperty("class", "mus1-text-input")
+        batch_info_layout.addRow(QLabel("Batch ID:"), self.batchIdLineEdit)
+        
+        self.batchNameLineEdit = QLineEdit()
+        self.batchNameLineEdit.setProperty("class", "mus1-text-input")
+        batch_info_layout.addRow(QLabel("Batch Name:"), self.batchNameLineEdit)
+        
+        self.batchDescriptionLineEdit = QLineEdit()
+        self.batchDescriptionLineEdit.setProperty("class", "mus1-text-input")
+        batch_info_layout.addRow(QLabel("Description:"), self.batchDescriptionLineEdit)
+        
+        create_batch_layout.addWidget(batch_info_group)
+        
+        # Experiment selection section
+        exp_selection_group = QGroupBox("Select Experiments for Batch")
+        exp_selection_group.setProperty("class", "mus1-input-group")
+        exp_selection_layout = QVBoxLayout(exp_selection_group)
+        
+        # Create the grid display using the MetadataGridDisplay component
+        self.batch_experiment_grid = MetadataGridDisplay()
+        self.batch_experiment_grid.setMinimumHeight(300)
+        exp_selection_layout.addWidget(self.batch_experiment_grid)
+        
+        # Sorting and filtering controls
+        controls_layout = QHBoxLayout()
+        
+        # Sorting
+        sort_layout = QHBoxLayout()
+        sort_layout.addWidget(QLabel("Sort By:"))
+        
+        self.sortComboBox = QComboBox()
+        self.sortComboBox.setProperty("class", "mus1-combo-box")
+        self.sortComboBox.addItems(["ID", "Type", "Subject", "Date"])
+        self.sortComboBox.currentIndexChanged.connect(self.sort_experiment_grid)
+        sort_layout.addWidget(self.sortComboBox)
+        
+        controls_layout.addLayout(sort_layout)
+        controls_layout.addStretch()
+        
+        # Filtering
+        filter_layout = QHBoxLayout()
+        filter_layout.addWidget(QLabel("Filter:"))
+        
+        self.filterTypeCombo = QComboBox()
+        self.filterTypeCombo.setProperty("class", "mus1-combo-box")
+        self.filterTypeCombo.currentIndexChanged.connect(self.filter_experiment_grid)
+        filter_layout.addWidget(self.filterTypeCombo)
+        
+        controls_layout.addLayout(filter_layout)
+        
+        exp_selection_layout.addLayout(controls_layout)
+        create_batch_layout.addWidget(exp_selection_group)
+        
+        # Create Batch button
+        self.create_batch_button = QPushButton("Create Batch")
+        self.create_batch_button.setObjectName("createBatchButton")
+        self.create_batch_button.setProperty("class", "mus1-primary-button")
+        self.create_batch_button.clicked.connect(self.handle_create_batch)
+        create_batch_layout.addWidget(self.create_batch_button)
+        
+        # Add notification label for batch creation
+        self.batch_notification_label = QLabel("")
+        create_batch_layout.addWidget(self.batch_notification_label)
+        
+        # Track selected experiments for batch creation
+        self.selected_experiments = set()
+        
+        # Add the page to the stacked widget
+        self.add_page(self.page_create_batch, "Create Batch")
+        
+    def change_subpage(self, index: int):
+        """Redirect to base class page change method for compatibility."""
+        self.change_page(index)
+        
+    def change_page(self, index):
+        """
+        Override change_page to refresh data when switching pages.
+        """
+        super().change_page(index)
+        
+        # Do specific actions based on the page
+        if index == 1:  # View Experiments page
+            self.refresh_data()
+        elif index == 2:  # Create Batch page
+            self.setup_batch_creation()
+        
     def set_core(self, project_manager, state_manager):
+        """Set the core managers for this view."""
         self.project_manager = project_manager
         self.state_manager = state_manager
-        self.state_manager.register_observer(self.refresh_data)
         self.refresh_data()
-
-    def change_subpage(self, index: int):
-        self.pages.setCurrentIndex(index)
-        if index == 1:
-            self.refresh_data()  # refresh experiment list when viewing them
+        
+        # Log that core is set
+        self.add_log_message("Core managers set for Experiment View", "info")
+        
+        # Subscribe to state changes
+        if hasattr(self.state_manager, 'subscribe'):
+            self.state_manager.subscribe(self.refresh_data)
 
     def refresh_data(self):
         if not self.state_manager:
             return
 
-        self.navigation_pane.add_log_message("Refreshing experiment data...", 'info')
+        self.add_log_message("Refreshing experiment data...", 'info')
 
         # Update experiment types dropdown
         self.expTypeCombo.clear()
         supported_types = sorted(self.state_manager.get_supported_experiment_types())
         for t in supported_types:
             self.expTypeCombo.addItem(t)
+            
+        # Also update filter dropdown in batch creation page
+        self.filterTypeCombo.clear()
+        self.filterTypeCombo.addItem("All Types")
+        self.filterTypeCombo.addItems(supported_types)
 
         # Update experiment list
         self.experimentListWidget.clear()
@@ -155,7 +296,7 @@ class ExperimentView(QWidget):
         if self.expTypeCombo.count() > 0:
             self.on_experiment_type_changed(0)
 
-        self.navigation_pane.add_log_message(f"Found {len(supported_types)} experiment types and {len(all_experiments)} experiments", 'success')
+        self.add_log_message(f"Found {len(supported_types)} experiment types and {len(all_experiments)} experiments", 'success')
 
     def on_experiment_type_changed(self, index):
         """When experiment type changes, update processing stages, data sources, and plugin selection."""
@@ -165,7 +306,7 @@ class ExperimentView(QWidget):
         exp_type = self.expTypeCombo.currentText()
         
         # Add log message
-        self.navigation_pane.add_log_message(f"Selected experiment type: {exp_type}", 'info')
+        self.add_log_message(f"Selected experiment type: {exp_type}", 'info')
 
         # Clear plugin selections
         self.clear_plugin_selection()
@@ -175,7 +316,7 @@ class ExperimentView(QWidget):
         self.stageCombo.clear()
         
         if not stages:
-            self.navigation_pane.add_log_message(f"No processing stages found for {exp_type}", 'warning')
+            self.add_log_message(f"No processing stages found for {exp_type}", 'warning')
             self.stageCombo.setEnabled(False)
         else:
             self.stageCombo.setEnabled(True)
@@ -231,34 +372,164 @@ class ExperimentView(QWidget):
         stage = self.stageCombo.currentText()
         source = self.sourceCombo.currentText()
 
-        selected_plugins = self.project_manager.plugin_manager.get_plugins_by_criteria(exp_type, stage, source)
+        # Get selected plugins that match the criteria
+        selected_plugins = []
+        if hasattr(self, 'plugin_checkboxes'):
+            for name, checkbox in self.plugin_checkboxes.items():
+                if checkbox.isChecked():
+                    for plugin in self.project_manager.plugin_manager.get_plugins_by_criteria(exp_type, stage, source):
+                        if plugin.plugin_self_metadata().name == name:
+                            selected_plugins.append(plugin)
+                            break
 
         # Create UI for each selected plugin
         for plugin in selected_plugins:
-            plugin_name = plugin.plugin_self_metadata().name
-            group_box = QGroupBox(plugin_name)
-            group_layout = QFormLayout()
-            group_box.setLayout(group_layout)
+            plugin_id = plugin.plugin_self_metadata().name
+            plugin_group = QGroupBox(plugin_id)
+            
+            # Apply plugin styling classes from StateManager
+            styling_classes = self.state_manager.get_plugin_styling_classes(plugin_id)
+            plugin_class = f"mus1-plugin-group {' '.join(styling_classes)}"
+            plugin_group.setProperty("class", plugin_class)
+            
+            # Use form layout for fields
+            group_layout = QFormLayout(plugin_group)
+            
+            # Track widgets for this plugin
+            if plugin_id not in self.plugin_field_widgets:
+                self.plugin_field_widgets[plugin_id] = {}
 
             # Add required fields
             req_fields = plugin.required_fields()
             for field in req_fields:
-                label = QLabel(f"{field} (required):")
-                line_edit = QLineEdit()
-                group_layout.addRow(label, line_edit)
-                self.plugin_field_widgets[(plugin_name, field)] = line_edit
+                # Create field label with required indicator
+                label = QLabel(f"{field} <span style='color:var(--plugin-required-color);'>*</span>")
+                
+                # Create appropriate input widget based on field type
+                field_widget = self._create_field_widget(plugin, field)
+                
+                # Get field styling from plugin
+                field_styling = plugin.get_field_styling(field)
+                
+                # Apply styling classes to widget
+                field_widget.setProperty("class", f"{field_styling['widget_class']} {field_styling['status_class']} {field_styling['stage_class']}")
+                
+                # Add field to layout
+                group_layout.addRow(label, field_widget)
+                
+                # Store widget for later access
+                self.plugin_field_widgets[plugin_id][field] = field_widget
 
             # Add optional fields
             opt_fields = plugin.optional_fields()
             for field in opt_fields:
-                label = QLabel(f"{field} (optional):")
-                line_edit = QLineEdit()
-                group_layout.addRow(label, line_edit)
-                self.plugin_field_widgets[(plugin_name, field)] = line_edit
+                # Create field label with optional indicator
+                label = QLabel(f"{field} <span style='color:var(--text-muted-color);'>(optional)</span>")
+                
+                # Create appropriate input widget based on field type
+                field_widget = self._create_field_widget(plugin, field)
+                
+                # Get field styling from plugin
+                field_styling = plugin.get_field_styling(field)
+                
+                # Apply styling classes to widget
+                field_widget.setProperty("class", f"{field_styling['widget_class']} {field_styling['status_class']} {field_styling['stage_class']}")
+                
+                # Add field to layout
+                group_layout.addRow(label, field_widget)
+                
+                # Store widget for later access
+                self.plugin_field_widgets[plugin_id][field] = field_widget
 
-            self.plugin_fields_layout.addWidget(group_box)
+            # Add the plugin group to the layout
+            self.plugin_fields_layout.addWidget(plugin_group)
 
+        # Add stretch to push everything to the top
         self.plugin_fields_layout.addStretch()
+        
+    def _create_field_widget(self, plugin, field_name):
+        """
+        Create an appropriate widget based on field type.
+        
+        Args:
+            plugin: The plugin that defines the field
+            field_name: The name of the field
+            
+        Returns:
+            QWidget: An appropriate widget for the field type
+        """
+        # Default to QLineEdit
+        field_widget = QLineEdit()
+        
+        # Check if plugin provides field types
+        if hasattr(plugin, 'get_field_types') and callable(plugin.get_field_types):
+            field_types = plugin.get_field_types()
+            field_type = field_types.get(field_name, "text")
+            
+            # Create appropriate widget based on type
+            if field_type == "text":
+                field_widget = QLineEdit()
+            elif field_type == "file":
+                # Create a file selector
+                file_layout = QHBoxLayout()
+                file_edit = QLineEdit()
+                file_button = QPushButton("Browse...")
+                file_button.setProperty("class", "mus1-secondary-button")
+                
+                # Create a placeholder for the browse button callback
+                file_button.clicked.connect(lambda: self._browse_for_file(file_edit))
+                
+                file_layout.addWidget(file_edit, 1)
+                file_layout.addWidget(file_button, 0)
+                
+                container = QWidget()
+                container.setLayout(file_layout)
+                field_widget = container
+                
+                # Store the line edit for accessing the value later
+                self.plugin_field_widgets.setdefault(plugin.plugin_self_metadata().name, {})[field_name] = file_edit
+            elif field_type.startswith("enum:"):
+                # Create dropdown for enum values
+                options = field_type.split(":", 1)[1].split(",")
+                combo = QComboBox()
+                combo.addItems(options)
+                field_widget = combo
+            elif field_type == "dict":
+                # For complex types, provide a simplified text input with placeholder
+                text_input = QLineEdit()
+                text_input.setPlaceholderText("Enter as JSON: {\"key\": \"value\"}")
+                field_widget = text_input
+                
+        # Apply common styling
+        if isinstance(field_widget, QLineEdit):
+            field_widget.setProperty("class", "mus1-text-input")
+        elif isinstance(field_widget, QComboBox):
+            field_widget.setProperty("class", "mus1-combo-box")
+            
+        return field_widget
+        
+    def _browse_for_file(self, line_edit):
+        """
+        Open a file dialog to browse for a file and update the line edit.
+        
+        Args:
+            line_edit: The QLineEdit to update with the selected file path
+        """
+        from PySide6.QtWidgets import QFileDialog
+        
+        # Get the current file path if any
+        current_path = line_edit.text()
+        
+        # Open file dialog
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select File",
+            current_path or "",
+            "All Files (*.*)"
+        )
+        
+        if file_path:
+            line_edit.setText(file_path)
 
     def on_stage_changed(self, index):
         """When processing stage changes, update data source combo accordingly."""
@@ -268,13 +539,13 @@ class ExperimentView(QWidget):
 
         stage = self.stageCombo.currentText()
         if stage:
-            self.navigation_pane.add_log_message(f"Selected processing stage: {stage}", 'info')
+            self.add_log_message(f"Selected processing stage: {stage}", 'info')
         
         sources = self.state_manager.get_compatible_data_sources(self.project_manager.plugin_manager, exp_type, stage)
         self.sourceCombo.clear()
         
         if not sources:
-            self.navigation_pane.add_log_message(f"No data sources found for {exp_type} at {stage} stage", 'warning')
+            self.add_log_message(f"No data sources found for {exp_type} at {stage} stage", 'warning')
             self.sourceCombo.setEnabled(False)
         else:
             self.sourceCombo.setEnabled(True)
@@ -290,7 +561,7 @@ class ExperimentView(QWidget):
         source = self.sourceCombo.currentText()
         
         if source:
-            self.navigation_pane.add_log_message(f"Selected data source: {source}", 'info')
+            self.add_log_message(f"Selected data source: {source}", 'info')
 
         # Clear previous plugin selection UI
         self.clear_plugin_selection()
@@ -299,9 +570,9 @@ class ExperimentView(QWidget):
         compatible_plugins = self.project_manager.plugin_manager.get_plugins_by_criteria(exp_type, stage, source)
         
         if not compatible_plugins:
-            self.navigation_pane.add_log_message(f"No compatible plugins found for the selected criteria", 'warning')
+            self.add_log_message(f"No compatible plugins found for the selected criteria", 'warning')
         else:
-            self.navigation_pane.add_log_message(f"Found {len(compatible_plugins)} compatible plugins", 'success')
+            self.add_log_message(f"Found {len(compatible_plugins)} compatible plugins", 'success')
 
         for plugin in compatible_plugins:
             metadata = plugin.plugin_self_metadata()
@@ -309,7 +580,6 @@ class ExperimentView(QWidget):
             checkbox.stateChanged.connect(self.update_plugin_fields)
             info_label = QLabel(f"<i>{metadata.description}</i>")
             info_label.setWordWrap(True)
-            info_label.setStyleSheet("color: gray;")
 
             plugin_container = QVBoxLayout()
             plugin_container.addWidget(checkbox)
@@ -328,7 +598,7 @@ class ExperimentView(QWidget):
         """Handle adding a new experiment."""
         if not self.project_manager:
             QMessageBox.warning(self, "Error", "No ProjectManager is set.")
-            self.navigation_pane.add_log_message("Error: No ProjectManager is set", 'error')
+            self.add_log_message("Error: No ProjectManager is set", 'error')
             return
 
         # Get basic experiment info
@@ -351,31 +621,51 @@ class ExperimentView(QWidget):
 
         if not selected_plugins:
             QMessageBox.warning(self, "Error", "Please select at least one plugin.")
-            self.navigation_pane.add_log_message("Error: No plugins selected", 'error')
+            self.add_log_message("Error: No plugins selected", 'error')
             return
 
         # Validate basic fields
         if not experiment_id:
             QMessageBox.warning(self, "Error", "Please enter an experiment ID.")
-            self.navigation_pane.add_log_message("Error: Missing experiment ID", 'error')
+            self.add_log_message("Error: Missing experiment ID", 'error')
             return
 
         if not subject_id:
             QMessageBox.warning(self, "Error", "Please select a subject.")
-            self.navigation_pane.add_log_message("Error: No subject selected", 'error')
+            self.add_log_message("Error: No subject selected", 'error')
             return
 
         # Gather plugin parameters
         plugin_params = {}
-        for key, widget in self.plugin_field_widgets.items():
-            plugin_name, field = key
-            if plugin_name not in plugin_params:
-                plugin_params[plugin_name] = {}
-            plugin_params[plugin_name][field] = widget.text().strip()
+        for plugin in selected_plugins:
+            plugin_id = plugin.plugin_self_metadata().name
+            plugin_params[plugin_id] = {}
+            
+            # Get field values from widgets
+            if plugin_id in self.plugin_field_widgets:
+                for field_name, widget in self.plugin_field_widgets[plugin_id].items():
+                    # Extract value based on widget type
+                    if isinstance(widget, QLineEdit):
+                        value = widget.text().strip()
+                    elif isinstance(widget, QComboBox):
+                        value = widget.currentText()
+                    elif isinstance(widget, QTextEdit):
+                        value = widget.toPlainText().strip()
+                    elif isinstance(widget, QCheckBox):
+                        value = "true" if widget.isChecked() else "false"
+                    else:
+                        # For custom widgets or compound widgets, try to get their text
+                        if hasattr(widget, 'text'):
+                            value = widget.text().strip()
+                        else:
+                            value = ""
+                            
+                    # Store the value
+                    plugin_params[plugin_id][field_name] = value
 
         try:
             # Add the experiment with hierarchical workflow
-            self.navigation_pane.add_log_message(f"Adding experiment '{experiment_id}' with {len(selected_plugins)} plugins...", 'info')
+            self.add_log_message(f"Adding experiment '{experiment_id}' with {len(selected_plugins)} plugins...", 'info')
             
             new_experiment = self.project_manager.add_experiment(
                 experiment_id,
@@ -389,19 +679,237 @@ class ExperimentView(QWidget):
             )
 
             QMessageBox.information(self, "Success", f"Experiment '{new_experiment.id}' added.")
-            self.navigation_pane.add_log_message(f"Successfully added experiment '{new_experiment.id}'", 'success')
-            self.navigation_pane.set_button_checked(1)
-            self.refresh_experiment_list_display()
+            self.add_log_message(f"Successfully added experiment '{new_experiment.id}'", 'success')
+            self.change_page(1)
+            self.refresh_data()
             self.experiment_notification_label.setText("Experiment added successfully!")
             QTimer.singleShot(3000, lambda: self.experiment_notification_label.setText(""))
         except Exception as e:
             error_msg = str(e)
             QMessageBox.warning(self, "Error", error_msg)
-            self.navigation_pane.add_log_message(f"Error adding experiment: {error_msg}", 'error')
+            self.add_log_message(f"Error adding experiment: {error_msg}", 'error')
 
     def refresh_experiment_list_display(self):
         sorted_exps = self.state_manager.get_sorted_list("experiments")
         self.experimentListWidget.clear()
         for e in sorted_exps:
             self.experimentListWidget.addItem(f"{e.id} ({e.type}, Stage: {e.processing_stage}, Source: {e.data_source})")
+        
+    def setup_batch_creation(self):
+        """Initialize the batch creation page with experiments grid."""
+        if not self.state_manager:
+            return
+            
+        # Generate a unique batch ID
+        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+        self.batchIdLineEdit.setText(f"batch_{timestamp}")
+        
+        # Clear selection status
+        self.selected_experiments = set()
+        
+        # Populate experiment grid
+        self.update_experiment_grid()
+        
+        # Update notification
+        self.batch_notification_label.setText("")
+        
+    def update_experiment_grid(self):
+        """Update the grid display with experiments."""
+        if not self.state_manager:
+            return
+            
+        # Get all experiments from state manager
+        all_experiments = self.state_manager.get_sorted_list("experiments")
+        
+        # Set up the grid with selectable checkboxes
+        columns = ["Select", "ID", "Type", "Subject", "Date", "Stage"]
+        
+        # Build experiment data for grid
+        exp_data = []
+        for exp in all_experiments:
+            # Format date string
+            date_str = exp.date_recorded.strftime("%Y-%m-%d") if hasattr(exp, 'date_recorded') and exp.date_recorded else "N/A"
+            
+            # Create dict for each experiment row
+            exp_dict = {
+                "Select": False,  # Checkbox state
+                "ID": exp.id,
+                "Type": exp.type,
+                "Subject": exp.subject_id,
+                "Date": date_str,
+                "Stage": exp.processing_stage
+            }
+            exp_data.append(exp_dict)
+        
+        # Update the grid
+        self.batch_experiment_grid.set_columns(columns)
+        self.batch_experiment_grid.populate_data(exp_data, columns, selectable=True, checkbox_column="Select")
+        
+        # Connect selection changed signal
+        self.batch_experiment_grid.selection_changed.connect(self.on_experiment_selection_changed)
+    
+    def sort_experiment_grid(self, index):
+        """Sort the experiment grid based on selected column."""
+        if not self.state_manager:
+            return
+            
+        # Get sort key from combo box
+        sort_options = ["ID", "Type", "Subject", "Date"]
+        sort_key = sort_options[index]
+        
+        # Preserve current selection
+        selected_ids = self.selected_experiments
+        
+        # Get all experiments and sort them
+        all_experiments = self.state_manager.get_sorted_list("experiments")
+        
+        # Sort based on the selected option
+        if sort_key == "ID":
+            sorted_exps = sorted(all_experiments, key=lambda e: e.id)
+        elif sort_key == "Type":
+            sorted_exps = sorted(all_experiments, key=lambda e: e.type)
+        elif sort_key == "Subject":
+            sorted_exps = sorted(all_experiments, key=lambda e: e.subject_id)
+        elif sort_key == "Date":
+            sorted_exps = sorted(all_experiments, key=lambda e: e.date_recorded if hasattr(e, 'date_recorded') and e.date_recorded else datetime.min)
+        
+        # Apply current filter
+        filtered_exps = self.apply_experiment_filter(sorted_exps)
+        
+        # Update grid with sorted and filtered data
+        columns = ["Select", "ID", "Type", "Subject", "Date", "Stage"]
+        exp_data = []
+        
+        for exp in filtered_exps:
+            date_str = exp.date_recorded.strftime("%Y-%m-%d") if hasattr(exp, 'date_recorded') and exp.date_recorded else "N/A"
+            
+            # Create dict for each experiment row, preserving selection state
+            exp_dict = {
+                "Select": exp.id in selected_ids,
+                "ID": exp.id,
+                "Type": exp.type,
+                "Subject": exp.subject_id,
+                "Date": date_str,
+                "Stage": exp.processing_stage
+            }
+            exp_data.append(exp_dict)
+        
+        # Update the grid
+        self.batch_experiment_grid.set_columns(columns)
+        self.batch_experiment_grid.populate_data(exp_data, columns, selectable=True, checkbox_column="Select")
+    
+    def filter_experiment_grid(self, index):
+        """Filter the experiment grid based on experiment type."""
+        # Get current sort order
+        sort_index = self.sortComboBox.currentIndex()
+        # Re-sort with new filter
+        self.sort_experiment_grid(sort_index)
+    
+    def apply_experiment_filter(self, experiments):
+        """Apply filter to experiment list."""
+        if not self.filterTypeCombo:
+            return experiments
+            
+        filter_type = self.filterTypeCombo.currentText()
+        if filter_type == "All Types":
+            return experiments
+        
+        # Filter by experiment type
+        return [exp for exp in experiments if exp.type == filter_type]
+    
+    def on_experiment_selection_changed(self, exp_id, is_selected):
+        """Handle experiment selection changes."""
+        if is_selected:
+            self.selected_experiments.add(exp_id)
+        else:
+            self.selected_experiments.discard(exp_id)
+        
+        # Update the create button state
+        self.create_batch_button.setEnabled(len(self.selected_experiments) > 0)
+        
+        # Update notification with count
+        count = len(self.selected_experiments)
+        self.batch_notification_label.setText(f"{count} experiment(s) selected")
+    
+    def handle_create_batch(self):
+        """Create a new batch with the selected experiments."""
+        if not self.project_manager or not self.state_manager:
+            return
+            
+        # Get batch info
+        batch_id = self.batchIdLineEdit.text().strip()
+        batch_name = self.batchNameLineEdit.text().strip()
+        batch_description = self.batchDescriptionLineEdit.text().strip()
+        
+        # Validate inputs
+        if not batch_id:
+            QMessageBox.warning(self, "Validation Error", "Batch ID is required.")
+            return
+            
+        if len(self.selected_experiments) == 0:
+            QMessageBox.warning(self, "Validation Error", "Please select at least one experiment.")
+            return
+        
+        # Create the batch
+        try:
+            # Create batch with selection criteria
+            selection_criteria = {
+                "manual_selection": True,
+                "filter_type": self.filterTypeCombo.currentText(),
+                "sort_by": self.sortComboBox.currentText()
+            }
+            
+            # Call the project manager to create the batch
+            self.project_manager.create_batch(
+                batch_id=batch_id,
+                batch_name=batch_name,
+                description=batch_description,
+                experiment_ids=list(self.selected_experiments),
+                selection_criteria=selection_criteria
+            )
+            
+            # Show success message
+            self.batch_notification_label.setText(f"Batch '{batch_id}' created successfully!")
+            
+            # Clear form for next batch
+            self.batchNameLineEdit.clear()
+            self.batchDescriptionLineEdit.clear()
+            
+            # Generate a new batch ID
+            timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+            self.batchIdLineEdit.setText(f"batch_{timestamp}")
+            
+            # Clear selection
+            self.selected_experiments = set()
+            self.update_experiment_grid()
+            
+        except Exception as e:
+            # Show error message
+            QMessageBox.critical(self, "Error", f"Failed to create batch: {str(e)}")
+            self.batch_notification_label.setText("Batch creation failed.")
+        
+    def closeEvent(self, event):
+        """Clean up when the view is closed."""
+        # Unsubscribe the observer when the view is closed
+        if hasattr(self, '_state_manager'):
+            self._state_manager.unsubscribe(self.refresh_data)
+        super().closeEvent(event)
+        
+    def update_theme(self, theme):
+        """Update the theme for this view and all its components.
+        Called when the application theme changes.
+        
+        Args:
+            theme: The theme name ("dark" or "light"), passed from MainWindow
+        """
+        # Propagate theme changes using the base update_theme, which handles styling
+        super().update_theme(theme)
+        
+        # Optionally, perform additional view-specific theme updates here (e.g., update plugin fields)
+        if hasattr(self, 'plugin_field_widgets') and hasattr(self, 'update_plugin_fields'):
+            try:
+                self.update_plugin_fields()
+            except Exception as e:
+                if hasattr(self, 'navigation_pane'):
+                    self.navigation_pane.add_log_message(f"Error updating plugin fields: {str(e)}", "warning")
         

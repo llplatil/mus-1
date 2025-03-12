@@ -1,0 +1,619 @@
+/* 
+ * MUS1 UNIFIED CSS STYLESHEET
+ * This file demonstrates the unified CSS approach with CSS variables
+ * and properly organized style groups
+ */
+
+/*
+ * === MIGRATION STRATEGY ===
+ * 
+ * 1. Create this unified file with CSS variables for all theme-specific values
+ * 2. Add descriptive section comments to organize related styles
+ * 3. Copy styles from both dark.css and light.css, replacing hardcoded values with variables
+ * 4. Test the new CSS by applying it with different :root variable sets
+ * 5. Gradually replace references to light.css and dark.css with this unified file + variable switching
+ * 6. Remove the old theme files once migration is complete
+ */
+
+/* === ROOT THEME VARIABLES === */
+:root {
+  /* Base theme variables */
+  --font-size: 12px;
+  --font-family: "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  
+  /* Light theme colors (default) */
+  --background-color: #f0f0f0;
+  --text-color: #000000;
+  --border-color: #CCCCCC;
+  --border-radius: 6px;
+  
+  /* Input elements */
+  --input-background: #FFFFFF;
+  --input-text-color: #333333;
+  --input-border: 1px solid var(--border-color);
+  
+  /* Highlight and selection colors */
+  --selection-background: #ADD8E6; /* Light blue for light theme */
+  --selection-text-color: #000000;
+  
+  /* Content areas */
+  --content-background: #FFFFFF;
+  --content-text-color: #333333;
+  
+  /* Widget boxes */
+  --widget-box-background: rgba(250, 250, 250, 0.8);
+  --widget-box-border: 1px solid var(--border-color);
+  
+  /* Log display */
+  --log-background: #F0F0F0;
+  --log-text-color: #555555;
+  
+  /* Buttons */
+  --primary-button-background: #4A90E2;
+  --primary-button-hover: #357ABD;
+  --primary-button-pressed: #2C6391;
+  --primary-button-text: #FFFFFF;
+  
+  --secondary-button-background: #FFFFFF;
+  --secondary-button-hover: #F5F5F5;
+  --secondary-button-text: #333333;
+  
+  /* Navigation */
+  --nav-pane-background: #E6E6E6;
+  --nav-button-background: #4A90E2;
+  --nav-button-text: #FFFFFF;
+  --nav-button-hover: #357ABD;
+  --nav-button-selected: #2C6391;
+  
+  /* Other UI elements */
+  --header-background: #E0E0E0;
+  --header-text: #333333;
+  --scrollbar-background: #E0E0E0;
+  --scrollbar-handle: #BBBBBB;
+  
+  /* Button colors */
+  --button-bg: #EEEEEE;
+  --button-text-color: #333333;
+  --button-border: 1px solid var(--border-color);
+  --button-hover-bg: #DFDFDF;
+  --button-hover-text-color: #000000;
+  --button-active-bg: #D5D5D5;
+  
+  /* Primary button */
+  --primary-button-bg: #4A90E2;
+  --primary-button-text-color: #FFFFFF;
+  --primary-button-border: 1px solid #3A80D2;
+  --primary-button-hover-bg: #5AA0F2;
+  --primary-button-active-bg: #3A80D2;
+  
+  /* Navigation pane */
+  --nav-bg: #E0E0E0;
+  --nav-text-color: #333333;
+  --nav-border: 1px solid #CCCCCC;
+  --nav-selected-bg: #4A90E2;
+  --nav-selected-text-color: #FFFFFF;
+  
+  /* Log area */
+  --log-bg: #FFFFFF;
+  --log-text-color: #333333;
+  --log-border: 1px solid var(--border-color);
+  --log-info-color: #333333;
+  --log-warning-color: #FFA500;
+  --log-error-color: #FF0000;
+  --log-success-color: #008000;
+  
+  /* Scrollbars */
+  --scrollbar-bg: #D9D9D9;
+  --scrollbar-thumb: #BBBBBB;
+  --scrollbar-thumb-hover: #999999;
+  
+  /* Plugin variables */
+  --plugin-primary-color: #0078d7;
+  --plugin-secondary-color: #0099cc;
+  --plugin-required-color: rgba(238, 141, 141, 0.57);
+  --plugin-optional-color: rgba(116, 193, 252, 0.57);
+  
+  /* Processing stage backgrounds (light theme) */
+  --plugin-preprocessing-bg: rgba(240, 248, 255, 0.6);
+  --plugin-analysis-bg: rgba(240, 255, 240, 0.6);
+  --plugin-results-bg: rgba(255, 248, 240, 0.6);
+}
+
+/* Dark theme */
+.dark-theme:root {
+  /* Dark theme colors */
+  --background-color: #121212;
+  --text-color: #FFFFFF;
+  --border-color: #555555;
+  
+  /* Input elements */
+  --input-background: #2a2a2a;
+  --input-text-color: #e0e0e0;
+  --input-border: 1px solid #555555;
+  
+  /* Highlight and selection colors */
+  --selection-background: #3a5f8c; /* Blue for dark theme */
+  --selection-text-color: #FFFFFF;
+  
+  /* Content areas */
+  --content-background: #1E1E1E;
+  --content-text-color: #E0E0E0;
+  
+  /* Widget boxes */
+  --widget-box-background: rgba(30, 30, 30, 0.8);
+  --widget-box-border: 1px solid var(--border-color);
+  
+  /* Log display */
+  --log-background: #1A1A1A;
+  --log-text-color: #CCCCCC;
+  
+  /* Buttons */
+  --primary-button-background: #4A90E2;
+  --primary-button-hover: #357ABD;
+  --primary-button-pressed: #2C6391;
+  --primary-button-text: #FFFFFF;
+  
+  --secondary-button-background: #333333;
+  --secondary-button-hover: #444444;
+  --secondary-button-text: #E0E0E0;
+  
+  /* Navigation */
+  --nav-pane-background: #2A2A2A;
+  --nav-button-background: #4A90E2;
+  --nav-button-text: #FFFFFF;
+  --nav-button-hover: #357ABD;
+  --nav-button-selected: #2C6391;
+  
+  /* Other UI elements */
+  --header-background: #3A3A3A;
+  --header-text: #E0E0E0;
+  --scrollbar-background: #2A2A2A;
+  --scrollbar-handle: #4A4A4A;
+  
+  /* Button colors */
+  --button-bg: #333333;
+  --button-text-color: #e0e0e0;
+  --button-border: 1px solid #555555;
+  --button-hover-bg: #444444;
+  --button-hover-text-color: #ffffff;
+  --button-active-bg: #555555;
+  
+  /* Primary button */
+  --primary-button-bg: #BB86FC;
+  --primary-button-text-color: #121212;
+  --primary-button-border: 1px solid #9966CC;
+  --primary-button-hover-bg: #CBB6FC;
+  --primary-button-active-bg: #9966CC;
+  
+  /* Navigation pane */
+  --nav-bg: #2a2a2a;
+  --nav-text-color: #e0e0e0;
+  --nav-border: 1px solid #555555;
+  --nav-selected-bg: #BB86FC;
+  --nav-selected-text-color: #121212;
+  
+  /* Log area */
+  --log-bg: #1E1E1E;
+  --log-text-color: #E0E0E0;
+  --log-border: 1px solid var(--border-color);
+  --log-info-color: #E0E0E0;
+  --log-warning-color: #FFC107;
+  --log-error-color: #FF5252;
+  --log-success-color: #4CAF50;
+  
+  /* Scrollbars */
+  --scrollbar-bg: #333333;
+  --scrollbar-thumb: #555555;
+  --scrollbar-thumb-hover: #777777;
+  
+  /* Plugin variables */
+  --plugin-primary-color: #bb86fc;
+  --plugin-secondary-color: #3700b3;
+  --plugin-required-color: #ff8787;
+  --plugin-optional-color: #4dabf7;
+  
+  /* Processing stage backgrounds (dark theme) */
+  --plugin-preprocessing-bg: rgba(0, 41, 82, 0.25);
+  --plugin-analysis-bg: rgba(0, 82, 41, 0.25);
+  --plugin-results-bg: rgba(82, 41, 0, 0.25);
+}
+
+/* === BASE STYLES === */
+QWidget {
+  font-size: var(--font-size);
+  font-family: var(--font-family);
+  background-color: var(--background-color);
+  color: var(--text-color);
+}
+
+.mus1-main-window {
+  min-width: 800px;
+  min-height: 600px;
+  background-color: var(--background-color);
+  color: var(--text-color);
+}
+
+/* === BUTTON STYLES === */
+.mus1-primary-button {
+  border: none;
+  border-radius: var(--border-radius);
+  padding: 8px 16px;
+  background-color: var(--primary-button-background);
+  color: var(--primary-button-text);
+  margin-top: 10px;
+}
+
+.mus1-primary-button:hover {
+  background-color: var(--primary-button-hover);
+}
+
+.mus1-primary-button:pressed {
+  background-color: var(--primary-button-pressed);
+}
+
+.mus1-secondary-button {
+  border: var(--input-border);
+  border-radius: var(--border-radius);
+  padding: 8px 16px;
+  background-color: var(--secondary-button-background);
+  color: var(--secondary-button-text);
+}
+
+.mus1-secondary-button:hover {
+  background-color: var(--secondary-button-hover);
+}
+
+/* === INPUT AND FORM ELEMENTS === */
+.mus1-input-group {
+  border: var(--widget-box-border);
+  border-radius: var(--border-radius);
+  padding: 10px;
+  margin-bottom: 10px;
+  background-color: var(--widget-box-background);
+  color: var(--text-color);
+}
+
+.mus1-text-input, .mus1-combo-box {
+  border-radius: 4px;
+  padding: 6px;
+  border: var(--input-border);
+  background-color: var(--input-background);
+  color: var(--input-text-color);
+}
+
+/* Fix text selection highlighting */
+QLineEdit::selection, QTextEdit::selection, QPlainTextEdit::selection {
+  background-color: var(--selection-background);
+  color: var(--selection-text-color);
+}
+
+/* Input label styling - fixed to remove unwanted highlighting */
+.mus1-input-label {
+  color: var(--text-color);
+  font-weight: normal;
+  background-color: transparent; /* No background highlight */
+  padding: 2px 0;
+}
+
+.mus1-combo-box {
+  margin-bottom: 10px;
+}
+
+/* === NOTES WIDGET === */
+.mus1-notes-edit {
+  border-radius: 4px;
+  padding: 6px;
+  border: var(--input-border);
+  background-color: var(--input-background);
+  color: var(--input-text-color);
+  transition: height 0.3s ease;  /* Smooth transition for height changes */
+}
+
+/* === LIST WIDGET STYLING === */
+.mus1-list-widget {
+  border: var(--input-border);
+  border-radius: 4px;
+  background-color: var(--input-background);
+  color: var(--input-text-color);
+  padding: 2px;
+  margin-bottom: 8px;
+  min-height: 100px;
+}
+
+.mus1-list-widget::item {
+  padding: 4px;
+  border-bottom: 1px solid rgba(128, 128, 128, 0.2); /* Semi-transparent gray that works in both themes */
+}
+
+.mus1-list-widget::item:selected {
+  background-color: var(--selection-background);
+  color: var(--selection-text-color);
+}
+
+.mus1-list-widget::item:hover {
+  background-color: rgba(128, 128, 128, 0.1); /* Semi-transparent hover for both themes */
+}
+
+/* === TABLE VIEWS === */
+.mus1-table-view {
+  border: var(--input-border);
+  background-color: var(--input-background);
+  color: var(--input-text-color);
+}
+
+.mus1-table-view QHeaderView::section {
+  background-color: var(--header-background);
+  color: var(--header-text);
+  padding: 8px;
+  font-weight: bold;
+}
+
+.mus1-table-view::item {
+  padding: 4px;
+}
+
+.mus1-table-view::item:selected {
+  background-color: var(--selection-background);
+  color: var(--selection-text-color);
+}
+
+/* === NAVIGATION ELEMENTS === */
+.mus1-nav-pane {
+  background-color: var(--nav-pane-background);
+  border-right: 1px solid var(--border-color);
+}
+
+.mus1-nav-list-container {
+  padding: 0px;
+  background-color: transparent;
+  margin: 0px;
+}
+
+.mus1-nav-button {
+  border: none;
+  border-radius: 4px;
+  padding: 0 12px;  /* Only horizontal padding */
+  margin: 0;        /* No margin to avoid double spacing */
+  background-color: var(--nav-button-background);
+  color: var(--nav-button-text);
+  text-align: left;
+  /* Height is controlled programmatically */
+}
+
+.mus1-nav-button:hover {
+  background-color: var(--nav-button-hover);
+}
+
+.mus1-nav-button:checked {
+  background-color: var(--nav-button-selected);
+}
+
+/* === LOG DISPLAY === */
+.mus1-log-display {
+  background-color: var(--log-background);
+  border: 1px solid var(--border-color);
+  color: var(--log-text-color);
+  font-size: 12px;
+  padding: 4px;
+  margin: 0;
+}
+
+.mus1-log-container {
+  margin: 0;
+  padding: 0;
+}
+
+.mus1-log-label {
+  color: rgba(128, 128, 128, 0.8);  /* Semi-transparent gray for both themes */
+  font-size: 12px;
+  font-weight: bold;
+  margin: 0;
+  padding: 0;
+}
+
+/* === PLUGIN ELEMENTS === */
+.plugin-panel {
+  border: var(--widget-box-border);
+  border-radius: var(--border-radius);
+  padding: 12px;
+  margin-top: 10px;
+  background-color: color-mix(in srgb, var(--widget-box-background) 80%, transparent 20%);
+}
+
+/* === SCROLLBARS === */
+QScrollArea {
+  background-color: transparent;
+  border: none;
+}
+
+QScrollArea > QWidget > QWidget {
+  background-color: transparent;
+}
+
+QScrollBar:vertical {
+  background-color: var(--scrollbar-background);
+  width: 12px;
+  border-radius: 6px;
+}
+
+QScrollBar::handle:vertical {
+  background-color: var(--scrollbar-handle);
+  min-height: 20px;
+  border-radius: 6px;
+}
+
+QScrollBar::handle:vertical:hover {
+  background-color: color-mix(in srgb, var(--scrollbar-handle) 80%, white 20%);
+}
+
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+  height: 0px;
+}
+
+QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
+  background-color: transparent;
+}
+
+/* === SPLITTER === */
+QSplitter::handle {
+  background-color: var(--border-color);
+}
+
+/* === CONTENT AREAS === */
+.mus1-content-area {
+  background-color: var(--content-background);
+  border-radius: 0;
+  color: var(--content-text-color);
+}
+
+.mus1-page {
+  padding: 12px;
+  background-color: var(--content-background);
+  border-radius: var(--border-radius);
+  margin-bottom: 10px;
+}
+
+/* === PROJECT SPECIFIC ELEMENTS === */
+.mus1-project-selector {
+  border: var(--widget-box-border);
+  border-radius: var(--border-radius);
+  padding: 10px;
+  margin-bottom: 15px;
+  background-color: var(--widget-box-background);
+}
+
+.mus1-section-label {
+  font-weight: bold;
+  color: var(--text-color);
+  margin-bottom: 5px;
+  font-size: 14px;
+}
+
+/* === PLUGIN COMPONENT STYLES === */
+.plugin-field {
+  border-radius: 4px;
+  padding: 8px;
+  margin-bottom: 8px;
+  transition: background-color 0.2s ease;
+}
+
+.plugin-field-required {
+  border-left: 3px solid var(--plugin-required-color);
+}
+
+.plugin-field-optional {
+  border-left: 3px solid var(--plugin-optional-color);
+}
+
+.plugin-stage-preprocessing {
+  background-color: var(--plugin-preprocessing-bg);
+}
+
+.plugin-stage-analysis {
+  background-color: var(--plugin-analysis-bg);
+}
+
+.plugin-stage-results {
+  background-color: var(--plugin-results-bg);
+}
+
+.plugin-stage-unknown {
+  /* Default style for fields with unknown stage */
+  background-color: transparent;
+}
+
+/* === PLUGIN STYLING SYSTEM === */
+/* These classes are used by the standardized plugin styling system */
+
+/* Primary colors */
+.plugin-primary-default {
+  --plugin-component-accent: var(--plugin-primary-color);
+}
+
+.plugin-primary-accent {
+  --plugin-component-accent: var(--plugin-secondary-color);
+}
+
+/* A plugin with custom color will have its color set via style attribute */
+.plugin-primary-custom {
+  /* Uses custom color set via style attribute */
+}
+
+/* Border styles */
+.plugin-border-default {
+  border-radius: 4px;
+}
+
+.plugin-border-rounded {
+  border-radius: 8px;
+}
+
+.plugin-border-sharp {
+  border-radius: 0;
+}
+
+.plugin-border-none {
+  border: none !important;
+}
+
+/* Spacing options */
+.plugin-spacing-default {
+  padding: 8px;
+  margin-bottom: 8px;
+}
+
+.plugin-spacing-compact {
+  padding: 4px;
+  margin-bottom: 4px;
+}
+
+.plugin-spacing-spacious {
+  padding: 12px;
+  margin-bottom: 12px;
+}
+
+/* Combined plugin component styles that use the above classes */
+.plugin-component {
+  border: 1px solid var(--border-color);
+  transition: all 0.2s ease;
+}
+
+/* Plugin fields for different processing stages */
+.plugin-stage-preprocessing.plugin-spacing-default {
+  background-color: var(--plugin-preprocessing-bg);
+}
+
+.plugin-stage-preprocessing.plugin-spacing-subtle {
+  background-color: color-mix(in srgb, var(--plugin-preprocessing-bg) 50%, transparent 50%);
+}
+
+.plugin-stage-preprocessing.plugin-spacing-prominent {
+  background-color: var(--plugin-preprocessing-bg);
+  border-left: 3px solid var(--plugin-component-accent);
+}
+
+.plugin-stage-analysis.plugin-spacing-default {
+  background-color: var(--plugin-analysis-bg);
+}
+
+.plugin-stage-analysis.plugin-spacing-subtle {
+  background-color: color-mix(in srgb, var(--plugin-analysis-bg) 50%, transparent 50%);
+}
+
+.plugin-stage-analysis.plugin-spacing-prominent {
+  background-color: var(--plugin-analysis-bg);
+  border-left: 3px solid var(--plugin-component-accent);
+}
+
+.plugin-stage-results.plugin-spacing-default {
+  background-color: var(--plugin-results-bg);
+}
+
+.plugin-stage-results.plugin-spacing-subtle {
+  background-color: color-mix(in srgb, var(--plugin-results-bg) 50%, transparent 50%);
+}
+
+.plugin-stage-results.plugin-spacing-prominent {
+  background-color: var(--plugin-results-bg);
+  border-left: 3px solid var(--plugin-component-accent);
+} 

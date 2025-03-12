@@ -1,0 +1,315 @@
+
+        /* Qt-compatible Dark Theme */
+        QWidget {
+            background-color: #121212;
+            color: #FFFFFF;
+            font-family: "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;
+            font-size: 12px;
+        }
+        
+        /* === MAIN WINDOW === */
+        .mus1-main-window {
+            min-width: 800px;
+            min-height: 600px;
+            background-color: #121212;
+            color: #FFFFFF;
+        }
+
+        /* === BUTTON STYLES === */
+        QPushButton, .mus1-primary-button {
+            border: none;
+            border-radius: 6px;
+            padding: 8px 16px;
+            background-color: #BB86FC;
+            color: #121212;
+            margin-top: 10px;
+        }
+        
+        QPushButton:hover, .mus1-primary-button:hover {
+            background-color: #CBB6FC;
+        }
+        
+        QPushButton:pressed, .mus1-primary-button:pressed {
+            background-color: #BB86FC;
+        }
+        
+        .mus1-secondary-button {
+            border: 1px solid #555555;
+            border-radius: 6px;
+            padding: 8px 16px;
+            background-color: #2a2a2a;
+            color: #e0e0e0;
+        }
+        
+        .mus1-secondary-button:hover {
+            background-color: #121212;
+        }
+        
+        /* === INPUT AND FORM ELEMENTS === */
+        QLineEdit, QTextEdit, QPlainTextEdit, QComboBox, .mus1-text-input, .mus1-combo-box {
+            border-radius: 4px;
+            padding: 6px;
+            border: 1px solid #555555;
+            background-color: #2a2a2a;
+            color: #e0e0e0;
+        }
+        
+        .mus1-input-group {
+            border: 1px solid #555555;
+            border-radius: 6px;
+            padding: 10px;
+            margin-bottom: 10px;
+            background-color: #1E1E1E;
+            color: #FFFFFF;
+        }
+        
+        QLineEdit::selection, QTextEdit::selection, QPlainTextEdit::selection {
+            background-color: #3a5f8c;
+            color: #FFFFFF;
+        }
+        
+        .mus1-input-label {
+            color: #FFFFFF;
+            font-weight: normal;
+            background-color: rgba(0,0,0,0);
+            padding: 2px 0;
+        }
+        
+        .mus1-combo-box {
+            margin-bottom: 10px;
+        }
+        
+        /* === NOTES WIDGET === */
+        .mus1-notes-edit {
+            border-radius: 4px;
+            padding: 6px;
+            border: 1px solid #555555;
+            background-color: #2a2a2a;
+            color: #e0e0e0;
+        }
+        
+        /* === LIST WIDGET STYLING === */
+        QListWidget, .mus1-list-widget {
+            border: 1px solid #555555;
+            border-radius: 4px;
+            background-color: #2a2a2a;
+            color: #e0e0e0;
+            padding: 2px;
+            margin-bottom: 8px;
+            min-height: 100px;
+        }
+        
+        QListWidget::item, .mus1-list-widget::item {
+            padding: 4px;
+            border-bottom: 1px solid rgba(128, 128, 128, 0.2);
+        }
+        
+        QListWidget::item:selected, .mus1-list-widget::item:selected {
+            background-color: #3a5f8c;
+            color: #FFFFFF;
+        }
+        
+        QListWidget::item:hover, .mus1-list-widget::item:hover {
+            background-color: rgba(128, 128, 128, 0.1);
+        }
+        
+        /* === TABLE VIEWS === */
+        QTableView, .mus1-table-view {
+            border: 1px solid #555555;
+            background-color: #2a2a2a;
+            color: #e0e0e0;
+        }
+        
+        QTableView QHeaderView::section, .mus1-table-view QHeaderView::section {
+            background-color: #3A3A3A;
+            color: #E0E0E0;
+            padding: 8px;
+            font-weight: bold;
+        }
+        
+        QTableView::item, .mus1-table-view::item {
+            padding: 4px;
+        }
+        
+        QTableView::item:selected, .mus1-table-view::item:selected {
+            background-color: #3a5f8c;
+            color: #FFFFFF;
+        }
+        
+        /* === NAVIGATION ELEMENTS === */
+        .mus1-nav-pane {
+            background-color: #2a2a2a;
+            border-right: 1px solid #555555;
+        }
+        
+        .mus1-nav-list-container {
+            padding: 0px;
+            background-color: rgba(0,0,0,0);
+            margin: 0px;
+        }
+        
+        .mus1-nav-button {
+            border: none;
+            border-radius: 4px;
+            padding: 8px 16px;
+            margin: 4px;
+            background-color: #2a2a2a;
+            color: #e0e0e0;
+            text-align: left;
+        }
+        
+        .mus1-nav-button:hover {
+            background-color: rgba(128, 128, 128, 0.1);
+        }
+        
+        .mus1-nav-button:checked {
+            background-color: #BB86FC;
+            color: #121212;
+        }
+        
+        /* === LOG DISPLAY === */
+        .mus1-log-display {
+            border: 1px solid #555555;
+            border-radius: 4px;
+            padding: 6px;
+            background-color: #2a2a2a;
+            color: #e0e0e0;
+            margin-top: 10px;
+            font-family: Consolas, monospace;
+            font-size: 11px;
+        }
+        
+        .mus1-log-container {
+            background-color: #2a2a2a;
+            color: #e0e0e0;
+        }
+        
+        .mus1-log-label {
+            color: #FFFFFF;
+            font-weight: bold;
+            background-color: #3A3A3A;
+            padding: 4px 8px;
+            border-radius: 2px 2px 0 0;
+            font-size: 11px;
+            font-family: Consolas, monospace;
+        }
+        
+        /* === PANELS AND CONTAINERS === */
+        .plugin-panel {
+            border: 1px solid #555555;
+            border-radius: 6px;
+            background-color: #1E1E1E;
+            color: #E0E0E0;
+            padding: 10px;
+            margin: 5px;
+        }
+        
+        QScrollArea {
+            border: none;
+            background-color: #121212;
+        }
+        
+        QScrollArea > QWidget > QWidget {
+            background-color: #121212;
+        }
+        
+        QScrollBar:vertical {
+            background-color: #333333;
+            width: 12px;
+            border-radius: 6px;
+        }
+        
+        QScrollBar::handle:vertical {
+            background-color: #555555;
+            min-height: 20px;
+            border-radius: 6px;
+        }
+        
+        QScrollBar::handle:vertical:hover {
+            background-color: #BB86FC;
+        }
+        
+        QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+            background-color: rgba(0,0,0,0);
+        }
+        
+        QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
+            background-color: rgba(0,0,0,0);
+        }
+        
+        QSplitter::handle {
+            background-color: #555555;
+            width: 1px;
+        }
+        
+        /* === CONTENT AREAS === */
+        .mus1-content-area {
+            background-color: #1E1E1E;
+            color: #E0E0E0;
+            border-radius: 6px;
+            padding: 10px;
+        }
+        
+        .mus1-page {
+            background-color: #1E1E1E;
+            color: #E0E0E0;
+            border: 1px solid #555555;
+            border-radius: 6px;
+            padding: 15px;
+            margin: 5px;
+        }
+        
+        /* === PROJECT ELEMENTS === */
+        .mus1-project-selector {
+            background-color: #1E1E1E;
+            color: #E0E0E0;
+            border: 1px solid #555555;
+            border-radius: 6px;
+            padding: 10px;
+            margin-bottom: 15px;
+        }
+        
+        .mus1-section-label {
+            color: #FFFFFF;
+            font-weight: bold;
+            font-size: 14px;
+            margin-top: 15px;
+            margin-bottom: 10px;
+            padding-bottom: 5px;
+            border-bottom: 1px solid #555555;
+        }
+        
+        /* === PLUGIN STYLING === */
+        .plugin-field {
+            border: 1px solid #555555;
+            border-radius: 4px;
+            padding: 8px;
+            margin: 4px 0;
+        }
+        
+        .plugin-field-required {
+            background-color: rgba(255, 0, 0, 0.1);
+        }
+        
+        .plugin-field-optional {
+            background-color: rgba(0, 0, 255, 0.1);
+        }
+        
+        .plugin-stage-preprocessing {
+            border-left: 3px solid blue;
+        }
+        
+        .plugin-stage-analysis {
+            border-left: 3px solid green;
+        }
+        
+        .plugin-stage-results {
+            border-left: 3px solid orange;
+        }
+        
+        .plugin-stage-unknown {
+            border-left: 3px solid gray;
+        }
+        
+        /* Add any additional styling needed for plugins */
+        

@@ -20,7 +20,8 @@ from core import (
     init_metadata,
     StateManager,
     DataManager,
-    ProjectManager
+    ProjectManager,
+    ThemeManager
 )
 from core.logging_bus import LoggingEventBus
 
@@ -38,28 +39,7 @@ def main():
 
     # Create our Qt application
     app = QApplication(sys.argv)
-
-    # Show a splash screen
-    splash_pix = QPixmap("assets/m1logo.jpg")  # Updated path to use the assets directory
-    # Try fallback paths if the image isn't found
-    if splash_pix.isNull():
-        alternate_paths = [
-            "Mus1_Refactor/assets/m1logo.jpg",
-            "../assets/m1logo.jpg",
-            "m1logo.jpg"
-        ]
-        for path in alternate_paths:
-            splash_pix = QPixmap(path)
-            if not splash_pix.isNull():
-                break
-        
-    splash = QSplashScreen(splash_pix)
-    splash.show()
-    # Process events so that the splash screen is displayed immediately
-    app.processEvents()
-    QTest.qWait(1000)  # Wait for 1 second
-    splash.close()  # Close splash before proceeding
-
+    
     # Initialize the LoggingEventBus singleton
     log_bus = LoggingEventBus.get_instance()
     log_bus.log("LoggingEventBus initialized", "info", "MainApp")
@@ -68,6 +48,7 @@ def main():
     state_manager = StateManager()
     data_manager = DataManager(state_manager)
     project_manager = ProjectManager(state_manager)
+    theme_manager = ThemeManager(state_manager)
 
     logger.info("Core managers created. Launching Project Selection Dialog.")
 
@@ -80,13 +61,21 @@ def main():
 
     logger.info("Project selected: {}".format(getattr(dialog, 'selected_project_name', 'Unknown')))
 
+    # Apply theme using ThemeManager instead of ProjectManager
+    effective_theme = theme_manager.get_effective_theme()
+    if effective_theme not in ["light", "dark"]:
+        log_bus.log("Invalid theme preference detected. Defaulting to dark.", "warning", "Main")
+        effective_theme = "dark"
+        theme_manager.change_theme(effective_theme)
+    else:
+        # Apply the theme to the application
+        theme_manager.apply_theme(app)
+
     # Create and launch our MainWindow after project selection
     from gui.main_window import MainWindow
     selected_project = getattr(dialog, 'selected_project_name', None)
     main_window = MainWindow(state_manager, data_manager, project_manager, selected_project=selected_project)
     main_window.show()
-
-    # Splash already closed; no need to finish splash
 
     logger.info("MUS1 init complete. Starting application event loop.")
     sys.exit(app.exec())

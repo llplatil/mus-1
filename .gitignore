@@ -2,18 +2,75 @@
 /*
 !.gitignore
 !Mus1_Refactor/
+!requirements.txt
+!README.md
+!docs/
+!LICENSE
 
 # Python cache files
-**/__pycache__/
-**/*.pyc
-**/*.pyo
-**/*.pyd
-**/.Python
-**/*.so
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
 
 # Logs
-**/mus1.log
-**/*.log
+logs/
+*.log
+mus1.log
 
 # Projects directory
-**/projects/
+projects/
+
+# Qt/PySide specific
+*.qmlc
+*.jsc
+*.qm
+.qt_for_python/
+.qmake.stash
+.rcc
+.pui
+*.user
+.qtc_clangd/
+*.moc
+moc_*.cpp
+qrc_*.cpp
+
+# IDE specific files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# OS specific
+.DS_Store
+Thumbs.db
+
+# Custom MUS1 specific
+**/temp/
+**/cache/
+**/backups/

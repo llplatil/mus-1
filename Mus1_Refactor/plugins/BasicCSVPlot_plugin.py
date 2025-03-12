@@ -15,7 +15,10 @@ class BasicCSVPlotPlugin(BasePlugin):
             date_created=datetime(2025, 2, 15),
             version="1.0",
             description="A plugin for analyzing basic CSV files",
-            author="Lukash Platil"
+            author="Lukash Platil",
+            supported_experiment_types=["CSV", "NOR", "OpenField"],
+            supported_processing_stages=["processing", "analyzed"],
+            supported_data_sources=["DLC", "Manual"]
         )
     
     def required_fields(self):
@@ -30,20 +33,47 @@ class BasicCSVPlotPlugin(BasePlugin):
         For example: body_part, extracted_image, video.
         """
         return ["body_part", "extracted_image", "video"]
+        
+    def get_supported_processing_stages(self) -> list:
+        """Return processing stages this plugin supports."""
+        return ["processing", "analyzed"]
+        
+    def get_field_types(self) -> dict:
+        """
+        Return a dictionary mapping field names to their data types.
+        This helps the UI generate appropriate input widgets.
+        """
+        return {
+            "csv_path": "file",
+            "body_part": "string",
+            "extracted_image": "file",
+            "video": "file"
+        }
+
+    def get_field_descriptions(self) -> dict:
+        """
+        Return a dictionary mapping field names to their descriptions.
+        This provides context for users when filling out the form.
+        """
+        return {
+            "csv_path": "Path to the CSV file containing tracking data",
+            "body_part": "Name of the body part to analyze (e.g., 'nose', 'tail')",
+            "extracted_image": "Optional image file to overlay data on",
+            "video": "Optional source video file"
+        }
 
     def validate_experiment(self, experiment, project_state):
         """
         Validate the experiment by checking:
         - The CSV file path is valid (exists).
-        - use data manager to extracts body parts from a DLC CSV file by reading the header (level 1) and returning a set of unique body parts.
         - If a body_part is provided in plugin_params, it exists in the project's master body parts.
         - The CSV file contains tracked body parts that match at least one of the project's master body parts.
         """
-        csv_path = experiment.plugin_params.get("csv_path")
+        csv_path = experiment.plugin_params.get(self.plugin_self_metadata().name, {}).get("csv_path")
         if not csv_path or not Path(csv_path).exists():
             raise ValueError(f"CSV file path missing or not found: {csv_path}")
 
-        body_part = experiment.plugin_params.get("body_part")
+        body_part = experiment.plugin_params.get(self.plugin_self_metadata().name, {}).get("body_part")
         if body_part and project_state.project_metadata and project_state.project_metadata.master_body_parts:
             valid_body_parts = {bp.name for bp in project_state.project_metadata.master_body_parts}
             if body_part not in valid_body_parts:
@@ -65,7 +95,8 @@ class BasicCSVPlotPlugin(BasePlugin):
         and computes movement metrics including total distance, cumulative movement plot, and heat map.
         Returns a dictionary with analysis results, including figures converted to PNG bytes.
         """
-        csv_path = experiment.plugin_params.get("csv_path")
+        plugin_name = self.plugin_self_metadata().name
+        csv_path = experiment.plugin_params.get(plugin_name, {}).get("csv_path")
         if not csv_path:
             return {"error": "No CSV path set"}
 
@@ -77,14 +108,14 @@ class BasicCSVPlotPlugin(BasePlugin):
             analysis_result = {"status": "success", "rows": len(df)}
 
             # If a specific body part is provided, perform detailed analysis
-            if "body_part" in experiment.plugin_params:
-                bp = experiment.plugin_params["body_part"]
+            body_part = experiment.plugin_params.get(plugin_name, {}).get("body_part")
+            if body_part:
                 # Find x and y coordinate columns for the specified body part in the multi-index
                 try:
-                    x_col = [col for col in df.columns if col[1] == bp and col[2] == 'x'][0]
-                    y_col = [col for col in df.columns if col[1] == bp and col[2] == 'y'][0]
+                    x_col = [col for col in df.columns if col[1] == body_part and col[2] == 'x'][0]
+                    y_col = [col for col in df.columns if col[1] == body_part and col[2] == 'y'][0]
                 except IndexError:
-                    return {"error": f"Coordinate columns for body part '{bp}' not found in CSV."}
+                    return {"error": f"Coordinate columns for body part '{body_part}' not found in CSV."}
 
                 # Assume a default frame_rate; this could be enhanced to extract from state
                 frame_rate = 60
@@ -95,7 +126,7 @@ class BasicCSVPlotPlugin(BasePlugin):
                 movement_fig = self.plot_movement_over_time(df, x_col, y_col, frame_rate)
                 heat_map_fig = self.generate_heat_map(df, x_col, y_col)
 
-                analysis_result["body_part"] = bp
+                analysis_result["body_part"] = body_part
                 analysis_result["total_distance"] = total_distance
                 analysis_result["average_speed"] = float(speed_series.mean())
 
@@ -104,10 +135,10 @@ class BasicCSVPlotPlugin(BasePlugin):
                 analysis_result["heat_map"] = self._convert_fig_to_bytes(heat_map_fig)
 
             # Include optional parameters if provided
-            if "extracted_image" in experiment.plugin_params:
-                analysis_result["extracted_image"] = experiment.plugin_params["extracted_image"]
-            if "video" in experiment.plugin_params:
-                analysis_result["video"] = experiment.plugin_params["video"]
+            if "extracted_image" in experiment.plugin_params.get(plugin_name, {}):
+                analysis_result["extracted_image"] = experiment.plugin_params[plugin_name]["extracted_image"]
+            if "video" in experiment.plugin_params.get(plugin_name, {}):
+                analysis_result["video"] = experiment.plugin_params[plugin_name]["video"]
 
             return analysis_result
         except Exception as e:
@@ -206,4 +237,31 @@ class BasicCSVPlotPlugin(BasePlugin):
         buf = BytesIO()
         fig.savefig(buf, format='png', bbox_inches='tight')
         buf.seek(0)
-        return buf.getvalue() 
+        return buf.getvalue()
+
+    def get_styling_preferences(self) -> dict:
+        """
+        Specify styling preferences for the BasicCSVPlot plugin.
+        
+        This uses the standardized styling options defined in BasePlugin
+        to ensure consistent appearance across the application.
+        """
+        return {
+            "colors": {
+                "primary": "accent",  # Use the accent color for primary elements
+                "secondary": "default",
+                "backgrounds": {
+                    "preprocessing": "subtle",  # Use a subtle background for preprocessing
+                    "analysis": "prominent",    # Make analysis sections stand out more
+                    "results": "default"
+                }
+            },
+            "borders": {
+                "style": "rounded",  # Use rounded borders for a more polished look
+                "width": "medium"
+            },
+            "spacing": {
+                "internal": "spacious",  # Use more padding inside elements
+                "between_elements": "default"
+            }
+        } 

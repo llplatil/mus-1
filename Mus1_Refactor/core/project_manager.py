@@ -6,6 +6,7 @@ from typing import Optional, List
 import os
 import importlib.util
 import inspect
+import platform
 
 from .metadata import ProjectState, ProjectMetadata, MouseMetadata, Sex, ExperimentMetadata, ArenaImageMetadata, VideoMetadata
 from .state_manager import StateManager  # so we can type hint or reference if needed
@@ -30,10 +31,8 @@ class ProjectManager:
         # Plugins will be registered dynamically by scanning the plugins directory
         self._discover_and_register_plugins()
         
-        # Sync state manager with plugin information
-        self.state_manager.sync_supported_experiment_types(self.plugin_manager)
-        self.state_manager.sync_plugin_metadatas(self.plugin_manager)
-    
+        # Decoupled plugin UI state from current state; not syncing plugin data into StateManager
+
     def _discover_and_register_plugins(self):
         """Discover and register all available plugins dynamically by scanning the plugins directory."""
         # Determine the plugins directory relative to the current file
@@ -68,6 +67,10 @@ class ProjectManager:
         Raises:
             FileExistsError: if the directory already exists.
         """
+        # Convert project_root to a Path if it's not already one
+        if not isinstance(project_root, Path):
+            project_root = Path(project_root)
+
         # 1) Make sure the directory does not already exist
         if project_root.exists():
             self.log_bus.log(f"Error creating project: Directory '{project_root}' already exists", "error", "ProjectManager")
@@ -94,6 +97,7 @@ class ProjectManager:
         new_metadata = ProjectMetadata(
             project_name=project_name,
             date_created=datetime.now(),
+            theme_mode='dark',
             # You can set DLC configs, body parts, etc. here if you like:
             dlc_configs=[],
             master_body_parts=[],
@@ -224,6 +228,145 @@ class ProjectManager:
 
         return new_experiment
 
+    def create_batch(self, batch_id, batch_name=None, description=None, experiment_ids=None, selection_criteria=None):
+        """
+        Create a new batch of experiments.
+        
+        Args:
+            batch_id (str): Unique identifier for the batch
+            batch_name (str, optional): Descriptive name for the batch
+            description (str, optional): Detailed description of the batch
+            experiment_ids (list, optional): List of experiment IDs to include in the batch
+            selection_criteria (dict, optional): Criteria used to select experiments
+        
+        Returns:
+            BatchMetadata: The created batch metadata object
+        """
+        if not self._current_project_root:
+            raise ValueError("No current project loaded")
+            
+        # Validate batch ID is unique
+        if batch_id in self.state_manager.project_state.batches:
+            raise ValueError(f"Batch ID '{batch_id}' already exists")
+            
+        # Create batch selection criteria if not provided
+        if selection_criteria is None:
+            selection_criteria = {"manual_selection": True}
+            
+        # Use empty list if no experiment IDs provided
+        if experiment_ids is None:
+            experiment_ids = []
+            
+        # Create batch metadata
+        from core.metadata import BatchMetadata
+        from datetime import datetime
+        
+        new_batch = BatchMetadata(
+            id=batch_id,
+            name=batch_name or batch_id,
+            description=description or "",
+            selection_criteria=selection_criteria,
+            experiment_ids=set(experiment_ids),
+            date_added=datetime.now()
+        )
+        
+        # Add batch to project state
+        self.state_manager.project_state.batches[batch_id] = new_batch
+        
+        # Update experiment batch_ids references
+        for exp_id in experiment_ids:
+            if exp_id in self.state_manager.project_state.experiments:
+                self.state_manager.project_state.experiments[exp_id].batch_ids.add(batch_id)
+                logger.info(f"Added experiment {exp_id} to batch {batch_id}")
+            else:
+                logger.warning(f"Experiment {exp_id} not found when adding to batch {batch_id}")
+                
+        # Log creation
+        logger.info(f"Created batch '{batch_id}' with {len(experiment_ids)} experiments")
+        self.log_bus.log(f"Created batch '{batch_id}' with {len(experiment_ids)} experiments", "success", "ProjectManager")
+        
+        # Persist changes
+        self.save_project()
+        self.state_manager.notify_observers()
+        
+        return new_batch
+        
+    def get_batch(self, batch_id):
+        """
+        Get a batch by ID.
+        
+        Args:
+            batch_id (str): The ID of the batch to retrieve
+            
+        Returns:
+            BatchMetadata: The batch metadata object or None if not found
+        """
+        return self.state_manager.project_state.batches.get(batch_id)
+        
+    def get_batches(self):
+        """
+        Get all batches.
+        
+        Returns:
+            dict: Dictionary of batch_id to BatchMetadata
+        """
+        return dict(self.state_manager.project_state.batches)
+        
+    def remove_from_batch(self, batch_id, experiment_id):
+        """
+        Remove an experiment from a batch.
+        
+        Args:
+            batch_id (str): The ID of the batch
+            experiment_id (str): The ID of the experiment to remove
+        """
+        if batch_id not in self.state_manager.project_state.batches:
+            raise ValueError(f"Batch '{batch_id}' not found")
+            
+        # Remove from batch's experiment set
+        if experiment_id in self.state_manager.project_state.batches[batch_id].experiment_ids:
+            self.state_manager.project_state.batches[batch_id].experiment_ids.remove(experiment_id)
+            
+        # Remove batch reference from experiment
+        if experiment_id in self.state_manager.project_state.experiments:
+            if batch_id in self.state_manager.project_state.experiments[experiment_id].batch_ids:
+                self.state_manager.project_state.experiments[experiment_id].batch_ids.remove(batch_id)
+                
+        # Persist changes
+        self.save_project()
+        self.state_manager.notify_observers()
+        
+    def delete_batch(self, batch_id):
+        """
+        Delete a batch and remove all references to it.
+        
+        Args:
+            batch_id (str): The ID of the batch to delete
+        """
+        if batch_id not in self.state_manager.project_state.batches:
+            raise ValueError(f"Batch '{batch_id}' not found")
+            
+        # Get all experiments in this batch
+        batch = self.state_manager.project_state.batches[batch_id]
+        exp_ids = list(batch.experiment_ids)
+        
+        # Remove batch reference from all experiments
+        for exp_id in exp_ids:
+            if exp_id in self.state_manager.project_state.experiments:
+                if batch_id in self.state_manager.project_state.experiments[exp_id].batch_ids:
+                    self.state_manager.project_state.experiments[exp_id].batch_ids.remove(batch_id)
+                    
+        # Delete the batch
+        del self.state_manager.project_state.batches[batch_id]
+        
+        # Log deletion
+        logger.info(f"Deleted batch '{batch_id}'")
+        self.log_bus.log(f"Deleted batch '{batch_id}'", "info", "ProjectManager")
+        
+        # Persist changes
+        self.save_project()
+        self.state_manager.notify_observers()
+
     def rename_project(self, new_name: str) -> None:
         if not self._current_project_root:
             raise ValueError("No current project loaded")
@@ -330,5 +473,17 @@ class ProjectManager:
         """Helper method to notify UI components that data has changed."""
         if hasattr(self.state_manager, 'notify_observers'):
             self.state_manager.notify_observers()
+
+    def get_current_theme(self):
+        """
+        Retrieve the current theme from the state manager.
+        
+        Returns:
+            str: Current theme preference ('dark', 'light', or 'os')
+            
+        This is different from get_effective_theme() which resolves 'os' to an actual theme.
+        This method returns the raw preference stored in project metadata.
+        """
+        return self.state_manager.get_theme_preference()
 
     

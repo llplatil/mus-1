@@ -3,113 +3,203 @@ import os
 
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QPushButton, QLineEdit, QMessageBox,
-    QGridLayout, QFrame
+    QGridLayout, QFrame, QListWidget, QListWidgetItem, QFileDialog, QCheckBox, QWidget
 )
-from PySide6.QtCore import Qt, QSize
-from PySide6.QtGui import QPixmap, QPalette, QBrush, QColor, QPainter, QImage
+from PySide6.QtCore import Qt, QSize, Signal
+from PySide6.QtGui import QPixmap, QPalette, QBrush, QColor, QPainter, QImage, QIcon
+from PySide6.QtWidgets import QApplication
 
 
 class ProjectSelectionDialog(QDialog):
+    """Dialog for creating or selecting existing projects."""
+    
     def __init__(self, project_manager, parent=None):
         super().__init__(parent)
-        self.setStyleSheet("color: white;")
+        
+        self.setObjectName("projectSelectionDialog")
+        self.setProperty("class", "mus1-dialog")
+        
         self.project_manager = project_manager
-        self.setWindowTitle("Project Selection")
-        self.setModal(True)
-        self.resize(600, 400)  # Larger dialog for better layout
-
-        # Base directory for projects
-        self.base_dir = Path("projects")
-        if not self.base_dir.exists():
-            self.base_dir.mkdir(parents=True, exist_ok=True)
-            
-        # Set background with M1 logo as darker grayscale watermark
-        self.setup_background()
+        self.selected_project_name = None  # Will be set when a project is selected
         
-        # Main layout
-        main_layout = QVBoxLayout(self)
+        self.setWindowTitle("MUS1 Project Selection")
+        self.setMinimumSize(700, 400)
         
-        # Add some top padding instead of the title
-        main_layout.addSpacing(15)
+        # Main layout 
+        main_layout = QHBoxLayout(self)
+        main_layout.setSpacing(10)
         
-        # Two-column layout
-        content_layout = QHBoxLayout()
-        
-        # Left column (New Project)
+        # Left frame: Create new project
         left_frame = QFrame(self)
-        left_frame.setFrameShape(QFrame.StyledPanel)
-        left_frame.setStyleSheet("background-color: rgba(0, 0, 0, 0.3); border-radius: 5px;")
+        left_frame.setObjectName("newProjectPanel")
+        left_frame.setProperty("class", "mus1-panel")
+        left_frame.setFrameStyle(QFrame.Box | QFrame.Plain)
         left_layout = QVBoxLayout(left_frame)
+        left_layout.setContentsMargins(20, 20, 20, 20)
+        left_layout.setSpacing(5)
         
-        new_project_label = QLabel("Create New Project", left_frame)
-        new_project_label.setAlignment(Qt.AlignCenter)
-        new_project_label.setStyleSheet("font-weight: bold; color: white;")
-        left_layout.addWidget(new_project_label)
+        # New project title
+        new_project_title = QLabel("Create New Project", left_frame)
+        new_project_title.setObjectName("newProjectTitle")
+        new_project_title.setProperty("class", "mus1-title")
+        new_project_title.setAlignment(Qt.AlignHCenter)
+        left_layout.addWidget(new_project_title)
         
-        # Input for new project name
-        self.new_project_line = QLineEdit(left_frame)
+        # Input group for project name and optional location
+        input_group = QWidget(left_frame)
+        input_group.setProperty("class", "mus1-input-group")
+        input_group_layout = QVBoxLayout(input_group)
+        input_group_layout.setContentsMargins(5, 5, 5, 5)
+        input_group_layout.setSpacing(5)
+
+        self.new_project_line = QLineEdit(input_group)
+        self.new_project_line.setObjectName("newProjectInput")
+        self.new_project_line.setProperty("class", "mus1-text-input")
         self.new_project_line.setPlaceholderText("Enter new project name")
-        self.new_project_line.setStyleSheet("color: white;")
-        left_layout.addWidget(self.new_project_line)
+        input_group_layout.addWidget(self.new_project_line)
+
+        self.custom_location_check = QCheckBox("Use custom location", input_group)
+        self.custom_location_check.setObjectName("customLocationCheck")
+        self.custom_location_check.toggled.connect(self.toggle_location_input)
+        input_group_layout.addWidget(self.custom_location_check)
+
+        self.location_line = QLineEdit(input_group)
+        self.location_line.setObjectName("locationInput")
+        self.location_line.setProperty("class", "mus1-text-input")
+        self.location_line.setPlaceholderText("Project location (optional)")
+        self.location_line.setVisible(False)
+        input_group_layout.addWidget(self.location_line)
+
+        self.browse_button = QPushButton("Browse...", input_group)
+        self.browse_button.setObjectName("browseButton")
+        self.browse_button.setProperty("class", "mus1-secondary-button")
+        self.browse_button.clicked.connect(self.browse_location)
+        self.browse_button.setVisible(False)
+        input_group_layout.addWidget(self.browse_button)
+
+        left_layout.addWidget(input_group)
+        
+        # Spacer
+        left_layout.addStretch()
         
         # Create project button
         self.new_button = QPushButton("Create New Project", left_frame)
-        self.new_button.setAutoDefault(False)
+        self.new_button.setObjectName("createButton")
+        self.new_button.setProperty("class", "mus1-primary-button")
+        self.new_button.clicked.connect(self.create_new_project)
         left_layout.addWidget(self.new_button)
-        left_layout.addStretch()
         
-        # Right column (Existing Project)
+        # Right frame: Existing projects
         right_frame = QFrame(self)
-        right_frame.setFrameShape(QFrame.StyledPanel)
-        right_frame.setStyleSheet("background-color: rgba(0, 0, 0, 0.3); border-radius: 5px;")
+        right_frame.setObjectName("existingProjectsPanel")
+        right_frame.setProperty("class", "mus1-panel")
+        right_frame.setFrameStyle(QFrame.Box | QFrame.Plain)
         right_layout = QVBoxLayout(right_frame)
+        right_layout.setContentsMargins(20, 20, 20, 20)
+        right_layout.setSpacing(5)
         
-        existing_project_label = QLabel("Open Existing Project", right_frame)
-        existing_project_label.setAlignment(Qt.AlignCenter)
-        existing_project_label.setStyleSheet("font-weight: bold; color: white;")
-        right_layout.addWidget(existing_project_label)
+        # Existing projects title
+        existing_title = QLabel("Existing Projects", right_frame)
+        existing_title.setObjectName("existingProjectsTitle")
+        existing_title.setProperty("class", "mus1-title")
+        existing_title.setAlignment(Qt.AlignHCenter)
+        right_layout.addWidget(existing_title)
         
-        # Combo box for existing projects
-        self.project_combo = QComboBox(right_frame)
-        self.project_combo.setMinimumWidth(200)
-        self.project_combo.setStyleSheet("color: white;")
-        self.refresh_project_list()
-        right_layout.addWidget(self.project_combo)
+        # Projects list
+        self.projects_list = QListWidget(right_frame)
+        self.projects_list.setObjectName("projectsList")
+        self.projects_list.setProperty("class", "mus1-list-view")
+        self.projects_list.itemDoubleClicked.connect(self.select_project)
+        right_layout.addWidget(self.projects_list)
         
         # Open project button
         self.open_button = QPushButton("Open Selected Project", right_frame)
-        self.open_button.setAutoDefault(False)
+        self.open_button.setObjectName("openButton")
+        self.open_button.setProperty("class", "mus1-primary-button")
+        self.open_button.clicked.connect(self.select_project)
         right_layout.addWidget(self.open_button)
-        right_layout.addStretch()
         
-        # Add both frames to the content layout
-        content_layout.addWidget(left_frame)
-        content_layout.addWidget(right_frame)
+        # Add frames to the main layout
+        main_layout.addWidget(left_frame)
+        main_layout.addWidget(right_frame)
         
-        # Add content layout to main layout
-        main_layout.addLayout(content_layout)
+        # Populate the projects list
+        self.refresh_projects_list()
+
+    def toggle_location_input(self, checked):
+        """Show or hide the custom location input based on checkbox state."""
+        self.location_line.setVisible(checked)
+        self.browse_button.setVisible(checked)
         
-        # Cancel button at the bottom
-        cancel_layout = QHBoxLayout()
-        self.cancel_button = QPushButton("Cancel", self)
-        cancel_layout.addStretch()
-        cancel_layout.addWidget(self.cancel_button)
-        cancel_layout.addStretch()
-        main_layout.addLayout(cancel_layout)
+    def browse_location(self):
+        """Open a file dialog to select a directory."""
+        directory = QFileDialog.getExistingDirectory(
+            self, 
+            "Select Project Location",
+            os.path.expanduser("~"),
+            QFileDialog.ShowDirsOnly
+        )
+        if directory:
+            self.location_line.setText(directory)
+    
+    def refresh_projects_list(self):
+        """Refresh the list of existing projects."""
+        self.projects_list.clear()
+        projects = self.project_manager.list_available_projects()
+        for project_path in projects:
+            item = QListWidgetItem(project_path.name)
+            self.projects_list.addItem(item)
+    
+    def create_new_project(self):
+        """Create a new project with the given name."""
+        project_name = self.new_project_line.text().strip()
         
-        # Add spacing before the slogan to move it down
-        main_layout.addSpacing(15)
+        if not project_name:
+            # Handle empty project name
+            # In a real app, you might show a dialog
+            print("Project name cannot be empty")
+            return
         
-        # Slogan at the bottom
-        slogan_label = QLabel("to move, to infer: open-source vision for mouse models", self)
-        slogan_label.setAlignment(Qt.AlignCenter)
-        slogan_label.setStyleSheet("font-style: italic; color: white; font-weight: normal;")
-        main_layout.addWidget(slogan_label)
+        # Get custom location if enabled
+        location = None
+        if self.custom_location_check.isChecked():
+            location = self.location_line.text().strip()
+            if not location:
+                # Handle empty location when checkbox is checked
+                print("Please specify a location or uncheck 'Use custom location'")
+                return
         
-        # Connect signals
-        self.open_button.clicked.connect(self.open_project)
-        self.new_button.clicked.connect(self.create_project)
-        self.cancel_button.clicked.connect(self.reject)
+        # Determine base path for the new project
+        if self.custom_location_check.isChecked() and location:
+            base_path = Path(location)
+        else:
+            base_path = Path("projects")
+
+        # Create the full project directory path
+        project_root = base_path / project_name
+
+        try:
+            self.project_manager.create_project(project_root, project_name)
+            self.selected_project_name = project_name
+            self.accept()  # Close dialog with "accept" result
+        except Exception as e:
+            # Handle errors (e.g., project already exists)
+            print(f"Error creating project: {str(e)}")
+    
+    def select_project(self):
+        """Select an existing project."""
+        current_item = self.projects_list.currentItem()
+        if not current_item:
+            # No project selected
+            # In a real app, you might show a dialog
+            print("Please select a project")
+            return
+        
+        self.selected_project_name = current_item.text()
+        self.accept()  # Close dialog with "accept" result
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
 
     def setup_background(self):
         """Set up the background with the M1 logo as a dark grayscale watermark"""
@@ -190,42 +280,6 @@ class ProjectSelectionDialog(QDialog):
             self.setPalette(palette)
             self.setAutoFillBackground(True)
 
-    def refresh_project_list(self):
-        self.project_combo.clear()
-        for path in self.project_manager.list_available_projects():
-            self.project_combo.addItem(path.name)
-
-    def open_project(self):
-        selected = self.project_combo.currentText()
-        if not selected:
-            QMessageBox.warning(self, "Warning", "No project selected.")
-            return
-        # Verify selected project exists
-        available_projects = self.project_manager.list_available_projects()
-        project_path = next((p for p in available_projects if p.name == selected), None)
-        if project_path is None:
-            QMessageBox.warning(self, "Warning", f"Project directory for '{selected}' not found.")
-            return
-        # Instead of loading the project here, we leave that to the main window after selection
-        self.selected_project_name = selected
-        self.accept()
-
-    def create_project(self):
-        name = self.new_project_line.text().strip()
-        if not name:
-            QMessageBox.warning(self, "Warning", "Please enter a project name.")
-            return
-        project_path = self.base_dir / name
-        try:
-            self.project_manager.create_project(project_path, name)
-            self.selected_project_name = name
-            self.accept()
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to create project: {e}")
-
-    def reject(self):
-        super().reject()
-        
     def resizeEvent(self, event):
         """Handle resize events to update the background"""
         super().resizeEvent(event)

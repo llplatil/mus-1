@@ -101,3 +101,85 @@ class PluginManager:
                 if (exp_type in plugin.get_supported_experiment_types() and
                     stage in plugin.get_supported_processing_stages() and
                     source in plugin.get_supported_data_sources())]
+
+    def get_all_plugin_styles(self) -> str:
+        """Combine all plugin custom styles into a single stylesheet."""
+        combined_styles = ""
+        for plugin in self._plugins:
+            custom_style = plugin.plugin_custom_style()
+            if custom_style:
+                # Add plugin-specific namespace
+                plugin_id = plugin.plugin_self_metadata().name
+                custom_style = f"/* Plugin: {plugin_id} */\n{custom_style}\n"
+                combined_styles += custom_style
+        return combined_styles
+        
+    def get_all_plugin_styling_preferences(self) -> Dict[str, Dict[str, Any]]:
+        """
+        Collect and normalize styling preferences from all registered plugins.
+        
+        Returns:
+            Dictionary mapping plugin IDs to their styling preferences.
+        """
+        styling_preferences = {}
+        for plugin in self._plugins:
+            plugin_id = plugin.plugin_self_metadata().name
+            # Collect styling preferences
+            preferences = plugin.get_styling_preferences()
+            # Store them with the plugin ID as the key
+            styling_preferences[plugin_id] = preferences
+        return styling_preferences
+    
+    def get_plugin_styling_classes(self) -> Dict[str, List[str]]:
+        """
+        Convert plugin styling preferences to CSS classes.
+        
+        This maps the standardized styling preferences to actual CSS classes
+        that can be applied to UI elements.
+        
+        Returns:
+            Dictionary mapping plugin IDs to lists of CSS classes to apply.
+        """
+        plugin_classes = {}
+        for plugin in self._plugins:
+            plugin_id = plugin.plugin_self_metadata().name
+            classes = []
+            
+            # Get the plugin's preferences
+            prefs = plugin.get_styling_preferences()
+            
+            # Convert preferences to CSS classes
+            # Primary color
+            primary_color = prefs.get("colors", {}).get("primary", "default")
+            if primary_color == "accent":
+                classes.append("plugin-primary-accent")
+            elif primary_color == "default":
+                classes.append("plugin-primary-default")
+            elif primary_color.startswith("#"):  # Custom hex color
+                # Custom colors are handled differently - we'll add data attributes later
+                classes.append("plugin-primary-custom")
+            
+            # Border style
+            border_style = prefs.get("borders", {}).get("style", "default")
+            if border_style == "rounded":
+                classes.append("plugin-border-rounded")
+            elif border_style == "sharp":
+                classes.append("plugin-border-sharp")
+            elif border_style == "none":
+                classes.append("plugin-border-none")
+            else:
+                classes.append("plugin-border-default")
+            
+            # Spacing
+            internal_spacing = prefs.get("spacing", {}).get("internal", "default")
+            if internal_spacing == "compact":
+                classes.append("plugin-spacing-compact")
+            elif internal_spacing == "spacious":
+                classes.append("plugin-spacing-spacious")
+            else:
+                classes.append("plugin-spacing-default")
+            
+            # Store the classes with the plugin ID as the key
+            plugin_classes[plugin_id] = classes
+            
+        return plugin_classes
