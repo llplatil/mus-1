@@ -34,8 +34,9 @@ logs/
 *.log
 mus1.log
 
-# Projects directory
+# Exclude specific directories
 projects/
+**/abstract/
 
 # Qt/PySide specific
 *.qmlc

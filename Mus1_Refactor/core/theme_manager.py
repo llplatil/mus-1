@@ -2,7 +2,6 @@ from PySide6.QtGui import QPalette, QColor
 from PySide6.QtWidgets import QApplication
 from pathlib import Path
 import os
-import re
 import logging
 
 logger = logging.getLogger("mus1.core.theme_manager")
@@ -10,8 +9,144 @@ logger = logging.getLogger("mus1.core.theme_manager")
 class ThemeManager:
     def __init__(self, state_manager):
         self.state_manager = state_manager
-        # Color cache to reuse computed colors
-        self.color_cache = {}
+        self.base_dir = Path(os.path.dirname(__file__)).parent
+        self.base_qss_path = self.base_dir / "themes" / "mus1.qss"
+        
+        # Cache for processed stylesheets
+        self.processed_stylesheets = {}
+        
+        # New: Registry for plugin-specific style overrides
+        self.plugin_style_registry = {}
+        self.plugin_styles_dirty = True
+        self.combined_stylesheet = {"dark": "", "light": ""}
+        
+        # Define theme color palettes
+        self.theme_colors = {
+            "dark": {
+                # Base colors
+                "$BACKGROUND_COLOR": "#121212",
+                "$TEXT_COLOR": "#FFFFFF",
+                "$BORDER_COLOR": "#555555",
+                
+                # Input elements
+                "$INPUT_BG": "#2a2a2a",
+                "$INPUT_TEXT": "#e0e0e0",
+                
+                # Buttons
+                "$PRIMARY_BUTTON_BG": "#BB86FC",
+                "$PRIMARY_BUTTON_TEXT": "#121212",
+                "$PRIMARY_BUTTON_HOVER": "#CBB6FC",
+                "$PRIMARY_BUTTON_PRESSED": "#9966CC",
+                
+                "$SECONDARY_BUTTON_BG": "#333333",
+                "$SECONDARY_BUTTON_TEXT": "#E0E0E0",
+                "$SECONDARY_BUTTON_HOVER": "#444444",
+                
+                # Navigation
+                "$NAV_BG": "#2A2A2A",
+                "$NAV_BUTTON_BG": "#3A3A3A",
+                "$NAV_BUTTON_TEXT": "#E0E0E0",
+                "$NAV_BUTTON_HOVER": "#444444",
+                "$NAV_BUTTON_SELECTED": "#BB86FC",
+                
+                # Content
+                "$CONTENT_BG": "#1E1E1E",
+                "$CONTENT_TEXT": "#E0E0E0",
+                
+                # Selection
+                "$SELECTION_BG": "#BB86FC",
+                "$SELECTION_TEXT": "#121212",
+                
+                # Lists and tables
+                "$HEADER_BG": "#333333",
+                "$HEADER_TEXT": "#E0E0E0",
+                "$HOVER_BG": "#3A3A3A",
+                "$BORDER_LIGHT": "#444444",
+                
+                # Scrollbar
+                "$SCROLLBAR_BG": "#1A1A1A",
+                "$SCROLLBAR_HANDLE": "#555555",
+                "$SCROLLBAR_HANDLE_HOVER": "#777777",
+                
+                # Widget containers
+                "$WIDGET_BOX_BG": "#2A2A2A",
+                
+                # Logs
+                "$LOG_BG": "#1A1A1A",
+                "$LOG_TEXT": "#E0E0E0",
+                "$LOG_LABEL_COLOR": "#BB86FC",
+                
+                # Plugin colors
+                "$PLUGIN_PREPROCESSING_BG": "rgba(0, 41, 82, 0.25)",
+                "$PLUGIN_ANALYSIS_BG": "rgba(0, 82, 41, 0.25)",
+                "$PLUGIN_RESULTS_BG": "rgba(82, 41, 0, 0.25)",
+                "$PLUGIN_REQUIRED_COLOR": "#ff8787",
+                "$PLUGIN_OPTIONAL_COLOR": "#4dabf7",
+                "$PLUGIN_COMPONENT_ACCENT": "#BB86FC"
+            },
+            "light": {
+                # Base colors
+                "$BACKGROUND_COLOR": "#f0f0f0",
+                "$TEXT_COLOR": "#000000",
+                "$BORDER_COLOR": "#CCCCCC",
+                
+                # Input elements
+                "$INPUT_BG": "#FFFFFF",
+                "$INPUT_TEXT": "#333333",
+                
+                # Buttons
+                "$PRIMARY_BUTTON_BG": "#4A90E2",
+                "$PRIMARY_BUTTON_TEXT": "#FFFFFF",
+                "$PRIMARY_BUTTON_HOVER": "#5AA0F2",
+                "$PRIMARY_BUTTON_PRESSED": "#3A80D2",
+                
+                "$SECONDARY_BUTTON_BG": "#EEEEEE",
+                "$SECONDARY_BUTTON_TEXT": "#333333",
+                "$SECONDARY_BUTTON_HOVER": "#DFDFDF",
+                
+                # Navigation
+                "$NAV_BG": "#E6E6E6",
+                "$NAV_BUTTON_BG": "#F0F0F0",
+                "$NAV_BUTTON_TEXT": "#333333",
+                "$NAV_BUTTON_HOVER": "#E0E0E0",
+                "$NAV_BUTTON_SELECTED": "#4A90E2",
+                
+                # Content
+                "$CONTENT_BG": "#FFFFFF",
+                "$CONTENT_TEXT": "#333333",
+                
+                # Selection
+                "$SELECTION_BG": "#4A90E2",
+                "$SELECTION_TEXT": "#FFFFFF",
+                
+                # Lists and tables
+                "$HEADER_BG": "#E6E6E6",
+                "$HEADER_TEXT": "#333333",
+                "$HOVER_BG": "#F5F5F5",
+                "$BORDER_LIGHT": "#E0E0E0",
+                
+                # Scrollbar
+                "$SCROLLBAR_BG": "#F0F0F0",
+                "$SCROLLBAR_HANDLE": "#CCCCCC",
+                "$SCROLLBAR_HANDLE_HOVER": "#AAAAAA",
+                
+                # Widget containers
+                "$WIDGET_BOX_BG": "#FFFFFF",
+                
+                # Logs
+                "$LOG_BG": "#F5F5F5",
+                "$LOG_TEXT": "#333333",
+                "$LOG_LABEL_COLOR": "#4A90E2",
+                
+                # Plugin colors
+                "$PLUGIN_PREPROCESSING_BG": "rgba(240, 248, 255, 0.6)",
+                "$PLUGIN_ANALYSIS_BG": "rgba(240, 255, 240, 0.6)",
+                "$PLUGIN_RESULTS_BG": "rgba(255, 248, 240, 0.6)",
+                "$PLUGIN_REQUIRED_COLOR": "rgba(238, 141, 141, 0.57)",
+                "$PLUGIN_OPTIONAL_COLOR": "rgba(116, 193, 252, 0.57)",
+                "$PLUGIN_COMPONENT_ACCENT": "#4A90E2"
+            }
+        }
 
     def get_effective_theme(self):
         """Determine the effective theme based on the state_manager's theme preference."""
@@ -26,7 +161,7 @@ class ThemeManager:
         return theme_pref
 
     def apply_theme(self, app):
-        """Apply the effective theme to the application, including plugin styling."""
+        """Apply the effective theme to the application."""
         effective_theme = self.get_effective_theme()
         logger.info(f"Applying theme: {effective_theme}")
 
@@ -40,394 +175,154 @@ class ThemeManager:
             palette.setColor(QPalette.ButtonText, QColor("white"))
             palette.setColor(QPalette.Highlight, QColor("#BB86FC"))
             palette.setColor(QPalette.HighlightedText, QColor("black"))
+            
+            # Set specific colors for text to ensure good contrast
+            # Use ColorRole.Text instead of the non-existent Label attribute
+            palette.setColor(QPalette.Text, QColor("white"))
         else:
             palette = app.style().standardPalette()
+            
         app.setPalette(palette)
-
-        # Instead of trying to process the complex CSS file, just apply our known-compatible stylesheet directly
-        stylesheet = self._generate_compatible_stylesheet(effective_theme)
-        logger.info(f"Generated compatible stylesheet: {len(stylesheet)} characters")
         
-        # For debugging - write the processed stylesheet to a file
-        debug_path = Path(os.path.join(os.path.dirname(__file__), "..", "themes", "debug_processed.css"))
-        with open(debug_path, "w", encoding="utf-8") as f:
-            f.write(stylesheet)
-        logger.info(f"Wrote debug CSS to: {debug_path}")
-
-        # Apply the stylesheet
-        try:
-            app.setStyleSheet(stylesheet)
-            logger.info("Successfully applied compatible stylesheet")
-        except Exception as style_error:
-            logger.error(f"Qt could not parse stylesheet: {str(style_error)}")
-            self._apply_minimal_stylesheet(app, effective_theme)
-            logger.info("Applied minimal stylesheet instead")
-
+        # Process base stylesheet if not cached
+        if effective_theme not in self.processed_stylesheets:
+            try:
+                if not self.base_qss_path.exists():
+                    logger.error(f"Base QSS file not found: {self.base_qss_path}")
+                    self._apply_minimal_stylesheet(app, effective_theme)
+                    return effective_theme
+                with open(self.base_qss_path, "r", encoding="utf-8") as f:
+                    stylesheet = f.read()
+                colors = self.theme_colors.get(effective_theme, self.theme_colors["dark"])
+                for var, value in colors.items():
+                    stylesheet = stylesheet.replace(var, value)
+                self.processed_stylesheets[effective_theme] = stylesheet
+            except Exception as e:
+                logger.error(f"Error processing stylesheet: {e}")
+                self._apply_minimal_stylesheet(app, effective_theme)
+                return effective_theme
+        
+        # Combine base stylesheet with plugin-specific CSS
+        if self.plugin_styles_dirty or not self.combined_stylesheet.get(effective_theme):
+            base_stylesheet = self.processed_stylesheets[effective_theme]
+            plugin_css = self._generate_plugin_css(effective_theme)
+            combined_css = base_stylesheet
+            if plugin_css:
+                combined_css += "\n/* PLUGIN-SPECIFIC STYLES */\n" + plugin_css
+            self.combined_stylesheet[effective_theme] = combined_css
+            self.plugin_styles_dirty = False
+        
+        # Apply the combined stylesheet
+        app.setStyleSheet(self.combined_stylesheet[effective_theme])
+        logger.info("Successfully applied theme stylesheet with plugin overrides")
+        
         return effective_theme
 
-    def _generate_compatible_stylesheet(self, theme):
-        """Generate a Qt-compatible stylesheet based on the theme."""
-        if theme == "dark":
-            # Dark theme colors
-            bg_color = "#121212"
-            text_color = "#FFFFFF"
-            border_color = "#555555"
-            input_bg = "#2a2a2a"
-            input_text = "#e0e0e0"
-            button_bg = "#BB86FC"
-            button_text = "#121212"
-            button_hover_bg = "#CBB6FC"
-            nav_bg = "#2a2a2a"
-            nav_text = "#e0e0e0"
-            nav_selected_bg = "#BB86FC"
-            nav_selected_text = "#121212"
-            header_bg = "#3A3A3A"
-            header_text = "#E0E0E0"
-            content_bg = "#1E1E1E"
-            content_text = "#E0E0E0"
-            selection_bg = "#3a5f8c"
-            selection_text = "#FFFFFF"
-            scrollbar_bg = "#333333"
-            scrollbar_handle = "#555555"
-        else:
-            # Light theme colors
-            bg_color = "#f0f0f0"
-            text_color = "#000000"
-            border_color = "#CCCCCC"
-            input_bg = "#FFFFFF"
-            input_text = "#333333"
-            button_bg = "#4A90E2"
-            button_text = "#FFFFFF"
-            button_hover_bg = "#5AA0F2"
-            nav_bg = "#E0E0E0"
-            nav_text = "#333333"
-            nav_selected_bg = "#4A90E2"
-            nav_selected_text = "#FFFFFF"
-            header_bg = "#E0E0E0"
-            header_text = "#333333"
-            content_bg = "#FFFFFF"
-            content_text = "#333333"
-            selection_bg = "#ADD8E6"
-            selection_text = "#000000"
-            scrollbar_bg = "#D9D9D9"
-            scrollbar_handle = "#BBBBBB"
+    def register_plugin_styles(self, plugin_id, style_overrides):
+        """Register plugin-specific style overrides."""
+        self.plugin_style_registry[plugin_id] = style_overrides
+        self.plugin_styles_dirty = True
+        logger.info(f"Registered style overrides for plugin: {plugin_id}")
 
-        # Build the compatible stylesheet
-        return f"""
-        /* Qt-compatible {theme.capitalize()} Theme */
-        QWidget {{
-            background-color: {bg_color};
-            color: {text_color};
-            font-family: "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;
-            font-size: 12px;
-        }}
-        
-        /* === MAIN WINDOW === */
-        .mus1-main-window {{
-            min-width: 800px;
-            min-height: 600px;
-            background-color: {bg_color};
-            color: {text_color};
-        }}
+    def unregister_plugin_styles(self, plugin_id):
+        """Unregister plugin-specific style overrides."""
+        if plugin_id in self.plugin_style_registry:
+            del self.plugin_style_registry[plugin_id]
+            self.plugin_styles_dirty = True
+            logger.info(f"Unregistered style overrides for plugin: {plugin_id}")
 
-        /* === BUTTON STYLES === */
-        QPushButton, .mus1-primary-button {{
-            border: none;
-            border-radius: 6px;
-            padding: 8px 16px;
-            background-color: {button_bg};
-            color: {button_text};
-            margin-top: 10px;
-        }}
+    def refresh_plugin_styles(self):
+        """Mark plugin styles as dirty to trigger reprocessing."""
+        self.plugin_styles_dirty = True
+
+    def merge_plugin_overrides(self):
+        """Merge all registered plugin base overrides, applying first-registered wins if conflicts occur."""
+        merged = {}
+        for plugin_id, overrides in self.plugin_style_registry.items():
+            base_overrides = overrides.get("base", {})
+            for var, value in base_overrides.items():
+                if var in merged:
+                    if merged[var] != value:
+                        logger.warning(f"Conflict for {var} from plugin {plugin_id}; using '{merged[var]}' (first registered wins).")
+                else:
+                    merged[var] = value
+        return merged
+
+    def _generate_plugin_css(self, theme):
+        """Generate CSS for all registered plugin style overrides."""
+        if not self.plugin_style_registry:
+            return ""
+        plugin_css = ""
+        # Generate individual plugin CSS rules
+        for plugin_id, overrides in self.plugin_style_registry.items():
+            if "base" not in overrides:
+                continue
+            plugin_css += f"\n/* Plugin: {plugin_id} */\n"
+            plugin_css += f'QWidget[pluginId="{plugin_id}"] {{'
+            for var, value in overrides["base"].items():
+                prop = self._map_variable_to_property(var)
+                if prop:
+                    if prop == "border-left":
+                        plugin_css += f"\n    {prop}: 3px solid {value};"
+                    else:
+                        plugin_css += f"\n    {prop}: {value};"
+            plugin_css += "\n}\n"
         
-        QPushButton:hover, .mus1-primary-button:hover {{
-            background-color: {button_hover_bg};
-        }}
-        
-        QPushButton:pressed, .mus1-primary-button:pressed {{
-            background-color: {button_bg};
-        }}
-        
-        .mus1-secondary-button {{
-            border: 1px solid {border_color};
-            border-radius: 6px;
-            padding: 8px 16px;
-            background-color: {input_bg};
-            color: {input_text};
-        }}
-        
-        .mus1-secondary-button:hover {{
-            background-color: {bg_color};
-        }}
-        
-        /* === INPUT AND FORM ELEMENTS === */
-        QLineEdit, QTextEdit, QPlainTextEdit, QComboBox, .mus1-text-input, .mus1-combo-box {{
-            border-radius: 4px;
-            padding: 6px;
-            border: 1px solid {border_color};
-            background-color: {input_bg};
-            color: {input_text};
-        }}
-        
-        .mus1-input-group {{
-            border: 1px solid {border_color};
-            border-radius: 6px;
-            padding: 10px;
-            margin-bottom: 10px;
-            background-color: {content_bg};
-            color: {text_color};
-        }}
-        
-        QLineEdit::selection, QTextEdit::selection, QPlainTextEdit::selection {{
-            background-color: {selection_bg};
-            color: {selection_text};
-        }}
-        
-        .mus1-input-label {{
-            color: {text_color};
-            font-weight: normal;
-            background-color: rgba(0,0,0,0);
-            padding: 2px 0;
-        }}
-        
-        .mus1-combo-box {{
-            margin-bottom: 10px;
-        }}
-        
-        /* === NOTES WIDGET === */
-        .mus1-notes-edit {{
-            border-radius: 4px;
-            padding: 6px;
-            border: 1px solid {border_color};
-            background-color: {input_bg};
-            color: {input_text};
-        }}
-        
-        /* === LIST WIDGET STYLING === */
-        QListWidget, .mus1-list-widget {{
-            border: 1px solid {border_color};
-            border-radius: 4px;
-            background-color: {input_bg};
-            color: {input_text};
-            padding: 2px;
-            margin-bottom: 8px;
-            min-height: 100px;
-        }}
-        
-        QListWidget::item, .mus1-list-widget::item {{
-            padding: 4px;
-            border-bottom: 1px solid rgba(128, 128, 128, 0.2);
-        }}
-        
-        QListWidget::item:selected, .mus1-list-widget::item:selected {{
-            background-color: {selection_bg};
-            color: {selection_text};
-        }}
-        
-        QListWidget::item:hover, .mus1-list-widget::item:hover {{
-            background-color: rgba(128, 128, 128, 0.1);
-        }}
-        
-        /* === TABLE VIEWS === */
-        QTableView, .mus1-table-view {{
-            border: 1px solid {border_color};
-            background-color: {input_bg};
-            color: {input_text};
-        }}
-        
-        QTableView QHeaderView::section, .mus1-table-view QHeaderView::section {{
-            background-color: {header_bg};
-            color: {header_text};
-            padding: 8px;
-            font-weight: bold;
-        }}
-        
-        QTableView::item, .mus1-table-view::item {{
-            padding: 4px;
-        }}
-        
-        QTableView::item:selected, .mus1-table-view::item:selected {{
-            background-color: {selection_bg};
-            color: {selection_text};
-        }}
-        
-        /* === NAVIGATION ELEMENTS === */
-        .mus1-nav-pane {{
-            background-color: {nav_bg};
-            border-right: 1px solid {border_color};
-        }}
-        
-        .mus1-nav-list-container {{
-            padding: 0px;
-            background-color: rgba(0,0,0,0);
-            margin: 0px;
-        }}
-        
-        .mus1-nav-button {{
-            border: none;
-            border-radius: 4px;
-            padding: 8px 16px;
-            margin: 4px;
-            background-color: {nav_bg};
-            color: {nav_text};
-            text-align: left;
-        }}
-        
-        .mus1-nav-button:hover {{
-            background-color: rgba(128, 128, 128, 0.1);
-        }}
-        
-        .mus1-nav-button:checked {{
-            background-color: {nav_selected_bg};
-            color: {nav_selected_text};
-        }}
-        
-        /* === LOG DISPLAY === */
-        .mus1-log-display {{
-            border: 1px solid {border_color};
-            border-radius: 4px;
-            padding: 6px;
-            background-color: {input_bg};
-            color: {input_text};
-            margin-top: 10px;
-            font-family: Consolas, monospace;
-            font-size: 11px;
-        }}
-        
-        .mus1-log-container {{
-            background-color: {input_bg};
-            color: {input_text};
-        }}
-        
-        .mus1-log-label {{
-            color: {text_color};
-            font-weight: bold;
-            background-color: {header_bg};
-            padding: 4px 8px;
-            border-radius: 2px 2px 0 0;
-            font-size: 11px;
-            font-family: Consolas, monospace;
-        }}
-        
-        /* === PANELS AND CONTAINERS === */
-        .plugin-panel {{
-            border: 1px solid {border_color};
-            border-radius: 6px;
-            background-color: {content_bg};
-            color: {content_text};
-            padding: 10px;
-            margin: 5px;
-        }}
-        
-        QScrollArea {{
-            border: none;
-            background-color: {bg_color};
-        }}
-        
-        QScrollArea > QWidget > QWidget {{
-            background-color: {bg_color};
-        }}
-        
-        QScrollBar:vertical {{
-            background-color: {scrollbar_bg};
-            width: 12px;
-            border-radius: 6px;
-        }}
-        
-        QScrollBar::handle:vertical {{
-            background-color: {scrollbar_handle};
-            min-height: 20px;
-            border-radius: 6px;
-        }}
-        
-        QScrollBar::handle:vertical:hover {{
-            background-color: {button_bg};
-        }}
-        
-        QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
-            background-color: rgba(0,0,0,0);
-        }}
-        
-        QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{
-            background-color: rgba(0,0,0,0);
-        }}
-        
-        QSplitter::handle {{
-            background-color: {border_color};
-            width: 1px;
-        }}
-        
-        /* === CONTENT AREAS === */
-        .mus1-content-area {{
-            background-color: {content_bg};
-            color: {content_text};
-            border-radius: 6px;
-            padding: 10px;
-        }}
-        
-        .mus1-page {{
-            background-color: {content_bg};
-            color: {content_text};
-            border: 1px solid {border_color};
-            border-radius: 6px;
-            padding: 15px;
-            margin: 5px;
-        }}
-        
-        /* === PROJECT ELEMENTS === */
-        .mus1-project-selector {{
-            background-color: {content_bg};
-            color: {content_text};
-            border: 1px solid {border_color};
-            border-radius: 6px;
-            padding: 10px;
-            margin-bottom: 15px;
-        }}
-        
-        .mus1-section-label {{
-            color: {text_color};
-            font-weight: bold;
-            font-size: 14px;
-            margin-top: 15px;
-            margin-bottom: 10px;
-            padding-bottom: 5px;
-            border-bottom: 1px solid {border_color};
-        }}
-        
-        /* === PLUGIN STYLING === */
-        .plugin-field {{
-            border: 1px solid {border_color};
-            border-radius: 4px;
-            padding: 8px;
-            margin: 4px 0;
-        }}
-        
-        .plugin-field-required {{
-            background-color: rgba(255, 0, 0, 0.1);
-        }}
-        
-        .plugin-field-optional {{
-            background-color: rgba(0, 0, 255, 0.1);
-        }}
-        
-        .plugin-stage-preprocessing {{
-            border-left: 3px solid blue;
-        }}
-        
-        .plugin-stage-analysis {{
-            border-left: 3px solid green;
-        }}
-        
-        .plugin-stage-results {{
-            border-left: 3px solid orange;
-        }}
-        
-        .plugin-stage-unknown {{
-            border-left: 3px solid gray;
-        }}
-        
-        /* Add any additional styling needed for plugins */
-        """
+        # Merge overrides from all plugins for combined UI components
+        merged_overrides = self.merge_plugin_overrides()
+        if merged_overrides:
+            plugin_css += "\n/* Combined Plugin Overrides */\n"
+            plugin_css += ".plugin-combined-overrides {"
+            for var, value in merged_overrides.items():
+                prop = self._map_variable_to_property(var)
+                if prop:
+                    if prop == "border-left":
+                        plugin_css += f"\n    {prop}: 3px solid {value};"
+                    else:
+                        plugin_css += f"\n    {prop}: {value};"
+            plugin_css += "\n}\n"
+        return plugin_css
+
+    def _map_variable_to_property(self, variable):
+        """Map a placeholder variable to its corresponding CSS property."""
+        mapping = {
+            "$BACKGROUND_COLOR": "background-color",
+            "$TEXT_COLOR": "color",
+            "$BORDER_COLOR": "border-color",
+            "$PRIMARY_BUTTON_BG": "background-color",
+            "$PRIMARY_BUTTON_TEXT": "color",
+            "$PRIMARY_BUTTON_HOVER": "background-color",
+            "$PRIMARY_BUTTON_PRESSED": "background-color",
+            "$SECONDARY_BUTTON_BG": "background-color",
+            "$SECONDARY_BUTTON_TEXT": "color",
+            "$SECONDARY_BUTTON_HOVER": "background-color",
+            "$NAV_BG": "background-color",
+            "$NAV_BUTTON_BG": "background-color",
+            "$NAV_BUTTON_TEXT": "color",
+            "$NAV_BUTTON_HOVER": "background-color",
+            "$NAV_BUTTON_SELECTED": "background-color",
+            "$CONTENT_BG": "background-color",
+            "$CONTENT_TEXT": "color",
+            "$INPUT_BG": "background-color",
+            "$INPUT_TEXT": "color",
+            "$WIDGET_BOX_BG": "background-color",
+            "$SELECTION_BG": "background-color",
+            "$SELECTION_TEXT": "color",
+            "$BORDER_LIGHT": "border-color",
+            "$SCROLLBAR_BG": "background-color",
+            "$SCROLLBAR_HANDLE": "background-color",
+            "$SCROLLBAR_HANDLE_HOVER": "background-color",
+            "$HEADER_BG": "background-color",
+            "$HEADER_TEXT": "color",
+            "$HOVER_BG": "background-color",
+            "$PLUGIN_PREPROCESSING_BG": "background-color",
+            "$PLUGIN_ANALYSIS_BG": "background-color",
+            "$PLUGIN_RESULTS_BG": "background-color",
+            "$PLUGIN_REQUIRED_COLOR": "border-left",
+            "$PLUGIN_OPTIONAL_COLOR": "border-left",
+            "$PLUGIN_COMPONENT_ACCENT": "border-left"
+        }
+        return mapping.get(variable)
 
     def _apply_minimal_stylesheet(self, app, theme):
         """Apply an absolutely minimal stylesheet when all else fails."""
@@ -445,13 +340,71 @@ class ThemeManager:
             """
         
         app.setStyleSheet(minimal_css)
+        logger.info("Applied minimal fallback stylesheet")
 
     def change_theme(self, theme_choice):
-        """Change the theme; updates the state_manager and reapplies the theme.
-        Returns the effective theme after change.
-        """
+        """Change the theme; updates the state_manager and reapplies the theme."""
         logger.info(f"Changing theme to: {theme_choice}")
         self.state_manager.set_theme_preference(theme_choice)
         app = QApplication.instance()
         effective_theme = self.apply_theme(app)
         return effective_theme
+        
+    def collect_plugin_styles_from_manager(self, plugin_manager):
+        """
+        Collect and register styles from all plugins in the plugin manager.
+        
+        Args:
+            plugin_manager: The application's PluginManager instance
+        """
+        for plugin in plugin_manager.get_all_plugins():
+            try:
+                plugin_id = plugin.plugin_self_metadata().name
+                styling_prefs = plugin.get_styling_preferences()
+                
+                # Convert plugin preferences to our style format
+                style_data = {
+                    "dark": {
+                        "base": {},
+                        "stages": {},
+                        "importance": {}
+                    },
+                    "light": {
+                        "base": {},
+                        "stages": {},
+                        "importance": {}
+                    }
+                }
+                
+                # Process plugin's styling preferences into our format
+                # (This is a simplified example - expand as needed)
+                for theme in ["dark", "light"]:
+                    # Handle base styling
+                    theme_colors = styling_prefs.get("colors", {}).get(theme, {})
+                    for color_key, color_value in theme_colors.items():
+                        if color_key == "primary":
+                            style_data[theme]["base"]["background-color"] = color_value
+                        elif color_key == "text":
+                            style_data[theme]["base"]["color"] = color_value
+                            
+                    # Handle stage-specific styling
+                    for stage in ["preprocessing", "analysis", "results"]:
+                        stage_color = styling_prefs.get("stages", {}).get(stage, {}).get(theme)
+                        if stage_color:
+                            style_data[theme]["stages"][stage] = {
+                                "background-color": stage_color
+                            }
+                            
+                    # Handle importance levels
+                    for level in ["required", "optional"]:
+                        border_color = styling_prefs.get("importance", {}).get(level, {}).get(theme)
+                        if border_color:
+                            style_data[theme]["importance"][level] = {
+                                "border-left": f"3px solid {border_color}"
+                            }
+                
+                # Register the processed style data
+                self.register_plugin_styles(plugin_id, style_data)
+                
+            except Exception as e:
+                logger.warning(f"Error processing styles for plugin {plugin.plugin_self_metadata().name}: {e}")

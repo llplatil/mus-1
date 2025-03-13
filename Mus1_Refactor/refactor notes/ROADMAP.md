@@ -4,21 +4,33 @@ This document outlines the planned development roadmap for MUS1, defining milest
 
 ## Current Version (v0.1.0) - Foundation
 
-**Outstanding Tasks:**
+**Completed Tasks:**
 
-1. **CSS and Theme System Completion**
+1. **QSS and Theme System**
    - [x] Delete old CSS files (dark.css, light.css)
-   - [x] Rename unified_css_approach.css to mus1.css
-   - [x] Perform thorough testing of theme switching
-   - [ ] Document the final CSS variable system for future development
+   - [x] Create unified CSS approach with variable substitution
+   - [x] Implement theme switching (dark, light, OS detection)
+   - [x] Fix CSS variable consistency 
+   - [x] Ensure proper QLabel background styling
 
-2. **UI Component Refinement** 
-   - [ ] Fix text highlighting in input elements
-   - [ ] Implement consistent widget styling across views
+2. **UI Component Implementation** 
+   - [x] Implement reusable NotesBox component
+   - [x] Create consistent layout patterns
+   - [x] Standardize margins and spacing
+   - [x] Improve ProjectView organization
+
+**Current Tasks:**
+1. **UI Component Refinement** 
    - [ ] Complete component validation system
    - [ ] Finalize body parts list functionality
+   - [ ] Implement plugin-specific styling
 
+2. **Data Processing**
+   - [ ] Implement likelihood filter functionality
+   - [ ] Add frame rate limiting options
+   - [ ] Complete data validation pipeline
 
+## Version 0.2.0 - Analysis Features
 
 **Planned Features:**
 - [ ] Comprehensive analysis views for all plugin types
@@ -46,21 +58,18 @@ This document outlines the planned development roadmap for MUS1, defining milest
 
 **Planned Features:**
 - [ ] Comprehensive documentation
-- [ ] Interactive tutorials
 - [ ] Integration with common lab workflows
 - [ ] Performance optimization
 - [ ] Multi-experiment correlation tools
 - [ ] Batch export and reporting
-- [ ] Plugin SDK for third-party developers
 
 ## Long-term Vision
 
 **Future Enhancements (Post 1.0):**
-- Integration with other behavioral analysis platforms: keypoint moseq, camera support from mus1, video file transformations
+- Integration with other behavioral analysis platforms
 - Real-time data input capabilities
 - Cloud synchronization options
 - Advanced automation for data processing
 - Customizable analysis pipelines
 - Local inference, server training
-- Infer animal state from behavior in home cage for endpoints of interest
 

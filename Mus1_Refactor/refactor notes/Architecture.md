@@ -31,81 +31,7 @@
 ## Component Architecture
 
 ```
-pre fix: 
-MainWindow 
-    └── Contains tab instances of concrete views 
-            (ProjectView, SubjectView, ExperimentView)
-                └── Each inherits from BaseView (template pattern)
-                        └── Each contains a NavigationPane instance 
 
-┌───────────────────────────────────────────────────────────────────────────┐
-│                                                                           │
-│                             USER INTERFACE                                │
-│                                                                           │
-│   ┌───────────────┐                                     ┌───────────────┐ │
-│   │               │                                     │               │ │
-│   │  MainWindow   │◄────────────────────────────────►   │   Concrete    │ │
-│   │               │     contains tabs of views          │    Views      │ │
-│   └───────┬───────┘                                     └───────┬───────┘ │
-│           │                                                     │         │
-│           │                                                     │         │
-│           │                                                     │ inherits│
-│           ▼                                                     ▼         │
-│  ┌─────────────────┐ Interacts with   ┌────────────────────────┐          │
-│  │                 │                  │                        │          │
-│  │ Project Manager ◄─────────────────►│ BaseView               │          │
-│  │                 │                  │ (Template for views)   │          │
-│  └────────┬────────┘                  └──────────┬────────────┘           │
-│           │ Manages                              │ contains              │
-│           │                                      │                       │
-│           ▼                                      ▼                       │
-│  ┌─────────────────┐                    ┌─────────────────────┐          │
-│  │                 │                    │                     │          │
-│  │  StateManager   │                    │ NavigationPane      │          │
-│  │                 │                    │                     │          │
-│  └─────────────────┘                    └─────────────────────┘          │
-│                                                                           │
-└───────────────────────────────────────────────────────────────────────────┘
-so we need to fix this to something that alligns with: 
-
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│  PluginManager  │───►│  StateManager   │◄───│   MainWindow    │
-│                 │    │                 │    │                 │
-└────────┬────────┘    └────────┬────────┘    └────────┬────────┘
-         │                      │                      │
-         │                      │                      │
-         ▼                      ▼                      ▼
-    Collects plugin      Stores preferences     Coordinates theme
-     preferences          & classes list          application
-                                                      │
-                                                      │
-                                                      ▼
-                                                ┌─────────────────┐
-                                                │  Concrete Views │
-                                                │  (e.g., ExpView)│
-                                                └────────┬────────┘
-                                                         │
-                                                         │
-                                                         ▼
-                                                  Queries StateManager
-                                                  for plugin styling
-                                                  & applies to widgets
-
-ie main window as coordinator of theme and specific styling mods when plugins say to do so
-
-MainWindow
-   │
-   ├── ProjectView (inherits from BaseView)
-   │        │
-   │        └── NavigationPane
-   │
-   ├── SubjectView (inherits from BaseView)
-   │        │
-   │        └── NavigationPane
-   │
-   └── ExperimentView (inherits from BaseView)
-            │
-            └── NavigationPane
 ```
 
 ## UI Integration
@@ -116,13 +42,12 @@ MainWindow
 - Classes register update callbacks on initialization
 - Components unsubscribe when destroyed
 
-
 ### Theme Handling Architecture
+- Theme manager for QSS theme 
 - **MainWindow**: Central handler for theme changes
 - **ProjectManager**: Applies theme to application through QPalette and CSS
 - **BaseView**: Propagates theme to its components
-- **ProjectView**: Contains only UI for theme selection, delegates logic to MainWindow
-
+- **ProjectView**: Contains UI for theme selection, delegates logic to MainWindow
 
 ### Dynamic Form Generation
 - ExperimentView dynamically generates forms based on plugin metadata
@@ -140,10 +65,9 @@ MainWindow
 7. Final validation and save
 
 ### Plugin UI Styling System
-
-The plugin UI styling system leverages the existing architecture to provide consistent yet customizable styling:
-
-see refactur UI for uptodate sketch
+- Uses QSS variables and property-based styling
+- Consistent design across plugins with theme support
+- Each plugin can define custom styling preferences
 
 ## Data Management
 
@@ -152,8 +76,7 @@ see refactur UI for uptodate sketch
 - Includes models for MouseMetadata, ExperimentMetadata, PluginMetadata, etc.
 
 ### Sorting and Validation
-- Centralized sorting logic in `sort_manager.py`
-- coordinates with state manager
+- Centralized sorting logic coordinated with state manager
 
 ## Batch Management System
 
@@ -177,35 +100,33 @@ see refactur UI for uptodate sketch
 ### Notes Widget Pattern
 - Expandable text field for user notes
 - Connects to state management system
-- Expands vertically when focused
+- Expands vertically when focused this is still a to do 
 
 ## CSS System
 
 ### Variable Structure
 - **Base variables**: Font, colors, spacing
 - **Component variables**: Derived from base variables
-- **Theme-specific variables**: Defined in :root and .dark-theme:root
+- **Theme-specific variables**: Defined with variable substitution
 
 ### Theme Switching
-- Uses CSS classes instead of separate files
+- Uses CSS variables for theme definition in theme manager with qss stylesheet
 - BaseView propagates theme to all children
 - MainWindow is the central point for theme changes
 
-## Current Status and Next Steps
+## Current Status
 
 ### Completed
 - ✅ Core application architecture implemented
 - ✅ Observer pattern for UI updates
-- ✅ Unified CSS variable system
+- ✅ Unified QSS variable system
 - ✅ Proper theme handling architecture
 - ✅ Navigation pane with fixed width
 
+
 ### Outstanding Tasks
-- [ ] Delete legacy CSS files (dark.css, light.css)
-- [ ] Fix text highlighting in input elements
-- [ ] Implement consistent widget styling
 - [ ] Complete component validation system
 - [ ] Implement QPalette colors derived from CSS variables
-- [ ] Implement plugin UI styling system
+- [ ] Complete plugin UI styling system implementation
 
 This document serves as a comprehensive reference for developers to understand the architecture and implementation details of MUS1.

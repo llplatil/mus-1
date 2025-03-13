@@ -14,7 +14,7 @@ The project uses a modular architecture with plugin support for different experi
 
 ## Features
 
-- **Material Design UI**: Clean, modern interface built with PySide6
+- **Material Design UI**: Clean, modern interface built with PySide6-Qt
 - **Responsive Layout**: BaseView implementation with QSplitter for consistent UI
 - **Theme System**: Light/dark themes with OS detection and CSS variables
 - **Flexible Project Structure**: Organize subjects, experiments, and batches
@@ -24,6 +24,7 @@ The project uses a modular architecture with plugin support for different experi
 - **Phase-Based Workflow**: Track experiments from planning through analysis
 - **Observer Pattern**: UI components subscribe to state changes for automatic updates
 - **Standardized Metadata Display**: Visualize complex relationships consistently
+- **Reusable Components**: NotesBox and other UI patterns for consistent interfaces
 
 ## Architecture
 
@@ -46,11 +47,12 @@ MUS1 follows a modular architecture with clear separation of concerns:
 MUS1 is under active development with the following functionality implemented:
 - ✅ Core application structure with theming
 - ✅ Project, subject, and experiment management
-- ✅ Plugin architecture and integration
+- ✅ Plugin architecture foundation
 - ✅ Batch experiment system
 - ✅ Experiment phase tracking
 - ✅ Unified CSS variable system
 - ✅ Proper theme handling architecture
+- ✅ Consistent component styling
 
 We're currently working on enhanced visualization and analysis capabilities. See our [Development Roadmap](Mus1_Refactor/refactor%20notes/ROADMAP.md) for details.
 
@@ -64,8 +66,8 @@ We're currently working on enhanced visualization and analysis capabilities. See
   - pandas/numpy/matplotlib
 
 ## Documentation
-- [Development Roadmap](docs/ROADMAP.md)
-- [Architecture Documentation](Architecture.md)
+- [Development Roadmap](Mus1_Refactor/refactor%20notes/ROADMAP.md)
+- [Architecture Documentation](Mus1_Refactor/refactor%20notes/Architecture.md)
 
 ## Getting Started
 
