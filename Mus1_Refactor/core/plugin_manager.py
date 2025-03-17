@@ -183,3 +183,24 @@ class PluginManager:
             plugin_classes[plugin_id] = classes
             
         return plugin_classes
+
+    def register_plugin_styles_with_theme_manager(self, theme_manager):
+        """Register all plugin style manifests with the given ThemeManager instance.
+
+        This method iterates through all registered plugins, and if a plugin provides a style manifest
+        via get_style_manifest(), it registers those style overrides with the ThemeManager.
+        The manifest is expected to be a dictionary with a single 'base' key, e.g.,
+            { 'base': { '$VARIABLE': 'value', ... } }
+        """
+        import logging
+        logger = logging.getLogger("mus1.core.plugin_manager")
+        for plugin in self._plugins:
+            try:
+                manifest = plugin.get_style_manifest()
+                if manifest is not None:
+                    # Use the plugin's own metadata name as its identifier
+                    plugin_id = plugin.plugin_self_metadata().name
+                    theme_manager.register_plugin_styles(plugin_id, manifest)
+                    logger.info(f"Registered style manifest for plugin: {plugin_id}")
+            except Exception as e:
+                logger.warning(f"Error registering styles for plugin {plugin.plugin_self_metadata().name}: {e}")

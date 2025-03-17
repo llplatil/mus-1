@@ -186,3 +186,14 @@ class BasePlugin(ABC):
         """
         field_to_stage_map = getattr(self, "field_stage_map", {})
         return field_to_stage_map.get(field_name, "unknown")
+
+    def get_style_manifest(self) -> Optional[Dict[str, Any]]:
+        """Return a style manifest for plugin-specific style overrides.
+
+        By default, no style overrides are provided. Plugins can override this method
+        to return a manifest of the form:
+            {
+                'base': { '$VARIABLE': 'value', ... }
+            }
+        """
+        return None

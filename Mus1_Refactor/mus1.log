@@ -1,433 +1,173 @@
-2025-03-12 14:41:29,420 [INFO] __main__ - Launching MUS1...
-2025-03-12 14:41:29,420 [INFO] mus1.core.metadata - Initializing metadata system
-2025-03-12 14:41:29,420 [INFO] mus1.core.metadata - Metadata system initialized successfully
-2025-03-12 14:41:29,494 [INFO] mus1 - [MainApp] LoggingEventBus initialized
-2025-03-12 14:41:29,497 [INFO] mus1 - [StateManager] StateManager initialized
-2025-03-12 14:41:29,497 [INFO] mus1 - [ProjectManager] ProjectManager initialized
-2025-03-12 14:41:29,498 [INFO] mus1 - [ProjectManager] Registered 3 plugins
-2025-03-12 14:41:29,498 [INFO] mus1.core.project_manager - Registered 3 plugins
-2025-03-12 14:41:29,498 [INFO] __main__ - Core managers created. Launching Project Selection Dialog.
-2025-03-12 14:41:33,103 [INFO] __main__ - Project selected: ui_1
-2025-03-12 15:13:03,994 [INFO] __main__ - Launching MUS1...
-2025-03-12 15:13:03,994 [INFO] mus1.core.metadata - Initializing metadata system
-2025-03-12 15:13:03,994 [INFO] mus1.core.metadata - Metadata system initialized successfully
-2025-03-12 15:13:04,073 [INFO] mus1 - [MainApp] LoggingEventBus initialized
-2025-03-12 15:13:04,076 [INFO] mus1 - [StateManager] StateManager initialized
-2025-03-12 15:13:04,076 [INFO] mus1 - [ProjectManager] ProjectManager initialized
-2025-03-12 15:13:04,077 [INFO] mus1 - [ProjectManager] Registered 3 plugins
-2025-03-12 15:13:04,077 [INFO] mus1.core.project_manager - Registered 3 plugins
-2025-03-12 15:13:04,077 [INFO] __main__ - Core managers created. Launching Project Selection Dialog.
-2025-03-12 15:13:08,293 [INFO] __main__ - Project selected: ui_1
-2025-03-12 15:13:08,317 [INFO] mus1 - [MainWindow] MainWindow initializing
-2025-03-12 15:15:43,203 [INFO] __main__ - Launching MUS1...
-2025-03-12 15:15:43,203 [INFO] mus1.core.metadata - Initializing metadata system
-2025-03-12 15:15:43,203 [INFO] mus1.core.metadata - Metadata system initialized successfully
-2025-03-12 15:15:43,279 [INFO] mus1 - [MainApp] LoggingEventBus initialized
-2025-03-12 15:15:43,282 [INFO] mus1 - [StateManager] StateManager initialized
-2025-03-12 15:15:43,282 [INFO] mus1 - [ProjectManager] ProjectManager initialized
-2025-03-12 15:15:43,282 [INFO] mus1 - [ProjectManager] Registered 3 plugins
-2025-03-12 15:15:43,282 [INFO] mus1.core.project_manager - Registered 3 plugins
-2025-03-12 15:15:43,282 [INFO] __main__ - Core managers created. Launching Project Selection Dialog.
-2025-03-12 15:15:50,409 [INFO] mus1.core.project_manager - Created project directory at projects/ui_2
-2025-03-12 15:15:50,409 [INFO] mus1 - [ProjectManager] Created project directory at projects/ui_2
-2025-03-12 15:15:50,411 [INFO] mus1.core.project_manager - Created standard subfolders: subjects, experiments, batches, data, media, external_configs, project_notes
-2025-03-12 15:15:50,418 [INFO] mus1.core.project_manager - Project saved to projects/ui_2/project_state.json
-2025-03-12 15:15:50,453 [INFO] __main__ - Project selected: ui_2
-2025-03-12 15:15:50,466 [INFO] mus1 - [MainWindow] MainWindow initializing
-2025-03-12 15:21:57,901 [INFO] __main__ - Launching MUS1...
-2025-03-12 15:21:57,901 [INFO] mus1.core.metadata - Initializing metadata system
-2025-03-12 15:21:57,901 [INFO] mus1.core.metadata - Metadata system initialized successfully
-2025-03-12 15:21:57,977 [INFO] mus1 - [MainApp] LoggingEventBus initialized
-2025-03-12 15:21:57,980 [INFO] mus1 - [StateManager] StateManager initialized
-2025-03-12 15:21:57,980 [INFO] mus1 - [ProjectManager] ProjectManager initialized
-2025-03-12 15:21:57,980 [INFO] mus1 - [ProjectManager] Registered 3 plugins
-2025-03-12 15:21:57,980 [INFO] mus1.core.project_manager - Registered 3 plugins
-2025-03-12 15:21:57,980 [INFO] __main__ - Core managers created. Launching Project Selection Dialog.
-2025-03-12 15:22:01,729 [INFO] __main__ - Project selected: ui_2
-2025-03-12 15:22:01,745 [INFO] mus1 - [MainWindow] MainWindow initializing
-2025-03-12 15:29:59,766 [INFO] __main__ - Launching MUS1...
-2025-03-12 15:29:59,767 [INFO] mus1.core.metadata - Initializing metadata system
-2025-03-12 15:29:59,767 [INFO] mus1.core.metadata - Metadata system initialized successfully
-2025-03-12 15:29:59,846 [INFO] mus1 - [MainApp] LoggingEventBus initialized
-2025-03-12 15:29:59,849 [INFO] mus1 - [StateManager] StateManager initialized
-2025-03-12 15:29:59,849 [INFO] mus1 - [ProjectManager] ProjectManager initialized
-2025-03-12 15:29:59,850 [INFO] mus1 - [ProjectManager] Registered 3 plugins
-2025-03-12 15:29:59,850 [INFO] mus1.core.project_manager - Registered 3 plugins
-2025-03-12 15:29:59,850 [INFO] __main__ - Core managers created. Launching Project Selection Dialog.
-2025-03-12 15:30:03,271 [INFO] __main__ - Project selected: ui_2
-2025-03-12 15:30:03,285 [INFO] mus1 - [MainWindow] MainWindow initializing
-2025-03-12 15:30:03,300 [INFO] mus1 - [SubjectView] SubjectView initialized
-2025-03-12 15:30:03,325 [INFO] mus1 - [MainWindow] Registered log observer for projectView
-2025-03-12 15:30:03,326 [INFO] mus1 - [MainWindow] Registered log observer for subjectView
-2025-03-12 15:30:03,326 [INFO] mus1 - [MainWindow] Registered log observer for experimentView
-2025-03-12 15:30:03,326 [INFO] mus1 - [MainWindow] Switched to Project tab
-2025-03-12 15:53:38,549 [INFO] __main__ - Launching MUS1...
-2025-03-12 15:53:38,549 [INFO] mus1.core.metadata - Initializing metadata system
-2025-03-12 15:53:38,549 [INFO] mus1.core.metadata - Metadata system initialized successfully
-2025-03-12 15:53:38,627 [INFO] mus1 - [MainApp] LoggingEventBus initialized
-2025-03-12 15:53:38,630 [INFO] mus1 - [StateManager] StateManager initialized
-2025-03-12 15:53:38,630 [INFO] mus1 - [ProjectManager] ProjectManager initialized
-2025-03-12 15:53:38,631 [INFO] mus1 - [ProjectManager] Registered 3 plugins
-2025-03-12 15:53:38,631 [INFO] mus1.core.project_manager - Registered 3 plugins
-2025-03-12 15:53:38,631 [INFO] __main__ - Core managers created. Launching Project Selection Dialog.
-2025-03-12 15:53:45,025 [INFO] mus1.core.project_manager - Created project directory at projects/ui_3
-2025-03-12 15:53:45,026 [INFO] mus1 - [ProjectManager] Created project directory at projects/ui_3
-2025-03-12 15:53:45,028 [INFO] mus1.core.project_manager - Created standard subfolders: subjects, experiments, batches, data, media, external_configs, project_notes
-2025-03-12 15:53:45,031 [INFO] mus1.core.project_manager - Project saved to projects/ui_3/project_state.json
-2025-03-12 15:53:45,064 [INFO] __main__ - Project selected: ui_3
-2025-03-12 15:53:45,074 [INFO] mus1 - [MainWindow] MainWindow initializing
-2025-03-12 15:53:45,085 [INFO] mus1 - [SubjectView] SubjectView initialized
-2025-03-12 15:53:45,103 [INFO] mus1 - [MainWindow] Registered log observer for projectView
-2025-03-12 15:53:45,104 [INFO] mus1 - [MainWindow] Registered log observer for subjectView
-2025-03-12 15:53:45,104 [INFO] mus1 - [MainWindow] Registered log observer for experimentView
-2025-03-12 15:53:45,104 [INFO] mus1 - [MainWindow] Switched to Project tab
-2025-03-12 16:06:40,319 [INFO] __main__ - Launching MUS1...
-2025-03-12 16:06:40,319 [INFO] mus1.core.metadata - Initializing metadata system
-2025-03-12 16:06:40,319 [INFO] mus1.core.metadata - Metadata system initialized successfully
-2025-03-12 16:06:40,394 [INFO] mus1 - [MainApp] LoggingEventBus initialized
-2025-03-12 16:06:40,397 [INFO] mus1 - [StateManager] StateManager initialized
-2025-03-12 16:06:40,397 [INFO] mus1 - [ProjectManager] ProjectManager initialized
-2025-03-12 16:06:40,398 [INFO] mus1 - [ProjectManager] Registered 3 plugins
-2025-03-12 16:06:40,398 [INFO] mus1.core.project_manager - Registered 3 plugins
-2025-03-12 16:06:40,398 [INFO] __main__ - Core managers created. Launching Project Selection Dialog.
-2025-03-12 16:06:47,024 [INFO] mus1.core.project_manager - Created project directory at projects/ui_4
-2025-03-12 16:06:47,024 [INFO] mus1 - [ProjectManager] Created project directory at projects/ui_4
-2025-03-12 16:06:47,025 [INFO] mus1.core.project_manager - Created standard subfolders: subjects, experiments, batches, data, media, external_configs, project_notes
-2025-03-12 16:06:47,029 [INFO] mus1.core.project_manager - Project saved to projects/ui_4/project_state.json
-2025-03-12 16:06:47,067 [INFO] __main__ - Project selected: ui_4
-2025-03-12 16:06:47,078 [INFO] mus1 - [MainWindow] MainWindow initializing
-2025-03-12 16:06:47,090 [INFO] mus1 - [SubjectView] SubjectView initialized
-2025-03-12 16:06:47,108 [INFO] mus1 - [MainWindow] Registered log observer for projectView
-2025-03-12 16:06:47,108 [INFO] mus1 - [MainWindow] Registered log observer for subjectView
-2025-03-12 16:06:47,108 [INFO] mus1 - [MainWindow] Registered log observer for experimentView
-2025-03-12 16:06:47,109 [INFO] mus1 - [MainWindow] Switched to Project tab
-2025-03-12 16:12:07,613 [INFO] __main__ - Launching MUS1...
-2025-03-12 16:12:07,613 [INFO] mus1.core.metadata - Initializing metadata system
-2025-03-12 16:12:07,613 [INFO] mus1.core.metadata - Metadata system initialized successfully
-2025-03-12 16:12:07,692 [INFO] mus1 - [MainApp] LoggingEventBus initialized
-2025-03-12 16:12:07,695 [INFO] mus1 - [StateManager] StateManager initialized
-2025-03-12 16:12:07,695 [INFO] mus1 - [ProjectManager] ProjectManager initialized
-2025-03-12 16:12:07,696 [INFO] mus1 - [ProjectManager] Registered 3 plugins
-2025-03-12 16:12:07,696 [INFO] mus1.core.project_manager - Registered 3 plugins
-2025-03-12 16:12:07,696 [INFO] __main__ - Core managers created. Launching Project Selection Dialog.
-2025-03-12 16:12:14,612 [INFO] mus1.core.project_manager - Created project directory at projects/ui_5
-2025-03-12 16:12:14,613 [INFO] mus1 - [ProjectManager] Created project directory at projects/ui_5
-2025-03-12 16:12:14,615 [INFO] mus1.core.project_manager - Created standard subfolders: subjects, experiments, batches, data, media, external_configs, project_notes
-2025-03-12 16:12:14,620 [INFO] mus1.core.project_manager - Project saved to projects/ui_5/project_state.json
-2025-03-12 16:12:14,658 [INFO] __main__ - Project selected: ui_5
-2025-03-12 16:12:14,667 [INFO] mus1 - [MainWindow] MainWindow initializing
-2025-03-12 16:12:14,679 [INFO] mus1 - [SubjectView] SubjectView initialized
-2025-03-12 16:12:14,697 [INFO] mus1 - [MainWindow] Registered log observer for projectView
-2025-03-12 16:12:14,697 [INFO] mus1 - [MainWindow] Registered log observer for subjectView
-2025-03-12 16:12:14,698 [INFO] mus1 - [MainWindow] Registered log observer for experimentView
-2025-03-12 16:12:14,698 [INFO] mus1 - [MainWindow] Switched to Project tab
-2025-03-12 16:31:16,424 [INFO] __main__ - Launching MUS1...
-2025-03-12 16:31:16,424 [INFO] mus1.core.metadata - Initializing metadata system
-2025-03-12 16:31:16,424 [INFO] mus1.core.metadata - Metadata system initialized successfully
-2025-03-12 16:31:16,508 [INFO] mus1 - [MainApp] LoggingEventBus initialized
-2025-03-12 16:31:16,511 [INFO] mus1 - [StateManager] StateManager initialized
-2025-03-12 16:31:16,511 [INFO] mus1 - [ProjectManager] ProjectManager initialized
-2025-03-12 16:31:16,512 [INFO] mus1 - [ProjectManager] Registered 3 plugins
-2025-03-12 16:31:16,512 [INFO] mus1.core.project_manager - Registered 3 plugins
-2025-03-12 16:31:16,512 [INFO] __main__ - Core managers created. Launching Project Selection Dialog.
-2025-03-12 16:32:50,980 [INFO] __main__ - Launching MUS1...
-2025-03-12 16:32:50,980 [INFO] mus1.core.metadata - Initializing metadata system
-2025-03-12 16:32:50,980 [INFO] mus1.core.metadata - Metadata system initialized successfully
-2025-03-12 16:32:51,058 [INFO] mus1 - [MainApp] LoggingEventBus initialized
-2025-03-12 16:32:51,061 [INFO] mus1 - [StateManager] StateManager initialized
-2025-03-12 16:32:51,061 [INFO] mus1 - [ProjectManager] ProjectManager initialized
-2025-03-12 16:32:51,061 [INFO] mus1 - [ProjectManager] Registered 3 plugins
-2025-03-12 16:32:51,062 [INFO] mus1.core.project_manager - Registered 3 plugins
-2025-03-12 16:32:51,062 [INFO] __main__ - Core managers created. Launching Project Selection Dialog.
-2025-03-12 16:32:59,685 [INFO] mus1.core.project_manager - Created project directory at projects/ui_6
-2025-03-12 16:32:59,686 [INFO] mus1 - [ProjectManager] Created project directory at projects/ui_6
-2025-03-12 16:32:59,687 [INFO] mus1.core.project_manager - Created standard subfolders: subjects, experiments, batches, data, media, external_configs, project_notes
-2025-03-12 16:32:59,693 [INFO] mus1.core.project_manager - Project saved to projects/ui_6/project_state.json
-2025-03-12 16:32:59,725 [INFO] __main__ - Project selected: ui_6
-2025-03-12 16:32:59,738 [INFO] mus1 - [MainWindow] MainWindow initializing
-2025-03-12 16:32:59,751 [INFO] mus1 - [SubjectView] SubjectView initialized
-2025-03-12 16:32:59,768 [INFO] mus1 - [MainWindow] Registered log observer for projectView
-2025-03-12 16:32:59,768 [INFO] mus1 - [MainWindow] Registered log observer for subjectView
-2025-03-12 16:32:59,769 [INFO] mus1 - [MainWindow] Registered log observer for experimentView
-2025-03-12 16:32:59,769 [INFO] mus1 - [MainWindow] Switched to Project tab
-2025-03-12 16:32:59,803 [INFO] mus1.core.project_manager - Loading project from projects/ui_6
-2025-03-12 16:32:59,803 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
-2025-03-12 16:32:59,803 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
-2025-03-12 16:32:59,804 [INFO] mus1 - [MainWindow] Project 'ui_6' loaded successfully
-2025-03-12 16:37:18,953 [INFO] __main__ - Launching MUS1...
-2025-03-12 16:37:18,953 [INFO] mus1.core.metadata - Initializing metadata system
-2025-03-12 16:37:18,954 [INFO] mus1.core.metadata - Metadata system initialized successfully
-2025-03-12 16:37:19,027 [INFO] mus1 - [MainApp] LoggingEventBus initialized
-2025-03-12 16:37:19,030 [INFO] mus1 - [StateManager] StateManager initialized
-2025-03-12 16:37:19,030 [INFO] mus1 - [ProjectManager] ProjectManager initialized
-2025-03-12 16:37:19,031 [INFO] mus1 - [ProjectManager] Registered 3 plugins
-2025-03-12 16:37:19,031 [INFO] mus1.core.project_manager - Registered 3 plugins
-2025-03-12 16:37:19,031 [INFO] __main__ - Core managers created. Launching Project Selection Dialog.
-2025-03-12 16:37:22,632 [INFO] __main__ - Project selected: ui_6
-2025-03-12 16:37:22,643 [INFO] mus1 - [MainWindow] MainWindow initializing
-2025-03-12 16:37:22,658 [INFO] mus1 - [SubjectView] SubjectView initialized
-2025-03-12 16:37:22,678 [INFO] mus1 - [MainWindow] Registered log observer for projectView
-2025-03-12 16:37:22,678 [INFO] mus1 - [MainWindow] Registered log observer for subjectView
-2025-03-12 16:37:22,678 [INFO] mus1 - [MainWindow] Registered log observer for experimentView
-2025-03-12 16:37:22,678 [INFO] mus1 - [MainWindow] Switched to Project tab
-2025-03-12 16:37:22,712 [INFO] mus1.core.project_manager - Loading project from projects/ui_6
-2025-03-12 16:37:22,712 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
-2025-03-12 16:37:22,712 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
-2025-03-12 16:37:22,712 [INFO] mus1 - [MainWindow] Project 'ui_6' loaded successfully
-2025-03-12 16:37:22,714 [INFO] mus1 - [SubjectView] Refreshing subject list: 0 subjects found
-2025-03-12 16:37:22,751 [INFO] __main__ - MUS1 init complete. Starting application event loop.
-2025-03-12 16:37:48,016 [INFO] mus1 - [MainWindow] Switched to Subjects tab
-2025-03-12 16:37:48,020 [INFO] mus1 - [SubjectView] Refreshing subject list: 0 subjects found
-2025-03-12 16:37:49,691 [INFO] mus1 - [SubjectView] Refreshing subject list: 0 subjects found
-2025-03-12 16:37:51,478 [INFO] mus1 - [MainWindow] Switched to Experiments tab
-2025-03-12 16:52:58,363 [INFO] __main__ - Launching MUS1...
-2025-03-12 16:52:58,363 [INFO] mus1.core.metadata - Initializing metadata system
-2025-03-12 16:52:58,363 [INFO] mus1.core.metadata - Metadata system initialized successfully
-2025-03-12 16:52:58,451 [INFO] mus1 - [MainApp] LoggingEventBus initialized
-2025-03-12 16:52:58,454 [INFO] mus1 - [StateManager] StateManager initialized
-2025-03-12 16:52:58,454 [INFO] mus1 - [ProjectManager] ProjectManager initialized
-2025-03-12 16:52:58,455 [INFO] mus1 - [ProjectManager] Registered 3 plugins
-2025-03-12 16:52:58,455 [INFO] mus1.core.project_manager - Registered 3 plugins
-2025-03-12 16:52:58,455 [INFO] __main__ - Core managers created. Launching Project Selection Dialog.
-2025-03-12 16:53:01,874 [INFO] __main__ - Project selected: ui_6
-2025-03-12 16:53:01,886 [INFO] mus1 - [MainWindow] MainWindow initializing
-2025-03-12 16:53:01,898 [INFO] mus1 - [SubjectView] SubjectView initialized
-2025-03-12 16:53:01,915 [INFO] mus1 - [MainWindow] Registered log observer for projectView
-2025-03-12 16:53:01,915 [INFO] mus1 - [MainWindow] Registered log observer for subjectView
-2025-03-12 16:53:01,916 [INFO] mus1 - [MainWindow] Registered log observer for experimentView
-2025-03-12 16:53:01,916 [INFO] mus1 - [MainWindow] Switched to Project tab
-2025-03-12 16:53:01,950 [INFO] mus1.core.project_manager - Loading project from projects/ui_6
-2025-03-12 16:53:01,950 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
-2025-03-12 16:53:01,950 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
-2025-03-12 16:53:01,950 [INFO] mus1 - [MainWindow] Project 'ui_6' loaded successfully
-2025-03-12 16:53:01,951 [INFO] mus1 - [SubjectView] Refreshing subject list: 0 subjects found
-2025-03-12 16:53:01,987 [INFO] __main__ - MUS1 init complete. Starting application event loop.
-2025-03-12 16:56:14,228 [INFO] __main__ - Launching MUS1...
-2025-03-12 16:56:14,228 [INFO] mus1.core.metadata - Initializing metadata system
-2025-03-12 16:56:14,228 [INFO] mus1.core.metadata - Metadata system initialized successfully
-2025-03-12 16:56:14,295 [INFO] mus1 - [MainApp] LoggingEventBus initialized
-2025-03-12 16:56:14,299 [INFO] mus1 - [StateManager] StateManager initialized
-2025-03-12 16:56:14,299 [INFO] mus1 - [ProjectManager] ProjectManager initialized
-2025-03-12 16:56:14,299 [INFO] mus1 - [ProjectManager] Registered 3 plugins
-2025-03-12 16:56:14,299 [INFO] mus1.core.project_manager - Registered 3 plugins
-2025-03-12 16:56:14,299 [INFO] __main__ - Core managers created. Launching Project Selection Dialog.
-2025-03-12 16:56:17,552 [INFO] __main__ - Project selected: ui_6
-2025-03-12 16:56:17,552 [INFO] mus1.core.theme_manager - Applying theme: dark
-2025-03-12 16:56:17,553 [INFO] mus1.core.theme_manager - Loading CSS from: /Users/lukashplatil/Desktop/mus1 refactor/Mus1_Refactor/core/../themes/mus1.css
-2025-03-12 16:56:17,553 [INFO] mus1.core.theme_manager - Loaded CSS: 15419 characters
-2025-03-12 16:56:17,553 [INFO] mus1.core.theme_manager - Extracted 62 CSS variables for theme: dark
-2025-03-12 16:56:17,553 [INFO] mus1.core.theme_manager - Split into 143 CSS blocks
-2025-03-12 16:56:17,557 [INFO] mus1.core.theme_manager - Preprocessed CSS: 10609 characters
-2025-03-12 16:56:17,557 [INFO] mus1.core.theme_manager - Final CSS with plugins: 10609 characters
-2025-03-12 16:56:17,557 [INFO] mus1.core.theme_manager - Wrote debug CSS to: /Users/lukashplatil/Desktop/mus1 refactor/Mus1_Refactor/core/../themes/debug_processed.css
-2025-03-12 16:56:17,558 [INFO] mus1.core.theme_manager - Applied stylesheet to application
-2025-03-12 16:56:17,567 [INFO] mus1 - [MainWindow] MainWindow initializing
-2025-03-12 16:56:17,579 [INFO] mus1 - [SubjectView] SubjectView initialized
-2025-03-12 16:56:17,596 [INFO] mus1 - [MainWindow] Registered log observer for projectView
-2025-03-12 16:56:17,597 [INFO] mus1 - [MainWindow] Registered log observer for subjectView
-2025-03-12 16:56:17,597 [INFO] mus1 - [MainWindow] Registered log observer for experimentView
-2025-03-12 16:56:17,597 [INFO] mus1 - [MainWindow] Switched to Project tab
-2025-03-12 16:56:17,598 [INFO] mus1.core.theme_manager - Applying theme: dark
-2025-03-12 16:56:17,598 [INFO] mus1.core.theme_manager - Loading CSS from: /Users/lukashplatil/Desktop/mus1 refactor/Mus1_Refactor/core/../themes/mus1.css
-2025-03-12 16:56:17,598 [INFO] mus1.core.theme_manager - Loaded CSS: 15419 characters
-2025-03-12 16:56:17,598 [INFO] mus1.core.theme_manager - Extracted 62 CSS variables for theme: dark
-2025-03-12 16:56:17,598 [INFO] mus1.core.theme_manager - Split into 143 CSS blocks
-2025-03-12 16:56:17,600 [INFO] mus1.core.theme_manager - Preprocessed CSS: 10609 characters
-2025-03-12 16:56:17,600 [INFO] mus1.core.theme_manager - Final CSS with plugins: 10609 characters
-2025-03-12 16:56:17,600 [INFO] mus1.core.theme_manager - Wrote debug CSS to: /Users/lukashplatil/Desktop/mus1 refactor/Mus1_Refactor/core/../themes/debug_processed.css
-2025-03-12 16:56:17,627 [INFO] mus1.core.theme_manager - Applied stylesheet to application
-2025-03-12 16:56:17,632 [INFO] mus1.core.project_manager - Loading project from projects/ui_6
-2025-03-12 16:56:17,632 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
-2025-03-12 16:56:17,632 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
-2025-03-12 16:56:17,633 [INFO] mus1 - [MainWindow] Project 'ui_6' loaded successfully
-2025-03-12 16:56:17,634 [INFO] mus1 - [SubjectView] Refreshing subject list: 0 subjects found
-2025-03-12 16:56:17,635 [INFO] mus1.core.theme_manager - Applying theme: dark
-2025-03-12 16:56:17,635 [INFO] mus1.core.theme_manager - Loading CSS from: /Users/lukashplatil/Desktop/mus1 refactor/Mus1_Refactor/core/../themes/mus1.css
-2025-03-12 16:56:17,635 [INFO] mus1.core.theme_manager - Loaded CSS: 15419 characters
-2025-03-12 16:56:17,635 [INFO] mus1.core.theme_manager - Extracted 62 CSS variables for theme: dark
-2025-03-12 16:56:17,635 [INFO] mus1.core.theme_manager - Split into 143 CSS blocks
-2025-03-12 16:56:17,637 [INFO] mus1.core.theme_manager - Preprocessed CSS: 10609 characters
-2025-03-12 16:56:17,637 [INFO] mus1.core.theme_manager - Final CSS with plugins: 10609 characters
-2025-03-12 16:56:17,637 [INFO] mus1.core.theme_manager - Wrote debug CSS to: /Users/lukashplatil/Desktop/mus1 refactor/Mus1_Refactor/core/../themes/debug_processed.css
-2025-03-12 16:56:17,666 [INFO] mus1.core.theme_manager - Applied stylesheet to application
-2025-03-12 16:56:17,672 [INFO] __main__ - MUS1 init complete. Starting application event loop.
-2025-03-12 16:58:33,342 [INFO] __main__ - Launching MUS1...
-2025-03-12 16:58:33,342 [INFO] mus1.core.metadata - Initializing metadata system
-2025-03-12 16:58:33,342 [INFO] mus1.core.metadata - Metadata system initialized successfully
-2025-03-12 16:58:33,425 [INFO] mus1 - [MainApp] LoggingEventBus initialized
-2025-03-12 16:58:33,428 [INFO] mus1 - [StateManager] StateManager initialized
-2025-03-12 16:58:33,428 [INFO] mus1 - [ProjectManager] ProjectManager initialized
-2025-03-12 16:58:33,429 [INFO] mus1 - [ProjectManager] Registered 3 plugins
-2025-03-12 16:58:33,429 [INFO] mus1.core.project_manager - Registered 3 plugins
-2025-03-12 16:58:33,429 [INFO] __main__ - Core managers created. Launching Project Selection Dialog.
-2025-03-12 16:58:59,328 [INFO] __main__ - Launching MUS1...
-2025-03-12 16:58:59,328 [INFO] mus1.core.metadata - Initializing metadata system
-2025-03-12 16:58:59,328 [INFO] mus1.core.metadata - Metadata system initialized successfully
-2025-03-12 16:58:59,406 [INFO] mus1 - [MainApp] LoggingEventBus initialized
-2025-03-12 16:58:59,409 [INFO] mus1 - [StateManager] StateManager initialized
-2025-03-12 16:58:59,409 [INFO] mus1 - [ProjectManager] ProjectManager initialized
-2025-03-12 16:58:59,410 [INFO] mus1 - [ProjectManager] Registered 3 plugins
-2025-03-12 16:58:59,410 [INFO] mus1.core.project_manager - Registered 3 plugins
-2025-03-12 16:58:59,410 [INFO] __main__ - Core managers created. Launching Project Selection Dialog.
-2025-03-12 16:59:31,853 [INFO] __main__ - Launching MUS1...
-2025-03-12 16:59:31,853 [INFO] mus1.core.metadata - Initializing metadata system
-2025-03-12 16:59:31,853 [INFO] mus1.core.metadata - Metadata system initialized successfully
-2025-03-12 16:59:31,934 [INFO] mus1 - [MainApp] LoggingEventBus initialized
-2025-03-12 16:59:31,937 [INFO] mus1 - [StateManager] StateManager initialized
-2025-03-12 16:59:31,937 [INFO] mus1 - [ProjectManager] ProjectManager initialized
-2025-03-12 16:59:31,938 [INFO] mus1 - [ProjectManager] Registered 3 plugins
-2025-03-12 16:59:31,938 [INFO] mus1.core.project_manager - Registered 3 plugins
-2025-03-12 16:59:31,938 [INFO] __main__ - Core managers created. Launching Project Selection Dialog.
-2025-03-12 16:59:38,776 [INFO] mus1.core.project_manager - Created project directory at projects/ui_1
-2025-03-12 16:59:38,776 [INFO] mus1 - [ProjectManager] Created project directory at projects/ui_1
-2025-03-12 16:59:38,777 [INFO] mus1.core.project_manager - Created standard subfolders: subjects, experiments, batches, data, media, external_configs, project_notes
-2025-03-12 16:59:38,780 [INFO] mus1.core.project_manager - Project saved to projects/ui_1/project_state.json
-2025-03-12 16:59:38,812 [INFO] __main__ - Project selected: ui_1
-2025-03-12 16:59:38,812 [INFO] mus1.core.theme_manager - Applying theme: dark
-2025-03-12 16:59:38,812 [INFO] mus1.core.theme_manager - Loading CSS from: /Users/lukashplatil/Desktop/mus1 refactor/Mus1_Refactor/core/../themes/mus1.css
-2025-03-12 16:59:38,812 [INFO] mus1.core.theme_manager - Loaded CSS: 15419 characters
-2025-03-12 16:59:38,812 [INFO] mus1.core.theme_manager - Extracted 62 CSS variables for theme: dark
-2025-03-12 16:59:38,812 [INFO] mus1.core.theme_manager - Split into 143 CSS blocks
-2025-03-12 16:59:38,818 [INFO] mus1.core.theme_manager - Preprocessed CSS: 10609 characters
-2025-03-12 16:59:38,818 [INFO] mus1.core.theme_manager - Final CSS with plugins: 10609 characters
-2025-03-12 16:59:38,818 [INFO] mus1.core.theme_manager - Wrote debug CSS to: /Users/lukashplatil/Desktop/mus1 refactor/Mus1_Refactor/core/../themes/debug_processed.css
-2025-03-12 16:59:38,819 [INFO] mus1.core.theme_manager - Applied stylesheet to application
-2025-03-12 16:59:38,829 [INFO] mus1 - [MainWindow] MainWindow initializing
-2025-03-12 16:59:38,842 [INFO] mus1 - [SubjectView] SubjectView initialized
-2025-03-12 16:59:38,861 [INFO] mus1 - [MainWindow] Registered log observer for projectView
-2025-03-12 16:59:38,861 [INFO] mus1 - [MainWindow] Registered log observer for subjectView
-2025-03-12 16:59:38,861 [INFO] mus1 - [MainWindow] Registered log observer for experimentView
-2025-03-12 16:59:38,862 [INFO] mus1 - [MainWindow] Switched to Project tab
-2025-03-12 16:59:38,863 [INFO] mus1.core.theme_manager - Applying theme: dark
-2025-03-12 16:59:38,863 [INFO] mus1.core.theme_manager - Loading CSS from: /Users/lukashplatil/Desktop/mus1 refactor/Mus1_Refactor/core/../themes/mus1.css
-2025-03-12 16:59:38,863 [INFO] mus1.core.theme_manager - Loaded CSS: 15419 characters
-2025-03-12 16:59:38,863 [INFO] mus1.core.theme_manager - Extracted 62 CSS variables for theme: dark
-2025-03-12 16:59:38,863 [INFO] mus1.core.theme_manager - Split into 143 CSS blocks
-2025-03-12 16:59:38,866 [INFO] mus1.core.theme_manager - Preprocessed CSS: 10609 characters
-2025-03-12 16:59:38,866 [INFO] mus1.core.theme_manager - Final CSS with plugins: 10609 characters
-2025-03-12 16:59:38,866 [INFO] mus1.core.theme_manager - Wrote debug CSS to: /Users/lukashplatil/Desktop/mus1 refactor/Mus1_Refactor/core/../themes/debug_processed.css
-2025-03-12 16:59:38,895 [INFO] mus1.core.theme_manager - Applied stylesheet to application
-2025-03-12 16:59:38,899 [INFO] mus1.core.project_manager - Loading project from projects/ui_1
-2025-03-12 16:59:38,899 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
-2025-03-12 16:59:38,899 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
-2025-03-12 16:59:38,900 [INFO] mus1 - [MainWindow] Project 'ui_1' loaded successfully
-2025-03-12 16:59:38,901 [INFO] mus1 - [SubjectView] Refreshing subject list: 0 subjects found
-2025-03-12 16:59:38,902 [INFO] mus1.core.theme_manager - Applying theme: dark
-2025-03-12 16:59:38,902 [INFO] mus1.core.theme_manager - Loading CSS from: /Users/lukashplatil/Desktop/mus1 refactor/Mus1_Refactor/core/../themes/mus1.css
-2025-03-12 16:59:38,902 [INFO] mus1.core.theme_manager - Loaded CSS: 15419 characters
-2025-03-12 16:59:38,902 [INFO] mus1.core.theme_manager - Extracted 62 CSS variables for theme: dark
-2025-03-12 16:59:38,902 [INFO] mus1.core.theme_manager - Split into 143 CSS blocks
-2025-03-12 16:59:38,905 [INFO] mus1.core.theme_manager - Preprocessed CSS: 10609 characters
-2025-03-12 16:59:38,905 [INFO] mus1.core.theme_manager - Final CSS with plugins: 10609 characters
-2025-03-12 16:59:38,905 [INFO] mus1.core.theme_manager - Wrote debug CSS to: /Users/lukashplatil/Desktop/mus1 refactor/Mus1_Refactor/core/../themes/debug_processed.css
-2025-03-12 16:59:38,938 [INFO] mus1.core.theme_manager - Applied stylesheet to application
-2025-03-12 16:59:38,944 [INFO] __main__ - MUS1 init complete. Starting application event loop.
-2025-03-12 16:59:43,251 [INFO] mus1 - [MainWindow] Switched to Subjects tab
-2025-03-12 16:59:43,254 [INFO] mus1 - [SubjectView] Refreshing subject list: 0 subjects found
-2025-03-12 16:59:44,552 [INFO] mus1 - [MainWindow] Switched to Experiments tab
-2025-03-12 16:59:45,408 [INFO] mus1 - [MainWindow] Switched to Subjects tab
-2025-03-12 16:59:45,412 [INFO] mus1 - [SubjectView] Refreshing subject list: 0 subjects found
-2025-03-12 16:59:46,110 [INFO] mus1 - [MainWindow] Switched to Project tab
-2025-03-12 17:00:28,862 [INFO] __main__ - Launching MUS1...
-2025-03-12 17:00:28,862 [INFO] mus1.core.metadata - Initializing metadata system
-2025-03-12 17:00:28,862 [INFO] mus1.core.metadata - Metadata system initialized successfully
-2025-03-12 17:00:28,931 [INFO] mus1 - [MainApp] LoggingEventBus initialized
-2025-03-12 17:00:28,934 [INFO] mus1 - [StateManager] StateManager initialized
-2025-03-12 17:00:28,934 [INFO] mus1 - [ProjectManager] ProjectManager initialized
-2025-03-12 17:00:28,935 [INFO] mus1 - [ProjectManager] Registered 3 plugins
-2025-03-12 17:00:28,935 [INFO] mus1.core.project_manager - Registered 3 plugins
-2025-03-12 17:00:28,935 [INFO] __main__ - Core managers created. Launching Project Selection Dialog.
-2025-03-12 17:00:32,064 [INFO] __main__ - Project selected: ui_1
-2025-03-12 17:00:32,064 [INFO] mus1.core.theme_manager - Applying theme: dark
-2025-03-12 17:00:32,064 [INFO] mus1.core.theme_manager - Applying fallback stylesheet
-2025-03-12 17:00:32,143 [INFO] mus1.core.theme_manager - Applied fallback stylesheet as base
-2025-03-12 17:00:32,143 [INFO] mus1.core.theme_manager - Loading CSS from: /Users/lukashplatil/Desktop/mus1 refactor/Mus1_Refactor/core/../themes/mus1.css
-2025-03-12 17:00:32,143 [INFO] mus1.core.theme_manager - Loaded CSS: 15419 characters
-2025-03-12 17:00:32,144 [INFO] mus1.core.theme_manager - Extracted 62 CSS variables for theme: dark
-2025-03-12 17:00:32,144 [INFO] mus1.core.theme_manager - Split into 143 CSS blocks
-2025-03-12 17:00:32,148 [INFO] mus1.core.theme_manager - Preprocessed CSS: 10609 characters
-2025-03-12 17:00:32,148 [INFO] mus1.core.theme_manager - Final CSS with plugins: 10609 characters
-2025-03-12 17:00:32,148 [INFO] mus1.core.theme_manager - Wrote debug CSS to: /Users/lukashplatil/Desktop/mus1 refactor/Mus1_Refactor/core/../themes/debug_processed.css
-2025-03-12 17:00:32,149 [INFO] mus1.core.theme_manager - Successfully applied full stylesheet
-2025-03-12 17:00:32,156 [INFO] mus1 - [MainWindow] MainWindow initializing
-2025-03-12 17:00:32,168 [INFO] mus1 - [SubjectView] SubjectView initialized
-2025-03-12 17:00:32,189 [INFO] mus1 - [MainWindow] Registered log observer for projectView
-2025-03-12 17:00:32,190 [INFO] mus1 - [MainWindow] Registered log observer for subjectView
-2025-03-12 17:00:32,190 [INFO] mus1 - [MainWindow] Registered log observer for experimentView
-2025-03-12 17:00:32,190 [INFO] mus1 - [MainWindow] Switched to Project tab
-2025-03-12 17:00:32,191 [INFO] mus1.core.theme_manager - Applying theme: dark
-2025-03-12 17:00:32,191 [INFO] mus1.core.theme_manager - Applying fallback stylesheet
-2025-03-12 17:00:32,238 [INFO] mus1.core.theme_manager - Applied fallback stylesheet as base
-2025-03-12 17:00:32,239 [INFO] mus1.core.theme_manager - Loading CSS from: /Users/lukashplatil/Desktop/mus1 refactor/Mus1_Refactor/core/../themes/mus1.css
-2025-03-12 17:00:32,239 [INFO] mus1.core.theme_manager - Loaded CSS: 15419 characters
-2025-03-12 17:00:32,239 [INFO] mus1.core.theme_manager - Extracted 62 CSS variables for theme: dark
-2025-03-12 17:00:32,239 [INFO] mus1.core.theme_manager - Split into 143 CSS blocks
-2025-03-12 17:00:32,242 [INFO] mus1.core.theme_manager - Preprocessed CSS: 10609 characters
-2025-03-12 17:00:32,242 [INFO] mus1.core.theme_manager - Final CSS with plugins: 10609 characters
-2025-03-12 17:00:32,242 [INFO] mus1.core.theme_manager - Wrote debug CSS to: /Users/lukashplatil/Desktop/mus1 refactor/Mus1_Refactor/core/../themes/debug_processed.css
-2025-03-12 17:00:32,294 [INFO] mus1.core.theme_manager - Successfully applied full stylesheet
-2025-03-12 17:00:32,301 [INFO] mus1.core.project_manager - Loading project from projects/ui_1
-2025-03-12 17:00:32,301 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
-2025-03-12 17:00:32,301 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
-2025-03-12 17:00:32,302 [INFO] mus1 - [MainWindow] Project 'ui_1' loaded successfully
-2025-03-12 17:00:32,303 [INFO] mus1 - [SubjectView] Refreshing subject list: 0 subjects found
-2025-03-12 17:00:32,304 [INFO] mus1.core.theme_manager - Applying theme: dark
-2025-03-12 17:00:32,304 [INFO] mus1.core.theme_manager - Applying fallback stylesheet
-2025-03-12 17:00:32,358 [INFO] mus1.core.theme_manager - Applied fallback stylesheet as base
-2025-03-12 17:00:32,358 [INFO] mus1.core.theme_manager - Loading CSS from: /Users/lukashplatil/Desktop/mus1 refactor/Mus1_Refactor/core/../themes/mus1.css
-2025-03-12 17:00:32,359 [INFO] mus1.core.theme_manager - Loaded CSS: 15419 characters
-2025-03-12 17:00:32,359 [INFO] mus1.core.theme_manager - Extracted 62 CSS variables for theme: dark
-2025-03-12 17:00:32,359 [INFO] mus1.core.theme_manager - Split into 143 CSS blocks
-2025-03-12 17:00:32,361 [INFO] mus1.core.theme_manager - Preprocessed CSS: 10609 characters
-2025-03-12 17:00:32,361 [INFO] mus1.core.theme_manager - Final CSS with plugins: 10609 characters
-2025-03-12 17:00:32,361 [INFO] mus1.core.theme_manager - Wrote debug CSS to: /Users/lukashplatil/Desktop/mus1 refactor/Mus1_Refactor/core/../themes/debug_processed.css
-2025-03-12 17:00:32,415 [INFO] mus1.core.theme_manager - Successfully applied full stylesheet
-2025-03-12 17:00:32,421 [INFO] __main__ - MUS1 init complete. Starting application event loop.
-2025-03-12 17:00:40,384 [INFO] mus1 - [MainWindow] Switched to Subjects tab
-2025-03-12 17:00:40,388 [INFO] mus1 - [SubjectView] Refreshing subject list: 0 subjects found
-2025-03-12 17:00:41,144 [INFO] mus1 - [MainWindow] Switched to Experiments tab
-2025-03-12 17:03:07,784 [INFO] __main__ - Launching MUS1...
-2025-03-12 17:03:07,784 [INFO] mus1.core.metadata - Initializing metadata system
-2025-03-12 17:03:07,784 [INFO] mus1.core.metadata - Metadata system initialized successfully
-2025-03-12 17:03:07,852 [INFO] mus1 - [MainApp] LoggingEventBus initialized
-2025-03-12 17:03:07,856 [INFO] mus1 - [StateManager] StateManager initialized
-2025-03-12 17:03:07,856 [INFO] mus1 - [ProjectManager] ProjectManager initialized
-2025-03-12 17:03:07,857 [INFO] mus1 - [ProjectManager] Registered 3 plugins
-2025-03-12 17:03:07,857 [INFO] mus1.core.project_manager - Registered 3 plugins
-2025-03-12 17:03:07,857 [INFO] __main__ - Core managers created. Launching Project Selection Dialog.
-2025-03-12 17:03:14,477 [INFO] mus1.core.project_manager - Created project directory at projects/ui_2
-2025-03-12 17:03:14,477 [INFO] mus1 - [ProjectManager] Created project directory at projects/ui_2
-2025-03-12 17:03:14,478 [INFO] mus1.core.project_manager - Created standard subfolders: subjects, experiments, batches, data, media, external_configs, project_notes
-2025-03-12 17:03:14,481 [INFO] mus1.core.project_manager - Project saved to projects/ui_2/project_state.json
-2025-03-12 17:03:14,515 [INFO] __main__ - Project selected: ui_2
-2025-03-12 17:03:14,515 [INFO] mus1.core.theme_manager - Applying theme: dark
-2025-03-12 17:03:14,515 [INFO] mus1.core.theme_manager - Generated compatible stylesheet: 8688 characters
-2025-03-12 17:03:14,515 [INFO] mus1.core.theme_manager - Wrote debug CSS to: /Users/lukashplatil/Desktop/mus1 refactor/Mus1_Refactor/core/../themes/debug_processed.css
-2025-03-12 17:03:14,578 [INFO] mus1.core.theme_manager - Successfully applied compatible stylesheet
-2025-03-12 17:03:14,584 [INFO] mus1 - [MainWindow] MainWindow initializing
-2025-03-12 17:03:14,602 [INFO] mus1 - [SubjectView] SubjectView initialized
-2025-03-12 17:03:14,630 [INFO] mus1 - [MainWindow] Registered log observer for projectView
-2025-03-12 17:03:14,631 [INFO] mus1 - [MainWindow] Registered log observer for subjectView
-2025-03-12 17:03:14,631 [INFO] mus1 - [MainWindow] Registered log observer for experimentView
-2025-03-12 17:03:14,631 [INFO] mus1 - [MainWindow] Switched to Project tab
-2025-03-12 17:03:14,632 [INFO] mus1.core.theme_manager - Applying theme: dark
-2025-03-12 17:03:14,632 [INFO] mus1.core.theme_manager - Generated compatible stylesheet: 8688 characters
-2025-03-12 17:03:14,632 [INFO] mus1.core.theme_manager - Wrote debug CSS to: /Users/lukashplatil/Desktop/mus1 refactor/Mus1_Refactor/core/../themes/debug_processed.css
-2025-03-12 17:03:14,690 [INFO] mus1.core.theme_manager - Successfully applied compatible stylesheet
-2025-03-12 17:03:14,694 [INFO] mus1.core.project_manager - Loading project from projects/ui_2
-2025-03-12 17:03:14,695 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
-2025-03-12 17:03:14,695 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
-2025-03-12 17:03:14,695 [INFO] mus1 - [MainWindow] Project 'ui_2' loaded successfully
-2025-03-12 17:03:14,696 [INFO] mus1 - [SubjectView] Refreshing subject list: 0 subjects found
-2025-03-12 17:03:14,697 [INFO] mus1.core.theme_manager - Applying theme: dark
-2025-03-12 17:03:14,698 [INFO] mus1.core.theme_manager - Generated compatible stylesheet: 8688 characters
-2025-03-12 17:03:14,698 [INFO] mus1.core.theme_manager - Wrote debug CSS to: /Users/lukashplatil/Desktop/mus1 refactor/Mus1_Refactor/core/../themes/debug_processed.css
-2025-03-12 17:03:14,765 [INFO] mus1.core.theme_manager - Successfully applied compatible stylesheet
-2025-03-12 17:03:14,771 [INFO] __main__ - MUS1 init complete. Starting application event loop.
-2025-03-12 17:03:21,919 [INFO] mus1 - [MainWindow] Switched to Subjects tab
-2025-03-12 17:03:21,923 [INFO] mus1 - [SubjectView] Refreshing subject list: 0 subjects found
-2025-03-12 17:03:22,681 [INFO] mus1 - [MainWindow] Switched to Experiments tab
-2025-03-12 17:03:29,819 [INFO] mus1 - [MainWindow] Switched to Project tab
-2025-03-12 17:03:30,466 [INFO] mus1 - [MainWindow] Switched to Subjects tab
-2025-03-12 17:03:30,470 [INFO] mus1 - [SubjectView] Refreshing subject list: 0 subjects found
-2025-03-12 17:03:31,126 [INFO] mus1 - [MainWindow] Switched to Experiments tab
+2025-03-16 22:04:03,650 [INFO] __main__ - Launching MUS1...
+2025-03-16 22:04:03,650 [INFO] mus1.core.metadata - Initializing metadata system
+2025-03-16 22:04:03,650 [INFO] mus1.core.metadata - Metadata system initialized successfully
+2025-03-16 22:04:03,728 [INFO] mus1 - [MainApp] LoggingEventBus initialized
+2025-03-16 22:04:03,731 [INFO] mus1 - [StateManager] StateManager initialized
+2025-03-16 22:04:03,731 [INFO] mus1 - [ProjectManager] ProjectManager initialized
+2025-03-16 22:04:03,732 [INFO] mus1 - [ProjectManager] Registered 3 plugins
+2025-03-16 22:04:03,732 [INFO] mus1.core.project_manager - Registered 3 plugins
+2025-03-16 22:04:03,732 [INFO] __main__ - Core managers created. Launching Project Selection Dialog.
+2025-03-16 22:04:07,800 [INFO] __main__ - Project selected: ui_11
+2025-03-16 22:04:07,800 [INFO] mus1.core.theme_manager - Applying theme: dark
+2025-03-16 22:04:07,863 [INFO] mus1.core.theme_manager - Successfully applied theme stylesheet with plugin overrides
+2025-03-16 22:04:07,869 [INFO] mus1 - [MainWindow] MainWindow initializing
+2025-03-16 22:04:07,890 [INFO] mus1 - [SubjectView] SubjectView initialized
+2025-03-16 22:04:07,924 [INFO] mus1 - [MainWindow] Registered log observer for projectView
+2025-03-16 22:04:07,924 [INFO] mus1 - [MainWindow] Registered log observer for subjectView
+2025-03-16 22:04:07,925 [INFO] mus1 - [MainWindow] Registered log observer for experimentView
+2025-03-16 22:04:07,925 [INFO] mus1 - [MainWindow] Switched to Project tab
+2025-03-16 22:04:07,925 [INFO] mus1.core.theme_manager - Applying theme: dark
+2025-03-16 22:04:08,008 [INFO] mus1.core.theme_manager - Successfully applied theme stylesheet with plugin overrides
+2025-03-16 22:04:08,010 [INFO] mus1.core.project_manager - Loading project from projects/ui_11
+2025-03-16 22:04:08,010 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
+2025-03-16 22:04:08,010 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
+2025-03-16 22:04:08,011 [INFO] mus1 - [MainWindow] Project 'ui_11' loaded successfully
+2025-03-16 22:04:08,012 [INFO] mus1 - [SubjectView] Refreshing subject list: 0 subjects found
+2025-03-16 22:04:08,013 [INFO] mus1.core.theme_manager - Applying theme: dark
+2025-03-16 22:04:08,102 [INFO] mus1.core.theme_manager - Successfully applied theme stylesheet with plugin overrides
+2025-03-16 22:04:08,108 [INFO] __main__ - MUS1 init complete. Starting application event loop.
+2025-03-16 22:05:26,682 [INFO] __main__ - Launching MUS1...
+2025-03-16 22:05:26,682 [INFO] mus1.core.metadata - Initializing metadata system
+2025-03-16 22:05:26,682 [INFO] mus1.core.metadata - Metadata system initialized successfully
+2025-03-16 22:05:26,760 [INFO] mus1 - [MainApp] LoggingEventBus initialized
+2025-03-16 22:05:26,763 [INFO] mus1 - [StateManager] StateManager initialized
+2025-03-16 22:05:26,763 [INFO] mus1 - [ProjectManager] ProjectManager initialized
+2025-03-16 22:05:26,764 [INFO] mus1 - [ProjectManager] Registered 3 plugins
+2025-03-16 22:05:26,764 [INFO] mus1.core.project_manager - Registered 3 plugins
+2025-03-16 22:05:26,764 [INFO] __main__ - Core managers created. Launching Project Selection Dialog.
+2025-03-16 22:05:30,170 [INFO] __main__ - Project selected: ui_11
+2025-03-16 22:05:30,170 [INFO] mus1.core.theme_manager - Applying theme: dark
+2025-03-16 22:05:30,234 [INFO] mus1.core.theme_manager - Successfully applied theme stylesheet with plugin overrides
+2025-03-16 22:05:30,239 [INFO] mus1 - [MainWindow] MainWindow initializing
+2025-03-16 22:05:30,258 [INFO] mus1 - [SubjectView] SubjectView initialized
+2025-03-16 22:05:30,292 [INFO] mus1 - [MainWindow] Registered log observer for projectView
+2025-03-16 22:05:30,292 [INFO] mus1 - [MainWindow] Registered log observer for subjectView
+2025-03-16 22:05:30,292 [INFO] mus1 - [MainWindow] Registered log observer for experimentView
+2025-03-16 22:05:30,293 [INFO] mus1 - [MainWindow] Switched to Project tab
+2025-03-16 22:05:30,293 [INFO] mus1.core.theme_manager - Applying theme: dark
+2025-03-16 22:05:30,370 [INFO] mus1.core.theme_manager - Successfully applied theme stylesheet with plugin overrides
+2025-03-16 22:05:30,372 [INFO] mus1.core.project_manager - Loading project from projects/ui_11
+2025-03-16 22:05:30,372 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
+2025-03-16 22:05:30,372 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
+2025-03-16 22:05:30,373 [INFO] mus1 - [MainWindow] Project 'ui_11' loaded successfully
+2025-03-16 22:05:30,374 [INFO] mus1 - [SubjectView] Refreshing subject list: 0 subjects found
+2025-03-16 22:05:30,375 [INFO] mus1.core.theme_manager - Applying theme: dark
+2025-03-16 22:05:30,465 [INFO] mus1.core.theme_manager - Successfully applied theme stylesheet with plugin overrides
+2025-03-16 22:05:30,470 [INFO] __main__ - MUS1 init complete. Starting application event loop.
+2025-03-16 22:16:25,109 [INFO] __main__ - Launching MUS1...
+2025-03-16 22:16:25,109 [INFO] mus1.core.metadata - Initializing metadata system
+2025-03-16 22:16:25,109 [INFO] mus1.core.metadata - Metadata system initialized successfully
+2025-03-16 22:16:25,190 [INFO] mus1 - [MainApp] LoggingEventBus initialized
+2025-03-16 22:16:25,193 [INFO] mus1 - [StateManager] StateManager initialized
+2025-03-16 22:16:25,193 [INFO] mus1 - [ProjectManager] ProjectManager initialized
+2025-03-16 22:16:25,194 [INFO] mus1 - [ProjectManager] Registered 3 plugins
+2025-03-16 22:16:25,194 [INFO] mus1.core.project_manager - Registered 3 plugins
+2025-03-16 22:16:25,194 [INFO] __main__ - Core managers created. Launching Project Selection Dialog.
+2025-03-16 22:16:30,699 [INFO] __main__ - Project selected: ui_11
+2025-03-16 22:16:30,699 [INFO] mus1.core.theme_manager - Applying theme: dark
+2025-03-16 22:16:30,766 [INFO] mus1.core.theme_manager - Successfully applied theme stylesheet with plugin overrides
+2025-03-16 22:16:30,776 [INFO] mus1 - [MainWindow] MainWindow initializing
+2025-03-16 22:16:30,797 [INFO] mus1 - [SubjectView] SubjectView initialized
+2025-03-16 22:16:30,832 [INFO] mus1 - [MainWindow] Registered log observer for projectView
+2025-03-16 22:16:30,832 [INFO] mus1 - [MainWindow] Registered log observer for subjectView
+2025-03-16 22:16:30,833 [INFO] mus1 - [MainWindow] Registered log observer for experimentView
+2025-03-16 22:16:30,833 [INFO] mus1 - [MainWindow] Switched to Project tab
+2025-03-16 22:16:30,833 [INFO] mus1.core.theme_manager - Applying theme: dark
+2025-03-16 22:16:30,913 [INFO] mus1.core.theme_manager - Successfully applied theme stylesheet with plugin overrides
+2025-03-16 22:16:30,915 [INFO] mus1.core.project_manager - Loading project from projects/ui_11
+2025-03-16 22:16:30,915 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
+2025-03-16 22:16:30,915 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
+2025-03-16 22:16:30,915 [INFO] mus1 - [MainWindow] Project 'ui_11' loaded successfully
+2025-03-16 22:16:30,916 [INFO] mus1 - [SubjectView] Refreshing subject list: 0 subjects found
+2025-03-16 22:16:30,917 [INFO] mus1.core.theme_manager - Applying theme: dark
+2025-03-16 22:16:31,005 [INFO] mus1.core.theme_manager - Successfully applied theme stylesheet with plugin overrides
+2025-03-16 22:16:31,010 [INFO] __main__ - MUS1 init complete. Starting application event loop.
+2025-03-16 22:18:02,246 [INFO] __main__ - Launching MUS1...
+2025-03-16 22:18:02,246 [INFO] mus1.core.metadata - Initializing metadata system
+2025-03-16 22:18:02,246 [INFO] mus1.core.metadata - Metadata system initialized successfully
+2025-03-16 22:18:02,323 [INFO] mus1 - [MainApp] LoggingEventBus initialized
+2025-03-16 22:18:02,327 [INFO] mus1 - [StateManager] StateManager initialized
+2025-03-16 22:18:02,327 [INFO] mus1 - [ProjectManager] ProjectManager initialized
+2025-03-16 22:18:02,327 [INFO] mus1 - [ProjectManager] Registered 3 plugins
+2025-03-16 22:18:02,327 [INFO] mus1.core.project_manager - Registered 3 plugins
+2025-03-16 22:18:02,327 [INFO] __main__ - Core managers created. Launching Project Selection Dialog.
+2025-03-16 22:18:05,468 [INFO] __main__ - Project selected: ui_11
+2025-03-16 22:18:05,468 [INFO] mus1.core.theme_manager - Applying theme: dark
+2025-03-16 22:18:05,530 [INFO] mus1.core.theme_manager - Successfully applied theme stylesheet with plugin overrides
+2025-03-16 22:18:05,537 [INFO] mus1 - [MainWindow] MainWindow initializing
+2025-03-16 22:18:05,555 [INFO] mus1 - [SubjectView] SubjectView initialized
+2025-03-16 22:18:05,589 [INFO] mus1 - [MainWindow] Registered log observer for projectView
+2025-03-16 22:18:05,589 [INFO] mus1 - [MainWindow] Registered log observer for subjectView
+2025-03-16 22:18:05,590 [INFO] mus1 - [MainWindow] Registered log observer for experimentView
+2025-03-16 22:18:05,590 [INFO] mus1 - [MainWindow] Switched to Project tab
+2025-03-16 22:18:05,590 [INFO] mus1.core.theme_manager - Applying theme: dark
+2025-03-16 22:18:05,670 [INFO] mus1.core.theme_manager - Successfully applied theme stylesheet with plugin overrides
+2025-03-16 22:18:05,672 [INFO] mus1.core.project_manager - Loading project from projects/ui_11
+2025-03-16 22:18:05,672 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
+2025-03-16 22:18:05,672 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
+2025-03-16 22:18:05,673 [INFO] mus1 - [MainWindow] Project 'ui_11' loaded successfully
+2025-03-16 22:18:05,674 [INFO] mus1 - [SubjectView] Refreshing subject list: 0 subjects found
+2025-03-16 22:18:05,675 [INFO] mus1.core.theme_manager - Applying theme: dark
+2025-03-16 22:18:05,763 [INFO] mus1.core.theme_manager - Successfully applied theme stylesheet with plugin overrides
+2025-03-16 22:18:05,769 [INFO] __main__ - MUS1 init complete. Starting application event loop.
+2025-03-16 22:19:48,752 [INFO] __main__ - Launching MUS1...
+2025-03-16 22:19:48,752 [INFO] mus1.core.metadata - Initializing metadata system
+2025-03-16 22:19:48,752 [INFO] mus1.core.metadata - Metadata system initialized successfully
+2025-03-16 22:19:48,830 [INFO] mus1 - [MainApp] LoggingEventBus initialized
+2025-03-16 22:19:48,833 [INFO] mus1 - [StateManager] StateManager initialized
+2025-03-16 22:19:48,833 [INFO] mus1 - [ProjectManager] ProjectManager initialized
+2025-03-16 22:19:48,833 [INFO] mus1 - [ProjectManager] Registered 3 plugins
+2025-03-16 22:19:48,833 [INFO] mus1.core.project_manager - Registered 3 plugins
+2025-03-16 22:19:48,833 [INFO] __main__ - Core managers created. Launching Project Selection Dialog.
+2025-03-16 22:19:52,268 [INFO] __main__ - Project selected: ui_11
+2025-03-16 22:19:52,268 [INFO] mus1.core.theme_manager - Applying theme: dark
+2025-03-16 22:19:52,329 [INFO] mus1.core.theme_manager - Successfully applied theme stylesheet with plugin overrides
+2025-03-16 22:19:52,334 [INFO] mus1 - [MainWindow] MainWindow initializing
+2025-03-16 22:19:52,354 [INFO] mus1 - [SubjectView] SubjectView initialized
+2025-03-16 22:19:52,389 [INFO] mus1 - [MainWindow] Registered log observer for projectView
+2025-03-16 22:19:52,390 [INFO] mus1 - [MainWindow] Registered log observer for subjectView
+2025-03-16 22:19:52,390 [INFO] mus1 - [MainWindow] Registered log observer for experimentView
+2025-03-16 22:19:52,390 [INFO] mus1 - [MainWindow] Switched to Project tab
+2025-03-16 22:19:52,391 [INFO] mus1.core.theme_manager - Applying theme: dark
+2025-03-16 22:19:52,470 [INFO] mus1.core.theme_manager - Successfully applied theme stylesheet with plugin overrides
+2025-03-16 22:19:52,472 [INFO] mus1.core.project_manager - Loading project from projects/ui_11
+2025-03-16 22:19:52,473 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
+2025-03-16 22:19:52,473 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
+2025-03-16 22:19:52,473 [INFO] mus1 - [MainWindow] Project 'ui_11' loaded successfully
+2025-03-16 22:19:52,474 [INFO] mus1 - [SubjectView] Refreshing subject list: 0 subjects found
+2025-03-16 22:19:52,475 [INFO] mus1.core.theme_manager - Applying theme: dark
+2025-03-16 22:19:52,563 [INFO] mus1.core.theme_manager - Successfully applied theme stylesheet with plugin overrides
+2025-03-16 22:19:52,569 [INFO] __main__ - MUS1 init complete. Starting application event loop.
+2025-03-16 22:22:17,222 [INFO] __main__ - Launching MUS1...
+2025-03-16 22:22:17,222 [INFO] mus1.core.metadata - Initializing metadata system
+2025-03-16 22:22:17,222 [INFO] mus1.core.metadata - Metadata system initialized successfully
+2025-03-16 22:22:17,302 [INFO] mus1 - [MainApp] LoggingEventBus initialized
+2025-03-16 22:22:17,305 [INFO] mus1 - [StateManager] StateManager initialized
+2025-03-16 22:22:17,305 [INFO] mus1 - [ProjectManager] ProjectManager initialized
+2025-03-16 22:22:17,306 [INFO] mus1 - [ProjectManager] Registered 3 plugins
+2025-03-16 22:22:17,306 [INFO] mus1.core.project_manager - Registered 3 plugins
+2025-03-16 22:22:17,306 [INFO] __main__ - Core managers created. Launching Project Selection Dialog.
+2025-03-16 22:22:20,736 [INFO] __main__ - Project selected: ui_11
+2025-03-16 22:22:20,736 [INFO] mus1.core.theme_manager - Applying theme: dark
+2025-03-16 22:22:20,805 [INFO] mus1.core.theme_manager - Successfully applied theme stylesheet with plugin overrides
+2025-03-16 22:22:20,810 [INFO] mus1 - [MainWindow] MainWindow initializing
+2025-03-16 22:22:20,830 [INFO] mus1 - [SubjectView] SubjectView initialized
+2025-03-16 22:22:20,865 [INFO] mus1 - [MainWindow] Registered log observer for projectView
+2025-03-16 22:22:20,866 [INFO] mus1 - [MainWindow] Registered log observer for subjectView
+2025-03-16 22:22:20,866 [INFO] mus1 - [MainWindow] Registered log observer for experimentView
+2025-03-16 22:22:20,866 [INFO] mus1 - [MainWindow] Switched to Project tab
+2025-03-16 22:22:20,867 [INFO] mus1.core.theme_manager - Applying theme: dark
+2025-03-16 22:22:20,948 [INFO] mus1.core.theme_manager - Successfully applied theme stylesheet with plugin overrides
+2025-03-16 22:22:20,950 [INFO] mus1.core.project_manager - Loading project from projects/ui_11
+2025-03-16 22:22:20,950 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
+2025-03-16 22:22:20,950 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
+2025-03-16 22:22:20,950 [INFO] mus1 - [MainWindow] Project 'ui_11' loaded successfully
+2025-03-16 22:22:20,951 [INFO] mus1 - [SubjectView] Refreshing subject list: 0 subjects found
+2025-03-16 22:22:20,953 [INFO] mus1.core.theme_manager - Applying theme: dark
+2025-03-16 22:22:21,042 [INFO] mus1.core.theme_manager - Successfully applied theme stylesheet with plugin overrides
+2025-03-16 22:22:21,048 [INFO] __main__ - MUS1 init complete. Starting application event loop.
+2025-03-16 22:22:24,701 [INFO] mus1.core.project_manager - Loading project from projects/UI_10
+2025-03-16 22:22:24,702 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
+2025-03-16 22:22:24,702 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
+2025-03-16 22:22:47,353 [INFO] mus1.core.project_manager - Project saved to projects/UI_10/project_state.json
+2025-03-16 22:22:47,363 [INFO] mus1 - [StateManager] Notified 3 observers of state change

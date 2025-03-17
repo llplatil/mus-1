@@ -181,24 +181,9 @@ class StateManager:
         # Return classes for this plugin, or empty list if not found
         return styling_classes.get(plugin_id, [])
     
-    def get_plugin_styling_preferences(self, plugin_id: str = None) -> Dict:
-        """
-        Get styling preferences for a specific plugin or all plugins.
-        
-        Args:
-            plugin_id: Optional - the ID of the plugin to get preferences for.
-                     If None, returns all plugin preferences.
-                     
-        Returns:
-            Dictionary of styling preferences
-        """
-        # Get all styling preferences from project state
-        all_preferences = self._project_state.settings.get('plugin_styling_preferences', {})
-        
-        # Return preferences for specific plugin or all plugins
-        if plugin_id:
-            return all_preferences.get(plugin_id, {})
-        return all_preferences
+    def get_plugin_styling_preferences(self) -> Dict[str, Dict[str, Any]]:
+        """Retrieve plugin styling preferences."""
+        return self.project_state.settings.get('plugin_styling_preferences', {})
 
     def get_plugin_metadatas(self) -> List[PluginMetadata]:
         """
@@ -418,7 +403,9 @@ class StateManager:
         self.project_state.settings['plugin_styling_preferences'] = styling_preferences
         self.notify_observers()
 
-    def get_plugin_styling_preferences(self) -> Dict[str, Dict[str, Any]]:
-        """Retrieve plugin styling preferences."""
-        return self.project_state.settings.get('plugin_styling_preferences', {})
+    def update_global_settings(self, new_settings: dict) -> None:
+        # Update project_state.settings with new settings and notify observers
+        self._project_state.settings.update(new_settings)
+        logger.info("Global settings updated.")
+        self.notify_observers()
 

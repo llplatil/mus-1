@@ -1,4 +1,4 @@
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QStackedWidget
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QStackedWidget, QLabel, QGroupBox
 from PySide6.QtCore import Qt
 from gui.navigation_pane import NavigationPane
 
@@ -13,6 +13,13 @@ class BaseView(QWidget):
     - Content area on the right with QStackedWidget for pages
     - Consistent styling and proportions
     """
+    
+    # Standardized layout constants for consistent UI
+    SECTION_SPACING = 15      # Spacing between major sections
+    CONTROL_SPACING = 10      # Spacing between controls within a section
+    LABEL_SPACING = 5         # Spacing between labels and their controls
+    FORM_MARGIN = 10          # Margin inside form groups
+    LABEL_MIN_WIDTH = 65      # Minimum width for form labels
     
     def __init__(self, parent=None, view_name=None):
         """
@@ -51,7 +58,7 @@ class BaseView(QWidget):
         self.content_area.setProperty("class", "mus1-content-area")
         self.content_layout = QVBoxLayout(self.content_area)
         self.content_layout.setContentsMargins(15, 15, 15, 15)
-        self.content_layout.setSpacing(10)
+        self.content_layout.setSpacing(self.SECTION_SPACING)
         
         # Create the stacked widget for pages
         self.pages = QStackedWidget()
@@ -70,6 +77,68 @@ class BaseView(QWidget):
         
         # Connect navigation buttons to page changes
         self.navigation_pane.button_clicked.connect(self.change_page)
+    
+    def create_form_section(self, title, parent_layout=None, is_subgroup=False):
+        """
+        Create a standardized form section with consistent styling.
+        
+        Args:
+            title: Title for the form section
+            parent_layout: Optional parent layout to add the section to
+            is_subgroup: Whether this is a subgroup within another form section
+            
+        Returns:
+            tuple: (group_box, layout) - The group box and its internal layout
+        """
+        group = QGroupBox(title)
+        group.setProperty("class", "mus1-subgroup" if is_subgroup else "mus1-input-group")
+        layout = QVBoxLayout(group)
+        
+        # Tighter margins for better spacing of form elements
+        layout.setContentsMargins(self.FORM_MARGIN, self.FORM_MARGIN, self.FORM_MARGIN, self.FORM_MARGIN)
+        
+        # Use slightly tighter spacing between controls
+        layout.setSpacing(8)
+        
+        if parent_layout:
+            parent_layout.addWidget(group)
+            
+        return group, layout
+        
+    def create_form_row(self, parent_layout=None):
+        """
+        Create a standardized form row with consistent spacing.
+        
+        Args:
+            parent_layout: Optional parent layout to add the row to
+            
+        Returns:
+            QHBoxLayout: The row layout
+        """
+        row = QHBoxLayout()
+        row.setSpacing(self.CONTROL_SPACING)
+        row.setContentsMargins(0, 0, 0, 0)  # Remove margins for better alignment
+        row.setProperty("class", "form-row")
+        row.setAlignment(Qt.AlignVCenter)
+        if parent_layout:
+            parent_layout.addLayout(row)
+        return row
+        
+    def create_form_label(self, text, parent=None):
+        """Create a standard label with proper styling for forms.
+        
+        Args:
+            text (str): The label text
+            parent (QWidget, optional): Parent widget. Defaults to None.
+            
+        Returns:
+            QLabel: The styled label
+        """
+        label = QLabel(text, parent)
+        label.setProperty("formLabel", True)
+        label.setMinimumWidth(65)
+        label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        return label
     
     def setup_navigation(self, button_texts):
         """Setup navigation buttons specific to this tab/view.
@@ -178,4 +247,24 @@ class BaseView(QWidget):
         """
         super().showEvent(event)
         # Trigger a resize event to ensure proper sizing
-        self.resizeEvent(None) 
+        self.resizeEvent(None)
+    
+    def create_button_row(self, parent_layout=None, add_stretch=True):
+        """
+        Create a standardized row for buttons with consistent styling and stretch.
+        
+        Args:
+            parent_layout: Optional parent layout to add the row to
+            add_stretch: Whether to add a stretch at the end of the row
+            
+        Returns:
+            QHBoxLayout: The row layout configured for buttons
+        """
+        row = self.create_form_row(parent_layout)
+        
+        # If we want to add stretch automatically, do it after creation
+        # so buttons will align to the left
+        if add_stretch:
+            row.addStretch(1)
+            
+        return row 

@@ -3,6 +3,7 @@ from PySide6.QtWidgets import QApplication
 from pathlib import Path
 import os
 import logging
+import re
 
 logger = logging.getLogger("mus1.core.theme_manager")
 
@@ -177,7 +178,6 @@ class ThemeManager:
             palette.setColor(QPalette.HighlightedText, QColor("black"))
             
             # Set specific colors for text to ensure good contrast
-            # Use ColorRole.Text instead of the non-existent Label attribute
             palette.setColor(QPalette.Text, QColor("white"))
         else:
             palette = app.style().standardPalette()
@@ -196,6 +196,8 @@ class ThemeManager:
                 colors = self.theme_colors.get(effective_theme, self.theme_colors["dark"])
                 for var, value in colors.items():
                     stylesheet = stylesheet.replace(var, value)
+                # Clean up any erroneous appended suffixes in hex colors (e.g., "#555555_HOVER" -> "#555555")
+                stylesheet = re.sub(r"(#[0-9a-fA-F]{6})_[A-Z]+", r"\1", stylesheet)
                 self.processed_stylesheets[effective_theme] = stylesheet
             except Exception as e:
                 logger.error(f"Error processing stylesheet: {e}")

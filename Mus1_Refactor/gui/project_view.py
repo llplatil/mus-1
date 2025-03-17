@@ -5,42 +5,60 @@ from PySide6.QtWidgets import (
 )
 from pathlib import Path
 from gui.base_view import BaseView
+from PySide6.QtCore import Qt
 
 
 class NotesBox(QGroupBox):
     """A reusable notes component that can be added to any view."""
-    def __init__(self, parent=None, title="Notes", placeholder_text="Enter notes here...", max_height=None):
+    def __init__(self, parent=None, title="Notes", placeholder_text="Enter notes here..."):
         super().__init__(title, parent)
         self.setProperty("class", "mus1-notes-container")
         
-        # Set up the layout
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(10, 15, 10, 10)
-        layout.setSpacing(10)
+        # Get access to BaseView constants through parent
+        base_view = self.find_base_view_parent(parent)
+        form_margin = BaseView.FORM_MARGIN
+        control_spacing = BaseView.CONTROL_SPACING
         
-        # Title label (optional)
-        self.title_label = QLabel(title)
-        self.title_label.setProperty("class", "mus1-notes-title")
-        # Ensure transparent background
-        self.title_label.setProperty("formLabel", True) 
+        if base_view:
+            form_margin = base_view.FORM_MARGIN
+            control_spacing = base_view.CONTROL_SPACING
+        
+        # Set up the layout using the BaseView constants
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(form_margin, form_margin, form_margin, form_margin)
+        layout.setSpacing(control_spacing)
         
         # Create the text edit for notes
         self.notes_edit = QTextEdit()
         self.notes_edit.setProperty("class", "mus1-notes-edit")
         self.notes_edit.setPlaceholderText(placeholder_text)
         
-        if max_height:
-            self.notes_edit.setMaximumHeight(max_height)
-        else:
-            self.notes_edit.setMinimumHeight(120)
+        # Create a button row layout with consistent spacing
+        button_row = QHBoxLayout()
+        button_row.setContentsMargins(0, 0, 0, 0)
+        button_row.setSpacing(control_spacing)
         
-        # Add save button
+        # Add save button to the button row
         self.save_button = QPushButton("Save Notes")
-        self.save_button.setProperty("class", "mus1-notes-save-button")
+        self.save_button.setProperty("class", "mus1-primary-button")
+        button_row.addWidget(self.save_button)
+        button_row.addStretch(1)
         
-        # Add widgets to layout
+        # Add widgets to layout with consistent spacing
         layout.addWidget(self.notes_edit)
-        layout.addWidget(self.save_button)
+        layout.addLayout(button_row)
+    
+    def find_base_view_parent(self, parent):
+        """Find the closest BaseView parent to access layout constants."""
+        current = parent
+        while current:
+            if hasattr(current, 'FORM_MARGIN') and hasattr(current, 'CONTROL_SPACING'):
+                return current
+            if hasattr(current, 'parent'):
+                current = current.parent()
+            else:
+                break
+        return None
     
     def set_text(self, text):
         """Set the content of the notes editor."""
@@ -73,135 +91,139 @@ class ProjectView(BaseView):
 
     def setup_body_parts_page(self):
         """Initialize the user interface for managing body parts."""
-        # Create the page widget without redundant styling
         self.bodyparts_page = QWidget()
         layout = QVBoxLayout(self.bodyparts_page)
-        layout.setSpacing(15)
+        layout.setSpacing(self.SECTION_SPACING)
 
-        # ----- Extraction Section -----
-        extract_group = QGroupBox("Extract Body Parts")
-        extract_group.setProperty("class", "mus1-input-group")
-        extract_layout = QHBoxLayout(extract_group)
-        
+        extract_group, extract_layout = self.create_form_section("Extract Body Parts", layout)
+
+        file_row = self.create_form_row(extract_layout)
+        file_label = self.create_form_label("File Path:")
+
         self.csv_path_input = QLineEdit()
         self.csv_path_input.setPlaceholderText("Enter CSV/YAML file path")
         self.csv_path_input.setProperty("class", "mus1-text-input")
-        
+
         browse_button = QPushButton("Browse...")
         browse_button.setProperty("class", "mus1-secondary-button")
         browse_button.clicked.connect(self.handle_browse_for_bodyparts_file)
-        
+
+        file_row.addWidget(file_label)
+        file_row.addWidget(self.csv_path_input, 1)
+        file_row.addWidget(browse_button)
+
+        method_row = self.create_form_row(extract_layout)
+        method_label = self.create_form_label("Method:")
+
         self.extraction_method_dropdown = QComboBox()
-        self.extraction_method_dropdown.setProperty("class", "mus1-combo-box")
+        self.extraction_method_dropdown.setObjectName("mus1-combo-box")
         self.extraction_method_dropdown.addItems(["BasicCSV", "DLC yaml"])
-        
+        self.extraction_method_dropdown.currentTextChanged.connect(self.update_extraction_method)
+        self.extraction_method_dropdown.style().unpolish(self.extraction_method_dropdown)
+        self.extraction_method_dropdown.style().polish(self.extraction_method_dropdown)
+
         extract_button = QPushButton("Extract")
         extract_button.setProperty("class", "mus1-primary-button")
         extract_button.clicked.connect(self.handle_extract_bodyparts)
-        
-        file_path_label = QLabel("File Path:")
-        file_path_label.setProperty("formLabel", True)
-        method_label = QLabel("Method:")
-        method_label.setProperty("formLabel", True)
-        
-        extract_layout.addWidget(file_path_label)
-        extract_layout.addWidget(self.csv_path_input, 1)
-        extract_layout.addWidget(browse_button)
-        extract_layout.addWidget(method_label)
-        extract_layout.addWidget(self.extraction_method_dropdown)
-        extract_layout.addWidget(extract_button)
-        
-        layout.addWidget(extract_group)
 
-        # ----- Extracted Body Parts Display -----
-        extracted_group = QGroupBox("Extracted Body Parts")
-        extracted_group.setProperty("class", "mus1-input-group")
-        extracted_layout = QVBoxLayout(extracted_group)
-        
+        method_row.addWidget(method_label)
+        method_row.addWidget(self.extraction_method_dropdown, 1)
+        method_row.addWidget(extract_button)
+
+        extracted_group, extracted_layout = self.create_form_section("Extracted Body Parts", layout)
+
         self.extracted_bodyparts_list = QListWidget()
         self.extracted_bodyparts_list.setProperty("class", "mus1-list-widget")
         self.extracted_bodyparts_list.setSelectionMode(QListWidget.ExtendedSelection)
-        
-        # Buttons for adding to master list
-        buttons_layout = QHBoxLayout()
+        extracted_layout.addWidget(self.extracted_bodyparts_list)
+
+        # Use create_button_row instead of create_form_row for button rows
+        buttons_row = self.create_button_row(extracted_layout, add_stretch=False)
+
         master_button_all = QPushButton("Add All to Master")
         master_button_all.setProperty("class", "mus1-primary-button")
         master_button_all.clicked.connect(self.handle_add_all_bodyparts_to_master)
-        
+
         master_button_selected = QPushButton("Add Selected to Master")
         master_button_selected.setProperty("class", "mus1-secondary-button")
         master_button_selected.clicked.connect(self.handle_add_selected_bodyparts_to_master)
-        
-        buttons_layout.addWidget(master_button_all)
-        buttons_layout.addWidget(master_button_selected)
-        
-        extracted_layout.addWidget(self.extracted_bodyparts_list)
-        extracted_layout.addLayout(buttons_layout)
-        
-        layout.addWidget(extracted_group)
 
-        # ----- Management Section -----
-        management_group = QGroupBox("Manage Body Parts")
-        management_group.setProperty("class", "mus1-input-group")
-        management_layout = QHBoxLayout(management_group)
-        
-        # Master body parts (all known)
-        master_layout = QVBoxLayout()
-        master_label = QLabel("Master Body Parts")
-        master_label.setProperty("class", "mus1-section-label")
-        master_label.setProperty("formLabel", True)
-        master_layout.addWidget(master_label)
-        
+        buttons_row.addWidget(master_button_all)
+        buttons_row.addWidget(master_button_selected)
+        buttons_row.addStretch(1)
+
+        management_group, management_layout = self.create_form_section("Manage Body Parts", layout)
+
+        columns_layout = QHBoxLayout()
+        columns_layout.setSpacing(self.SECTION_SPACING)
+        management_layout.addLayout(columns_layout)
+
+        master_column, master_layout = self.create_form_section("Master Body Parts", None, is_subgroup=True)
+
         self.all_bodyparts_list = QListWidget()
         self.all_bodyparts_list.setProperty("class", "mus1-list-widget")
         self.all_bodyparts_list.setSelectionMode(QListWidget.ExtendedSelection)
-        
+        master_layout.addWidget(self.all_bodyparts_list)
+
+        # Use create_button_row for master list buttons
+        master_buttons_row = self.create_button_row(master_layout)
+        remove_from_master_button = QPushButton("Remove Selected from Master")
+        remove_from_master_button.setProperty("class", "mus1-secondary-button")
+        remove_from_master_button.clicked.connect(self.handle_remove_from_master)
+        master_buttons_row.addWidget(remove_from_master_button)
+
         add_to_active_button = QPushButton("Add Selected to Active →")
         add_to_active_button.setProperty("class", "mus1-secondary-button")
         add_to_active_button.clicked.connect(self.handle_add_selected_bodyparts_to_active)
-        
-        master_layout.addWidget(self.all_bodyparts_list)
-        master_layout.addWidget(add_to_active_button)
-        
-        # Active body parts (currently in use)
-        active_layout = QVBoxLayout()
-        active_label = QLabel("Active Body Parts")
-        active_label.setProperty("class", "mus1-section-label")
-        active_label.setProperty("formLabel", True)
-        active_layout.addWidget(active_label)
-        
+        master_buttons_row.addWidget(add_to_active_button)
+
+        active_column, active_layout = self.create_form_section("Active Body Parts", None, is_subgroup=True)
+
         self.current_body_parts_list = QListWidget()
         self.current_body_parts_list.setProperty("class", "mus1-list-widget")
         self.current_body_parts_list.setSelectionMode(QListWidget.ExtendedSelection)
-        
+        active_layout.addWidget(self.current_body_parts_list)
+
+        # Use create_button_row for active list buttons
+        active_buttons_row = self.create_button_row(active_layout)
         remove_button = QPushButton("← Remove Selected")
         remove_button.setProperty("class", "mus1-secondary-button")
         remove_button.clicked.connect(self.handle_remove_active_bodyparts)
-        
-        active_layout.addWidget(self.current_body_parts_list)
-        active_layout.addWidget(remove_button)
-        
-        management_layout.addLayout(master_layout)
-        management_layout.addLayout(active_layout)
-        
-        layout.addWidget(management_group)
-        
-        # Add a stretch to push everything to the top
+        active_buttons_row.addWidget(remove_button)
+
+        columns_layout.addWidget(master_column, 1)
+        columns_layout.addWidget(active_column, 1)
+
         layout.addStretch(1)
-        
-        # Add this page to the stacked widget from BaseView
         self.add_page(self.bodyparts_page, "Body Parts")
-        
-        # Initial refresh to populate lists
         self.refresh_lists()
+        
+    def update_extraction_method(self):
+        """Update any UI elements based on the selected extraction method."""
+        method = self.extraction_method_dropdown.currentText()
+        # Update file path placeholder based on selected method
+        if method == "DLC yaml":
+            self.csv_path_input.setPlaceholderText("Enter YAML config file path")
+        else:
+            self.csv_path_input.setPlaceholderText("Enter CSV file path")
         
     def handle_browse_for_bodyparts_file(self):
         """Open a file dialog to select a CSV or YAML file."""
+        method = self.extraction_method_dropdown.currentText()
+        
+        # Determine file filter based on selected method
+        if method == "DLC yaml":
+            file_filter = "YAML Files (*.yaml *.yml);;All Files (*)"
+            dialog_title = "Select DLC Config File"
+        else:
+            file_filter = "CSV Files (*.csv);;All Files (*)"
+            dialog_title = "Select Body Parts File"
+            
         file_path, _ = QFileDialog.getOpenFileName(
             self,
-            "Select Body Parts File",
+            dialog_title,
             "",
-            "CSV Files (*.csv);;YAML Files (*.yaml *.yml);;All Files (*)"
+            file_filter
         )
         if file_path:
             self.csv_path_input.setText(file_path)
@@ -211,9 +233,19 @@ class ProjectView(BaseView):
         try:
             file_path = Path(self.csv_path_input.text().strip())
             method = self.extraction_method_dropdown.currentText()
+            
             if not file_path.exists():
                 self.navigation_pane.add_log_message("File does not exist.", "error")
                 return
+                
+            # Validate file extension based on selected method
+            if method == "BasicCSV" and file_path.suffix.lower() != ".csv":
+                self.navigation_pane.add_log_message("File must be a CSV for BasicCSV method.", "error")
+                return
+            elif method == "DLC yaml" and file_path.suffix.lower() not in [".yaml", ".yml"]:
+                self.navigation_pane.add_log_message("File must be a YAML for DLC yaml method.", "error")
+                return
+                
             if method == "BasicCSV":
                 extracted = self.window().data_manager.extract_bodyparts_from_dlc_csv(file_path)
             elif method == "DLC yaml":
@@ -221,6 +253,7 @@ class ProjectView(BaseView):
             else:
                 self.navigation_pane.add_log_message("Unknown extraction method.", "error")
                 return
+                
             self.extracted_bodyparts_list.clear()
             for bp in extracted:
                 self.extracted_bodyparts_list.addItem(str(bp))
@@ -616,11 +649,9 @@ class ProjectView(BaseView):
         layout.addWidget(rename_group)
         
         # Project notes - placed last as requested
-        # Using a larger height to make better use of the space
         self.project_notes_box = NotesBox(
             title="Project Notes",
-            placeholder_text="Enter project notes, details, and important information here...",
-            max_height=300  # Increased height to use vertical space better
+            placeholder_text="Enter project notes, details, and important information here..."
         )
         self.project_notes_box.connect_save_button(self.handle_save_project_notes)
         
@@ -656,113 +687,78 @@ class ProjectView(BaseView):
 
     def setup_objects_page(self):
         """Setup the Objects page with object list widgets."""
-        # Create the page widget without redundant styling
         self.objects_page = QWidget()
         layout = QVBoxLayout(self.objects_page)
-        layout.setSpacing(15)
+        layout.setSpacing(self.SECTION_SPACING)
 
-        # Create objects management group
-        objects_group = QGroupBox("Objects Management")
-        objects_group.setProperty("class", "mus1-input-group")
-        objects_layout = QVBoxLayout(objects_group)
-        
-        # Add new object section
-        add_layout = QHBoxLayout()
+        objects_group, objects_layout = self.create_form_section("Objects Management", layout)
+
+        add_row = self.create_form_row(objects_layout)
+        new_object_label = self.create_form_label("New Object:")
         self.new_object_line_edit = QLineEdit()
-        self.new_object_line_edit.setProperty("class", "mus1-text-input")
         self.new_object_line_edit.setPlaceholderText("Enter new object name...")
-        
+        self.new_object_line_edit.setProperty("class", "mus1-text-input")
         add_button = QPushButton("Add Object")
         add_button.setProperty("class", "mus1-primary-button")
         add_button.clicked.connect(self.handle_add_object)
-        
-        new_object_label = QLabel("New Object:")
-        new_object_label.setProperty("formLabel", True)
-        
-        add_layout.addWidget(new_object_label)
-        add_layout.addWidget(self.new_object_line_edit, 1)
-        add_layout.addWidget(add_button)
-        
-        objects_layout.addLayout(add_layout)
-        
-        # Object lists section in a horizontal layout
+        add_row.addWidget(new_object_label)
+        add_row.addWidget(self.new_object_line_edit, 1)
+        add_row.addWidget(add_button)
+
         lists_layout = QHBoxLayout()
-        
-        # Available objects list
-        available_layout = QVBoxLayout()
-        available_label = QLabel("Available Objects:")
-        available_label.setProperty("class", "mus1-section-label")
-        available_label.setProperty("formLabel", True)
-        
+        lists_layout.setSpacing(self.SECTION_SPACING)
+        objects_layout.addLayout(lists_layout)
+
+        available_column, available_layout = self.create_form_section("Available Objects:", None, is_subgroup=True)
         self.all_objects_list = QListWidget()
         self.all_objects_list.setProperty("class", "mus1-list-widget")
         self.all_objects_list.setSelectionMode(QListWidget.ExtendedSelection)
+        available_layout.addWidget(self.all_objects_list)
         
+        # Use create_button_row for consistent button styling
+        available_button_row = self.create_button_row(available_layout, add_stretch=True)
         add_to_active_button = QPushButton("Add Selected to Active →")
         add_to_active_button.setProperty("class", "mus1-secondary-button")
         add_to_active_button.clicked.connect(self.handle_add_to_active_objects)
-        
-        available_layout.addWidget(available_label)
-        available_layout.addWidget(self.all_objects_list)
-        available_layout.addWidget(add_to_active_button)
-        
-        # Current objects list
-        current_layout = QVBoxLayout()
-        current_label = QLabel("Active Objects:")
-        current_label.setProperty("class", "mus1-section-label")
-        current_label.setProperty("formLabel", True)
-        
+        available_button_row.addWidget(add_to_active_button)
+
+        active_column, active_layout = self.create_form_section("Active Objects:", None, is_subgroup=True)
         self.current_objects_list = QListWidget()
         self.current_objects_list.setProperty("class", "mus1-list-widget")
         self.current_objects_list.setSelectionMode(QListWidget.ExtendedSelection)
+        active_layout.addWidget(self.current_objects_list)
         
+        # Use create_button_row for consistent button styling
+        active_button_row = self.create_button_row(active_layout, add_stretch=True)
         remove_button = QPushButton("← Remove Selected")
         remove_button.setProperty("class", "mus1-secondary-button")
         remove_button.clicked.connect(self.handle_remove_object)
-        
-        current_layout.addWidget(current_label)
-        current_layout.addWidget(self.current_objects_list)
-        current_layout.addWidget(remove_button)
-        
-        # Add the list layouts to the horizontal layout
-        lists_layout.addLayout(available_layout)
-        lists_layout.addLayout(current_layout)
-        
-        objects_layout.addLayout(lists_layout)
-        
-        # Save button for objects
+        active_button_row.addWidget(remove_button)
+
+        lists_layout.addWidget(available_column, 1)
+        lists_layout.addWidget(active_column, 1)
+
+        # Use create_button_row for consistent button styling
+        save_button_row = self.create_button_row(objects_layout, add_stretch=True)
         save_button = QPushButton("Save Objects")
         save_button.setProperty("class", "mus1-primary-button")
         save_button.clicked.connect(self.handle_save_objects)
-        
-        objects_layout.addWidget(save_button)
-        
-        # Add the objects group to the main layout
-        layout.addWidget(objects_group)
-        
-        # Add a stretch to push everything to the top
+        save_button_row.addWidget(save_button)
+
         layout.addStretch(1)
-        
-        # Add the page to the stacked widget
         self.add_page(self.objects_page, "Objects")
+        self.update_objects_from_state()
 
     def setup_general_settings_page(self):
         """Setup the General Settings page with application-wide settings."""
-        # Create the page widget without redundant styling
         self.general_settings_page = QWidget()
         layout = QVBoxLayout(self.general_settings_page)
-        layout.setSpacing(15)
+        layout.setSpacing(self.SECTION_SPACING)
 
-        # Display preferences group
-        display_group = QGroupBox("Display Preferences")
-        display_group.setProperty("class", "mus1-input-group")
-        display_layout = QVBoxLayout(display_group)
+        display_group, display_layout = self.create_form_section("Display Preferences", layout)
         
-        # Theme selection
-        theme_layout = QHBoxLayout()
-        theme_label = QLabel("Application Theme:")
-        theme_label.setProperty("formLabel", True)
-        theme_layout.addWidget(theme_label)
+        theme_row = self.create_form_row(display_layout)
+        theme_label = self.create_form_label("Application Theme:")
         
         self.theme_dropdown = QComboBox()
         self.theme_dropdown.setProperty("class", "mus1-combo-box")
@@ -772,15 +768,12 @@ class ProjectView(BaseView):
         theme_button.setProperty("class", "mus1-primary-button")
         theme_button.clicked.connect(lambda: self.handle_change_theme(self.theme_dropdown.currentText()))
         
-        theme_layout.addWidget(self.theme_dropdown, 1)
-        theme_layout.addWidget(theme_button)
-        display_layout.addLayout(theme_layout)
+        theme_row.addWidget(theme_label)
+        theme_row.addWidget(self.theme_dropdown, 1)
+        theme_row.addWidget(theme_button)
         
-        # Sort mode selection
-        sort_layout = QHBoxLayout()
-        sort_label = QLabel("Global Sort Mode:")
-        sort_label.setProperty("formLabel", True)
-        sort_layout.addWidget(sort_label)
+        sort_row = self.create_form_row(display_layout)
+        sort_label = self.create_form_label("Global Sort Mode:")
         
         self.sort_mode_dropdown = QComboBox()
         self.sort_mode_dropdown.setProperty("class", "mus1-combo-box")
@@ -792,67 +785,98 @@ class ProjectView(BaseView):
         ])
         self.sort_mode_dropdown.currentTextChanged.connect(self.on_sort_mode_changed)
         
-        sort_layout.addWidget(self.sort_mode_dropdown, 1)
-        display_layout.addLayout(sort_layout)
+        sort_row.addWidget(sort_label)
+        sort_row.addWidget(self.sort_mode_dropdown, 1)
         
-        # Frame rate settings
-        frame_rate_layout = QHBoxLayout()
+        frame_rate_row = self.create_form_row(display_layout)
         
         self.enable_frame_rate_checkbox = QCheckBox("Enable Frame Rate Limit")
         self.enable_frame_rate_checkbox.setChecked(True)
         
-        frame_rate_layout.addWidget(self.enable_frame_rate_checkbox)
-        
-        frame_rate_label = QLabel("Frame Rate:")
-        frame_rate_label.setProperty("formLabel", True)
-        frame_rate_layout.addWidget(frame_rate_label)
+        frame_rate_label = self.create_form_label("Frame Rate:")
         
         self.frame_rate_spin = QSpinBox()
         self.frame_rate_spin.setRange(1, 120)
         self.frame_rate_spin.setValue(60)
         self.frame_rate_spin.setProperty("class", "mus1-text-input")
         
-        frame_rate_layout.addWidget(self.frame_rate_spin)
-        frame_rate_layout.addStretch(1)
+        frame_rate_row.addWidget(self.enable_frame_rate_checkbox)
+        frame_rate_row.addWidget(frame_rate_label)
+        frame_rate_row.addWidget(self.frame_rate_spin)
+        frame_rate_row.addStretch(1)
         
-        display_layout.addLayout(frame_rate_layout)
-        
-        # Add display group to main layout
-        layout.addWidget(display_group)
-        
-        # Data preferences group
-        data_group = QGroupBox("Data Preferences")
-        data_group.setProperty("class", "mus1-input-group")
-        data_layout = QVBoxLayout(data_group)
-        
-        # Likelihood filter
-        likelihood_layout = QHBoxLayout()
-        likelihood_label = QLabel("Likelihood Filter Threshold:")
-        likelihood_label.setProperty("formLabel", True)
-        likelihood_layout.addWidget(likelihood_label)
-        
-        self.likelihood_filter_spin = QDoubleSpinBox()
-        self.likelihood_filter_spin.setRange(0.0, 1.0)
-        self.likelihood_filter_spin.setValue(0.5)
-        self.likelihood_filter_spin.setSingleStep(0.05)
-        self.likelihood_filter_spin.setProperty("class", "mus1-text-input")
-        
-        likelihood_layout.addWidget(self.likelihood_filter_spin)
-        likelihood_layout.addStretch(1)
-        
-        data_layout.addLayout(likelihood_layout)
-        
-        # Add data group to main layout
-        layout.addWidget(data_group)
-        
-        # Add a stretch to push everything to the top
+        # Use create_button_row for the apply button for consistent styling
+        apply_button_row = self.create_button_row(display_layout)
+        apply_settings_button = QPushButton("Apply Settings")
+        apply_settings_button.setProperty("class", "mus1-primary-button")
+        apply_settings_button.clicked.connect(self.handle_apply_general_settings)
+        apply_button_row.addWidget(apply_settings_button)
+
         layout.addStretch(1)
+        self.add_page(self.general_settings_page, "Settings")
         
-        # Add the page to the stacked widget
-        self.add_page(self.general_settings_page, "General Settings")
-        
-        # Initialize settings from state
-        self.update_frame_rate_from_state()
-        self.update_likelihood_filter_from_state()
+        # Initial population of project list
+        self.populate_project_list()
         self.update_sort_mode_from_state()
+   
+    # Add new method for removing items from master list
+    def handle_remove_from_master(self):
+        """Remove selected body parts from the master list."""
+        selected_items = self.all_bodyparts_list.selectedItems()
+        if not selected_items:
+            self.navigation_pane.add_log_message("No body parts selected for removal from master list.", "warning")
+            return
+            
+        # Get the text of selected items to remove
+        to_remove = [item.text() for item in selected_items]
+        
+        # Get current master body parts from state
+        state = self.window().state_manager.project_state
+        if state.project_metadata:
+            master_parts = [bp.name if hasattr(bp, "name") else str(bp) for bp in state.project_metadata.master_body_parts]
+        else:
+            master_parts = [bp.name if hasattr(bp, "name") else str(bp) for bp in 
+                           self.window().state_manager.global_settings.get("body_parts", [])]
+        
+        # Filter out the parts to remove
+        updated_parts = [bp for bp in master_parts if bp not in to_remove]
+        
+        # Update the master body parts via project manager
+        self.window().project_manager.update_master_body_parts(updated_parts)
+        
+        # Also check if any of these were in the active list and remove them if so
+        active_parts = []
+        if state.project_metadata:
+            active_parts = [bp.name if hasattr(bp, "name") else str(bp) for bp in state.project_metadata.active_body_parts]
+        else:
+            active_parts = [bp.name if hasattr(bp, "name") else str(bp) for bp in 
+                           self.window().state_manager.global_settings.get("active_body_parts", [])]
+        
+        # Remove from active list if present
+        updated_active = [bp for bp in active_parts if bp not in to_remove]
+        if len(updated_active) != len(active_parts):
+            self.window().project_manager.update_active_body_parts(updated_active)
+            
+        self.navigation_pane.add_log_message(f"Removed {len(to_remove)} body parts from master list.", "success")
+        self.refresh_lists()
+   
+    def handle_apply_general_settings(self):
+        """Apply the general settings."""
+        sort_mode = self.sort_mode_dropdown.currentText()
+        frame_rate_enabled = self.enable_frame_rate_checkbox.isChecked()
+        frame_rate = self.frame_rate_spin.value()
+        
+        # Update the state with the new settings via state_manager
+        if self.state_manager:
+            self.state_manager.update_global_settings({
+                "global_sort_mode": sort_mode,
+                "frame_rate_enabled": frame_rate_enabled,
+                "frame_rate": frame_rate
+            })
+            
+            # Instead of calling a non-existent save_project_state on state_manager,
+            # we call the save_project method on project_manager to persist changes.
+            self.window().project_manager.save_project()
+                
+        self.navigation_pane.add_log_message("Applied general settings.", "success")
    

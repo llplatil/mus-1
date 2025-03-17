@@ -382,6 +382,12 @@ class ExperimentView(BaseView):
                             selected_plugins.append(plugin)
                             break
 
+        # If more than one plugin is selected, mark the fields container for combined overrides
+        if len(selected_plugins) > 1:
+            self.plugin_fields_widget.setProperty("class", "plugin-combined-overrides")
+        else:
+            self.plugin_fields_widget.setProperty("class", "")
+
         # Create UI for each selected plugin
         for plugin in selected_plugins:
             plugin_id = plugin.plugin_self_metadata().name
@@ -402,43 +408,21 @@ class ExperimentView(BaseView):
             # Add required fields
             req_fields = plugin.required_fields()
             for field in req_fields:
-                # Create field label with required indicator
                 label = QLabel(f"{field} <span style='color:var(--plugin-required-color);'>*</span>")
-                
-                # Create appropriate input widget based on field type
                 field_widget = self._create_field_widget(plugin, field)
-                
-                # Get field styling from plugin
                 field_styling = plugin.get_field_styling(field)
-                
-                # Apply styling classes to widget
                 field_widget.setProperty("class", f"{field_styling['widget_class']} {field_styling['status_class']} {field_styling['stage_class']}")
-                
-                # Add field to layout
                 group_layout.addRow(label, field_widget)
-                
-                # Store widget for later access
                 self.plugin_field_widgets[plugin_id][field] = field_widget
 
             # Add optional fields
             opt_fields = plugin.optional_fields()
             for field in opt_fields:
-                # Create field label with optional indicator
                 label = QLabel(f"{field} <span style='color:var(--text-muted-color);'>(optional)</span>")
-                
-                # Create appropriate input widget based on field type
                 field_widget = self._create_field_widget(plugin, field)
-                
-                # Get field styling from plugin
                 field_styling = plugin.get_field_styling(field)
-                
-                # Apply styling classes to widget
                 field_widget.setProperty("class", f"{field_styling['widget_class']} {field_styling['status_class']} {field_styling['stage_class']}")
-                
-                # Add field to layout
                 group_layout.addRow(label, field_widget)
-                
-                # Store widget for later access
                 self.plugin_field_widgets[plugin_id][field] = field_widget
 
             # Add the plugin group to the layout

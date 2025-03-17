@@ -7,6 +7,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from PIL import Image
 from io import BytesIO
+from typing import Optional, Dict, Any
 
 class BasicCSVPlotPlugin(BasePlugin):
     def plugin_self_metadata(self) -> PluginMetadata:
@@ -263,5 +264,22 @@ class BasicCSVPlotPlugin(BasePlugin):
             "spacing": {
                 "internal": "spacious",  # Use more padding inside elements
                 "between_elements": "default"
+            }
+        }
+
+    def get_style_manifest(self) -> Optional[Dict[str, Any]]:
+        """
+        Return a style manifest for plugin-specific style overrides.
+        This manifest is used by ThemeManager to append plugin CSS rules.
+
+        The manifest here includes overrides for required vs optional field indicators
+        and for a plugin-specific stage background.
+        """
+        return {
+            "base": {
+                "$PLUGIN_REQUIRED_COLOR": "#ff8787",  # Red color for required fields
+                "$PLUGIN_OPTIONAL_COLOR": "#4dabf7",   # Blue color for optional fields
+                "$PLUGIN_COMPONENT_ACCENT": "#BB86FC",   # Accent border for plugin components
+                "$PLUGIN_ANALYSIS_BG": "#EEEEEE"        # Light gray background for analysis stage
             }
         } 
