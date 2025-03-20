@@ -7,6 +7,7 @@ import os
 import importlib.util
 import inspect
 import platform
+from pydantic.json import pydantic_encoder
 
 from .metadata import ProjectState, ProjectMetadata, MouseMetadata, Sex, ExperimentMetadata, ArenaImageMetadata, VideoMetadata
 from .state_manager import StateManager  # so we can type hint or reference if needed
@@ -126,7 +127,7 @@ class ProjectManager:
         data = self.state_manager.project_state.dict()
 
         with open(state_path, 'w') as f:
-            json.dump(data, f, indent=2, default=str)
+            json.dump(data, f, indent=2, default=pydantic_encoder)
 
         logger.info(f"Project saved to {state_path}")
 
@@ -380,34 +381,42 @@ class ProjectManager:
         self.save_project()
 
     def add_tracked_object(self, new_object: str) -> None:
-        # Core logic to add a tracked object ensuring uniqueness
         if not new_object:
             raise ValueError("Object name cannot be empty.")
+        
+        from core.metadata import ObjectMetadata
         state = self.state_manager.project_state
-        if state.project_metadata is not None:
-            if new_object in state.project_metadata.tracked_objects:
-                raise ValueError(f"Object '{new_object}' already exists.")
-            state.project_metadata.tracked_objects.append(new_object)
-        else:
-            objects = state.settings.get("tracked_objects", [])
-            if new_object in objects:
-                raise ValueError(f"Object '{new_object}' already exists.")
-            objects.append(new_object)
-            state.settings["tracked_objects"] = objects
+        
+        # We now assume project_metadata exists – no fallback code.
+        # Check duplicates in master list
+        if any(obj.name == new_object for obj in state.project_metadata.master_tracked_objects):
+            raise ValueError(f"Object '{new_object}' already exists in master list.")
+        
+        object_metadata = ObjectMetadata(name=new_object)
+        state.project_metadata.master_tracked_objects.append(object_metadata)
+        state.project_metadata.active_tracked_objects.append(object_metadata)
+        
         self.save_project()
+        self.state_manager.notify_observers()
     
-    def update_tracked_objects(self, new_objects: list[str]) -> None:
-        """
-        Update the project's tracked objects list.
-        """
+    def update_tracked_objects(self, new_objects: list[str], list_type: str = "active") -> None:
+        """Update the project's tracked objects list."""
+        from core.metadata import ObjectMetadata
         state = self.state_manager.project_state
+        object_list = [ObjectMetadata(name=obj) if isinstance(obj, str) else obj
+                       for obj in new_objects]
+        
         if state.project_metadata is not None:
-            state.project_metadata.tracked_objects = new_objects
+            if list_type in ["master", "both"]:
+                state.project_metadata.master_tracked_objects = object_list
+            if list_type in ["active", "both"]:
+                state.project_metadata.active_tracked_objects = object_list
         else:
-            state.settings["tracked_objects"] = new_objects
+            # Remove fallback code; assume project_metadata always exists during development.
+            raise RuntimeError("No project_metadata available.")
+            
         self.save_project()
-        logger.info(f"Tracked objects updated to: {new_objects}")
-        # Notify observers about the change in tracked objects
+        logger.info(f"Updated {list_type} tracked objects to: {new_objects}")
         self.state_manager.notify_observers()
 
     def update_master_body_parts(self, new_bodyparts: list) -> None:

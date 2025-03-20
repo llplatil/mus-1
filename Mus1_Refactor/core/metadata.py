@@ -222,6 +222,24 @@ class ProjectMetadata(BaseModel):
             return BodyPartMetadata(name=v)
         return v
 
+    # Update to have both master and active tracked objects
+    master_tracked_objects: List[ObjectMetadata] = Field(default_factory=list)
+
+    @validator('master_tracked_objects', pre=True, each_item=True)
+    def fix_master_tracked_objects(cls, v):
+        if isinstance(v, str):
+            return ObjectMetadata(name=v)
+        return v
+
+    active_tracked_objects: List[ObjectMetadata] = Field(default_factory=list)
+
+    @validator('active_tracked_objects', pre=True, each_item=True)
+    def fix_active_tracked_objects(cls, v):
+        if isinstance(v, str):
+            return ObjectMetadata(name=v)
+        return v
+
+    # Keep tracked_objects for backward compatibility
     tracked_objects: List[ObjectMetadata] = Field(default_factory=list)
 
     @validator('tracked_objects', pre=True, each_item=True)

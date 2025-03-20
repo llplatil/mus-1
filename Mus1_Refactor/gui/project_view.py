@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (
 from pathlib import Path
 from gui.base_view import BaseView
 from PySide6.QtCore import Qt
+from core import ObjectMetadata, BodyPartMetadata  # Import both from core package consistently
 
 
 class NotesBox(QGroupBox):
@@ -76,6 +77,7 @@ class NotesBox(QGroupBox):
 class ProjectView(BaseView):
     def __init__(self, parent=None):
         super().__init__(parent, view_name="project")
+        self.state_manager = self.window().state_manager  # Cache state manager reference
         self.setup_navigation(["Project Settings", "Body Parts", "Objects", "General Settings"])
         self.setup_project_settings_page()
         self.setup_body_parts_page()
@@ -88,6 +90,10 @@ class ProjectView(BaseView):
         self.data_manager = self.window().data_manager
         self.state_manager = self.window().state_manager
         self.state_manager.subscribe(self.refresh_lists)
+
+    def format_item(self, item):
+        """Utility to return the proper display string for an item."""
+        return item.name if hasattr(item, "name") else str(item)
 
     def setup_body_parts_page(self):
         """Initialize the user interface for managing body parts."""
@@ -234,18 +240,6 @@ class ProjectView(BaseView):
             file_path = Path(self.csv_path_input.text().strip())
             method = self.extraction_method_dropdown.currentText()
             
-            if not file_path.exists():
-                self.navigation_pane.add_log_message("File does not exist.", "error")
-                return
-                
-            # Validate file extension based on selected method
-            if method == "BasicCSV" and file_path.suffix.lower() != ".csv":
-                self.navigation_pane.add_log_message("File must be a CSV for BasicCSV method.", "error")
-                return
-            elif method == "DLC yaml" and file_path.suffix.lower() not in [".yaml", ".yml"]:
-                self.navigation_pane.add_log_message("File must be a YAML for DLC yaml method.", "error")
-                return
-                
             if method == "BasicCSV":
                 extracted = self.window().data_manager.extract_bodyparts_from_dlc_csv(file_path)
             elif method == "DLC yaml":
@@ -253,19 +247,34 @@ class ProjectView(BaseView):
             else:
                 self.navigation_pane.add_log_message("Unknown extraction method.", "error")
                 return
-                
+
             self.extracted_bodyparts_list.clear()
             for bp in extracted:
-                self.extracted_bodyparts_list.addItem(str(bp))
+                self.extracted_bodyparts_list.addItem(self.format_item(bp))
             self.navigation_pane.add_log_message(f"Extracted {len(extracted)} body parts.", "success")
         except Exception as e:
             self.navigation_pane.add_log_message(f"Extraction error: {e}", "error")
 
     def handle_add_all_bodyparts_to_master(self):
         """Add every extracted body part to the master list."""
-        bodyparts = [self.extracted_bodyparts_list.item(i).text() for i in range(self.extracted_bodyparts_list.count())]
-        self.window().project_manager.update_master_body_parts(bodyparts)
-        self.navigation_pane.add_log_message(f"Added all {len(bodyparts)} body parts to master list.", "success")
+        # Get the currently extracted body parts as text
+        new_bodyparts = [self.extracted_bodyparts_list.item(i).text() 
+                         for i in range(self.extracted_bodyparts_list.count())]
+        # Get current master parts for comparison (normalize via format_item)
+        state = self.state_manager.project_state
+        current_master = []
+        if state.project_metadata:
+            current_master = [self.format_item(bp) for bp in state.project_metadata.master_body_parts]
+        else:
+            current_master = [str(bp) for bp in self.state_manager.global_settings.get("body_parts", [])]
+            
+        # Determine additions (only add if not already present)
+        additions = [bp for bp in new_bodyparts if bp not in current_master]
+        if additions:
+            self.window().project_manager.update_master_body_parts(additions)
+            self.navigation_pane.add_log_message(f"Added {len(additions)} body parts to master list.", "success")
+        else:
+            self.navigation_pane.add_log_message("No new body parts to add.", "info")
         self.refresh_lists()
 
     def handle_add_selected_bodyparts_to_master(self):
@@ -274,9 +283,22 @@ class ProjectView(BaseView):
         if not selected_items:
             self.navigation_pane.add_log_message("No body parts selected for master list.", "warning")
             return
-        bodyparts = [item.text() for item in selected_items]
-        self.window().project_manager.update_master_body_parts(bodyparts)
-        self.navigation_pane.add_log_message(f"Added {len(bodyparts)} selected body parts to master list.", "success")
+        selected = [item.text() for item in selected_items]
+        # Get current master parts for comparison (normalize via format_item)
+        state = self.state_manager.project_state
+        current_master = []
+        if state.project_metadata:
+            current_master = [self.format_item(bp) for bp in state.project_metadata.master_body_parts]
+        else:
+            current_master = [str(bp) for bp in self.state_manager.global_settings.get("body_parts", [])]
+        
+        # Only add body parts not already there
+        additions = [bp for bp in selected if bp not in current_master]
+        if additions:
+            self.window().project_manager.update_master_body_parts(additions)
+            self.navigation_pane.add_log_message(f"Added {len(additions)} selected body parts to master list.", "success")
+        else:
+            self.navigation_pane.add_log_message("No new body parts selected for master list.", "info")
         self.refresh_lists()
 
     def handle_add_selected_bodyparts_to_active(self):
@@ -307,20 +329,25 @@ class ProjectView(BaseView):
 
     def refresh_lists(self):
         """Refresh the master and active lists from the current state."""
-        state = self.window().state_manager.project_state
+        state = self.state_manager.project_state  # use the cached state_manager instead of self.window().state_manager
         if state.project_metadata:
             master = state.project_metadata.master_body_parts
             active = state.project_metadata.active_body_parts
         else:
-            master = self.window().state_manager.global_settings.get("body_parts", [])
-            active = self.window().state_manager.global_settings.get("active_body_parts", [])
+            # Fallback using global_settings from the state_manager
+            master = self.state_manager.global_settings.get("body_parts", [])
+            active = self.state_manager.global_settings.get("active_body_parts", [])
         self.all_bodyparts_list.clear()
         for bp in master:
-            self.all_bodyparts_list.addItem(bp.name if hasattr(bp, "name") else str(bp))
+            self.all_bodyparts_list.addItem(self.format_item(bp))  # using the centralized format_item helper
         self.current_body_parts_list.clear()
         for bp in active:
-            self.current_body_parts_list.addItem(bp.name if hasattr(bp, "name") else str(bp))
+            self.current_body_parts_list.addItem(self.format_item(bp))
         self.navigation_pane.add_log_message("Body parts lists refreshed.", "info")
+        
+        # Also refresh the objects lists
+        self.update_objects_from_state()
+        self.navigation_pane.add_log_message("Objects lists refreshed.", "info")
 
     def update_theme(self, theme):
         """Update theme for this view and propagate any view–specific changes."""
@@ -329,40 +356,20 @@ class ProjectView(BaseView):
    
 
     def handle_add_object(self):
-        if not hasattr(self, '_state_manager'):
-            return
-        state = self._state_manager.project_state
         new_obj = self.new_object_line_edit.text().strip()
         if not new_obj:
             msg = "No object name entered."
             print(msg)
             self.navigation_pane.add_log_message(msg, 'warning')
             return
-        
-        pm = self.window().project_manager
-        tracked_objects = state.settings.get("tracked_objects", [])
-        
-        # Check for duplicates by name
-        existing_object_names = []
-        for obj in tracked_objects:
-            if hasattr(obj, 'name'):
-                existing_object_names.append(obj.name)
-            else:
-                existing_object_names.append(str(obj))
-        
-        if new_obj in existing_object_names:
-            msg = f"Object '{new_obj}' already exists in tracked objects."
-            print(msg)
-            self.navigation_pane.add_log_message(msg, 'warning')
-            return
-        
-        # Add the new object
-        tracked_objects.append(new_obj)
-        pm.update_tracked_objects(tracked_objects)
-        self.new_object_line_edit.clear()
-        self.navigation_pane.add_log_message(f"Added new object: {new_obj}", 'success')
-        
-        # Refresh the UI
+        try:
+            # Delegate duplicate-checking and addition to the core
+            self.window().project_manager.add_tracked_object(new_obj)
+            self.new_object_line_edit.clear()
+            self.navigation_pane.add_log_message(f"Added new object: {new_obj}", 'success')
+        except ValueError as e:
+            print(e)
+            self.navigation_pane.add_log_message(str(e), 'warning')
         self.refresh_lists()
 
     def handle_add_to_active_objects(self):
@@ -376,17 +383,31 @@ class ProjectView(BaseView):
         
         pm = self.window().project_manager
         state = self.window().project_manager.state_manager.project_state
-        current_active = [obj for obj in state.settings.get("tracked_objects", []) 
-                         if hasattr(obj, 'name') and obj.name or str(obj)]
         
-        selected = [item.text() for item in selected_items]
-        new_active = list(set(current_active + selected))
+        # Get current active objects
+        current_active = []
+        if state.project_metadata and hasattr(state.project_metadata, 'active_tracked_objects'):
+            current_active = state.project_metadata.active_tracked_objects
+        else:
+            current_active = state.settings.get("active_tracked_objects", [])
         
-        pm.update_tracked_objects(new_active)
+        # Convert selected items to ObjectMetadata
+        selected = [ObjectMetadata(name=item.text()) for item in selected_items]
+        
+        # Combine lists, avoiding duplicates by name
+        existing_names = [self.format_item(obj) for obj in current_active]
+        new_active = list(current_active)
+        
+        for obj in selected:
+            if obj.name not in existing_names:
+                new_active.append(obj)
+                existing_names.append(obj.name)
+        
+        # Update active objects list specifically
+        pm.update_tracked_objects(new_active, list_type="active")
         self.navigation_pane.add_log_message(f"Added {len(selected)} objects to active list", 'success')
         self.refresh_lists()
     
-
     def handle_remove_object(self):
         selected_items = self.current_objects_list.selectedItems()
         if not selected_items:
@@ -394,19 +415,40 @@ class ProjectView(BaseView):
             print(msg)
             self.navigation_pane.add_log_message(msg, 'warning')
             return
+        
         pm = self.window().project_manager
         state = self.window().project_manager.state_manager.project_state
-        tracked_objects = state.settings.get("tracked_objects", [])
+        
+        # Get active tracked objects
+        active_objects = []
+        if state.project_metadata and hasattr(state.project_metadata, 'active_tracked_objects'):
+            active_objects = state.project_metadata.active_tracked_objects
+        else:
+            active_objects = state.settings.get("active_tracked_objects", [])
+        
+        # Get the names of objects to remove
         to_remove = [item.text() for item in selected_items]
-        new_objects = [obj for obj in tracked_objects if obj not in to_remove]
-        pm.update_tracked_objects(new_objects)
-        self.navigation_pane.add_log_message(f"Removed {len(to_remove)} object(s) from tracked objects", 'success')
+        
+        # Filter objects - keeping those not in to_remove
+        new_objects = [obj for obj in active_objects 
+                     if self.format_item(obj) not in to_remove]
+        
+        # Update only the active list
+        pm.update_tracked_objects(new_objects, list_type="active")
+        self.navigation_pane.add_log_message(f"Removed {len(to_remove)} object(s) from active objects", 'success')
         self.refresh_lists()
 
     def handle_save_objects(self):
-        new_objects = [self.current_objects_list.item(i).text() for i in range(self.current_objects_list.count())]
-        self.window().project_manager.update_tracked_objects(new_objects)
-        print("Saved objects only. (Entire project not fully re-saved.)")
+        # Get all object names from the current list
+        object_names = [self.current_objects_list.item(i).text() 
+                      for i in range(self.current_objects_list.count())]
+        
+        # Convert to ObjectMetadata objects
+        new_objects = [ObjectMetadata(name=name) for name in object_names]
+        
+        # Update tracked objects (active list only)
+        self.window().project_manager.update_tracked_objects(new_objects, list_type="active")
+        print("Saved active objects. (Entire project not fully re-saved.)")
         self.refresh_lists()
 
     def set_initial_project(self, project_name: str):
@@ -443,14 +485,10 @@ class ProjectView(BaseView):
 
     def update_frame_rate_from_state(self):
         """Update frame rate settings from the current state."""
-        if not hasattr(self, '_state_manager'):
-            return
-            
-        # Get frame rate directly from state manager's global settings
-        frame_rate = self._state_manager.global_settings.get("global_frame_rate", 60)
-        frame_rate_enabled = self._state_manager.global_settings.get("global_frame_rate_enabled", True)
-            
-        # Update UI components
+        # Use the standardized state manager from __init__
+        state_manager = self.state_manager
+        frame_rate = state_manager.global_settings.get("global_frame_rate", 60)
+        frame_rate_enabled = state_manager.global_settings.get("global_frame_rate_enabled", True)
         if hasattr(self, 'frame_rate_spin'):
             self.frame_rate_spin.setValue(frame_rate)
         if hasattr(self, 'enable_frame_rate_checkbox'):
@@ -473,36 +511,39 @@ class ProjectView(BaseView):
         pm = self.window().project_manager
         if not pm or not pm.state_manager:
             return
+        # Use the cached state_manager reference
+        state = self.state_manager.project_state
         
-        if not hasattr(self, '_state_manager'):
-            return
-        state = self._state_manager.project_state
-        
-        # Clear existing lists - if they exist
+        # Clear existing lists
         if hasattr(self, 'all_objects_list'):
             self.all_objects_list.clear()
-        
         if hasattr(self, 'current_objects_list'):
             self.current_objects_list.clear()
         
-        # Get tracked objects from state
-        tracked_objects = []
-        if state.project_metadata and hasattr(state.project_metadata, 'tracked_objects'):
-            tracked_objects = state.project_metadata.tracked_objects
+        # Get master tracked objects from state
+        master_objects = []
+        if state.project_metadata and hasattr(state.project_metadata, 'master_tracked_objects'):
+            master_objects = state.project_metadata.master_tracked_objects
         else:
-            tracked_objects = state.settings.get('tracked_objects', [])
+            master_objects = state.settings.get('master_tracked_objects', [])
         
-        # Update the lists
-        if hasattr(self, 'current_objects_list') and isinstance(tracked_objects, list):
-            for obj in tracked_objects:
-                obj_name = obj if isinstance(obj, str) else obj.name if hasattr(obj, 'name') else str(obj)
-                self.current_objects_list.addItem(obj_name)
+        # Get active tracked objects from state
+        active_objects = []
+        if state.project_metadata and hasattr(state.project_metadata, 'active_tracked_objects'):
+            active_objects = state.project_metadata.active_tracked_objects
+        else:
+            active_objects = state.settings.get('active_tracked_objects', [])
         
-        # Update all objects list - these might be the same in current implementation
-        if hasattr(self, 'all_objects_list') and isinstance(tracked_objects, list):
-            for obj in tracked_objects:
-                obj_name = obj if isinstance(obj, str) else obj.name if hasattr(obj, 'name') else str(obj)
+        # Update the lists using the centralized format_item helper
+        if hasattr(self, 'all_objects_list') and isinstance(master_objects, list):
+            for obj in master_objects:
+                obj_name = self.format_item(obj)
                 self.all_objects_list.addItem(obj_name)
+                
+        if hasattr(self, 'current_objects_list') and isinstance(active_objects, list):
+            for obj in active_objects:
+                obj_name = self.format_item(obj)
+                self.current_objects_list.addItem(obj_name)
     
     def update_sort_mode_from_state(self):
         """Update sort mode dropdown from the current state."""
@@ -537,7 +578,6 @@ class ProjectView(BaseView):
     def handle_switch_project(self):
         selected_project = self.switch_project_combo.currentText()
         if selected_project:
-            # Use the project_manager's list of available projects instead of building the path manually
             available_projects = self.window().project_manager.list_available_projects()
             project_path = next((p for p in available_projects if p.name == selected_project), None)
             if project_path is None:
@@ -556,10 +596,15 @@ class ProjectView(BaseView):
                 # Get the project state
                 state = self.window().project_manager.state_manager.project_state
                 
-                # Load notes from state - only project notes now
-                self.project_notes_box.set_text(state.settings.get("project_notes", ""))
+                # Load project notes from state - now robustly grabbing from settings if not in project_metadata
+                notes = ""
+                if state.project_metadata:
+                    notes = state.settings.get("project_notes", "")
+                else:
+                    notes = state.settings.get("project_notes", "")
+                self.project_notes_box.set_text(notes)
                 
-                # Update all lists
+                # Refresh all UI lists including objects and body parts
                 self.refresh_lists()
                 
                 self.navigation_pane.add_log_message(f"Successfully switched to project: {selected_project}", 'success')
@@ -676,8 +721,9 @@ class ProjectView(BaseView):
             state = self.window().project_manager.state_manager.project_state
             # Update the notes in the state
             state.settings["project_notes"] = notes
-            # Update internal state without full project save
+            # Update internal state and persist changes to disk
             self.window().project_manager.state_manager.notify_observers()
+            self.window().project_manager.save_project()
             
             self.navigation_pane.add_log_message("Project notes saved successfully.", 'success')
         except Exception as e:
@@ -831,12 +877,12 @@ class ProjectView(BaseView):
         to_remove = [item.text() for item in selected_items]
         
         # Get current master body parts from state
-        state = self.window().state_manager.project_state
+        state = self.state_manager.project_state
         if state.project_metadata:
             master_parts = [bp.name if hasattr(bp, "name") else str(bp) for bp in state.project_metadata.master_body_parts]
         else:
             master_parts = [bp.name if hasattr(bp, "name") else str(bp) for bp in 
-                           self.window().state_manager.global_settings.get("body_parts", [])]
+                           self.state_manager.global_settings.get("body_parts", [])]
         
         # Filter out the parts to remove
         updated_parts = [bp for bp in master_parts if bp not in to_remove]
@@ -850,7 +896,7 @@ class ProjectView(BaseView):
             active_parts = [bp.name if hasattr(bp, "name") else str(bp) for bp in state.project_metadata.active_body_parts]
         else:
             active_parts = [bp.name if hasattr(bp, "name") else str(bp) for bp in 
-                           self.window().state_manager.global_settings.get("active_body_parts", [])]
+                           self.state_manager.global_settings.get("active_body_parts", [])]
         
         # Remove from active list if present
         updated_active = [bp for bp in active_parts if bp not in to_remove]

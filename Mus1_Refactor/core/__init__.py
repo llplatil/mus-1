@@ -9,7 +9,9 @@ from .metadata import (
     ExperimentMetadata,
     BatchMetadata,
     ProjectState,
-    ProjectMetadata
+    ProjectMetadata,
+    ObjectMetadata,
+    BodyPartMetadata
 )
 
 from .state_manager import StateManager
@@ -24,6 +26,8 @@ __all__ = [
     "BatchMetadata",
     "ProjectState",
     "ProjectMetadata",
+    "ObjectMetadata",
+    "BodyPartMetadata",
 
     "StateManager",
     "DataManager",

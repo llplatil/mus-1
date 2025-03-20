@@ -200,21 +200,28 @@ class StateManager:
                 pm.supported_experiment_types and 
                 exp_type in pm.supported_experiment_types]
 
-    def get_sorted_body_parts(self) -> List:
-        """Return a sorted list of BodyPartMetadata using the global sort mode."""
-        # Get sort mode from global_settings
+    def get_sorted_body_parts(self) -> dict:
+        """
+        Return a dictionary containing sorted lists for both master and active body parts,
+        using the global sort mode.
+
+        Returns:
+            dict: { "master": List[BodyPartMetadata], "active": List[BodyPartMetadata] }
+        """
         sort_mode = self.global_settings.get("global_sort_mode")
-        # Retrieve body parts list from global_settings directly
-        all_parts = self.global_settings.get("master_body_parts", [])
-
         key_func = (lambda bp: bp.date_added) if sort_mode == "Date Added" else (lambda bp: bp.name.lower())
-        return sort_items(all_parts, sort_mode, key_func=key_func)
+        master_sorted = sort_items(self.global_settings.get("master_body_parts", []), sort_mode, key_func=key_func)
+        active_sorted = sort_items(self.global_settings.get("active_body_parts", []), sort_mode, key_func=key_func)
+        return {"master": master_sorted, "active": active_sorted}
 
-    def get_sorted_objects(self) -> List:
+    def get_sorted_objects(self, list_type="master") -> List:
         """Return a sorted list of ObjectMetadata using the global sort mode."""
         sort_mode = self.global_settings.get("global_sort_mode")
-        all_objects = self.global_settings.get("tracked_objects", [])
-
+        if list_type == "active":
+            all_objects = self.global_settings.get("active_tracked_objects", [])
+        else:  # master list by default
+            all_objects = self.global_settings.get("master_tracked_objects", [])
+        
         key_func = (lambda obj: obj.date_added) if sort_mode == "Date Added" else (lambda obj: obj.name.lower())
         return sort_items(all_objects, sort_mode, key_func=key_func)
 
@@ -227,13 +234,15 @@ class StateManager:
             settings_dict["global_frame_rate"] = self._project_state.project_metadata.global_frame_rate
             settings_dict["master_body_parts"] = self._project_state.project_metadata.master_body_parts
             settings_dict["active_body_parts"] = self._project_state.project_metadata.active_body_parts
-            settings_dict["tracked_objects"] = self._project_state.project_metadata.tracked_objects
+            settings_dict["master_tracked_objects"] = self._project_state.project_metadata.master_tracked_objects
+            settings_dict["active_tracked_objects"] = self._project_state.project_metadata.active_tracked_objects
         else:
             settings_dict["global_sort_mode"] = self._project_state.settings.get("global_sort_mode", "Natural Order (Numbers as Numbers)")
             settings_dict["global_frame_rate"] = self._project_state.settings.get("global_frame_rate", 60)
             settings_dict["master_body_parts"] = self._project_state.settings.get("body_parts", [])
             settings_dict["active_body_parts"] = self._project_state.settings.get("active_body_parts", [])
-            settings_dict["tracked_objects"] = self._project_state.settings.get("tracked_objects", [])
+            settings_dict["master_tracked_objects"] = self._project_state.settings.get("master_tracked_objects", [])
+            settings_dict["active_tracked_objects"] = self._project_state.settings.get("active_tracked_objects", [])
         return settings_dict
 
     def get_global_sort_mode(self) -> str:

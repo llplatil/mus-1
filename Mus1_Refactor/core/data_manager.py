@@ -15,6 +15,63 @@ class DataManager:
         self.state_manager = state_manager
         self._likelihood_threshold = None 
 
+    # -------------------------------------------------------------------------
+    # New Helper Methods for Validation and Resolution
+    # -------------------------------------------------------------------------
+    
+    def _validate_file(self, file_path: Path, expected_extensions: list[str], file_type: str) -> None:
+        """
+        Validate that the file exists and has one of the expected extensions.
+        """
+        if not file_path.exists():
+            raise FileNotFoundError(f"{file_type} not found: {file_path}")
+        if file_path.suffix.lower() not in [ext.lower() for ext in expected_extensions]:
+            raise ValueError(f"Expected a {file_type} with extension {expected_extensions}, got: {file_path.suffix}")
+
+    def _resolve_frame_rate(self, frame_rate: Optional[int], experiment_id: Optional[str], batch_id: Optional[str]) -> int:
+        """
+        Determine the final frame rate using an explicit parameter or by checking experiment,
+        batch, or project defaults.
+        """
+        ps = self.state_manager.project_state
+        if frame_rate is not None:
+            return frame_rate
+        current_experiment = ps.experiments.get(experiment_id) if experiment_id else None
+        current_batch = ps.batches.get(batch_id) if batch_id else None
+        if current_experiment and current_experiment.frame_rate is not None:
+            return current_experiment.frame_rate
+        elif current_batch and getattr(current_batch, "frame_rate", None) is not None:
+            return current_batch.frame_rate
+        else:
+            if ps.project_metadata and ps.settings.get("global_frame_rate_enabled", True):
+                return ps.project_metadata.global_frame_rate
+            else:
+                return 60
+
+    def _resolve_threshold(self, experiment_id: Optional[str], batch_id: Optional[str]) -> Optional[float]:
+        """
+        Determine the likelihood threshold based on an explicit internal threshold
+        or by checking experiment, batch or project defaults.
+        """
+        ps = self.state_manager.project_state
+        if self._likelihood_threshold is not None:
+            return self._likelihood_threshold
+        current_experiment = ps.experiments.get(experiment_id) if experiment_id else None
+        current_batch = ps.batches.get(batch_id) if batch_id else None
+        if current_experiment and current_experiment.likelihood_threshold is not None:
+            return current_experiment.likelihood_threshold
+        elif current_batch and current_batch.likelihood_threshold is not None:
+            return current_batch.likelihood_threshold
+        else:
+            if ps.likelihood_filter_enabled:
+                return ps.default_likelihood_threshold
+            else:
+                return None
+
+    # -------------------------------------------------------------------------
+    # Modified Methods Using the New Helpers
+    # -------------------------------------------------------------------------
+
     def load_dlc_tracking_csv(
         self, 
         file_path: Path, 
@@ -26,75 +83,17 @@ class DataManager:
         Load and process a DLC CSV tracking file.
         Now we also look up the final frame rate from experiment/batch if not provided.
         """
-        if not file_path.exists():
-            raise FileNotFoundError(f"Tracking file not found: {file_path}")
-        if file_path.suffix.lower() != ".csv":
-            raise ValueError(f"Expected CSV, got: {file_path.suffix}")
-
+        # Validate file using the new helper
+        self._validate_file(file_path, [".csv"], "Tracking file")
+        
         df = pd.read_csv(file_path, header=[0, 1, 2], index_col=0)
 
-        # ------------------------------------------------
-        # Determine final frame rate from multiple sources
-        # ------------------------------------------------
-        final_frame_rate = None
-
-        # 1) If caller explicitly passed a frame_rate, use it
-        if frame_rate is not None:
-            final_frame_rate = frame_rate
-        else:
-            ps = self.state_manager.project_state
-            current_experiment = None
-            current_batch = None
-
-            # 2) Identify the experiment/batch from state_manager (if IDs are given)
-            if experiment_id:
-                current_experiment = ps.experiments.get(experiment_id)
-            if batch_id:
-                current_batch = ps.batches.get(batch_id)
-
-            # 3) If experiment has an override, use it
-            if current_experiment and current_experiment.frame_rate is not None:
-                final_frame_rate = current_experiment.frame_rate
-            # 4) otherwise if batch has an override, use it
-            elif current_batch and getattr(current_batch, "frame_rate", None) is not None:
-                final_frame_rate = current_batch.frame_rate
-            # 5) otherwise use the project's global frame_rate
-            else:
-                # fallback to project metadata if global frame rate is enabled
-                if ps.project_metadata and ps.settings.get("global_frame_rate_enabled", True):
-                    final_frame_rate = ps.project_metadata.global_frame_rate
-                else:
-                    final_frame_rate = 60  # fallback if disabled or missing
-
-        # ------------------------------------------------
-        # For demonstration, just log the final_frame_rate
-        # ------------------------------------------------
+        # Resolve frame rate using the helper method
+        final_frame_rate = self._resolve_frame_rate(frame_rate, experiment_id, batch_id)
         logger.info(f"Chosen frame_rate for {file_path} is: {final_frame_rate}")
 
-        # --------------------------------
-        # Next, handle the threshold logic
-        # --------------------------------
-        final_threshold = None
-        if self._likelihood_threshold is not None:
-            final_threshold = self._likelihood_threshold
-        else:
-            current_experiment = None
-            current_batch = None
-            # If you have logic to identify experiment/batch from the file_path,
-            # or if you use the same experiment_id/batch_id:
-            if experiment_id:
-                current_experiment = ps.experiments.get(experiment_id)
-            if batch_id:
-                current_batch = ps.batches.get(batch_id)
-
-            if current_experiment and current_experiment.likelihood_threshold is not None:
-                final_threshold = current_experiment.likelihood_threshold
-            elif current_batch and current_batch.likelihood_threshold is not None:
-                final_threshold = current_batch.likelihood_threshold
-            else:
-                if ps.likelihood_filter_enabled:
-                    final_threshold = ps.default_likelihood_threshold
-
+        # Resolve likelihood threshold using the helper method
+        final_threshold = self._resolve_threshold(experiment_id, batch_id)
         if final_threshold is not None:
             df = df[df.iloc[:, 2, 2] >= final_threshold]
 
@@ -103,8 +102,8 @@ class DataManager:
 
     def extract_bodyparts_from_dlc_config(self, config_file: Path) -> list:
         """Extracts body parts from a DLC config YAML file and returns a list of unique body parts."""
-        if not config_file.exists():
-            raise FileNotFoundError(f"Config file not found: {config_file}")
+        # Validate config file using the helper (supporting YAML extensions)
+        self._validate_file(config_file, [".yaml", ".yml"], "Config file")
         with open(config_file, 'r') as f:
             config_data = yaml.safe_load(f)
         bodyparts = config_data.get("bodyparts", [])
@@ -116,8 +115,7 @@ class DataManager:
 
     def extract_bodyparts_from_dlc_csv(self, csv_file: Path) -> set:
         """Extracts body parts from a DLC CSV file by reading the header (level 1) and returning a set of unique body parts."""
-        if not csv_file.exists():
-            raise FileNotFoundError(f"CSV file not found: {csv_file}")
+        self._validate_file(csv_file, [".csv"], "CSV file")
         try:
             df = pd.read_csv(csv_file, header=[0,1,2], index_col=0)
         except Exception as e:
@@ -140,15 +138,11 @@ class DataManager:
             try:
                 # For demonstration, assume each plugin's validation is encapsulated in its validate_experiment method.
                 # Here we simply check if the file exists and is a CSV (example logic).
-                if not file_path.exists():
-                    raise ValueError(f"File not found: {file_path}")
-                if file_path.suffix.lower() != '.csv':
-                    raise ValueError(f"Expected a CSV file, got: {file_path.suffix}")
-                # If no exception, mark as valid
+                self._validate_file(file_path, ['.csv'], "Plugin file")
                 results[plugin_name] = {"valid": True}
             except Exception as e:
                 results[plugin_name] = {"valid": False, "error": str(e)}
-        return results
+        return results 
 
     def validate_arena_image(self, image_path: Path, allowed_sources: list, project_state) -> dict:
         """Validate an arena image against allowed sources and project state.
@@ -164,9 +158,7 @@ class DataManager:
         Raises:
             ValueError: If validation fails.
         """
-        if not image_path.exists():
-            raise ValueError(f"Arena image not found: {image_path}")
-
+        self._validate_file(image_path, [".png", ".jpg", ".jpeg", ".tif", ".tiff"], "Arena image")
         # For demonstration, assume we derive the arena source from the image filename or metadata.
         arena_source = "DLC_Export" if "DLC" in image_path.stem else "Manual"
 
