@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from typing import Optional, List, Union, Callable, Dict, Any
-from .metadata import ProjectState, MouseMetadata, ExperimentMetadata, PluginMetadata
+from .metadata import ProjectState, SubjectMetadata, ExperimentMetadata, PluginMetadata
 from .sort_manager import sort_items
 from .logging_bus import LoggingEventBus
 
@@ -72,7 +72,7 @@ class StateManager:
     def get_sorted_list(self, item_type: str, custom_sort: Optional[str] = None):
         """
         A unified method to fetch and return sorted items for a given type:
-          - 'subjects'    -> returns sorted MouseMetadata objects
+          - 'subjects'    -> returns sorted SubjectMetadata objects
           - 'experiments' -> returns sorted ExperimentMetadata objects
           - 'plugins'     -> returns sorted PluginMetadata
           - 'body_parts'  -> returns sorted list of BodyPartMetadata
@@ -90,7 +90,7 @@ class StateManager:
         elif item_type == "experiments":
             all_items = list(self._project_state.experiments.values())
             if custom_sort:
-                if custom_sort == "mouse":
+                if custom_sort == "subject":
                     key_func = lambda e: e.subject_id
                 elif custom_sort == "plugin":
                     key_func = lambda e: e.type  # Now using string directly instead of enum
@@ -417,4 +417,9 @@ class StateManager:
         self._project_state.settings.update(new_settings)
         logger.info("Global settings updated.")
         self.notify_observers()
+
+    # New convenience method for retrieving sorted subjects
+    def get_sorted_subjects(self) -> list:
+        """Return a sorted list of subject metadata objects based on the current global sort mode."""
+        return self.get_sorted_list("subjects")
 

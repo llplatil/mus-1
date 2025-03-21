@@ -9,7 +9,7 @@ import inspect
 import platform
 from pydantic.json import pydantic_encoder
 
-from .metadata import ProjectState, ProjectMetadata, MouseMetadata, Sex, ExperimentMetadata, ArenaImageMetadata, VideoMetadata
+from .metadata import ProjectState, ProjectMetadata, Sex, ExperimentMetadata, ArenaImageMetadata, VideoMetadata, SubjectMetadata
 from .state_manager import StateManager  # so we can type hint or reference if needed
 from core.plugin_manager import PluginManager
 from plugins.base_plugin import BasePlugin
@@ -154,9 +154,9 @@ class ProjectManager:
         self._current_project_root = project_root
         logger.info("Project loaded and ready in memory.")
 
-    def add_mouse(
+    def add_subject(
         self,
-        mouse_id: str,
+        subject_id: str,
         sex: Sex = Sex.UNKNOWN,
         genotype: Optional[str] = None,
         treatment: Optional[str] = None,
@@ -165,12 +165,13 @@ class ProjectManager:
         in_training_set: bool = False,
     ) -> None:
         """
-        Create or update a MouseMetadata entry in the project's State.
+        Create or update a SubjectMetadata entry in the project's state.
+        Previously named add_mouse.
         """
-        existing = self.state_manager.project_state.subjects.get(mouse_id)
+        existing = self.state_manager.project_state.subjects.get(subject_id)
         if existing:
-            logger.info(f"Updating existing mouse: {mouse_id}")
-            self.log_bus.log(f"Updating existing mouse: {mouse_id}", "info", "ProjectManager")
+            logger.info(f"Updating existing subject: {subject_id}")
+            self.log_bus.log(f"Updating existing subject: {subject_id}", "info", "ProjectManager")
             existing.sex = sex
             existing.genotype = genotype
             existing.treatment = treatment
@@ -178,9 +179,9 @@ class ProjectManager:
             existing.birth_date = birth_date
             existing.in_training_set = in_training_set
         else:
-            # New mouse addition
-            new_mouse = MouseMetadata(
-                id=mouse_id,
+            # New subject addition using the renamed SubjectMetadata
+            new_subject = SubjectMetadata(
+                id=subject_id,
                 sex=sex,
                 genotype=genotype,
                 treatment=treatment,
@@ -188,13 +189,27 @@ class ProjectManager:
                 birth_date=birth_date,
                 in_training_set=in_training_set
             )
-            self.state_manager.project_state.subjects[mouse_id] = new_mouse
-            logger.info(f"Added new mouse: {mouse_id}")
-            self.log_bus.log(f"Added new mouse: {mouse_id}", "success", "ProjectManager")
+            self.state_manager.project_state.subjects[subject_id] = new_subject
+            logger.info(f"Added new subject: {subject_id}")
+            self.log_bus.log(f"Added new subject: {subject_id}", "success", "ProjectManager")
             self.refresh_all_lists()
 
-        # Refresh UI lists to immediately display the updated subject list
         self.save_project()
+    
+    # New method to remove a subject from the project state
+    def remove_subject(self, subject_id: str) -> None:
+        """
+        Remove a subject by its ID from the project state.
+        """
+        if subject_id in self.state_manager.project_state.subjects:
+            del self.state_manager.project_state.subjects[subject_id]
+            logger.info(f"Removed subject: {subject_id}")
+            self.log_bus.log(f"Removed subject: {subject_id}", "info", "ProjectManager")
+        else:
+            logger.warning(f"Subject {subject_id} not found - cannot remove")
+            self.log_bus.log(f"Subject {subject_id} not found - cannot remove", "warning", "ProjectManager")
+        self.save_project()
+        self.state_manager.notify_observers()
 
     def add_experiment(self, experiment_id, subject_id, date_recorded, exp_type, processing_stage, data_source, plugin_selections, plugin_params):
         # Core logic to add an experiment with hierarchical workflow

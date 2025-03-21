@@ -3,7 +3,7 @@
         "id": "841F_20230405_NOR",
         "date": "2023-04-05",
         "type": "NOR",
-        "mouse_id": "841F",
+        "subject_id": "841F",
         "tracking_file": "841F_20230405_NOR_tracking.csv",
         "arena_image": "841F_20230405_NOR_arena.png",
         "batch_associations": {
@@ -25,7 +25,7 @@
         "id": "842F_20230405_NOR",
         "date": "2023-04-05",
         "type": "NOR",
-        "mouse_id": "842F",
+        "subject_id": "842F",
         "tracking_file": "842F_20230405_NOR_tracking.csv",
         "arena_image": "842F_20230405_NOR_arena.png",
         "batch_associations": {

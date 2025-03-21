@@ -18,7 +18,7 @@ logger = logging.getLogger("mus1.core.metadata")
 def init_metadata() -> bool:
     """
     Example: optional function to verify that all models/enums are fine.
-    The rest of your data classes remain here (MouseMetadata, etc.).
+    The rest of your data classes remain here (SubjectMetadata, etc.).
     """
     try:
         logger.info("Initializing metadata system")
@@ -80,9 +80,9 @@ class TrackingData(BaseModel):
     source: str = "Unknown"
 
 
-class MouseMetadata(BaseModel):
+class SubjectMetadata(BaseModel):
     """
-    Represents a single subject (mouse).
+    Represents a single subject.
     Advanced or cross-field validations (e.g., checking future birth_date)
     are done here at a basic level, while more elaborate checks happen outside.
     """
@@ -101,7 +101,7 @@ class MouseMetadata(BaseModel):
     @validator("id")
     def validate_id(cls, v: str) -> str:
         if not v or len(v) < 3:
-            raise ValueError("Mouse ID must be at least 3 characters.")
+            raise ValueError("Subject ID must be at least 3 characters.")
         return v
 
     @validator("birth_date")
@@ -118,7 +118,7 @@ class ExperimentMetadata(BaseModel):
     Core properties:
       - id: unique experiment ID
       - type: experiment type (as a string, e.g., "NOR", "OpenField")
-      - subject_id: ID of the subject (mouse) undergoing experiment
+      - subject_id: ID of the subject undergoing experiment
       - date_recorded: when the experiment was recorded
       - date_added: when the experiment was added to the project
     
@@ -326,7 +326,7 @@ class ProjectState(BaseModel):
         }
     )
 
-    subjects: Dict[str, MouseMetadata] = Field(default_factory=dict)
+    subjects: Dict[str, SubjectMetadata] = Field(default_factory=dict)
     experiments: Dict[str, ExperimentMetadata] = Field(default_factory=dict)
     batches: Dict[str, BatchMetadata] = Field(default_factory=dict)
     arena_images: Dict[str, ArenaImageMetadata] = Field(default_factory=dict)

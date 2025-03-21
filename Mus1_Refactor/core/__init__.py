@@ -5,7 +5,7 @@ Exposes main functionalities: data models, managers, etc.
 
 from .metadata import (
     init_metadata,
-    MouseMetadata,
+    SubjectMetadata,
     ExperimentMetadata,
     BatchMetadata,
     ProjectState,
@@ -21,7 +21,7 @@ from .theme_manager import ThemeManager
 
 __all__ = [
     "init_metadata",
-    "MouseMetadata",
+    "SubjectMetadata",
     "ExperimentMetadata",
     "BatchMetadata",
     "ProjectState",

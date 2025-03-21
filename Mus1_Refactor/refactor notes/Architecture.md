@@ -119,7 +119,7 @@
 
 ### Metadata Models
 - Defined using Pydantic for robust, consistent validation.
-- Models include MouseMetadata, ExperimentMetadata, PluginMetadata, BodyPartMetadata, ObjectMetadata, etc.
+- Models include SubjectMetadata, ExperimentMetadata, PluginMetadata, BodyPartMetadata, ObjectMetadata, etc.
 
 ### Sorting and Validation
 - Centralized sorting logic in StateManager now returns sorted dictionaries for both master and active lists.
@@ -180,7 +180,7 @@
 
 This document serves as a comprehensive reference for developers to understand the architecture and implementation details of MUS1.
 
-### Recent Updates from last Composer Session
+### Recent Updates- now less recent lol 
 
 - **Persistent UI-to-State Synchronization:**
   - Updated the handling of project notes in the UI (NotesBox) so that changes are explicitly committed to the project state (`state.settings["project_notes"]`) and persisted via a call to `save_project()`. This ensures that notes persist across project switches and application reloads.

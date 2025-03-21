@@ -168,25 +168,20 @@ class DataManager:
 
         return {"valid": True, "source": arena_source, "path": str(image_path)}
 
-    def import_mouse_metadata_from_excel(self, excel_path: Path):
-        """Import mouse metadata from an Excel file and update the project state with MouseMetadata entries."""
-        from .metadata import MouseMetadata
+    def import_subject_metadata_from_excel(self, excel_path: Path):
+        """Import subject metadata from an Excel file and update the project state with SubjectMetadata entries."""
+        from .metadata import SubjectMetadata
+
         df = pd.read_excel(excel_path)
         for _, row in df.iterrows():
-            mouse_id = row["Mouse ID"]
-            sex = row.get("Sex", "UNKNOWN")
-            genotype = row.get("Genotype", "")
-            treatment = row.get("Treatment", "")
-            birth_date = pd.to_datetime(row.get("Birth Date"), errors='coerce')
-            notes = row.get("Notes", "")
-            self.state_manager.project_state.subjects[mouse_id] = MouseMetadata(
-                id=mouse_id,
-                sex=sex,
-                genotype=genotype,
-                treatment=treatment,
-                notes=notes,
-                birth_date=birth_date,
-                in_training_set=False
+            subject_id = row["Subject ID"]
+            # Create a SubjectMetadata object from the row data and add it to the state
+            self.state_manager.project_state.subjects[subject_id] = SubjectMetadata(
+                id=subject_id,
+                sex=row.get("Sex", "Unknown"),
+                birth_date=row.get("Birth Date"),
+                genotype=row.get("Genotype"),
+                in_training_set=row.get("Training Set", False)
             )
         self.state_manager.notify_observers()
 

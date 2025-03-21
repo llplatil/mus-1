@@ -1,7 +1,7 @@
 /* ==== BASE STYLES ==== */
 QWidget {
   font-size: 12px;
-  font-family: "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
   background-color: $BACKGROUND_COLOR;
   color: $TEXT_COLOR;
 }

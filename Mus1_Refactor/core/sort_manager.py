@@ -10,7 +10,7 @@ This module provides a single entry point for sorting lists with different modes
   - 'Date Added'
 
 All list sorting across the application should use this function. For experiments,
-custom sorting options (e.g., 'mouse', 'plugin', 'date') are handled in state_manager.get_sorted_list.
+custom sorting options (e.g., 'subject', 'plugin', 'date') are handled in state_manager.get_sorted_list.
 """
 
 def natural_key(text: str) -> List[Any]:

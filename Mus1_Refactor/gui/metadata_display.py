@@ -1,6 +1,6 @@
 from PySide6.QtWidgets import (
     QTreeWidget, QTreeWidgetItem, QWidget, QVBoxLayout, 
-    QLabel, QFrame, QTableWidget, QTableWidgetItem, QHeaderView, QCheckBox
+    QLabel, QFrame, QTableWidget, QTableWidgetItem, QHeaderView, QCheckBox, QSizePolicy
 )
 from PySide6.QtCore import Qt, Signal
 from datetime import datetime
@@ -29,14 +29,14 @@ class MetadataTreeView(QTreeWidget):
         
         # Configure sizing
         self.setMinimumHeight(200)
-        self.setSizePolicy(QHeaderView.Stretch, QHeaderView.Stretch)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         
     def populate_subjects_with_experiments(self, subjects_dict, experiments_dict):
         """
         Populate tree with subjects as parents and experiments as children.
         
         Args:
-            subjects_dict: Dictionary of subject ID to MouseMetadata
+            subjects_dict: Dictionary of subject ID to SubjectMetadata
             experiments_dict: Dictionary of experiment ID to ExperimentMetadata
         """
         self.clear()
@@ -290,7 +290,7 @@ class MetadataGridDisplay(QWidget):
         Populate the grid with subject data.
         
         Args:
-            subjects_dict: Dictionary of subject ID to MouseMetadata
+            subjects_dict: Dictionary of subject ID to SubjectMetadata
         """
         columns = ["id", "sex", "genotype", "birth_date", "treatment"]
         items = []

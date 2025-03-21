@@ -1,11 +1,11 @@
-# MUS1: Mouse Behavior Analysis Tool
+# MUS1: Subject Behavior Analysis Tool
 
-A Python-based tool designed to streamline the analysis of mouse behavior data.
+A Python-based tool designed to streamline the analysis of subject behavior data.
 
 ## Overview
 
 MUS1 takes the CSV tracking files and arena images from your DeepLabCut projects and makes it easy to:
-1. Visualize mouse movement patterns
+1. Visualize subject movement patterns
 2. Organize experiments and subjects with metadata
 3. Batch process multiple experiments using optimized settings
 4. Apply consistent analysis across various experiment types
