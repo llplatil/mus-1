@@ -232,6 +232,7 @@ class StateManager:
         if self._project_state.project_metadata is not None:
             settings_dict["global_sort_mode"] = self._project_state.project_metadata.global_sort_mode
             settings_dict["global_frame_rate"] = self._project_state.project_metadata.global_frame_rate
+            settings_dict["global_frame_rate_enabled"] = self._project_state.project_metadata.global_frame_rate_enabled
             settings_dict["master_body_parts"] = self._project_state.project_metadata.master_body_parts
             settings_dict["active_body_parts"] = self._project_state.project_metadata.active_body_parts
             settings_dict["master_tracked_objects"] = self._project_state.project_metadata.master_tracked_objects
@@ -239,11 +240,36 @@ class StateManager:
         else:
             settings_dict["global_sort_mode"] = self._project_state.settings.get("global_sort_mode", "Natural Order (Numbers as Numbers)")
             settings_dict["global_frame_rate"] = self._project_state.settings.get("global_frame_rate", 60)
+            settings_dict["global_frame_rate_enabled"] = self._project_state.settings.get("global_frame_rate_enabled", False)
             settings_dict["master_body_parts"] = self._project_state.settings.get("body_parts", [])
             settings_dict["active_body_parts"] = self._project_state.settings.get("active_body_parts", [])
             settings_dict["master_tracked_objects"] = self._project_state.settings.get("master_tracked_objects", [])
             settings_dict["active_tracked_objects"] = self._project_state.settings.get("active_tracked_objects", [])
         return settings_dict
+
+    def get_treatments(self) -> dict:
+        """
+        Returns the treatments dictionary containing 'available' and 'active' lists,
+        sorted according to the global sort mode from sort_manager.
+        """
+        from .sort_manager import sort_items
+        treatments = self._project_state.settings.get("treatments", {"available": [], "active": []})
+        sort_mode = self.global_settings.get("global_sort_mode")
+        treatments["available"] = sort_items(treatments["available"], sort_mode, key_func=lambda x: x)
+        treatments["active"] = sort_items(treatments["active"], sort_mode, key_func=lambda x: x)
+        return treatments
+
+    def get_genotypes(self) -> dict:
+        """
+        Returns the genotypes dictionary containing 'available' and 'active' lists,
+        sorted according to the global sort mode from sort_manager.
+        """
+        from .sort_manager import sort_items
+        genotypes = self._project_state.settings.get("genotypes", {"available": [], "active": []})
+        sort_mode = self.global_settings.get("global_sort_mode")
+        genotypes["available"] = sort_items(genotypes["available"], sort_mode, key_func=lambda x: x)
+        genotypes["active"] = sort_items(genotypes["active"], sort_mode, key_func=lambda x: x)
+        return genotypes
 
     def get_global_sort_mode(self) -> str:
         """

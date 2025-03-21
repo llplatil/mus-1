@@ -104,7 +104,8 @@ class ProjectManager:
             master_body_parts=[],
             active_body_parts=[],
             tracked_objects=[],
-            global_frame_rate=60
+            global_frame_rate=60,
+            global_frame_rate_enabled=False  # Default to OFF
         )
 
         new_state = ProjectState(project_metadata=new_metadata)
@@ -150,9 +151,14 @@ class ProjectManager:
         loaded_state = ProjectState(**data)
         logger.info("ProjectState loaded successfully from JSON.")
 
+        # Make sure we completely replace the state_manager's project_state to ensure isolation
+        # This is crucial for settings like frame_rate to be properly isolated between projects
         self.state_manager._project_state = loaded_state
         self._current_project_root = project_root
         logger.info("Project loaded and ready in memory.")
+        
+        # Notify observers about the project change to refresh UI components
+        self.state_manager.notify_observers()
 
     def add_subject(
         self,
@@ -163,6 +169,7 @@ class ProjectManager:
         notes: str = "",
         birth_date: Optional[datetime] = None,
         in_training_set: bool = False,
+        death_date: Optional[datetime] = None,
     ) -> None:
         """
         Create or update a SubjectMetadata entry in the project's state.
@@ -177,6 +184,7 @@ class ProjectManager:
             existing.treatment = treatment
             existing.notes = notes
             existing.birth_date = birth_date
+            existing.death_date = death_date
             existing.in_training_set = in_training_set
         else:
             # New subject addition using the renamed SubjectMetadata
@@ -187,6 +195,7 @@ class ProjectManager:
                 treatment=treatment,
                 notes=notes,
                 birth_date=birth_date,
+                death_date=death_date,
                 in_training_set=in_training_set
             )
             self.state_manager.project_state.subjects[subject_id] = new_subject
@@ -509,5 +518,110 @@ class ProjectManager:
         This method returns the raw preference stored in project metadata.
         """
         return self.state_manager.get_theme_preference()
+
+    def handle_apply_general_settings(self):
+        """Apply the general settings."""
+        sort_mode = self.sort_mode_dropdown.currentText()
+        frame_rate_enabled = self.enable_frame_rate_checkbox.isChecked()
+        frame_rate = self.frame_rate_spin.value()
+        
+        # Update the project-specific settings in the current project state
+        if self.state_manager:
+            # Store in project_metadata if it exists
+            if self.state_manager.project_state.project_metadata:
+                self.state_manager.project_state.project_metadata.global_frame_rate = frame_rate
+                self.state_manager.project_state.project_metadata.global_frame_rate_enabled = frame_rate_enabled
+                
+            # Also store in the settings dictionary for backwards compatibility
+            self.state_manager.project_state.settings.update({
+                "global_sort_mode": sort_mode,
+                "global_frame_rate_enabled": frame_rate_enabled,
+                "global_frame_rate": frame_rate
+            })
+            
+            # Save the project to persist these settings
+            self.save_project()
+            
+            # Notify observers to update UI elements
+            self.state_manager.notify_observers()
+                
+        self.navigation_pane.add_log_message("Applied general settings to current project.", "success")
+
+    # New methods for Treatments and Genotypes
+    def add_treatment(self, new_treatment: str) -> None:
+        """
+        Add a new treatment to the available treatments list.
+        """
+        if not new_treatment:
+            raise ValueError("Treatment name cannot be empty.")
+        state = self.state_manager.project_state
+        # Initialize treatments dictionary in settings if not present
+        treatments = state.settings.setdefault("treatments", {"available": [], "active": []})
+        if new_treatment in treatments["available"]:
+            raise ValueError(f"Treatment '{new_treatment}' already exists in available treatments.")
+        treatments["available"].append(new_treatment)
+        self.save_project()
+        self.state_manager.notify_observers()
+
+    def add_genotype(self, new_genotype: str) -> None:
+        """
+        Add a new genotype to the available genotypes list.
+        """
+        if not new_genotype:
+            raise ValueError("Genotype name cannot be empty.")
+        state = self.state_manager.project_state
+        # Initialize genotypes dictionary in settings if not present
+        genotypes = state.settings.setdefault("genotypes", {"available": [], "active": []})
+        if new_genotype in genotypes["available"]:
+            raise ValueError(f"Genotype '{new_genotype}' already exists in available genotypes.")
+        genotypes["available"].append(new_genotype)
+        self.save_project()
+        self.state_manager.notify_observers()
+
+    def update_active_treatments(self, active_treatments: list[str]) -> None:
+        """
+        Update the active treatments list.
+        """
+        state = self.state_manager.project_state
+        treatments = state.settings.setdefault("treatments", {"available": [], "active": []})
+        treatments["active"] = active_treatments
+        self.save_project()
+        self.state_manager.notify_observers()
+
+    def update_active_genotypes(self, active_genotypes: list[str]) -> None:
+        """
+        Update the active genotypes list.
+        """
+        state = self.state_manager.project_state
+        genotypes = state.settings.setdefault("genotypes", {"available": [], "active": []})
+        genotypes["active"] = active_genotypes
+        self.save_project()
+        self.state_manager.notify_observers()
+
+    def remove_treatment(self, treatment: str) -> None:
+        """
+        Remove a treatment from both the available and active lists.
+        """
+        state = self.state_manager.project_state
+        treatments = state.settings.get("treatments", {"available": [], "active": []})
+        if treatment in treatments["available"]:
+            treatments["available"].remove(treatment)
+        if treatment in treatments["active"]:
+            treatments["active"].remove(treatment)
+        self.save_project()
+        self.state_manager.notify_observers()
+
+    def remove_genotype(self, genotype: str) -> None:
+        """
+        Remove a genotype from both the available and active lists.
+        """
+        state = self.state_manager.project_state
+        genotypes = state.settings.get("genotypes", {"available": [], "active": []})
+        if genotype in genotypes["available"]:
+            genotypes["available"].remove(genotype)
+        if genotype in genotypes["active"]:
+            genotypes["active"].remove(genotype)
+        self.save_project()
+        self.state_manager.notify_observers()
 
     

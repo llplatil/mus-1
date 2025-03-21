@@ -7,6 +7,7 @@ from pathlib import Path
 from gui.base_view import BaseView
 from PySide6.QtCore import Qt
 from core import ObjectMetadata, BodyPartMetadata  # Import both from core package consistently
+from core.data_manager import FrameRateResolutionError  # Import custom exception
 
 
 class NotesBox(QGroupBox):
@@ -484,13 +485,25 @@ class ProjectView(BaseView):
             main_window.change_theme(theme_choice)
 
     def update_frame_rate_from_state(self):
-        """Update frame rate settings from the current state."""
-        # Use the standardized state manager from __init__
-        state_manager = self.state_manager
-        frame_rate = state_manager.global_settings.get("global_frame_rate", 60)
-        frame_rate_enabled = state_manager.global_settings.get("global_frame_rate_enabled", True)
+        """Update frame rate settings from the current state using DataManager resolution."""
+        try:
+            final_frame_rate = self.window().data_manager._resolve_frame_rate(None, None, None)
+        except FrameRateResolutionError as e:
+            self.navigation_pane.add_log_message(f"Frame rate resolution error: {str(e)}", "error")
+            final_frame_rate = 0
+
+        if final_frame_rate == "OFF":
+            frame_rate_enabled = False
+            display_rate = 60  # Default display value when disabled
+            self.navigation_pane.add_log_message("Global frame rate is disabled - experiment-specific rates will be required", "info")
+        else:
+            frame_rate_enabled = True
+            display_rate = final_frame_rate
+            self.navigation_pane.add_log_message(f"Global frame rate is enabled: {final_frame_rate} fps", "info")
+
+        # Update UI elements if they exist
         if hasattr(self, 'frame_rate_spin'):
-            self.frame_rate_spin.setValue(frame_rate)
+            self.frame_rate_spin.setValue(display_rate)
         if hasattr(self, 'enable_frame_rate_checkbox'):
             self.enable_frame_rate_checkbox.setChecked(frame_rate_enabled)
 
@@ -603,6 +616,10 @@ class ProjectView(BaseView):
                 else:
                     notes = state.settings.get("project_notes", "")
                 self.project_notes_box.set_text(notes)
+                
+                # Update UI settings from the loaded project
+                self.update_frame_rate_from_state()
+                self.update_sort_mode_from_state()
                 
                 # Refresh all UI lists including objects and body parts
                 self.refresh_lists()
@@ -834,10 +851,19 @@ class ProjectView(BaseView):
         sort_row.addWidget(sort_label)
         sort_row.addWidget(self.sort_mode_dropdown, 1)
         
-        frame_rate_row = self.create_form_row(display_layout)
+        # Frame rate settings section with improved UI
+        frame_rate_section, frame_rate_layout = self.create_form_section("Frame Rate Settings", display_layout)
         
-        self.enable_frame_rate_checkbox = QCheckBox("Enable Frame Rate Limit")
-        self.enable_frame_rate_checkbox.setChecked(True)
+        help_label = QLabel("When enabled, this global frame rate will be used for all files unless explicitly overridden.")
+        help_label.setWordWrap(True)
+        help_label.setProperty("class", "mus1-help-text")
+        frame_rate_layout.addWidget(help_label)
+        
+        frame_rate_row = self.create_form_row(frame_rate_layout)
+        
+        self.enable_frame_rate_checkbox = QCheckBox("Enable Global Frame Rate")
+        # Default to OFF initially - will be updated by update_frame_rate_from_state()
+        self.enable_frame_rate_checkbox.setChecked(False)
         
         frame_rate_label = self.create_form_label("Frame Rate:")
         
@@ -850,6 +876,11 @@ class ProjectView(BaseView):
         frame_rate_row.addWidget(frame_rate_label)
         frame_rate_row.addWidget(self.frame_rate_spin)
         frame_rate_row.addStretch(1)
+        
+        note_label = QLabel("Note: If global frame rate is disabled, you will need to specify frame rates for individual experiments.")
+        note_label.setWordWrap(True)
+        note_label.setProperty("class", "mus1-note-text")
+        frame_rate_layout.addWidget(note_label)
         
         # Use create_button_row for the apply button for consistent styling
         apply_button_row = self.create_button_row(display_layout)
@@ -864,6 +895,7 @@ class ProjectView(BaseView):
         # Initial population of project list
         self.populate_project_list()
         self.update_sort_mode_from_state()
+        self.update_frame_rate_from_state()  # Initialize frame rate settings from state
    
     # Add new method for removing items from master list
     def handle_remove_from_master(self):
@@ -912,16 +944,27 @@ class ProjectView(BaseView):
         frame_rate_enabled = self.enable_frame_rate_checkbox.isChecked()
         frame_rate = self.frame_rate_spin.value()
         
+        # Use standardized frame rate configuration
+        frame_rate_config = {
+            "global_frame_rate_enabled": frame_rate_enabled,
+            "global_frame_rate": frame_rate
+        }
+        
         # Update the state with the new settings via state_manager
         if self.state_manager:
+            # First, update project_metadata if it exists
+            if self.state_manager.project_state.project_metadata:
+                self.state_manager.project_state.project_metadata.global_frame_rate = frame_rate
+                self.state_manager.project_state.project_metadata.global_frame_rate_enabled = frame_rate_enabled
+                
+            # Then update the settings dictionary with consistent keys
             self.state_manager.update_global_settings({
                 "global_sort_mode": sort_mode,
-                "frame_rate_enabled": frame_rate_enabled,
-                "frame_rate": frame_rate
+                "global_frame_rate_enabled": frame_rate_enabled,
+                "global_frame_rate": frame_rate
             })
             
-            # Instead of calling a non-existent save_project_state on state_manager,
-            # we call the save_project method on project_manager to persist changes.
+            # Save the project to persist these settings
             self.window().project_manager.save_project()
                 
         self.navigation_pane.add_log_message("Applied general settings.", "success")

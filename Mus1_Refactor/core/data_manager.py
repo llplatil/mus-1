@@ -1,12 +1,17 @@
 import logging
 from pathlib import Path
 import pandas as pd
-from typing import Optional
+from typing import Optional, Union
 import yaml
 import numpy as np
 import matplotlib.pyplot as plt
 from PIL import Image
 from io import BytesIO
+
+# Custom Exception for Frame Rate Resolution
+class FrameRateResolutionError(Exception):
+    """Custom exception raised when frame rate resolution fails."""
+    pass
 
 logger = logging.getLogger("mus1.core.data_manager")
 
@@ -28,25 +33,63 @@ class DataManager:
         if file_path.suffix.lower() not in [ext.lower() for ext in expected_extensions]:
             raise ValueError(f"Expected a {file_type} with extension {expected_extensions}, got: {file_path.suffix}")
 
-    def _resolve_frame_rate(self, frame_rate: Optional[int], experiment_id: Optional[str], batch_id: Optional[str]) -> int:
+    def _resolve_frame_rate(self, frame_rate: Optional[int], experiment_id: Optional[str], batch_id: Optional[str]) -> Union[int, str]:
         """
         Determine the final frame rate using an explicit parameter or by checking experiment,
         batch, or project defaults.
+        
+        Resolution logic:
+          1. If an explicit frame_rate is provided, use it.
+          2. If the global frame rate is enabled and a valid value exists, use the global frame rate.
+          3. If the global frame rate is enabled but the global value is missing, raise FrameRateResolutionError.
+          4. If the global frame rate is disabled, attempt to use an experiment or batch specific frame rate.
+          5. Otherwise, return "OFF" to indicate that frame rate functionality is turned off.
+        
+        Returns:
+            An integer frame rate if resolved, or the string "OFF" if frame rate functionality is disabled.
+        
+        Raises:
+            FrameRateResolutionError: If frame rate is enabled but no valid frame rate value is provided.
         """
-        ps = self.state_manager.project_state
+        # 1. If an explicit frame_rate is provided, use it.
         if frame_rate is not None:
+            logger.info(f"Using explicitly provided frame rate: {frame_rate}")
             return frame_rate
-        current_experiment = ps.experiments.get(experiment_id) if experiment_id else None
-        current_batch = ps.batches.get(batch_id) if batch_id else None
-        if current_experiment and current_experiment.frame_rate is not None:
-            return current_experiment.frame_rate
-        elif current_batch and getattr(current_batch, "frame_rate", None) is not None:
-            return current_batch.frame_rate
+
+        ps = self.state_manager.project_state
+
+        # Retrieve global frame rate enabled flag and value.
+        is_global_enabled = False
+        global_rate = None
+        if ps.project_metadata:
+            is_global_enabled = ps.project_metadata.global_frame_rate_enabled
+            global_rate = ps.project_metadata.global_frame_rate
         else:
-            if ps.project_metadata and ps.settings.get("global_frame_rate_enabled", True):
-                return ps.project_metadata.global_frame_rate
-            else:
-                return 60
+            is_global_enabled = ps.settings.get("global_frame_rate_enabled", False)
+            global_rate = ps.settings.get("global_frame_rate", None)
+
+        # 2. If global frame rate is enabled – then a valid value must exist.
+        if is_global_enabled:
+            if global_rate is None:
+                raise FrameRateResolutionError("Frame rate is enabled but no global frame rate value is set.")
+            logger.info(f"Using global frame rate: {global_rate}")
+            return global_rate
+
+        # 3. If global frame rate is disabled, check experiment-specific settings.
+        current_experiment = ps.experiments.get(experiment_id) if experiment_id else None
+        if current_experiment and hasattr(current_experiment, "frame_rate") and current_experiment.frame_rate is not None:
+            logger.info(f"Using experiment-specific frame rate: {current_experiment.frame_rate}")
+            return current_experiment.frame_rate
+
+        # 4. Check batch-specific settings.
+        current_batch = ps.batches.get(batch_id) if batch_id else None
+        if current_batch and hasattr(current_batch, "frame_rate") and current_batch.frame_rate is not None:
+            logger.info(f"Using batch-specific frame rate: {current_batch.frame_rate}")
+            return current_batch.frame_rate
+
+        # 5. Otherwise, frame rate functionality is considered turned off.
+        logger.info("Frame rate functionality is disabled and no specific frame rate provided; returning 'OFF'")
+        return "OFF"
 
     def _resolve_threshold(self, experiment_id: Optional[str], batch_id: Optional[str]) -> Optional[float]:
         """
@@ -82,6 +125,20 @@ class DataManager:
         """
         Load and process a DLC CSV tracking file.
         Now we also look up the final frame rate from experiment/batch if not provided.
+        
+        Args:
+            file_path: Path to the CSV file
+            frame_rate: Optional explicit frame rate to use
+            experiment_id: Optional experiment ID to lookup frame rate
+            batch_id: Optional batch ID to lookup frame rate
+            
+        Returns:
+            DataFrame with processed tracking data
+            
+        Raises:
+            FileNotFoundError: If the file doesn't exist
+            ValueError: If no frame rate could be determined or file is invalid
+            FrameRateResolutionError: If frame rate is enabled but value is missing
         """
         # Validate file using the new helper
         self._validate_file(file_path, [".csv"], "Tracking file")
@@ -89,8 +146,13 @@ class DataManager:
         df = pd.read_csv(file_path, header=[0, 1, 2], index_col=0)
 
         # Resolve frame rate using the helper method
-        final_frame_rate = self._resolve_frame_rate(frame_rate, experiment_id, batch_id)
-        logger.info(f"Chosen frame_rate for {file_path} is: {final_frame_rate}")
+        try:
+            final_frame_rate = self._resolve_frame_rate(frame_rate, experiment_id, batch_id)
+            logger.info(f"Using frame rate {final_frame_rate} for {file_path}")
+        except FrameRateResolutionError as e:
+            error_msg = f"Cannot process {file_path}: {str(e)}"
+            logger.error(error_msg)
+            raise FrameRateResolutionError(error_msg)
 
         # Resolve likelihood threshold using the helper method
         final_threshold = self._resolve_threshold(experiment_id, batch_id)
@@ -98,7 +160,7 @@ class DataManager:
             df = df[df.iloc[:, 2, 2] >= final_threshold]
 
         logger.info(f"Successfully processed DLC CSV: {file_path}")
-        return df 
+        return df
 
     def extract_bodyparts_from_dlc_config(self, config_file: Path) -> list:
         """Extracts body parts from a DLC config YAML file and returns a list of unique body parts."""

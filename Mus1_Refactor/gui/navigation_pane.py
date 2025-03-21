@@ -1,6 +1,6 @@
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QPushButton, QButtonGroup, QListWidget, QListWidgetItem, QSizePolicy, QTextEdit, QLabel, QScrollArea, QFrame
 from PySide6.QtCore import Signal, Qt
-from PySide6.QtGui import QColor, QTextCharFormat, QFont
+from PySide6.QtGui import QColor, QTextCharFormat, QFont, QTextOption
 from datetime import datetime
 
 class NavigationPane(QWidget):
@@ -81,7 +81,7 @@ class NavigationPane(QWidget):
         # Setup log display properties
         self.log_display.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.log_display.document().setMaximumBlockCount(100)  # Keep up to 100 log messages
-        self.log_display.setLineWrapMode(QTextEdit.NoWrap)
+        self.log_display.setLineWrapMode(QTextEdit.WidgetWidth)
         
         # Add the log display to the container layout
         log_container_layout.addWidget(self.log_display, 1)  # Give it stretch to fill the container
@@ -255,15 +255,21 @@ class NavigationPane(QWidget):
         self._update_log_display()
             
     def _update_log_display(self):
-        """Update the log display text with all current entries"""
+        """Update the log display text with the most recent entries, wrapped to fit column width."""
         self.log_display.clear()
         cursor = self.log_display.textCursor()
         
-        for entry, level in self.log_entries:
+        # Only show the 5 most recent log entries
+        recent_entries = self.log_entries[-5:] if len(self.log_entries) > 5 else self.log_entries
+        
+        for entry, level in recent_entries:
             cursor.insertText(entry + '\n', self.log_formats.get(level, self.log_formats['info']))
             
         # Scroll to the bottom to show the most recent messages
         self.log_display.verticalScrollBar().setValue(self.log_display.verticalScrollBar().maximum())
+        
+        # Ensure word wrap is enabled - this is now consistent with the WidgetWidth line wrap mode
+        self.log_display.setWordWrapMode(QTextOption.WordWrap)
         
     def clear_log(self):
         """Clear all log messages"""

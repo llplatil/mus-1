@@ -68,19 +68,29 @@ class LoggingEventBus:
             print(f"Error checking log file size: {e}")
     
     def _rotate_log_file(self) -> None:
-        """Rotate the log file by keeping only the most recent MAX_LOG_LINES lines."""
+        """Rotate the log file by removing oldest lines and keeping recent ones."""
         try:
             # Read all lines from the log file
             with open(self.log_file, 'r') as f:
                 lines = f.readlines()
             
-            # Keep only the most recent MAX_LOG_LINES lines
-            with open(self.log_file, 'w') as f:
-                for line in lines[-self.MAX_LOG_LINES:]:
-                    f.write(line)
+            # Instead of keeping just the most recent MAX_LOG_LINES,
+            # we'll delete half of the oldest lines when we reach the limit
+            num_lines = len(lines)
+            if num_lines > self.MAX_LOG_LINES:
+                # Delete oldest half of excess lines
+                lines_to_delete = (num_lines - self.MAX_LOG_LINES) // 2
+                lines_to_keep = lines[lines_to_delete:]
+                
+                # Write back the kept lines
+                with open(self.log_file, 'w') as f:
+                    for line in lines_to_keep:
+                        f.write(line)
                     
-            # Log rotation completed message
-            self.logger.info(f"Log file rotated, keeping the most recent {self.MAX_LOG_LINES} lines")
+                # Log rotation completed message
+                self.logger.info(f"Log file rotated, deleted {lines_to_delete} oldest lines")
+            else:
+                self.logger.info(f"Log rotation not needed, {num_lines} lines in log file")
         except Exception as e:
             print(f"Error rotating log file: {e}")
         

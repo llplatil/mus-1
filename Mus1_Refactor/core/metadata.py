@@ -91,6 +91,7 @@ class SubjectMetadata(BaseModel):
 
     sex: Sex = Sex.UNKNOWN
     birth_date: Optional[datetime] = None
+    death_date: Optional[datetime] = None  # Add death date field
     genotype: Optional[str] = None
     treatment: Optional[str] = None
     notes: str = ""
@@ -109,6 +110,25 @@ class SubjectMetadata(BaseModel):
         if v and v > datetime.now():
             raise ValueError("Birth date cannot be in the future.")
         return v
+    
+    @validator("death_date")
+    def validate_death_date(cls, v: Optional[datetime], values) -> Optional[datetime]:
+        if v and v > datetime.now():
+            raise ValueError("Death date cannot be in the future.")
+        birth_date = values.get("birth_date")
+        if v and birth_date and v < birth_date:
+            raise ValueError("Death date cannot be before birth date.")
+        return v
+        
+    @property
+    def age(self) -> Optional[int]:
+        """Calculate age in days."""
+        if not self.birth_date:
+            return None
+            
+        end_date = self.death_date if self.death_date else datetime.now()
+        delta = end_date - self.birth_date
+        return delta.days
 
 
 class ExperimentMetadata(BaseModel):
@@ -251,8 +271,9 @@ class ProjectMetadata(BaseModel):
     # Global sort mode stored with the project
     global_sort_mode: GlobalSortMode = GlobalSortMode.NATURAL_ORDER
 
-    # Global frame rate used unless an experiment specifies otherwise
+    # Global frame rate settings
     global_frame_rate: int = 60
+    global_frame_rate_enabled: bool = False  # Default to OFF
     
     # Theme preference (dark or light)
     theme_mode: str = "dark"
@@ -266,6 +287,12 @@ class ProjectMetadata(BaseModel):
         if not v or len(v.strip()) < 3:
             raise ValueError("Project name must be at least 3 characters")
         return v
+
+    # Add new fields for treatments and genotypes
+    master_treatments: List[TreatmentMetadata] = Field(default_factory=list)
+    active_treatments: List[TreatmentMetadata] = Field(default_factory=list)
+    master_genotypes: List[GenotypeMetadata] = Field(default_factory=list)
+    active_genotypes: List[GenotypeMetadata] = Field(default_factory=list)
 
 
 class ArenaImageMetadata(BaseModel):
@@ -318,7 +345,7 @@ class ProjectState(BaseModel):
     settings: Dict[str, Any] = Field(
         default_factory=lambda: {
             "global_frame_rate": 60,
-            "global_frame_rate_enabled": True,
+            "global_frame_rate_enabled": False,  # Default to OFF for consistency
             "body_parts": [],
             "active_body_parts": [],
             "tracked_objects": [],
@@ -355,5 +382,17 @@ class ObjectMetadata(BaseModel):
     name: str
     date_added: datetime = Field(default_factory=datetime.now)
     bounding_box: Optional[dict] = None  # e.g., {'x': value, 'y': value, 'width': w, 'height': h}
+
+
+class TreatmentMetadata(BaseModel):
+    name: str
+    date_added: datetime = Field(default_factory=datetime.now)
+    description: Optional[str] = None
+
+
+class GenotypeMetadata(BaseModel):
+    name: str
+    date_added: datetime = Field(default_factory=datetime.now)
+    description: Optional[str] = None
 
     

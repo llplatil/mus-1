@@ -1,5 +1,5 @@
 from PySide6.QtWidgets import QMainWindow, QTabWidget, QDialog, QMenu, QMenuBar, QApplication
-from PySide6.QtGui import QAction
+from PySide6.QtGui import QAction, QIcon, QPixmap
 from gui.project_view import ProjectView
 from gui.subject_view import SubjectView
 from gui.experiment_view import ExperimentView
@@ -8,6 +8,8 @@ from core.logging_bus import LoggingEventBus
 import logging
 import sys
 from core.theme_manager import ThemeManager
+from pathlib import Path
+from PySide6.QtCore import Qt
 
 logger = logging.getLogger("mus1.gui.main_window")
 
@@ -66,6 +68,14 @@ class MainWindow(QMainWindow):
         
         # Connect tab changes to update active observers
         self.tab_widget.currentChanged.connect(self.on_tab_changed)
+
+        # Set window icon from themes folder using the local asset (for placement in the window bar, left of the title)
+        logo_path = Path(__file__).parent.parent / "themes" / "m1logo no background.png"
+        if logo_path.exists():
+            pixmap = QPixmap(str(logo_path))
+            # Resize the logo to a proper size (32x32 recommended) for display in the window bar
+            scaled_pixmap = pixmap.scaled(32, 32, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            self.setWindowIcon(QIcon(scaled_pixmap))
 
     def create_menu_bar(self):
         """Create the main menu bar with application menus."""

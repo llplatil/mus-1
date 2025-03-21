@@ -126,6 +126,9 @@ class ProjectSelectionDialog(QDialog):
         # Populate the projects list
         self.refresh_projects_list()
 
+        # Connect Enter key to create project
+        self.new_project_line.returnPressed.connect(self.create_new_project)
+
     def toggle_location_input(self, checked):
         """Show or hide the custom location input based on checkbox state."""
         self.location_line.setVisible(checked)
@@ -204,22 +207,14 @@ class ProjectSelectionDialog(QDialog):
     def setup_background(self):
         """Set up the background with the M1 logo as a dark grayscale watermark"""
         try:
-            # Load the logo (using the PNG version with no background)
-            pixmap = QPixmap("assets/m1logo no background.png")
-            if pixmap.isNull():
-                # Fallback paths
-                alternate_paths = [
-                    "Mus1_Refactor/assets/m1logo no background.png",
-                    "../assets/m1logo no background.png",
-                    "m1logo no background.png"
-                ]
-                for path in alternate_paths:
-                    pixmap = QPixmap(path)
-                    if not pixmap.isNull():
-                        break
-                if pixmap.isNull():
-                    print("Could not find the logo image")
-                    return  # Skip if image not found
+            # Use the consistent logo asset from themes folder
+            from pathlib import Path
+            logo_path = str(Path(__file__).parent.parent / "themes" / "m1logo no background.png")
+            pixmap = QPixmap(logo_path)
+            
+            if (pixmap is None) or pixmap.isNull():
+                print("Could not find the logo image")
+                return
             
             # Convert to grayscale and darken
             image = pixmap.toImage()
@@ -238,11 +233,10 @@ class ProjectSelectionDialog(QDialog):
             
             darkened_pixmap = QPixmap.fromImage(image)
             
-            # Scale the logo to fit the dialog while maintaining aspect ratio
+            # Scale the logo to fill the entire dialog background using KeepAspectRatioByExpanding
             scaled_pixmap = darkened_pixmap.scaled(
-                self.width() * 0.8,  # Use 80% of dialog width
-                self.height() * 0.8,  # Use 80% of dialog height
-                Qt.KeepAspectRatio,
+                self.size(),
+                Qt.KeepAspectRatioByExpanding,
                 Qt.SmoothTransformation
             )
                 
@@ -254,11 +248,10 @@ class ProjectSelectionDialog(QDialog):
             painter = QPainter(transparent_pixmap)
             painter.setOpacity(0.15)  # 15% opacity for watermark effect
             
-            # Calculate center position
-            x = (self.width() - scaled_pixmap.width()) / 2
-            y = (self.height() - scaled_pixmap.height()) / 2
-            
-            painter.drawPixmap(int(x), int(y), scaled_pixmap)
+            # Calculate offsets so the scaled image is centered and covers the dialog completely
+            offset_x = (scaled_pixmap.width() - self.width()) / 2
+            offset_y = (scaled_pixmap.height() - self.height()) / 2
+            painter.drawPixmap(-int(offset_x), -int(offset_y), scaled_pixmap)
             painter.end()
             
             # Set as background
