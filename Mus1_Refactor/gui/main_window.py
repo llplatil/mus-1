@@ -31,7 +31,7 @@ class MainWindow(QMainWindow):
         self.setProperty("class", "mus1-main-window")
         
         # Configure main window
-        self.setWindowTitle("MUS1")
+        self.setWindowTitle("Mus1")
         self.resize(1200, 800)
         self.setMinimumSize(800, 600)  # Enforce minimum size as per UI guidelines
         
@@ -69,13 +69,16 @@ class MainWindow(QMainWindow):
         # Connect tab changes to update active observers
         self.tab_widget.currentChanged.connect(self.on_tab_changed)
 
-        # Set window icon from themes folder using the local asset (for placement in the window bar, left of the title)
-        logo_path = Path(__file__).parent.parent / "themes" / "m1logo no background.png"
-        if logo_path.exists():
-            pixmap = QPixmap(str(logo_path))
-            # Resize the logo to a proper size (32x32 recommended) for display in the window bar
-            scaled_pixmap = pixmap.scaled(32, 32, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-            self.setWindowIcon(QIcon(scaled_pixmap))
+        # Set window icon using multiple formats for better compatibility
+        icon_path = Path(__file__).parent.parent / "themes"
+        window_icon = QIcon()
+        
+        # Add all icon formats for better compatibility
+        window_icon.addFile(str(icon_path / "m1logo.ico"))  # For Windows
+        window_icon.addFile(str(icon_path / "m1logo no background.icns"))  # For macOS
+        window_icon.addFile(str(icon_path / "m1logo no background.png"))  # For Linux/general
+        
+        self.setWindowIcon(window_icon)
 
     def create_menu_bar(self):
         """Create the main menu bar with application menus."""

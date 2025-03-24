@@ -12,7 +12,7 @@ logging.basicConfig(
 )
 
 from PySide6.QtWidgets import QApplication, QSplashScreen
-from PySide6.QtGui import QPixmap
+from PySide6.QtGui import QPixmap, QIcon
 from PySide6.QtTest import QTest
 
 # 1) Bring in relevant classes/functions from core
@@ -39,6 +39,13 @@ def main():
 
     # Create our Qt application
     app = QApplication(sys.argv)
+    
+    # Set application icon
+    app_icon = QIcon()
+    app_icon.addFile(str(Path(__file__).parent / "themes" / "m1logo.ico"))  # For Windows
+    app_icon.addFile(str(Path(__file__).parent / "themes" / "m1logo no background for big sur.icns"))  # For macOS
+    app_icon.addFile(str(Path(__file__).parent / "themes" / "m1logo no background.png"))  # For Linux/general
+    app.setWindowIcon(app_icon)
     
     # Initialize the LoggingEventBus singleton
     log_bus = LoggingEventBus.get_instance()

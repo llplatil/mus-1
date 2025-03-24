@@ -448,22 +448,13 @@ class ProjectManager:
         state = self.state_manager.project_state
         if state.project_metadata is not None:
             master_list = []
-            # Convert existing entries to BodyPartMetadata if they are strings
-            for bp in state.project_metadata.master_body_parts:
-                if isinstance(bp, str):
-                    master_list.append(BodyPartMetadata(name=bp))
-                else:
-                    master_list.append(bp)
-
-            # Add new body parts, converting strings if needed and avoiding duplicates
             for bp in new_bodyparts:
                 if isinstance(bp, str):
-                    if not any(existing.name == bp for existing in master_list):
-                        master_list.append(BodyPartMetadata(name=bp))
-                elif hasattr(bp, 'name'):
-                    if not any(existing.name == bp.name for existing in master_list):
-                        master_list.append(bp)
-
+                    master_list.append(BodyPartMetadata(name=bp))
+                elif hasattr(bp, "name"):
+                    master_list.append(bp)
+                else:
+                    master_list.append(bp)
             state.project_metadata.master_body_parts = master_list
         else:
             state.settings["body_parts"] = new_bodyparts

@@ -330,8 +330,21 @@ class SubjectView(BaseView):
             
             for subj in all_subjects:
                 birth_str = subj.birth_date.strftime('%Y-%m-%d %H:%M:%S') if subj.birth_date else 'N/A'
+                
+                # Create the basic details string
                 details = (f"ID: {subj.id} | Sex: {subj.sex.value} | Genotype: {subj.genotype or 'N/A'} "
                           f"| Training: {subj.in_training_set}")
+                
+                # Add notes snippet if available
+                if subj.notes and subj.notes.strip():
+                    # Get a truncated version of the notes
+                    notes_snippet = subj.notes.strip()
+                    if len(notes_snippet) > 30:
+                        notes_snippet = notes_snippet[:30] + "..."
+                    
+                    # Append notes to details string
+                    details += f" | Notes: {notes_snippet}"
+                
                 self.subjects_list.addItem(details)
 
     def refresh_experiment_list_by_subject_display(self):

@@ -549,3 +549,39 @@ QWidget[pluginStage="results"][pluginSpacing="prominent"] {
   background-color: $PLUGIN_RESULTS_BG;
   border-left: 3px solid $PLUGIN_COMPONENT_ACCENT;
 }
+
+/* ==== SLIDER STYLING ==== */
+QSlider[mus1-slider="true"] {
+    min-height: 30px;
+    background: transparent;
+}
+
+QSlider[mus1-slider="true"]::groove:horizontal {
+    height: 6px;
+    background: $BORDER_COLOR;
+    border-radius: 3px;
+}
+
+QSlider[mus1-slider="true"]::sub-page:horizontal {
+    background: $PRIMARY_BUTTON_BG;
+    border-radius: 3px;
+}
+
+QSlider[mus1-slider="true"]::handle:horizontal {
+    background: $PRIMARY_BUTTON_BG;
+    width: 16px;
+    height: 16px;
+    margin: -7px 0;  /* adjusted for center alignment with increased height */
+    border-radius: 8px;
+}
+
+QSlider[mus1-slider="true"]::handle:horizontal:hover {
+    background: $PRIMARY_BUTTON_HOVER;
+}
+
+/* Tick marks styling */
+QSlider[mus1-slider="true"]::tick:horizontal {
+    background: $BORDER_COLOR;
+    width: 1px;
+    height: 6px;
+}

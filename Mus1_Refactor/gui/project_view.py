@@ -1,7 +1,7 @@
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, QLineEdit,
     QComboBox, QPushButton, QListWidget, QLabel, QFileDialog, QTextEdit,
-    QCheckBox, QSpinBox, QDoubleSpinBox
+    QCheckBox, QSpinBox, QDoubleSpinBox, QSlider
 )
 from pathlib import Path
 from gui.base_view import BaseView
@@ -193,7 +193,7 @@ class ProjectView(BaseView):
 
         # Use create_button_row for active list buttons
         active_buttons_row = self.create_button_row(active_layout)
-        remove_button = QPushButton("← Remove Selected")
+        remove_button = QPushButton("← Remove Selected from Active List")
         remove_button.setProperty("class", "mus1-secondary-button")
         remove_button.clicked.connect(self.handle_remove_active_bodyparts)
         active_buttons_row.addWidget(remove_button)
@@ -287,19 +287,48 @@ class ProjectView(BaseView):
         selected = [item.text() for item in selected_items]
         # Get current master parts for comparison (normalize via format_item)
         state = self.state_manager.project_state
-        current_master = []
         if state.project_metadata:
             current_master = [self.format_item(bp) for bp in state.project_metadata.master_body_parts]
         else:
             current_master = [str(bp) for bp in self.state_manager.global_settings.get("body_parts", [])]
         
-        # Only add body parts not already there
-        additions = [bp for bp in selected if bp not in current_master]
-        if additions:
-            self.window().project_manager.update_master_body_parts(additions)
-            self.navigation_pane.add_log_message(f"Added {len(additions)} selected body parts to master list.", "success")
+        # Compute the union of current master and newly selected body parts
+        new_master = current_master.copy()
+        for bp in selected:
+            if bp not in new_master:
+                new_master.append(bp)
+        
+        if new_master != current_master:
+            self.window().project_manager.update_master_body_parts(new_master)
+            added_count = len(new_master) - len(current_master)
+            self.navigation_pane.add_log_message(f"Added {added_count} selected body parts to master list.", "success")
         else:
             self.navigation_pane.add_log_message("No new body parts selected for master list.", "info")
+        self.refresh_lists()
+
+    def handle_remove_from_master(self):
+        """Delete selected body parts from the master list (remove them from the project)."""
+        selected_items = self.all_bodyparts_list.selectedItems()
+        if not selected_items:
+            self.navigation_pane.add_log_message("No body parts selected for deletion from master list.", "warning")
+            return
+        selected = [item.text() for item in selected_items]
+        # Get current master parts (normalize via format_item)
+        state = self.state_manager.project_state
+        if state.project_metadata:
+            current_master = [self.format_item(bp) for bp in state.project_metadata.master_body_parts]
+        else:
+            current_master = [str(bp) for bp in self.state_manager.global_settings.get("body_parts", [])]
+        # Create a new master list excluding the selected items
+        new_master = [bp for bp in current_master if bp not in selected]
+
+        # Also update the active list: remove any deleted body parts from active list
+        current_active = [self.current_body_parts_list.item(i).text() for i in range(self.current_body_parts_list.count())]
+        new_active = [bp for bp in current_active if bp not in selected]
+        
+        self.window().project_manager.update_master_body_parts(new_master)
+        self.window().project_manager.update_active_body_parts(new_active)
+        self.navigation_pane.add_log_message(f"Deleted {len(selected)} body parts from project.", "success")
         self.refresh_lists()
 
     def handle_add_selected_bodyparts_to_active(self):
@@ -316,33 +345,49 @@ class ProjectView(BaseView):
         self.refresh_lists()
 
     def handle_remove_active_bodyparts(self):
-        """Remove selected body parts from the active list."""
+        """Move selected body parts from the active list back to the master list."""
         selected_items = self.current_body_parts_list.selectedItems()
         if not selected_items:
-            self.navigation_pane.add_log_message("No body parts selected for removal.", "warning")
+            self.navigation_pane.add_log_message("No body parts selected from active list.", "warning")
             return
-        current = [self.current_body_parts_list.item(i).text() for i in range(self.current_body_parts_list.count())]
-        to_remove = [item.text() for item in selected_items]
-        updated = [bp for bp in current if bp not in to_remove]
-        self.window().project_manager.update_active_body_parts(updated)
-        self.navigation_pane.add_log_message(f"Removed {len(to_remove)} body parts from active list.", "success")
+        # Get current active list items from the UI
+        current_active = [self.current_body_parts_list.item(i).text() for i in range(self.current_body_parts_list.count())]
+        # Determine which items are to be moved back to master
+        items_to_move = [item.text() for item in selected_items]
+        # Update the active list by removing the items to be moved
+        updated_active = [bp for bp in current_active if bp not in items_to_move]
+        self.window().project_manager.update_active_body_parts(updated_active)
+        
+        # Get current master parts for comparison (normalize via format_item)
+        state = self.state_manager.project_state
+        if state.project_metadata:
+            current_master = [self.format_item(bp) for bp in state.project_metadata.master_body_parts]
+        else:
+            current_master = [str(bp) for bp in self.state_manager.global_settings.get("body_parts", [])]
+        
+        # Compute the new master list as the union of current_master and items_to_move
+        new_master = current_master.copy()
+        for bp in items_to_move:
+            if bp not in new_master:
+                new_master.append(bp)
+        if new_master != current_master:
+            self.window().project_manager.update_master_body_parts(new_master)
+        
+        self.navigation_pane.add_log_message(f"Moved {len(items_to_move)} body parts from active to master list.", "success")
         self.refresh_lists()
 
     def refresh_lists(self):
         """Refresh the master and active lists from the current state."""
         state = self.state_manager.project_state  # use the cached state_manager instead of self.window().state_manager
-        if state.project_metadata:
-            master = state.project_metadata.master_body_parts
-            active = state.project_metadata.active_body_parts
-        else:
-            # Fallback using global_settings from the state_manager
-            master = self.state_manager.global_settings.get("body_parts", [])
-            active = self.state_manager.global_settings.get("active_body_parts", [])
+        
+        # Get sorted body parts from state_manager
+        sorted_parts = self.state_manager.get_sorted_body_parts()
+        
         self.all_bodyparts_list.clear()
-        for bp in master:
+        for bp in sorted_parts["master"]:
             self.all_bodyparts_list.addItem(self.format_item(bp))  # using the centralized format_item helper
         self.current_body_parts_list.clear()
-        for bp in active:
+        for bp in sorted_parts["active"]:
             self.current_body_parts_list.addItem(self.format_item(bp))
         self.navigation_pane.add_log_message("Body parts lists refreshed.", "info")
         
@@ -502,8 +547,8 @@ class ProjectView(BaseView):
             self.navigation_pane.add_log_message(f"Global frame rate is enabled: {final_frame_rate} fps", "info")
 
         # Update UI elements if they exist
-        if hasattr(self, 'frame_rate_spin'):
-            self.frame_rate_spin.setValue(display_rate)
+        if hasattr(self, 'frame_rate_slider'):
+            self.frame_rate_slider.setValue(display_rate)
         if hasattr(self, 'enable_frame_rate_checkbox'):
             self.enable_frame_rate_checkbox.setChecked(frame_rate_enabled)
 
@@ -817,27 +862,25 @@ class ProjectView(BaseView):
         self.general_settings_page = QWidget()
         layout = QVBoxLayout(self.general_settings_page)
         layout.setSpacing(self.SECTION_SPACING)
-
-        display_group, display_layout = self.create_form_section("Display Preferences", layout)
         
+        # 1. Display Settings Group
+        display_group, display_layout = self.create_form_section("Display Settings", layout)
         theme_row = self.create_form_row(display_layout)
         theme_label = self.create_form_label("Application Theme:")
-        
         self.theme_dropdown = QComboBox()
         self.theme_dropdown.setProperty("class", "mus1-combo-box")
         self.theme_dropdown.addItems(["dark", "light", "os"])
-        
         theme_button = QPushButton("Apply Theme")
         theme_button.setProperty("class", "mus1-primary-button")
         theme_button.clicked.connect(lambda: self.handle_change_theme(self.theme_dropdown.currentText()))
-        
         theme_row.addWidget(theme_label)
         theme_row.addWidget(self.theme_dropdown, 1)
         theme_row.addWidget(theme_button)
         
-        sort_row = self.create_form_row(display_layout)
+        # 2. List Sort Settings Group
+        sort_group, sort_layout = self.create_form_section("List Sort Settings", layout)
+        sort_row = self.create_form_row(sort_layout)
         sort_label = self.create_form_label("Global Sort Mode:")
-        
         self.sort_mode_dropdown = QComboBox()
         self.sort_mode_dropdown.setProperty("class", "mus1-combo-box")
         self.sort_mode_dropdown.addItems([
@@ -846,119 +889,85 @@ class ProjectView(BaseView):
             "By Creation Date",
             "By ID"
         ])
-        self.sort_mode_dropdown.currentTextChanged.connect(self.on_sort_mode_changed)
-        
         sort_row.addWidget(sort_label)
         sort_row.addWidget(self.sort_mode_dropdown, 1)
+        apply_sort_mode_button = QPushButton("Apply Sort Mode")
+        apply_sort_mode_button.setProperty("class", "mus1-primary-button")
+        apply_sort_mode_button.clicked.connect(lambda: self.on_sort_mode_changed(self.sort_mode_dropdown.currentText()))
+        sort_row.addWidget(apply_sort_mode_button)
         
-        # Frame rate settings section with improved UI
-        frame_rate_section, frame_rate_layout = self.create_form_section("Frame Rate Settings", display_layout)
+        # 3. Video Settings Group
+        video_group, video_layout = self.create_form_section("Video Settings", layout)
+        
+        # Create the frame rate row first
+        frame_rate_row = self.create_form_row(video_layout)
+        
+        self.enable_frame_rate_checkbox = QCheckBox("Enable Global Frame Rate")
+        self.enable_frame_rate_checkbox.setChecked(False)
+        
+        self.frame_rate_slider = QSlider(Qt.Horizontal)
+        self.frame_rate_slider.setRange(0, 120)
+        self.frame_rate_slider.setValue(60)
+        self.frame_rate_slider.setProperty("mus1-slider", True)
+        self.frame_rate_slider.setEnabled(False)
+        self.enable_frame_rate_checkbox.toggled.connect(self.frame_rate_slider.setEnabled)
+        
+        # Create a label to display the current slider value
+        self.frame_rate_value_label = QLabel(str(self.frame_rate_slider.value()))
+        self.frame_rate_value_label.setFixedWidth(40)  # Fixed width for consistent UI sizing
+        self.frame_rate_slider.valueChanged.connect(lambda val: self.frame_rate_value_label.setText(str(val)))
+        
+        frame_rate_row.addWidget(self.enable_frame_rate_checkbox)
+        frame_rate_row.addWidget(self.frame_rate_slider, 1)  # Slider with stretch factor
+        frame_rate_row.addWidget(self.frame_rate_value_label)
+        apply_frame_rate_button = QPushButton("Apply Frame Rate")
+        apply_frame_rate_button.setProperty("class", "mus1-primary-button")
+        apply_frame_rate_button.clicked.connect(self.handle_apply_frame_rate)
+        frame_rate_row.addWidget(apply_frame_rate_button)
         
         help_label = QLabel("When enabled, this global frame rate will be used for all files unless explicitly overridden.")
         help_label.setWordWrap(True)
         help_label.setProperty("class", "mus1-help-text")
-        frame_rate_layout.addWidget(help_label)
+        help_label.setVisible(False)
+        video_layout.addWidget(help_label)
         
-        frame_rate_row = self.create_form_row(frame_rate_layout)
+        self.enable_frame_rate_checkbox.toggled.connect(lambda checked: help_label.setVisible(checked))
         
-        self.enable_frame_rate_checkbox = QCheckBox("Enable Global Frame Rate")
-        # Default to OFF initially - will be updated by update_frame_rate_from_state()
-        self.enable_frame_rate_checkbox.setChecked(False)
-        
-        frame_rate_label = self.create_form_label("Frame Rate:")
-        
-        self.frame_rate_spin = QSpinBox()
-        self.frame_rate_spin.setRange(1, 120)
-        self.frame_rate_spin.setValue(60)
-        self.frame_rate_spin.setProperty("class", "mus1-text-input")
-        
-        frame_rate_row.addWidget(self.enable_frame_rate_checkbox)
-        frame_rate_row.addWidget(frame_rate_label)
-        frame_rate_row.addWidget(self.frame_rate_spin)
-        frame_rate_row.addStretch(1)
-        
-        note_label = QLabel("Note: If global frame rate is disabled, you will need to specify frame rates for individual experiments.")
-        note_label.setWordWrap(True)
-        note_label.setProperty("class", "mus1-note-text")
-        frame_rate_layout.addWidget(note_label)
-        
-        # Use create_button_row for the apply button for consistent styling
-        apply_button_row = self.create_button_row(display_layout)
-        apply_settings_button = QPushButton("Apply Settings")
+        apply_button_row = self.create_button_row(layout)
+        apply_settings_button = QPushButton("Apply All Settings")
         apply_settings_button.setProperty("class", "mus1-primary-button")
         apply_settings_button.clicked.connect(self.handle_apply_general_settings)
         apply_button_row.addWidget(apply_settings_button)
-
+        
         layout.addStretch(1)
         self.add_page(self.general_settings_page, "Settings")
         
-        # Initial population of project list
         self.populate_project_list()
         self.update_sort_mode_from_state()
         self.update_frame_rate_from_state()  # Initialize frame rate settings from state
    
-    # Add new method for removing items from master list
-    def handle_remove_from_master(self):
-        """Remove selected body parts from the master list."""
-        selected_items = self.all_bodyparts_list.selectedItems()
-        if not selected_items:
-            self.navigation_pane.add_log_message("No body parts selected for removal from master list.", "warning")
-            return
-            
-        # Get the text of selected items to remove
-        to_remove = [item.text() for item in selected_items]
-        
-        # Get current master body parts from state
-        state = self.state_manager.project_state
-        if state.project_metadata:
-            master_parts = [bp.name if hasattr(bp, "name") else str(bp) for bp in state.project_metadata.master_body_parts]
-        else:
-            master_parts = [bp.name if hasattr(bp, "name") else str(bp) for bp in 
-                           self.state_manager.global_settings.get("body_parts", [])]
-        
-        # Filter out the parts to remove
-        updated_parts = [bp for bp in master_parts if bp not in to_remove]
-        
-        # Update the master body parts via project manager
-        self.window().project_manager.update_master_body_parts(updated_parts)
-        
-        # Also check if any of these were in the active list and remove them if so
-        active_parts = []
-        if state.project_metadata:
-            active_parts = [bp.name if hasattr(bp, "name") else str(bp) for bp in state.project_metadata.active_body_parts]
-        else:
-            active_parts = [bp.name if hasattr(bp, "name") else str(bp) for bp in 
-                           self.state_manager.global_settings.get("active_body_parts", [])]
-        
-        # Remove from active list if present
-        updated_active = [bp for bp in active_parts if bp not in to_remove]
-        if len(updated_active) != len(active_parts):
-            self.window().project_manager.update_active_body_parts(updated_active)
-            
-        self.navigation_pane.add_log_message(f"Removed {len(to_remove)} body parts from master list.", "success")
-        self.refresh_lists()
-   
     def handle_apply_general_settings(self):
         """Apply the general settings."""
+        # First, apply the theme based on the theme dropdown
+        theme_choice = self.theme_dropdown.currentText()
+        # Call through MainWindow to propagate theme changes across the application
+        self.window().change_theme(theme_choice)
+        
+        # Retrieve other settings from the UI
         sort_mode = self.sort_mode_dropdown.currentText()
         frame_rate_enabled = self.enable_frame_rate_checkbox.isChecked()
-        frame_rate = self.frame_rate_spin.value()
+        frame_rate = self.frame_rate_slider.value()  # Get value from slider instead of spin box
         
-        # Use standardized frame rate configuration
-        frame_rate_config = {
-            "global_frame_rate_enabled": frame_rate_enabled,
-            "global_frame_rate": frame_rate
-        }
-        
-        # Update the state with the new settings via state_manager
+        # Update project-specific settings in the current project state
         if self.state_manager:
-            # First, update project_metadata if it exists
+            # Store theme-related settings might already be handled in change_theme, 
+            # so here we update sort and frame rate settings.
             if self.state_manager.project_state.project_metadata:
                 self.state_manager.project_state.project_metadata.global_frame_rate = frame_rate
                 self.state_manager.project_state.project_metadata.global_frame_rate_enabled = frame_rate_enabled
                 
-            # Then update the settings dictionary with consistent keys
-            self.state_manager.update_global_settings({
+            # Update the settings dictionary
+            self.state_manager.project_state.settings.update({
                 "global_sort_mode": sort_mode,
                 "global_frame_rate_enabled": frame_rate_enabled,
                 "global_frame_rate": frame_rate
@@ -966,6 +975,33 @@ class ProjectView(BaseView):
             
             # Save the project to persist these settings
             self.window().project_manager.save_project()
+            
+            # Notify observers so that UI elements refresh with new settings
+            self.state_manager.notify_observers()
                 
-        self.navigation_pane.add_log_message("Applied general settings.", "success")
+        self.navigation_pane.add_log_message("Applied general settings to current project.", "success")
+   
+    def handle_apply_frame_rate(self):
+        """Handle the 'Apply Frame Rate' button click."""
+        frame_rate_enabled = self.enable_frame_rate_checkbox.isChecked()
+        frame_rate = self.frame_rate_slider.value()
+        
+        # Update the state with frame rate settings
+        if self.state_manager:
+            # Update project_metadata if it exists
+            if self.state_manager.project_state.project_metadata:
+                self.state_manager.project_state.project_metadata.global_frame_rate = frame_rate
+                self.state_manager.project_state.project_metadata.global_frame_rate_enabled = frame_rate_enabled
+                
+            # Update settings dictionary
+            self.state_manager.project_state.settings.update({
+                "global_frame_rate_enabled": frame_rate_enabled,
+                "global_frame_rate": frame_rate
+            })
+            
+            # Save project and notify observers
+            self.window().project_manager.save_project()
+            self.state_manager.notify_observers()
+            
+        self.navigation_pane.add_log_message(f"Applied frame rate settings: {'Enabled' if frame_rate_enabled else 'Disabled'}, {frame_rate} fps", "success")
    
