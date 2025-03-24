@@ -265,14 +265,14 @@ class ExperimentView(BaseView):
             self.state_manager.subscribe(self.refresh_data)
 
     def refresh_data(self):
-        if not self.state_manager:
+        if not self._state_manager:
             return
 
         self.add_log_message("Refreshing experiment data...", 'info')
 
         # Update experiment types dropdown
         self.expTypeCombo.clear()
-        supported_types = sorted(self.state_manager.get_supported_experiment_types())
+        supported_types = sorted(self._state_manager.get_supported_experiment_types())
         for t in supported_types:
             self.expTypeCombo.addItem(t)
             
@@ -283,13 +283,13 @@ class ExperimentView(BaseView):
 
         # Update experiment list
         self.experimentListWidget.clear()
-        all_experiments = self.state_manager.get_sorted_list("experiments")
+        all_experiments = self._state_manager.get_sorted_list("experiments")
         for e in all_experiments:
             self.experimentListWidget.addItem(f"{e.id} ({e.type})")
 
         # Update subject dropdown
         self.subjectComboBox.clear()
-        for sid in self.state_manager.get_subject_ids():
+        for sid in self._state_manager.get_subject_ids():
             self.subjectComboBox.addItem(sid)
             
         # If there's at least one experiment type, update plugin selection
@@ -312,7 +312,7 @@ class ExperimentView(BaseView):
         self.clear_plugin_selection()
 
         # Update Processing Stage combo based on exp_type
-        stages = self.state_manager.get_compatible_processing_stages(self.project_manager.plugin_manager, exp_type)
+        stages = self._state_manager.get_compatible_processing_stages(self.project_manager.plugin_manager, exp_type)
         self.stageCombo.clear()
         
         if not stages:
@@ -394,7 +394,7 @@ class ExperimentView(BaseView):
             plugin_group = QGroupBox(plugin_id)
             
             # Apply plugin styling classes from StateManager
-            styling_classes = self.state_manager.get_plugin_styling_classes(plugin_id)
+            styling_classes = self._state_manager.get_plugin_styling_classes(plugin_id)
             plugin_class = f"mus1-plugin-group {' '.join(styling_classes)}"
             plugin_group.setProperty("class", plugin_class)
             
@@ -525,7 +525,7 @@ class ExperimentView(BaseView):
         if stage:
             self.add_log_message(f"Selected processing stage: {stage}", 'info')
         
-        sources = self.state_manager.get_compatible_data_sources(self.project_manager.plugin_manager, exp_type, stage)
+        sources = self._state_manager.get_compatible_data_sources(self.project_manager.plugin_manager, exp_type, stage)
         self.sourceCombo.clear()
         
         if not sources:
@@ -674,14 +674,14 @@ class ExperimentView(BaseView):
             self.add_log_message(f"Error adding experiment: {error_msg}", 'error')
 
     def refresh_experiment_list_display(self):
-        sorted_exps = self.state_manager.get_sorted_list("experiments")
+        sorted_exps = self._state_manager.get_sorted_list("experiments")
         self.experimentListWidget.clear()
         for e in sorted_exps:
             self.experimentListWidget.addItem(f"{e.id} ({e.type}, Stage: {e.processing_stage}, Source: {e.data_source})")
         
     def setup_batch_creation(self):
         """Initialize the batch creation page with experiments grid."""
-        if not self.state_manager:
+        if not self._state_manager:
             return
             
         # Generate a unique batch ID
@@ -699,11 +699,11 @@ class ExperimentView(BaseView):
         
     def update_experiment_grid(self):
         """Update the grid display with experiments."""
-        if not self.state_manager:
+        if not self._state_manager:
             return
             
         # Get all experiments from state manager
-        all_experiments = self.state_manager.get_sorted_list("experiments")
+        all_experiments = self._state_manager.get_sorted_list("experiments")
         
         # Set up the grid with selectable checkboxes
         columns = ["Select", "ID", "Type", "Subject", "Date", "Stage"]
@@ -734,7 +734,7 @@ class ExperimentView(BaseView):
     
     def sort_experiment_grid(self, index):
         """Sort the experiment grid based on selected column."""
-        if not self.state_manager:
+        if not self._state_manager:
             return
             
         # Get sort key from combo box
@@ -745,7 +745,7 @@ class ExperimentView(BaseView):
         selected_ids = self.selected_experiments
         
         # Get all experiments and sort them
-        all_experiments = self.state_manager.get_sorted_list("experiments")
+        all_experiments = self._state_manager.get_sorted_list("experiments")
         
         # Sort based on the selected option
         if sort_key == "ID":
@@ -817,7 +817,7 @@ class ExperimentView(BaseView):
     
     def handle_create_batch(self):
         """Create a new batch with the selected experiments."""
-        if not self.project_manager or not self.state_manager:
+        if not self.project_manager or not self._state_manager:
             return
             
         # Get batch info

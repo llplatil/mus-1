@@ -269,7 +269,7 @@ class ProjectMetadata(BaseModel):
         return v
 
     # Global sort mode stored with the project
-    global_sort_mode: GlobalSortMode = GlobalSortMode.NATURAL_ORDER
+    global_sort_mode: GlobalSortMode = GlobalSortMode.ALPHABETICAL
 
     # Global frame rate settings
     global_frame_rate: int = 60
@@ -345,11 +345,8 @@ class ProjectState(BaseModel):
     settings: Dict[str, Any] = Field(
         default_factory=lambda: {
             "global_frame_rate": 60,
-            "global_frame_rate_enabled": False,  # Default to OFF for consistency
-            "body_parts": [],
-            "active_body_parts": [],
-            "tracked_objects": [],
-            "global_sort_mode": "Natural Order (Numbers as Numbers)"
+            "global_frame_rate_enabled": False,
+            "global_sort_mode": "Lexicographical Order (Numbers as Characters)"
         }
     )
 

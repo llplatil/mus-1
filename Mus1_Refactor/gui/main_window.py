@@ -196,30 +196,44 @@ class MainWindow(QMainWindow):
 
     def load_project(self, project_name):
         """Load a project by name and initialize all views."""
-        # Initialize experiment view
-        if hasattr(self.experiment_view, 'set_core'):
-            self.experiment_view.set_core(self.project_manager, self.state_manager)
+        # First, find the project path based on name
+        available_projects = self.project_manager.list_available_projects()
+        project_path = next((p for p in available_projects if p.name == project_name), None)
+        
+        if project_path:
+            # Check if this is likely a large project (could be based on file size or other criteria)
+            project_state_path = project_path / "project_state.json"
+            is_large_project = project_state_path.exists() and project_state_path.stat().st_size > 5 * 1024 * 1024  # 5MB
+            
+            # Load the project with optimization flag for large projects
+            self.project_manager.load_project(project_path, optimize_for_large_files=is_large_project)
+            
+            # Initialize experiment view
+            if hasattr(self.experiment_view, 'set_core'):
+                self.experiment_view.set_core(self.project_manager, self.state_manager)
 
-        # Initialize subject view
-        if hasattr(self.subject_view, 'set_state_manager'):
-            self.subject_view.set_state_manager(self.state_manager)
+            # Initialize subject view
+            if hasattr(self.subject_view, 'set_state_manager'):
+                self.subject_view.set_state_manager(self.state_manager)
+            else:
+                # Fallback if subject_view doesn't have set_state_manager, simply pass state_manager if possible
+                if hasattr(self.subject_view, 'set_project_manager'):
+                    self.subject_view.set_project_manager(self.state_manager)
+
+            # Initialize project view solely using state_manager
+            self.project_view.set_initial_project(project_name)
+            
+            # Log success
+            self.log_bus.log(f"Project '{project_name}' loaded successfully", "success", "MainWindow")
+
+            # Refresh all views
+            self.refresh_all_views()
+            
+            # Apply theme after project loading and view initialization
+            self.apply_theme()
         else:
-            # Fallback if subject_view doesn't have set_state_manager, simply pass state_manager if possible
-            if hasattr(self.subject_view, 'set_project_manager'):
-                self.subject_view.set_project_manager(self.state_manager)
+            self.log_bus.log(f"Could not find project path for '{project_name}'", "error", "MainWindow")
 
-        # Initialize project view solely using state_manager
-        self.project_view.set_initial_project(project_name)
-        
-        # Log success
-        self.log_bus.log(f"Project '{project_name}' loaded successfully", "success", "MainWindow")
-
-        # Refresh all views
-        self.refresh_all_views()
-        
-        # Apply theme after project loading and view initialization
-        self.apply_theme()
-    
     def refresh_all_views(self):
         """Refresh data in all views."""
         if hasattr(self.experiment_view, 'refresh_data'):

@@ -20,9 +20,7 @@ class DataManager:
         self.state_manager = state_manager
         self._likelihood_threshold = None 
 
-    # -------------------------------------------------------------------------
-    # New Helper Methods for Validation and Resolution
-    # -------------------------------------------------------------------------
+
     
     def _validate_file(self, file_path: Path, expected_extensions: list[str], file_type: str) -> None:
         """
@@ -111,9 +109,7 @@ class DataManager:
             else:
                 return None
 
-    # -------------------------------------------------------------------------
-    # Modified Methods Using the New Helpers
-    # -------------------------------------------------------------------------
+
 
     def load_dlc_tracking_csv(
         self, 
@@ -246,5 +242,45 @@ class DataManager:
                 in_training_set=row.get("Training Set", False)
             )
         self.state_manager.notify_observers()
+
+    def lazy_load_tracking_data(self, tracking_path: Path, experiment_id: Optional[str] = None) -> dict:
+        """
+        Lazy loading method for tracking data files. Instead of loading the entire data,
+        this method loads only essential metadata and sets up a reference to the file.
+        
+        Args:
+            tracking_path: Path to the tracking data file
+            experiment_id: The experiment ID this tracking data belongs to
+            
+        Returns:
+            A dictionary with metadata about the tracking data and a reference to the file
+            
+        Notes:
+            This method is designed for the optimized large file approach.
+            In a production implementation, this would:
+            1. Extract only header information from CSV files
+            2. Generate any required summary stats without loading all data
+            3. Setup a mechanism to load data chunks when requested
+            4. Implement caching for frequently accessed data
+            
+            The current implementation is a placeholder for the future expansion
+            to properly handle very large datasets.
+        """
+        # Check if file exists
+        self._validate_file(tracking_path, [".csv"], "Tracking file")
+        
+        # For now, just return basic metadata
+        return {
+            "path": str(tracking_path),
+            "experiment_id": experiment_id,
+            "file_type": tracking_path.suffix.lower(),
+            "size_bytes": tracking_path.stat().st_size,
+            "last_modified": tracking_path.stat().st_mtime,
+            # In a full implementation, we might include:
+            # - column names
+            # - number of frames
+            # - summary statistics (min/max/mean values)
+            # - cached preview data (first/last few rows)
+        }
 
     

@@ -1,505 +1,504 @@
-2025-03-23 20:42:10,633 [INFO] __main__ - Project selected: Demo Data
-2025-03-23 20:42:10,633 [INFO] mus1.core.theme_manager - Applying theme: dark
-2025-03-23 20:42:10,644 [INFO] mus1.core.theme_manager - Successfully applied theme stylesheet with plugin overrides
-2025-03-23 20:42:10,657 [INFO] mus1 - [MainWindow] MainWindow initializing
-2025-03-23 20:42:10,657 [INFO] mus1 - Log file rotated, deleted 5 oldest lines
-2025-03-23 20:42:10,679 [INFO] mus1.core.data_manager - Frame rate functionality is disabled and no specific frame rate provided; returning 'OFF'
-2025-03-23 20:42:10,680 [INFO] mus1 - [SubjectView] SubjectView initialized
-2025-03-23 20:42:10,681 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
-2025-03-23 20:42:10,694 [INFO] mus1 - [SubjectView] Refreshing subject list: 0 subjects found
-2025-03-23 20:42:10,694 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
-2025-03-23 20:42:10,728 [INFO] mus1 - [MainWindow] Registered log observer for projectView
-2025-03-23 20:42:10,729 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
-2025-03-23 20:42:10,729 [INFO] mus1 - [MainWindow] Registered log observer for subjectView
-2025-03-23 20:42:10,729 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
-2025-03-23 20:42:10,729 [INFO] mus1 - [MainWindow] Registered log observer for experimentView
-2025-03-23 20:42:10,729 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
-2025-03-23 20:42:10,729 [INFO] mus1 - [MainWindow] Switched to Project tab
-2025-03-23 20:42:10,729 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
-2025-03-23 20:42:10,729 [INFO] mus1.core.theme_manager - Applying theme: dark
-2025-03-23 20:42:10,829 [INFO] mus1.core.theme_manager - Successfully applied theme stylesheet with plugin overrides
-2025-03-23 20:42:10,830 [INFO] mus1.core.project_manager - Loading project from projects/Demo Data
-2025-03-23 20:42:10,831 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
-2025-03-23 20:42:10,831 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
-2025-03-23 20:42:10,832 [INFO] mus1 - [StateManager] Notified 3 observers of state change
-2025-03-23 20:42:10,832 [INFO] mus1 - Log file rotated, deleted 5 oldest lines
-2025-03-23 20:42:10,832 [INFO] mus1.core.data_manager - Using global frame rate: 30
-2025-03-23 20:42:10,832 [INFO] mus1 - [MainWindow] Project 'Demo Data' loaded successfully
-2025-03-23 20:42:10,833 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
-2025-03-23 20:42:10,833 [INFO] mus1 - [SubjectView] Refreshing subject list: 1 subjects found
-2025-03-23 20:42:10,833 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
-2025-03-23 20:42:10,833 [INFO] mus1.core.theme_manager - Applying theme: dark
-2025-03-23 20:42:10,937 [INFO] mus1.core.theme_manager - Successfully applied theme stylesheet with plugin overrides
-2025-03-23 20:42:10,949 [INFO] __main__ - MUS1 init complete. Starting application event loop.
-2025-03-23 20:46:41,497 [INFO] __main__ - Launching MUS1...
-2025-03-23 20:46:41,497 [INFO] mus1.core.metadata - Initializing metadata system
-2025-03-23 20:46:41,497 [INFO] mus1.core.metadata - Metadata system initialized successfully
-2025-03-23 20:46:41,595 [INFO] mus1 - Log file rotated, deleted 5 oldest lines
-2025-03-23 20:46:41,595 [INFO] mus1 - [MainApp] LoggingEventBus initialized
-2025-03-23 20:46:41,595 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
-2025-03-23 20:46:41,599 [INFO] mus1 - [StateManager] StateManager initialized
-2025-03-23 20:46:41,599 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
-2025-03-23 20:46:41,599 [INFO] mus1 - [ProjectManager] ProjectManager initialized
-2025-03-23 20:46:41,599 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
-2025-03-23 20:46:41,600 [INFO] mus1 - [ProjectManager] Registered 3 plugins
-2025-03-23 20:46:41,600 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
-2025-03-23 20:46:41,600 [INFO] mus1.core.project_manager - Registered 3 plugins
-2025-03-23 20:46:41,600 [INFO] __main__ - Core managers created. Launching Project Selection Dialog.
-2025-03-23 20:46:44,797 [INFO] __main__ - Project selected: Demo Data
-2025-03-23 20:46:44,797 [INFO] mus1.core.theme_manager - Applying theme: dark
-2025-03-23 20:46:44,807 [INFO] mus1.core.theme_manager - Successfully applied theme stylesheet with plugin overrides
-2025-03-23 20:46:44,820 [INFO] mus1 - [MainWindow] MainWindow initializing
-2025-03-23 20:46:44,820 [INFO] mus1 - Log file rotated, deleted 5 oldest lines
-2025-03-23 20:46:44,841 [INFO] mus1.core.data_manager - Frame rate functionality is disabled and no specific frame rate provided; returning 'OFF'
-2025-03-23 20:46:44,843 [INFO] mus1 - [SubjectView] SubjectView initialized
-2025-03-23 20:46:44,843 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
-2025-03-23 20:46:44,857 [INFO] mus1 - [SubjectView] Refreshing subject list: 0 subjects found
-2025-03-23 20:46:44,857 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
-2025-03-23 20:46:44,890 [INFO] mus1 - [MainWindow] Registered log observer for projectView
-2025-03-23 20:46:44,891 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
-2025-03-23 20:46:44,891 [INFO] mus1 - [MainWindow] Registered log observer for subjectView
-2025-03-23 20:46:44,891 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
-2025-03-23 20:46:44,891 [INFO] mus1 - [MainWindow] Registered log observer for experimentView
-2025-03-23 20:46:44,891 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
-2025-03-23 20:46:44,891 [INFO] mus1 - [MainWindow] Switched to Project tab
-2025-03-23 20:46:44,891 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
-2025-03-23 20:46:44,891 [INFO] mus1.core.theme_manager - Applying theme: dark
-2025-03-23 20:46:44,987 [INFO] mus1.core.theme_manager - Successfully applied theme stylesheet with plugin overrides
-2025-03-23 20:46:44,988 [INFO] mus1.core.project_manager - Loading project from projects/Demo Data
-2025-03-23 20:46:44,989 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
-2025-03-23 20:46:44,989 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
-2025-03-23 20:46:44,990 [INFO] mus1 - [StateManager] Notified 3 observers of state change
-2025-03-23 20:46:44,990 [INFO] mus1 - Log file rotated, deleted 5 oldest lines
-2025-03-23 20:46:44,990 [INFO] mus1.core.data_manager - Using global frame rate: 30
-2025-03-23 20:46:44,991 [INFO] mus1 - [MainWindow] Project 'Demo Data' loaded successfully
-2025-03-23 20:46:44,991 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
-2025-03-23 20:46:44,991 [INFO] mus1 - [SubjectView] Refreshing subject list: 1 subjects found
-2025-03-23 20:46:44,991 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
-2025-03-23 20:46:44,991 [INFO] mus1.core.theme_manager - Applying theme: dark
-2025-03-23 20:46:45,097 [INFO] mus1.core.theme_manager - Successfully applied theme stylesheet with plugin overrides
-2025-03-23 20:46:45,109 [INFO] __main__ - MUS1 init complete. Starting application event loop.
-2025-03-23 20:50:50,737 [INFO] __main__ - Launching MUS1...
-2025-03-23 20:50:50,737 [INFO] mus1.core.metadata - Initializing metadata system
-2025-03-23 20:50:50,737 [INFO] mus1.core.metadata - Metadata system initialized successfully
-2025-03-23 20:50:50,834 [INFO] mus1 - Log file rotated, deleted 5 oldest lines
-2025-03-23 20:50:50,834 [INFO] mus1 - [MainApp] LoggingEventBus initialized
-2025-03-23 20:50:50,834 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
-2025-03-23 20:50:50,838 [INFO] mus1 - [StateManager] StateManager initialized
-2025-03-23 20:50:50,838 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
-2025-03-23 20:50:50,838 [INFO] mus1 - [ProjectManager] ProjectManager initialized
-2025-03-23 20:50:50,838 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
-2025-03-23 20:50:50,839 [INFO] mus1 - [ProjectManager] Registered 3 plugins
-2025-03-23 20:50:50,839 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
-2025-03-23 20:50:50,839 [INFO] mus1.core.project_manager - Registered 3 plugins
-2025-03-23 20:50:50,839 [INFO] __main__ - Core managers created. Launching Project Selection Dialog.
-2025-03-23 20:50:53,974 [INFO] __main__ - Project selected: Demo Data
-2025-03-23 20:50:53,974 [INFO] mus1.core.theme_manager - Applying theme: dark
-2025-03-23 20:50:53,984 [INFO] mus1.core.theme_manager - Successfully applied theme stylesheet with plugin overrides
-2025-03-23 20:50:53,996 [INFO] mus1 - [MainWindow] MainWindow initializing
-2025-03-23 20:50:53,996 [INFO] mus1 - Log file rotated, deleted 5 oldest lines
-2025-03-23 20:50:54,019 [INFO] mus1.core.data_manager - Frame rate functionality is disabled and no specific frame rate provided; returning 'OFF'
-2025-03-23 20:50:54,021 [INFO] mus1 - [SubjectView] SubjectView initialized
-2025-03-23 20:50:54,021 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
-2025-03-23 20:50:54,035 [INFO] mus1 - [SubjectView] Refreshing subject list: 0 subjects found
-2025-03-23 20:50:54,035 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
-2025-03-23 20:50:54,069 [INFO] mus1 - [MainWindow] Registered log observer for projectView
-2025-03-23 20:50:54,070 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
-2025-03-23 20:50:54,070 [INFO] mus1 - [MainWindow] Registered log observer for subjectView
-2025-03-23 20:50:54,070 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
-2025-03-23 20:50:54,070 [INFO] mus1 - [MainWindow] Registered log observer for experimentView
-2025-03-23 20:50:54,070 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
-2025-03-23 20:50:54,070 [INFO] mus1 - [MainWindow] Switched to Project tab
-2025-03-23 20:50:54,070 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
-2025-03-23 20:50:54,070 [INFO] mus1.core.theme_manager - Applying theme: dark
-2025-03-23 20:50:54,169 [INFO] mus1.core.theme_manager - Successfully applied theme stylesheet with plugin overrides
-2025-03-23 20:50:54,170 [INFO] mus1.core.project_manager - Loading project from projects/Demo Data
-2025-03-23 20:50:54,171 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
-2025-03-23 20:50:54,171 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
-2025-03-23 20:50:54,171 [INFO] mus1 - [StateManager] Notified 3 observers of state change
-2025-03-23 20:50:54,172 [INFO] mus1 - Log file rotated, deleted 5 oldest lines
-2025-03-23 20:50:54,172 [INFO] mus1.core.data_manager - Using global frame rate: 30
-2025-03-23 20:50:54,172 [INFO] mus1 - [MainWindow] Project 'Demo Data' loaded successfully
-2025-03-23 20:50:54,172 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
-2025-03-23 20:50:54,172 [INFO] mus1 - [SubjectView] Refreshing subject list: 1 subjects found
-2025-03-23 20:50:54,172 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
-2025-03-23 20:50:54,173 [INFO] mus1.core.theme_manager - Applying theme: dark
-2025-03-23 20:50:54,280 [INFO] mus1.core.theme_manager - Successfully applied theme stylesheet with plugin overrides
-2025-03-23 20:50:54,293 [INFO] __main__ - MUS1 init complete. Starting application event loop.
-2025-03-23 21:10:40,161 [INFO] __main__ - Launching MUS1...
-2025-03-23 21:10:40,161 [INFO] mus1.core.metadata - Initializing metadata system
-2025-03-23 21:10:40,161 [INFO] mus1.core.metadata - Metadata system initialized successfully
-2025-03-23 21:10:40,262 [INFO] mus1 - Log file rotated, deleted 5 oldest lines
-2025-03-23 21:10:40,262 [INFO] mus1 - [MainApp] LoggingEventBus initialized
-2025-03-23 21:10:40,262 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
-2025-03-23 21:10:40,265 [INFO] mus1 - [StateManager] StateManager initialized
-2025-03-23 21:10:40,266 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
-2025-03-23 21:10:40,266 [INFO] mus1 - [ProjectManager] ProjectManager initialized
-2025-03-23 21:10:40,266 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
-2025-03-23 21:10:40,266 [INFO] mus1 - [ProjectManager] Registered 3 plugins
-2025-03-23 21:10:40,266 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
-2025-03-23 21:10:40,266 [INFO] mus1.core.project_manager - Registered 3 plugins
-2025-03-23 21:10:40,266 [INFO] __main__ - Core managers created. Launching Project Selection Dialog.
-2025-03-23 21:10:44,326 [INFO] __main__ - Project selected: Demo Data
-2025-03-23 21:10:44,326 [INFO] mus1.core.theme_manager - Applying theme: dark
-2025-03-23 21:10:44,336 [INFO] mus1.core.theme_manager - Successfully applied theme stylesheet with plugin overrides
-2025-03-23 21:10:44,348 [INFO] mus1 - [MainWindow] MainWindow initializing
-2025-03-23 21:10:44,349 [INFO] mus1 - Log file rotated, deleted 5 oldest lines
-2025-03-23 21:10:44,369 [INFO] mus1.core.data_manager - Frame rate functionality is disabled and no specific frame rate provided; returning 'OFF'
-2025-03-23 21:10:44,371 [INFO] mus1 - [SubjectView] SubjectView initialized
-2025-03-23 21:10:44,371 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
-2025-03-23 21:10:44,384 [INFO] mus1 - [SubjectView] Refreshing subject list: 0 subjects found
-2025-03-23 21:10:44,384 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
-2025-03-23 21:10:44,418 [INFO] mus1 - [MainWindow] Registered log observer for projectView
-2025-03-23 21:10:44,419 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
-2025-03-23 21:10:44,419 [INFO] mus1 - [MainWindow] Registered log observer for subjectView
-2025-03-23 21:10:44,419 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
-2025-03-23 21:10:44,419 [INFO] mus1 - [MainWindow] Registered log observer for experimentView
-2025-03-23 21:10:44,419 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
-2025-03-23 21:10:44,419 [INFO] mus1 - [MainWindow] Switched to Project tab
-2025-03-23 21:10:44,419 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
-2025-03-23 21:10:44,419 [INFO] mus1.core.theme_manager - Applying theme: dark
-2025-03-23 21:10:44,517 [INFO] mus1.core.theme_manager - Successfully applied theme stylesheet with plugin overrides
-2025-03-23 21:10:44,518 [INFO] mus1.core.project_manager - Loading project from projects/Demo Data
-2025-03-23 21:10:44,519 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
-2025-03-23 21:10:44,519 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
-2025-03-23 21:10:44,519 [INFO] mus1 - [StateManager] Notified 3 observers of state change
-2025-03-23 21:10:44,520 [INFO] mus1 - Log file rotated, deleted 5 oldest lines
-2025-03-23 21:10:44,520 [INFO] mus1.core.data_manager - Using global frame rate: 30
-2025-03-23 21:10:44,520 [INFO] mus1 - [MainWindow] Project 'Demo Data' loaded successfully
-2025-03-23 21:10:44,520 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
-2025-03-23 21:10:44,520 [INFO] mus1 - [SubjectView] Refreshing subject list: 1 subjects found
-2025-03-23 21:10:44,520 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
-2025-03-23 21:10:44,521 [INFO] mus1.core.theme_manager - Applying theme: dark
-2025-03-23 21:10:44,625 [INFO] mus1.core.theme_manager - Successfully applied theme stylesheet with plugin overrides
-2025-03-23 21:10:44,638 [INFO] __main__ - MUS1 init complete. Starting application event loop.
-2025-03-23 21:10:50,127 [INFO] mus1 - [MainWindow] Switched to Subjects tab
-2025-03-23 21:10:50,128 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
-2025-03-23 21:10:50,130 [INFO] mus1 - [SubjectView] Refreshing subject list: 1 subjects found
-2025-03-23 21:10:50,130 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
-2025-03-23 21:10:55,268 [INFO] mus1 - [SubjectView] Refreshing subject list: 1 subjects found
-2025-03-23 21:10:55,270 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
-2025-03-23 21:10:57,520 [INFO] mus1 - [MainWindow] Switched to Project tab
-2025-03-23 21:10:57,521 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
-2025-03-23 21:11:03,823 [INFO] mus1.core.project_manager - Project saved to projects/Demo Data/project_state.json
-2025-03-23 21:11:03,823 [INFO] mus1.core.project_manager - Updated active tracked objects to: []
-2025-03-23 21:11:03,827 [INFO] mus1 - [StateManager] Notified 3 observers of state change
-2025-03-23 21:11:03,828 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
-2025-03-23 21:11:06,715 [INFO] mus1.core.project_manager - Project saved to projects/Demo Data/project_state.json
-2025-03-23 21:11:06,715 [INFO] mus1.core.project_manager - Updated active tracked objects to: [ObjectMetadata(name='Silo', date_added=datetime.datetime(2025, 3, 23, 21, 11, 6, 713461), bounding_box=None), ObjectMetadata(name='Pyramid', date_added=datetime.datetime(2025, 3, 23, 21, 11, 6, 713497), bounding_box=None), ObjectMetadata(name='Diamond', date_added=datetime.datetime(2025, 3, 23, 21, 11, 6, 713503), bounding_box=None)]
-2025-03-23 21:11:06,719 [INFO] mus1 - [StateManager] Notified 3 observers of state change
-2025-03-23 21:11:06,720 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
-2025-03-23 21:11:12,641 [INFO] mus1.core.project_manager - Project saved to projects/Demo Data/project_state.json
-2025-03-23 21:11:12,646 [INFO] mus1 - [StateManager] Notified 3 observers of state change
-2025-03-23 21:11:12,647 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
-2025-03-23 21:11:12,648 [INFO] mus1.core.project_manager - Project saved to projects/Demo Data/project_state.json
-2025-03-23 21:11:12,648 [INFO] mus1.core.project_manager - Active body parts updated to: []
-2025-03-23 21:11:12,649 [INFO] mus1 - [StateManager] Notified 3 observers of state change
-2025-03-23 21:11:12,649 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
-2025-03-23 21:11:14,548 [INFO] mus1.core.project_manager - Project saved to projects/Demo Data/project_state.json
-2025-03-23 21:11:14,552 [INFO] mus1 - [StateManager] Notified 3 observers of state change
-2025-03-23 21:11:14,553 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
-2025-03-23 21:11:23,800 [INFO] mus1.core.project_manager - Project saved to projects/Demo Data/project_state.json
-2025-03-23 21:11:23,800 [INFO] mus1.core.project_manager - Updated active tracked objects to: []
-2025-03-23 21:11:23,804 [INFO] mus1 - [StateManager] Notified 3 observers of state change
-2025-03-23 21:11:23,805 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
-2025-03-23 21:11:33,938 [INFO] mus1.core.project_manager - Project saved to projects/Demo Data/project_state.json
-2025-03-23 21:11:33,938 [INFO] mus1.core.project_manager - Updated active tracked objects to: [ObjectMetadata(name='Silo', date_added=datetime.datetime(2025, 3, 23, 21, 11, 33, 937593), bounding_box=None)]
-2025-03-23 21:11:33,941 [INFO] mus1 - [StateManager] Notified 3 observers of state change
-2025-03-23 21:11:33,941 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
-2025-03-23 21:11:42,895 [INFO] mus1.core.project_manager - Project saved to projects/Demo Data/project_state.json
-2025-03-23 21:11:42,896 [INFO] mus1.core.project_manager - Updated active tracked objects to: [ObjectMetadata(name='Silo', date_added=datetime.datetime(2025, 3, 23, 21, 11, 33, 937593), bounding_box=None), ObjectMetadata(name='Pyramid', date_added=datetime.datetime(2025, 3, 23, 21, 11, 42, 894123), bounding_box=None)]
-2025-03-23 21:11:42,898 [INFO] mus1 - [StateManager] Notified 3 observers of state change
-2025-03-23 21:11:42,899 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
-2025-03-23 21:11:48,760 [INFO] mus1.core.project_manager - Project saved to projects/Demo Data/project_state.json
-2025-03-23 21:11:48,760 [INFO] mus1.core.project_manager - Updated active tracked objects to: [ObjectMetadata(name='Silo', date_added=datetime.datetime(2025, 3, 23, 21, 11, 33, 937593), bounding_box=None), ObjectMetadata(name='Pyramid', date_added=datetime.datetime(2025, 3, 23, 21, 11, 42, 894123), bounding_box=None), ObjectMetadata(name='Diamond', date_added=datetime.datetime(2025, 3, 23, 21, 11, 48, 758175), bounding_box=None)]
-2025-03-23 21:11:48,763 [INFO] mus1 - [StateManager] Notified 3 observers of state change
-2025-03-23 21:11:48,764 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
-2025-03-23 21:11:50,663 [INFO] mus1 - [MainWindow] Switched to Subjects tab
-2025-03-23 21:11:50,664 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
-2025-03-23 21:11:51,760 [INFO] mus1 - [MainWindow] Switched to Experiments tab
-2025-03-23 21:11:51,762 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
-2025-03-23 21:11:57,473 [INFO] mus1 - [MainWindow] Switched to Subjects tab
-2025-03-23 21:11:57,474 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
-2025-03-23 21:11:58,764 [INFO] mus1 - [SubjectView] Refreshing subject list: 1 subjects found
-2025-03-23 21:11:58,764 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
-2025-03-23 21:12:08,170 [INFO] mus1.core.project_manager - Project saved to projects/Demo Data/project_state.json
-2025-03-23 21:12:08,174 [INFO] mus1 - [StateManager] Notified 3 observers of state change
-2025-03-23 21:12:08,175 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
-2025-03-23 21:12:08,177 [INFO] mus1 - [SubjectView] Active genotypes updated after removal.
-2025-03-23 21:12:08,177 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
-2025-03-23 21:12:12,416 [INFO] mus1.core.project_manager - Project saved to projects/Demo Data/project_state.json
-2025-03-23 21:12:12,421 [INFO] mus1 - [StateManager] Notified 3 observers of state change
-2025-03-23 21:12:12,422 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
-2025-03-23 21:12:12,423 [INFO] mus1 - [SubjectView] Active genotypes updated.
-2025-03-23 21:12:12,423 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
-2025-03-23 21:12:16,284 [INFO] mus1 - [SubjectView] Refreshing subject list: 1 subjects found
-2025-03-23 21:12:16,285 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
-2025-03-23 21:12:19,764 [INFO] mus1 - [SubjectView] Refreshing subject list: 1 subjects found
-2025-03-23 21:12:19,765 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
-2025-03-23 21:12:23,094 [INFO] mus1 - [MainWindow] Switched to Project tab
-2025-03-23 21:12:23,096 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
-2025-03-23 21:12:30,623 [INFO] mus1.core.project_manager - Project saved to projects/Demo Data/project_state.json
-2025-03-23 21:12:30,629 [INFO] mus1 - [StateManager] Notified 3 observers of state change
-2025-03-23 21:12:30,630 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
-2025-03-23 21:12:45,595 [INFO] mus1.core.project_manager - Project saved to projects/Demo Data/project_state.json
-2025-03-23 21:12:45,595 [INFO] mus1.core.project_manager - Active body parts updated to: ['left_ear']
-2025-03-23 21:12:45,601 [INFO] mus1 - [StateManager] Notified 3 observers of state change
-2025-03-23 21:12:45,601 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
-2025-03-23 21:12:49,451 [INFO] mus1.core.project_manager - Project saved to projects/Demo Data/project_state.json
-2025-03-23 21:12:49,451 [INFO] mus1.core.project_manager - Active body parts updated to: []
-2025-03-23 21:12:49,457 [INFO] mus1 - [StateManager] Notified 3 observers of state change
-2025-03-23 21:12:49,457 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
-2025-03-23 21:12:51,805 [INFO] mus1.core.project_manager - Project saved to projects/Demo Data/project_state.json
-2025-03-23 21:12:51,811 [INFO] mus1 - [StateManager] Notified 3 observers of state change
-2025-03-23 21:12:51,812 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
-2025-03-23 21:12:55,164 [INFO] mus1.core.project_manager - Project saved to projects/Demo Data/project_state.json
-2025-03-23 21:12:55,171 [INFO] mus1 - [StateManager] Notified 3 observers of state change
-2025-03-23 21:12:55,171 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
-2025-03-23 21:14:00,130 [INFO] mus1.core.project_manager - Project saved to projects/Demo Data/project_state.json
-2025-03-23 21:14:00,135 [INFO] mus1 - [StateManager] Notified 3 observers of state change
-2025-03-23 21:14:00,136 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
-2025-03-23 21:14:34,794 [INFO] mus1.core.project_manager - Project saved to projects/Demo Data/project_state.json
-2025-03-23 21:14:34,799 [INFO] mus1 - [StateManager] Notified 3 observers of state change
-2025-03-23 21:14:34,800 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
-2025-03-23 21:14:37,554 [INFO] mus1.core.project_manager - Project saved to projects/Demo Data/project_state.json
-2025-03-23 21:14:37,560 [INFO] mus1 - [StateManager] Notified 3 observers of state change
-2025-03-23 21:14:37,560 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
-2025-03-23 21:18:48,940 [INFO] __main__ - Launching MUS1...
-2025-03-23 21:18:48,940 [INFO] mus1.core.metadata - Initializing metadata system
-2025-03-23 21:18:48,940 [INFO] mus1.core.metadata - Metadata system initialized successfully
-2025-03-23 21:18:49,037 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
-2025-03-23 21:18:49,037 [INFO] mus1 - [MainApp] LoggingEventBus initialized
-2025-03-23 21:18:49,037 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
-2025-03-23 21:18:49,040 [INFO] mus1 - [StateManager] StateManager initialized
-2025-03-23 21:18:49,040 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
-2025-03-23 21:18:49,040 [INFO] mus1 - [ProjectManager] ProjectManager initialized
-2025-03-23 21:18:49,041 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
-2025-03-23 21:18:49,041 [INFO] mus1 - [ProjectManager] Registered 3 plugins
-2025-03-23 21:18:49,041 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
-2025-03-23 21:18:49,041 [INFO] mus1.core.project_manager - Registered 3 plugins
-2025-03-23 21:18:49,041 [INFO] __main__ - Core managers created. Launching Project Selection Dialog.
-2025-03-23 21:18:52,159 [INFO] __main__ - Project selected: Demo Data
-2025-03-23 21:18:52,159 [INFO] mus1.core.theme_manager - Applying theme: dark
-2025-03-23 21:18:52,168 [INFO] mus1.core.theme_manager - Successfully applied theme stylesheet with plugin overrides
-2025-03-23 21:18:52,181 [INFO] mus1 - [MainWindow] MainWindow initializing
-2025-03-23 21:18:52,181 [INFO] mus1 - Log file rotated, deleted 5 oldest lines
-2025-03-23 21:18:52,204 [INFO] mus1.core.data_manager - Frame rate functionality is disabled and no specific frame rate provided; returning 'OFF'
-2025-03-23 21:18:52,206 [INFO] mus1 - [SubjectView] SubjectView initialized
-2025-03-23 21:18:52,206 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
-2025-03-23 21:18:52,219 [INFO] mus1 - [SubjectView] Refreshing subject list: 0 subjects found
-2025-03-23 21:18:52,220 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
-2025-03-23 21:18:52,253 [INFO] mus1 - [MainWindow] Registered log observer for projectView
-2025-03-23 21:18:52,254 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
-2025-03-23 21:18:52,254 [INFO] mus1 - [MainWindow] Registered log observer for subjectView
-2025-03-23 21:18:52,254 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
-2025-03-23 21:18:52,254 [INFO] mus1 - [MainWindow] Registered log observer for experimentView
-2025-03-23 21:18:52,254 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
-2025-03-23 21:18:52,254 [INFO] mus1 - [MainWindow] Switched to Project tab
-2025-03-23 21:18:52,254 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
-2025-03-23 21:18:52,254 [INFO] mus1.core.theme_manager - Applying theme: dark
-2025-03-23 21:18:52,353 [INFO] mus1.core.theme_manager - Successfully applied theme stylesheet with plugin overrides
-2025-03-23 21:18:52,354 [INFO] mus1.core.project_manager - Loading project from projects/Demo Data
-2025-03-23 21:18:52,354 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
-2025-03-23 21:18:52,354 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
-2025-03-23 21:18:52,355 [INFO] mus1 - [StateManager] Notified 3 observers of state change
-2025-03-23 21:18:52,355 [INFO] mus1 - Log file rotated, deleted 5 oldest lines
-2025-03-23 21:18:52,355 [INFO] mus1.core.data_manager - Using global frame rate: 30
-2025-03-23 21:18:52,356 [INFO] mus1 - [MainWindow] Project 'Demo Data' loaded successfully
-2025-03-23 21:18:52,356 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
-2025-03-23 21:18:52,356 [INFO] mus1 - [SubjectView] Refreshing subject list: 1 subjects found
-2025-03-23 21:18:52,356 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
-2025-03-23 21:18:52,356 [INFO] mus1.core.theme_manager - Applying theme: dark
-2025-03-23 21:18:52,463 [INFO] mus1.core.theme_manager - Successfully applied theme stylesheet with plugin overrides
-2025-03-23 21:18:52,474 [INFO] __main__ - MUS1 init complete. Starting application event loop.
-2025-03-23 21:18:56,426 [INFO] mus1.core.project_manager - Project saved to projects/Demo Data/project_state.json
-2025-03-23 21:18:56,428 [INFO] mus1 - [StateManager] Notified 3 observers of state change
-2025-03-23 21:18:56,429 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
-2025-03-23 21:19:05,799 [INFO] mus1.core.project_manager - Project saved to projects/Demo Data/project_state.json
-2025-03-23 21:19:05,799 [INFO] mus1.core.project_manager - Active body parts updated to: ['right_ear']
-2025-03-23 21:19:05,801 [INFO] mus1 - [StateManager] Notified 3 observers of state change
-2025-03-23 21:19:05,801 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
-2025-03-23 21:19:30,295 [INFO] mus1.core.project_manager - Project saved to projects/Demo Data/project_state.json
-2025-03-23 21:19:30,297 [INFO] mus1 - [StateManager] Notified 3 observers of state change
-2025-03-23 21:19:30,298 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
-2025-03-23 21:19:37,631 [INFO] mus1.core.project_manager - Project saved to projects/Demo Data/project_state.json
-2025-03-23 21:19:37,634 [INFO] mus1 - [StateManager] Notified 3 observers of state change
-2025-03-23 21:19:37,635 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
-2025-03-23 21:19:45,821 [INFO] mus1.core.project_manager - Project saved to projects/Demo Data/project_state.json
-2025-03-23 21:19:45,825 [INFO] mus1 - [StateManager] Notified 3 observers of state change
-2025-03-23 21:19:45,826 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
-2025-03-23 21:19:53,937 [INFO] mus1.core.project_manager - Project saved to projects/Demo Data/project_state.json
-2025-03-23 21:19:53,940 [INFO] mus1 - [StateManager] Notified 3 observers of state change
-2025-03-23 21:19:53,941 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
-2025-03-23 21:20:34,181 [INFO] mus1.core.project_manager - Project saved to projects/Demo Data/project_state.json
-2025-03-23 21:20:34,185 [INFO] mus1 - [StateManager] Notified 3 observers of state change
-2025-03-23 21:20:34,186 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
-2025-03-23 21:20:39,821 [INFO] mus1.core.project_manager - Project saved to projects/Demo Data/project_state.json
-2025-03-23 21:20:39,825 [INFO] mus1 - [StateManager] Notified 3 observers of state change
-2025-03-23 21:20:39,826 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
-2025-03-23 21:20:43,526 [INFO] mus1.core.project_manager - Project saved to projects/Demo Data/project_state.json
-2025-03-23 21:20:43,529 [INFO] mus1 - [StateManager] Notified 3 observers of state change
-2025-03-23 21:20:43,530 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
-2025-03-23 21:20:47,216 [INFO] mus1.core.project_manager - Project saved to projects/Demo Data/project_state.json
-2025-03-23 21:20:47,220 [INFO] mus1 - [StateManager] Notified 3 observers of state change
-2025-03-23 21:20:47,221 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
-2025-03-23 21:33:33,666 [INFO] __main__ - Launching MUS1...
-2025-03-23 21:33:33,666 [INFO] mus1.core.metadata - Initializing metadata system
-2025-03-23 21:33:33,666 [INFO] mus1.core.metadata - Metadata system initialized successfully
-2025-03-23 21:33:33,766 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
-2025-03-23 21:33:33,766 [INFO] mus1 - [MainApp] LoggingEventBus initialized
-2025-03-23 21:33:33,766 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
-2025-03-23 21:33:33,770 [INFO] mus1 - [StateManager] StateManager initialized
-2025-03-23 21:33:33,770 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
-2025-03-23 21:33:33,770 [INFO] mus1 - [ProjectManager] ProjectManager initialized
-2025-03-23 21:33:33,770 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
-2025-03-23 21:33:33,771 [INFO] mus1 - [ProjectManager] Registered 3 plugins
-2025-03-23 21:33:33,771 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
-2025-03-23 21:33:33,771 [INFO] mus1.core.project_manager - Registered 3 plugins
-2025-03-23 21:33:33,771 [INFO] __main__ - Core managers created. Launching Project Selection Dialog.
-2025-03-23 21:33:37,302 [INFO] __main__ - Project selected: Demo Data
-2025-03-23 21:33:37,302 [INFO] mus1.core.theme_manager - Applying theme: dark
-2025-03-23 21:33:37,314 [INFO] mus1.core.theme_manager - Successfully applied theme stylesheet with plugin overrides
-2025-03-23 21:33:37,326 [INFO] mus1 - [MainWindow] MainWindow initializing
-2025-03-23 21:33:37,326 [INFO] mus1 - Log file rotated, deleted 5 oldest lines
-2025-03-23 21:33:37,348 [INFO] mus1.core.data_manager - Frame rate functionality is disabled and no specific frame rate provided; returning 'OFF'
-2025-03-23 21:33:37,349 [INFO] mus1 - [SubjectView] SubjectView initialized
-2025-03-23 21:33:37,350 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
-2025-03-23 21:33:37,363 [INFO] mus1 - [SubjectView] Refreshing subject list: 0 subjects found
-2025-03-23 21:33:37,364 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
-2025-03-23 21:33:37,398 [INFO] mus1 - [MainWindow] Registered log observer for projectView
-2025-03-23 21:33:37,398 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
-2025-03-23 21:33:37,398 [INFO] mus1 - [MainWindow] Registered log observer for subjectView
-2025-03-23 21:33:37,399 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
-2025-03-23 21:33:37,399 [INFO] mus1 - [MainWindow] Registered log observer for experimentView
-2025-03-23 21:33:37,399 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
-2025-03-23 21:33:37,399 [INFO] mus1 - [MainWindow] Switched to Project tab
-2025-03-23 21:33:37,399 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
-2025-03-23 21:33:37,399 [INFO] mus1.core.theme_manager - Applying theme: dark
-2025-03-23 21:33:37,499 [INFO] mus1.core.theme_manager - Successfully applied theme stylesheet with plugin overrides
-2025-03-23 21:33:37,500 [INFO] mus1.core.project_manager - Loading project from projects/Demo Data
-2025-03-23 21:33:37,501 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
-2025-03-23 21:33:37,501 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
-2025-03-23 21:33:37,501 [INFO] mus1 - [StateManager] Notified 3 observers of state change
-2025-03-23 21:33:37,501 [INFO] mus1 - Log file rotated, deleted 5 oldest lines
-2025-03-23 21:33:37,501 [INFO] mus1.core.data_manager - Using global frame rate: 30
-2025-03-23 21:33:37,502 [INFO] mus1 - [MainWindow] Project 'Demo Data' loaded successfully
-2025-03-23 21:33:37,502 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
-2025-03-23 21:33:37,502 [INFO] mus1 - [SubjectView] Refreshing subject list: 1 subjects found
-2025-03-23 21:33:37,502 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
-2025-03-23 21:33:37,502 [INFO] mus1.core.theme_manager - Applying theme: dark
-2025-03-23 21:33:37,606 [INFO] mus1.core.theme_manager - Successfully applied theme stylesheet with plugin overrides
-2025-03-23 21:33:37,619 [INFO] __main__ - MUS1 init complete. Starting application event loop.
-2025-03-23 21:33:46,807 [INFO] mus1.core.project_manager - Project saved to projects/Demo Data/project_state.json
-2025-03-23 21:33:46,807 [INFO] mus1.core.project_manager - Active body parts updated to: []
-2025-03-23 21:33:46,811 [INFO] mus1 - [StateManager] Notified 3 observers of state change
-2025-03-23 21:33:46,812 [INFO] mus1 - Log file rotated, deleted 5 oldest lines
-2025-03-23 21:36:02,482 [INFO] mus1.core.project_manager - Project saved to projects/Demo Data/project_state.json
-2025-03-23 21:36:02,484 [INFO] mus1 - [StateManager] Notified 3 observers of state change
-2025-03-23 21:36:02,484 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
-2025-03-23 21:36:04,855 [INFO] mus1.core.project_manager - Project saved to projects/Demo Data/project_state.json
-2025-03-23 21:36:04,858 [INFO] mus1 - [StateManager] Notified 3 observers of state change
-2025-03-23 21:36:04,859 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
-2025-03-23 21:36:11,109 [INFO] mus1.core.project_manager - Project saved to projects/Demo Data/project_state.json
-2025-03-23 21:36:11,113 [INFO] mus1 - [StateManager] Notified 3 observers of state change
-2025-03-23 21:36:11,114 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
-2025-03-23 21:36:20,382 [INFO] mus1 - [MainWindow] Switched to Subjects tab
-2025-03-23 21:36:20,383 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
-2025-03-23 21:36:20,384 [INFO] mus1 - [SubjectView] Refreshing subject list: 1 subjects found
-2025-03-23 21:36:20,384 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
-2025-03-23 21:36:23,020 [INFO] mus1 - [MainWindow] Switched to Project tab
-2025-03-23 21:36:23,022 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
-2025-03-23 21:36:40,436 [INFO] mus1.core.project_manager - Project saved to projects/Demo Data/project_state.json
-2025-03-23 21:36:40,439 [INFO] mus1 - [StateManager] Notified 3 observers of state change
-2025-03-23 21:36:40,440 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
-2025-03-23 21:36:49,407 [INFO] mus1.core.project_manager - Project saved to projects/Demo Data/project_state.json
-2025-03-23 21:36:49,407 [INFO] mus1.core.project_manager - Active body parts updated to: ['head', 'left_ear', 'nose', 'right_ear', 'tail']
-2025-03-23 21:36:49,409 [INFO] mus1 - [StateManager] Notified 3 observers of state change
-2025-03-23 21:36:49,410 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
-2025-03-23 21:41:55,445 [INFO] __main__ - Launching MUS1...
-2025-03-23 21:41:55,445 [INFO] mus1.core.metadata - Initializing metadata system
-2025-03-23 21:41:55,445 [INFO] mus1.core.metadata - Metadata system initialized successfully
-2025-03-23 21:41:55,550 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
-2025-03-23 21:41:55,550 [INFO] mus1 - [MainApp] LoggingEventBus initialized
-2025-03-23 21:41:55,550 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
-2025-03-23 21:41:55,553 [INFO] mus1 - [StateManager] StateManager initialized
-2025-03-23 21:41:55,553 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
-2025-03-23 21:41:55,553 [INFO] mus1 - [ProjectManager] ProjectManager initialized
-2025-03-23 21:41:55,554 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
-2025-03-23 21:41:55,554 [INFO] mus1 - [ProjectManager] Registered 3 plugins
-2025-03-23 21:41:55,554 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
-2025-03-23 21:41:55,554 [INFO] mus1.core.project_manager - Registered 3 plugins
-2025-03-23 21:41:55,554 [INFO] __main__ - Core managers created. Launching Project Selection Dialog.
-2025-03-23 21:41:58,606 [INFO] __main__ - Project selected: Demo Data
-2025-03-23 21:41:58,606 [INFO] mus1.core.theme_manager - Applying theme: dark
-2025-03-23 21:41:58,618 [INFO] mus1.core.theme_manager - Successfully applied theme stylesheet with plugin overrides
-2025-03-23 21:41:58,631 [INFO] mus1 - [MainWindow] MainWindow initializing
-2025-03-23 21:41:58,631 [INFO] mus1 - Log file rotated, deleted 5 oldest lines
-2025-03-23 21:41:58,653 [INFO] mus1.core.data_manager - Frame rate functionality is disabled and no specific frame rate provided; returning 'OFF'
-2025-03-23 21:41:58,655 [INFO] mus1 - [SubjectView] SubjectView initialized
-2025-03-23 21:41:58,655 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
-2025-03-23 21:41:58,669 [INFO] mus1 - [SubjectView] Refreshing subject list: 0 subjects found
-2025-03-23 21:41:58,670 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
-2025-03-23 21:41:58,703 [INFO] mus1 - [MainWindow] Registered log observer for projectView
-2025-03-23 21:41:58,704 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
-2025-03-23 21:41:58,704 [INFO] mus1 - [MainWindow] Registered log observer for subjectView
-2025-03-23 21:41:58,704 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
-2025-03-23 21:41:58,704 [INFO] mus1 - [MainWindow] Registered log observer for experimentView
-2025-03-23 21:41:58,704 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
-2025-03-23 21:41:58,704 [INFO] mus1 - [MainWindow] Switched to Project tab
-2025-03-23 21:41:58,704 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
-2025-03-23 21:41:58,704 [INFO] mus1.core.theme_manager - Applying theme: dark
-2025-03-23 21:41:58,802 [INFO] mus1.core.theme_manager - Successfully applied theme stylesheet with plugin overrides
-2025-03-23 21:41:58,803 [INFO] mus1.core.project_manager - Loading project from projects/Demo Data
-2025-03-23 21:41:58,804 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
-2025-03-23 21:41:58,804 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
-2025-03-23 21:41:58,805 [INFO] mus1 - [StateManager] Notified 3 observers of state change
-2025-03-23 21:41:58,805 [INFO] mus1 - Log file rotated, deleted 5 oldest lines
-2025-03-23 21:41:58,805 [INFO] mus1.core.data_manager - Using global frame rate: 30
-2025-03-23 21:41:58,805 [INFO] mus1 - [MainWindow] Project 'Demo Data' loaded successfully
-2025-03-23 21:41:58,805 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
-2025-03-23 21:41:58,806 [INFO] mus1 - [SubjectView] Refreshing subject list: 1 subjects found
-2025-03-23 21:41:58,806 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
-2025-03-23 21:41:58,806 [INFO] mus1.core.theme_manager - Applying theme: dark
-2025-03-23 21:41:58,911 [INFO] mus1.core.theme_manager - Successfully applied theme stylesheet with plugin overrides
-2025-03-23 21:41:58,924 [INFO] __main__ - MUS1 init complete. Starting application event loop.
-2025-03-23 21:42:02,969 [INFO] mus1.core.project_manager - Project saved to projects/Demo Data/project_state.json
-2025-03-23 21:42:02,969 [INFO] mus1.core.project_manager - Active body parts updated to: ['left_ear', 'nose', 'right_ear', 'tail']
-2025-03-23 21:42:02,973 [INFO] mus1 - [StateManager] Notified 3 observers of state change
-2025-03-23 21:42:02,974 [INFO] mus1 - Log file rotated, deleted 5 oldest lines
-2025-03-23 21:42:06,691 [INFO] mus1.core.project_manager - Project saved to projects/Demo Data/project_state.json
-2025-03-23 21:42:06,691 [INFO] mus1.core.project_manager - Active body parts updated to: ['nose', 'right_ear', 'tail']
-2025-03-23 21:42:06,695 [INFO] mus1 - [StateManager] Notified 3 observers of state change
-2025-03-23 21:42:06,695 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
-2025-03-23 21:42:15,794 [INFO] mus1.core.project_manager - Project saved to projects/Demo Data/project_state.json
-2025-03-23 21:42:15,798 [INFO] mus1 - [StateManager] Notified 3 observers of state change
-2025-03-23 21:42:15,798 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
-2025-03-23 21:42:15,800 [INFO] mus1.core.project_manager - Project saved to projects/Demo Data/project_state.json
-2025-03-23 21:42:15,800 [INFO] mus1.core.project_manager - Active body parts updated to: []
-2025-03-23 21:42:15,801 [INFO] mus1 - [StateManager] Notified 3 observers of state change
-2025-03-23 21:42:15,802 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
-2025-03-23 21:42:33,016 [INFO] mus1.core.project_manager - Project saved to projects/Demo Data/project_state.json
-2025-03-23 21:42:33,019 [INFO] mus1 - [StateManager] Notified 3 observers of state change
-2025-03-23 21:42:33,019 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
-2025-03-23 21:42:34,784 [INFO] mus1.core.project_manager - Project saved to projects/Demo Data/project_state.json
-2025-03-23 21:42:34,787 [INFO] mus1 - [StateManager] Notified 3 observers of state change
-2025-03-23 21:42:34,788 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
-2025-03-23 21:42:37,227 [INFO] mus1.core.project_manager - Project saved to projects/Demo Data/project_state.json
-2025-03-23 21:42:37,229 [INFO] mus1 - [StateManager] Notified 3 observers of state change
-2025-03-23 21:42:37,230 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
-2025-03-23 21:42:40,557 [INFO] mus1.core.project_manager - Project saved to projects/Demo Data/project_state.json
-2025-03-23 21:42:40,559 [INFO] mus1 - [StateManager] Notified 3 observers of state change
-2025-03-23 21:42:40,559 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
-2025-03-23 21:42:43,455 [INFO] mus1.core.project_manager - Project saved to projects/Demo Data/project_state.json
-2025-03-23 21:42:43,456 [INFO] mus1.core.project_manager - Active body parts updated to: ['head', 'left_ear', 'nose', 'right_ear']
-2025-03-23 21:42:43,460 [INFO] mus1 - [StateManager] Notified 3 observers of state change
-2025-03-23 21:42:43,461 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
-2025-03-23 21:43:05,955 [INFO] mus1.core.project_manager - Project saved to projects/Demo Data/project_state.json
-2025-03-23 21:43:05,960 [INFO] mus1 - [StateManager] Notified 3 observers of state change
-2025-03-23 21:43:05,960 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
-2025-03-23 21:43:05,961 [INFO] mus1.core.project_manager - Project saved to projects/Demo Data/project_state.json
-2025-03-23 21:43:05,961 [INFO] mus1.core.project_manager - Active body parts updated to: ['head', 'left_ear', 'right_ear']
-2025-03-23 21:43:05,963 [INFO] mus1 - [StateManager] Notified 3 observers of state change
-2025-03-23 21:43:05,964 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
-2025-03-23 21:43:13,020 [INFO] mus1.core.project_manager - Project saved to projects/Demo Data/project_state.json
-2025-03-23 21:43:13,024 [INFO] mus1 - [StateManager] Notified 3 observers of state change
-2025-03-23 21:43:13,025 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
+2025-03-24 14:53:39,700 [INFO] mus1 - [StateManager] Notified 3 observers of state change
+2025-03-24 14:53:39,701 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
+2025-03-24 14:53:39,702 [INFO] mus1.core.project_manager - Project saved to projects/Demo Data/project_state.json
+2025-03-24 14:53:39,702 [INFO] mus1.core.project_manager - Active body parts updated to: ['left_ear', 'nose', 'right_ear']
+2025-03-24 14:53:39,704 [INFO] mus1 - [StateManager] Notified 3 observers of state change
+2025-03-24 14:53:39,704 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
+2025-03-24 14:53:46,406 [INFO] mus1.core.project_manager - Project saved to projects/Demo Data/project_state.json
+2025-03-24 14:53:46,410 [INFO] mus1 - [StateManager] Notified 3 observers of state change
+2025-03-24 14:53:46,411 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
+2025-03-24 14:53:52,382 [INFO] mus1.core.project_manager - Project saved to projects/Demo Data/project_state.json
+2025-03-24 14:53:52,386 [INFO] mus1 - [StateManager] Notified 3 observers of state change
+2025-03-24 14:53:52,387 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
+2025-03-24 14:53:58,330 [INFO] mus1.core.project_manager - Project saved to projects/Demo Data/project_state.json
+2025-03-24 14:53:58,333 [INFO] mus1 - [StateManager] Notified 3 observers of state change
+2025-03-24 14:53:58,334 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
+2025-03-24 14:54:02,675 [INFO] mus1.core.project_manager - Project saved to projects/Demo Data/project_state.json
+2025-03-24 14:54:02,675 [INFO] mus1.core.project_manager - Updated active tracked objects to: []
+2025-03-24 14:54:02,679 [INFO] mus1 - [StateManager] Notified 3 observers of state change
+2025-03-24 14:54:02,680 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
+2025-03-24 14:54:02,681 [INFO] mus1.core.project_manager - Project saved to projects/Demo Data/project_state.json
+2025-03-24 14:54:02,681 [INFO] mus1.core.project_manager - Updated master tracked objects to: [ObjectMetadata(name='Silo', date_added=datetime.datetime(2025, 3, 24, 14, 53, 52, 381000), bounding_box=None), ObjectMetadata(name='Pyramid', date_added=datetime.datetime(2025, 3, 24, 14, 53, 58, 329426), bounding_box=None)]
+2025-03-24 14:54:02,684 [INFO] mus1 - [StateManager] Notified 3 observers of state change
+2025-03-24 14:54:02,685 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
+2025-03-24 14:54:11,384 [INFO] mus1 - [StateManager] Notified 3 observers of state change
+2025-03-24 14:54:11,386 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
+2025-03-24 14:54:11,387 [INFO] mus1.core.theme_manager - Applying theme: light
+2025-03-24 14:54:11,523 [INFO] mus1.core.theme_manager - Successfully applied theme stylesheet with plugin overrides
+2025-03-24 14:54:15,248 [INFO] mus1 - [StateManager] Notified 3 observers of state change
+2025-03-24 14:54:15,249 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
+2025-03-24 14:54:15,250 [INFO] mus1.core.theme_manager - Applying theme: dark
+2025-03-24 14:54:15,381 [INFO] mus1.core.theme_manager - Successfully applied theme stylesheet with plugin overrides
+2025-03-24 14:54:31,288 [INFO] mus1 - [MainWindow] Switched to Subjects tab
+2025-03-24 14:54:31,290 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
+2025-03-24 14:54:31,291 [INFO] mus1 - [SubjectView] Refreshing subject list: 0 subjects found
+2025-03-24 14:54:31,291 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
+2025-03-24 14:54:34,084 [INFO] mus1 - [MainWindow] Switched to Experiments tab
+2025-03-24 14:54:34,085 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
+2025-03-24 14:56:03,687 [INFO] mus1 - [MainWindow] Switched to Project tab
+2025-03-24 14:56:03,689 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
+2025-03-24 15:50:27,897 [INFO] __main__ - Launching MUS1...
+2025-03-24 15:50:27,897 [INFO] mus1.core.metadata - Initializing metadata system
+2025-03-24 15:50:27,897 [INFO] mus1.core.metadata - Metadata system initialized successfully
+2025-03-24 15:50:28,010 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
+2025-03-24 15:50:28,010 [INFO] mus1 - [MainApp] LoggingEventBus initialized
+2025-03-24 15:50:28,010 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
+2025-03-24 15:50:28,014 [INFO] mus1 - [StateManager] StateManager initialized
+2025-03-24 15:50:28,014 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
+2025-03-24 15:50:28,014 [INFO] mus1 - [ProjectManager] ProjectManager initialized
+2025-03-24 15:50:28,014 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
+2025-03-24 15:50:28,015 [INFO] mus1 - [ProjectManager] Registered 3 plugins
+2025-03-24 15:50:28,016 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
+2025-03-24 15:50:28,016 [INFO] mus1.core.project_manager - Registered 3 plugins
+2025-03-24 15:50:28,016 [INFO] __main__ - Core managers created. Launching Project Selection Dialog.
+2025-03-24 15:50:35,686 [INFO] mus1.core.project_manager - Created project directory at projects/test1
+2025-03-24 15:50:35,687 [INFO] mus1 - [ProjectManager] Created project directory at projects/test1
+2025-03-24 15:50:35,689 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
+2025-03-24 15:50:35,690 [INFO] mus1.core.project_manager - Created standard subfolders: subjects, experiments, batches, data, media, external_configs, project_notes
+2025-03-24 15:50:35,694 [INFO] mus1.core.project_manager - Project saved to projects/test1/project_state.json
+2025-03-24 15:50:35,727 [INFO] __main__ - Project selected: test1
+2025-03-24 15:50:35,727 [INFO] mus1.core.theme_manager - Applying theme: dark
+2025-03-24 15:50:35,737 [INFO] mus1.core.theme_manager - Successfully applied theme stylesheet with plugin overrides
+2025-03-24 15:50:35,749 [INFO] mus1 - [MainWindow] MainWindow initializing
+2025-03-24 15:50:35,750 [INFO] mus1 - Log file rotated, deleted 5 oldest lines
+2025-03-24 15:50:35,769 [INFO] mus1.core.data_manager - Frame rate functionality is disabled and no specific frame rate provided; returning 'OFF'
+2025-03-24 15:50:35,771 [INFO] mus1 - [SubjectView] SubjectView initialized
+2025-03-24 15:50:35,771 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
+2025-03-24 15:50:35,785 [INFO] mus1 - [SubjectView] Refreshing subject list: 0 subjects found
+2025-03-24 15:50:35,785 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
+2025-03-24 15:50:35,818 [INFO] mus1 - [MainWindow] Registered log observer for projectView
+2025-03-24 15:50:35,818 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
+2025-03-24 15:50:35,818 [INFO] mus1 - [MainWindow] Registered log observer for subjectView
+2025-03-24 15:50:35,818 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
+2025-03-24 15:50:35,818 [INFO] mus1 - [MainWindow] Registered log observer for experimentView
+2025-03-24 15:50:35,819 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
+2025-03-24 15:50:35,819 [INFO] mus1 - [MainWindow] Switched to Project tab
+2025-03-24 15:50:35,819 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
+2025-03-24 15:50:35,819 [INFO] mus1.core.theme_manager - Applying theme: dark
+2025-03-24 15:50:35,915 [INFO] mus1.core.theme_manager - Successfully applied theme stylesheet with plugin overrides
+2025-03-24 15:50:35,916 [INFO] mus1 - [MainWindow] Project 'test1' loaded successfully
+2025-03-24 15:50:35,916 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
+2025-03-24 15:50:35,917 [INFO] mus1 - [SubjectView] Refreshing subject list: 0 subjects found
+2025-03-24 15:50:35,917 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
+2025-03-24 15:50:35,917 [INFO] mus1.core.theme_manager - Applying theme: dark
+2025-03-24 15:50:36,017 [INFO] mus1.core.theme_manager - Successfully applied theme stylesheet with plugin overrides
+2025-03-24 15:50:36,029 [INFO] __main__ - MUS1 init complete. Starting application event loop.
+2025-03-24 15:50:40,533 [INFO] mus1.core.project_manager - Loading project from projects/test1
+2025-03-24 15:50:40,534 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
+2025-03-24 15:50:40,534 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
+2025-03-24 15:50:40,538 [INFO] mus1 - [StateManager] Notified 3 observers of state change
+2025-03-24 15:50:40,539 [INFO] mus1 - Log file rotated, deleted 5 oldest lines
+2025-03-24 15:50:40,540 [INFO] mus1.core.data_manager - Frame rate functionality is disabled and no specific frame rate provided; returning 'OFF'
+2025-03-24 16:05:22,408 [INFO] __main__ - Launching MUS1...
+2025-03-24 16:05:22,408 [INFO] mus1.core.metadata - Initializing metadata system
+2025-03-24 16:05:22,408 [INFO] mus1.core.metadata - Metadata system initialized successfully
+2025-03-24 16:05:22,518 [INFO] mus1 - Log file rotated, deleted 5 oldest lines
+2025-03-24 16:05:22,518 [INFO] mus1 - [MainApp] LoggingEventBus initialized
+2025-03-24 16:05:22,519 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
+2025-03-24 16:05:22,522 [INFO] mus1 - [StateManager] StateManager initialized
+2025-03-24 16:05:22,522 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
+2025-03-24 16:05:22,523 [INFO] mus1 - [ProjectManager] ProjectManager initialized
+2025-03-24 16:05:22,523 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
+2025-03-24 16:05:22,524 [INFO] mus1 - [ProjectManager] Registered 3 plugins
+2025-03-24 16:05:22,524 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
+2025-03-24 16:05:22,524 [INFO] mus1.core.project_manager - Registered 3 plugins
+2025-03-24 16:05:22,524 [INFO] __main__ - Core managers created. Launching Project Selection Dialog.
+2025-03-24 16:05:28,652 [INFO] mus1.core.project_manager - Created project directory at projects/test2
+2025-03-24 16:05:28,652 [INFO] mus1 - [ProjectManager] Created project directory at projects/test2
+2025-03-24 16:05:28,654 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
+2025-03-24 16:05:28,656 [INFO] mus1.core.project_manager - Created standard subfolders: subjects, experiments, batches, data, media, external_configs, project_notes
+2025-03-24 16:05:28,660 [INFO] mus1.core.project_manager - Project saved to projects/test2/project_state.json
+2025-03-24 16:05:28,679 [INFO] __main__ - Project selected: test2
+2025-03-24 16:05:28,680 [INFO] mus1.core.theme_manager - Applying theme: dark
+2025-03-24 16:05:28,689 [INFO] mus1.core.theme_manager - Successfully applied theme stylesheet with plugin overrides
+2025-03-24 16:05:28,702 [INFO] mus1 - [MainWindow] MainWindow initializing
+2025-03-24 16:05:28,702 [INFO] mus1 - Log file rotated, deleted 5 oldest lines
+2025-03-24 16:05:28,720 [INFO] mus1.core.data_manager - Frame rate functionality is disabled and no specific frame rate provided; returning 'OFF'
+2025-03-24 16:05:28,721 [INFO] mus1 - [SubjectView] SubjectView initialized
+2025-03-24 16:05:28,722 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
+2025-03-24 16:05:28,734 [INFO] mus1 - [SubjectView] Refreshing subject list: 0 subjects found
+2025-03-24 16:05:28,734 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
+2025-03-24 16:05:28,766 [INFO] mus1 - [MainWindow] Registered log observer for projectView
+2025-03-24 16:05:28,767 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
+2025-03-24 16:05:28,767 [INFO] mus1 - [MainWindow] Registered log observer for subjectView
+2025-03-24 16:05:28,767 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
+2025-03-24 16:05:28,767 [INFO] mus1 - [MainWindow] Registered log observer for experimentView
+2025-03-24 16:05:28,767 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
+2025-03-24 16:05:28,767 [INFO] mus1 - [MainWindow] Switched to Project tab
+2025-03-24 16:05:28,767 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
+2025-03-24 16:05:28,767 [INFO] mus1.core.theme_manager - Applying theme: dark
+2025-03-24 16:05:28,865 [INFO] mus1.core.theme_manager - Successfully applied theme stylesheet with plugin overrides
+2025-03-24 16:07:42,246 [INFO] __main__ - Launching MUS1...
+2025-03-24 16:07:42,246 [INFO] mus1.core.metadata - Initializing metadata system
+2025-03-24 16:07:42,246 [INFO] mus1.core.metadata - Metadata system initialized successfully
+2025-03-24 16:07:42,346 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
+2025-03-24 16:07:42,347 [INFO] mus1 - [MainApp] LoggingEventBus initialized
+2025-03-24 16:07:42,347 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
+2025-03-24 16:07:42,350 [INFO] mus1 - [StateManager] StateManager initialized
+2025-03-24 16:07:42,350 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
+2025-03-24 16:07:42,351 [INFO] mus1 - [ProjectManager] ProjectManager initialized
+2025-03-24 16:07:42,351 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
+2025-03-24 16:07:42,351 [INFO] mus1 - [ProjectManager] Registered 3 plugins
+2025-03-24 16:07:42,351 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
+2025-03-24 16:07:42,351 [INFO] mus1.core.project_manager - Registered 3 plugins
+2025-03-24 16:07:42,351 [INFO] __main__ - Core managers created. Launching Project Selection Dialog.
+2025-03-24 16:07:46,725 [INFO] mus1.core.project_manager - Created project directory at projects/test 3
+2025-03-24 16:07:46,725 [INFO] mus1 - [ProjectManager] Created project directory at projects/test 3
+2025-03-24 16:07:46,727 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
+2025-03-24 16:07:46,729 [INFO] mus1.core.project_manager - Created standard subfolders: subjects, experiments, batches, data, media, external_configs, project_notes
+2025-03-24 16:07:46,734 [INFO] mus1.core.project_manager - Project saved to projects/test 3/project_state.json
+2025-03-24 16:07:46,767 [INFO] __main__ - Project selected: test 3
+2025-03-24 16:07:46,767 [INFO] mus1.core.theme_manager - Applying theme: dark
+2025-03-24 16:07:46,774 [INFO] mus1.core.theme_manager - Successfully applied theme stylesheet with plugin overrides
+2025-03-24 16:07:46,781 [INFO] mus1 - [MainWindow] MainWindow initializing
+2025-03-24 16:07:46,782 [INFO] mus1 - Log file rotated, deleted 5 oldest lines
+2025-03-24 16:07:46,800 [INFO] mus1.core.data_manager - Frame rate functionality is disabled and no specific frame rate provided; returning 'OFF'
+2025-03-24 16:07:46,802 [INFO] mus1 - [SubjectView] SubjectView initialized
+2025-03-24 16:07:46,802 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
+2025-03-24 16:07:46,814 [INFO] mus1 - [SubjectView] Refreshing subject list: 0 subjects found
+2025-03-24 16:07:46,815 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
+2025-03-24 16:07:46,847 [INFO] mus1 - [MainWindow] Registered log observer for projectView
+2025-03-24 16:07:46,848 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
+2025-03-24 16:07:46,848 [INFO] mus1 - [MainWindow] Registered log observer for subjectView
+2025-03-24 16:07:46,848 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
+2025-03-24 16:07:46,848 [INFO] mus1 - [MainWindow] Registered log observer for experimentView
+2025-03-24 16:07:46,848 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
+2025-03-24 16:07:46,848 [INFO] mus1 - [MainWindow] Switched to Project tab
+2025-03-24 16:07:46,848 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
+2025-03-24 16:07:46,848 [INFO] mus1.core.theme_manager - Applying theme: dark
+2025-03-24 16:07:46,945 [INFO] mus1.core.theme_manager - Successfully applied theme stylesheet with plugin overrides
+2025-03-24 16:07:46,945 [INFO] mus1.core.project_manager - Loading project from projects/test 3
+2025-03-24 16:07:46,945 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
+2025-03-24 16:07:46,945 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
+2025-03-24 16:14:07,107 [INFO] __main__ - Launching MUS1...
+2025-03-24 16:14:07,107 [INFO] mus1.core.metadata - Initializing metadata system
+2025-03-24 16:14:07,107 [INFO] mus1.core.metadata - Metadata system initialized successfully
+2025-03-24 16:14:07,208 [INFO] mus1 - Log file rotated, deleted 6 oldest lines
+2025-03-24 16:14:07,208 [INFO] mus1 - [MainApp] LoggingEventBus initialized
+2025-03-24 16:14:07,208 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
+2025-03-24 16:14:07,212 [INFO] mus1 - [StateManager] StateManager initialized
+2025-03-24 16:14:07,212 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
+2025-03-24 16:14:07,212 [INFO] mus1 - [ProjectManager] ProjectManager initialized
+2025-03-24 16:14:07,212 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
+2025-03-24 16:14:07,213 [INFO] mus1 - [ProjectManager] Registered 3 plugins
+2025-03-24 16:14:07,213 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
+2025-03-24 16:14:07,213 [INFO] mus1.core.project_manager - Registered 3 plugins
+2025-03-24 16:14:07,213 [INFO] __main__ - Core managers created. Launching Project Selection Dialog.
+2025-03-24 16:14:12,170 [INFO] mus1.core.project_manager - Created project directory at projects/test 4
+2025-03-24 16:14:12,170 [INFO] mus1 - [ProjectManager] Created project directory at projects/test 4
+2025-03-24 16:14:12,172 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
+2025-03-24 16:14:12,174 [INFO] mus1.core.project_manager - Created standard subfolders: subjects, experiments, batches, data, media, external_configs, project_notes
+2025-03-24 16:14:12,180 [INFO] mus1.core.project_manager - Project saved to projects/test 4/project_state.json
+2025-03-24 16:14:12,218 [INFO] __main__ - Project selected: test 4
+2025-03-24 16:14:12,218 [INFO] mus1.core.theme_manager - Applying theme: dark
+2025-03-24 16:14:12,225 [INFO] mus1.core.theme_manager - Successfully applied theme stylesheet with plugin overrides
+2025-03-24 16:14:12,236 [INFO] mus1 - [MainWindow] MainWindow initializing
+2025-03-24 16:14:12,236 [INFO] mus1 - Log file rotated, deleted 5 oldest lines
+2025-03-24 16:14:12,255 [INFO] mus1.core.data_manager - Frame rate functionality is disabled and no specific frame rate provided; returning 'OFF'
+2025-03-24 16:14:12,257 [INFO] mus1 - [SubjectView] SubjectView initialized
+2025-03-24 16:14:12,257 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
+2025-03-24 16:14:12,270 [INFO] mus1 - [SubjectView] Refreshing subject list: 0 subjects found
+2025-03-24 16:14:12,270 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
+2025-03-24 16:14:12,302 [INFO] mus1 - [MainWindow] Registered log observer for projectView
+2025-03-24 16:14:12,302 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
+2025-03-24 16:14:12,302 [INFO] mus1 - [MainWindow] Registered log observer for subjectView
+2025-03-24 16:14:12,302 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
+2025-03-24 16:14:12,302 [INFO] mus1 - [MainWindow] Registered log observer for experimentView
+2025-03-24 16:14:12,303 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
+2025-03-24 16:14:12,303 [INFO] mus1 - [MainWindow] Switched to Project tab
+2025-03-24 16:14:12,303 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
+2025-03-24 16:14:12,303 [INFO] mus1.core.theme_manager - Applying theme: dark
+2025-03-24 16:14:12,396 [INFO] mus1.core.theme_manager - Successfully applied theme stylesheet with plugin overrides
+2025-03-24 16:14:12,397 [INFO] mus1.core.project_manager - Loading project from projects/test 4
+2025-03-24 16:14:12,397 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
+2025-03-24 16:14:12,397 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
+2025-03-24 16:14:12,397 [INFO] mus1 - [StateManager] Notified 2 observers of state change
+2025-03-24 16:14:12,397 [INFO] mus1 - Log file rotated, deleted 5 oldest lines
+2025-03-24 16:14:12,398 [INFO] mus1.core.data_manager - Frame rate functionality is disabled and no specific frame rate provided; returning 'OFF'
+2025-03-24 16:14:12,398 [INFO] mus1 - [MainWindow] Project 'test 4' loaded successfully
+2025-03-24 16:14:12,398 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
+2025-03-24 16:14:12,398 [INFO] mus1 - [SubjectView] Refreshing subject list: 0 subjects found
+2025-03-24 16:14:12,398 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
+2025-03-24 16:14:12,398 [INFO] mus1.core.theme_manager - Applying theme: dark
+2025-03-24 16:14:12,498 [INFO] mus1.core.theme_manager - Successfully applied theme stylesheet with plugin overrides
+2025-03-24 16:14:12,510 [INFO] __main__ - MUS1 init complete. Starting application event loop.
+2025-03-24 16:14:49,531 [INFO] mus1.core.project_manager - Loading project from projects/Demo Data
+2025-03-24 16:14:49,534 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
+2025-03-24 16:14:49,534 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
+2025-03-24 16:14:49,537 [INFO] mus1 - [StateManager] Notified 3 observers of state change
+2025-03-24 16:14:49,538 [INFO] mus1 - Log file rotated, deleted 5 oldest lines
+2025-03-24 16:14:49,539 [INFO] mus1.core.data_manager - Frame rate functionality is disabled and no specific frame rate provided; returning 'OFF'
+2025-03-24 16:14:49,541 [INFO] mus1 - [SubjectView] Refreshing subject list: 0 subjects found
+2025-03-24 16:14:49,541 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
+2025-03-24 16:15:04,428 [INFO] mus1.core.project_manager - Loading project from projects/test 4
+2025-03-24 16:15:04,428 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
+2025-03-24 16:15:04,429 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
+2025-03-24 16:15:04,433 [INFO] mus1 - [StateManager] Notified 3 observers of state change
+2025-03-24 16:15:04,433 [INFO] mus1 - Log file rotated, deleted 5 oldest lines
+2025-03-24 16:15:04,434 [INFO] mus1.core.data_manager - Frame rate functionality is disabled and no specific frame rate provided; returning 'OFF'
+2025-03-24 16:15:04,435 [INFO] mus1 - [SubjectView] Refreshing subject list: 0 subjects found
+2025-03-24 16:15:04,436 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
+2025-03-24 16:15:09,678 [INFO] mus1.core.project_manager - Loading project from projects/Demo Data
+2025-03-24 16:15:09,679 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
+2025-03-24 16:15:09,679 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
+2025-03-24 16:15:09,683 [INFO] mus1 - [StateManager] Notified 3 observers of state change
+2025-03-24 16:15:09,684 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
+2025-03-24 16:15:09,686 [INFO] mus1.core.data_manager - Frame rate functionality is disabled and no specific frame rate provided; returning 'OFF'
+2025-03-24 16:15:09,688 [INFO] mus1 - [SubjectView] Refreshing subject list: 0 subjects found
+2025-03-24 16:15:09,688 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
+2025-03-24 16:15:13,577 [INFO] mus1.core.project_manager - Loading project from projects/test 4
+2025-03-24 16:15:13,578 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
+2025-03-24 16:15:13,578 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
+2025-03-24 16:15:13,584 [INFO] mus1 - [StateManager] Notified 3 observers of state change
+2025-03-24 16:15:13,585 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
+2025-03-24 16:15:13,586 [INFO] mus1.core.data_manager - Frame rate functionality is disabled and no specific frame rate provided; returning 'OFF'
+2025-03-24 16:15:13,588 [INFO] mus1 - [SubjectView] Refreshing subject list: 0 subjects found
+2025-03-24 16:15:13,589 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
+2025-03-24 16:19:26,771 [INFO] mus1.core.project_manager - Loading project from projects/Demo Data
+2025-03-24 16:19:26,771 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
+2025-03-24 16:19:26,771 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
+2025-03-24 16:19:26,775 [INFO] mus1 - [StateManager] Notified 3 observers of state change
+2025-03-24 16:19:26,776 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
+2025-03-24 16:19:26,777 [INFO] mus1.core.data_manager - Frame rate functionality is disabled and no specific frame rate provided; returning 'OFF'
+2025-03-24 16:19:26,779 [INFO] mus1 - [SubjectView] Refreshing subject list: 0 subjects found
+2025-03-24 16:19:26,780 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
+2025-03-24 16:19:39,912 [INFO] mus1.core.project_manager - Project saved to projects/Demo Data/project_state.json
+2025-03-24 16:19:39,916 [INFO] mus1 - [StateManager] Notified 3 observers of state change
+2025-03-24 16:19:39,917 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
+2025-03-24 16:19:45,772 [INFO] mus1.core.project_manager - Project saved to projects/Demo Data/project_state.json
+2025-03-24 16:19:45,772 [INFO] mus1.core.project_manager - Updated active tracked objects to: [ObjectMetadata(name='Diamond', date_added=datetime.datetime(2025, 3, 24, 16, 19, 39, 908841), bounding_box=None), ObjectMetadata(name='Silo', date_added=datetime.datetime(2025, 3, 24, 14, 53, 52, 381000), bounding_box=None), ObjectMetadata(name='Pyramid', date_added=datetime.datetime(2025, 3, 24, 14, 53, 58, 329426), bounding_box=None)]
+2025-03-24 16:19:45,774 [INFO] mus1 - [StateManager] Notified 3 observers of state change
+2025-03-24 16:19:45,774 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
+2025-03-24 16:19:59,320 [INFO] mus1.core.project_manager - Loading project from projects/test 4
+2025-03-24 16:19:59,321 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
+2025-03-24 16:19:59,321 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
+2025-03-24 16:19:59,326 [INFO] mus1 - [StateManager] Notified 3 observers of state change
+2025-03-24 16:19:59,328 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
+2025-03-24 16:19:59,328 [INFO] mus1.core.data_manager - Frame rate functionality is disabled and no specific frame rate provided; returning 'OFF'
+2025-03-24 16:19:59,331 [INFO] mus1 - [SubjectView] Refreshing subject list: 0 subjects found
+2025-03-24 16:19:59,332 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
+2025-03-24 16:20:04,362 [INFO] mus1.core.project_manager - Loading project from projects/Demo Data
+2025-03-24 16:20:04,362 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
+2025-03-24 16:20:04,362 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
+2025-03-24 16:20:04,366 [INFO] mus1 - [StateManager] Notified 3 observers of state change
+2025-03-24 16:20:04,367 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
+2025-03-24 16:20:04,368 [INFO] mus1.core.data_manager - Frame rate functionality is disabled and no specific frame rate provided; returning 'OFF'
+2025-03-24 16:20:04,370 [INFO] mus1 - [SubjectView] Refreshing subject list: 0 subjects found
+2025-03-24 16:20:04,370 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
+2025-03-24 16:20:09,939 [INFO] mus1.core.project_manager - Project saved to projects/Demo Data/project_state.json
+2025-03-24 16:20:09,939 [INFO] mus1.core.project_manager - Updated active tracked objects to: [ObjectMetadata(name='Diamond', date_added=datetime.datetime(2025, 3, 24, 16, 19, 39, 908841), bounding_box=None), ObjectMetadata(name='Pyramid', date_added=datetime.datetime(2025, 3, 24, 14, 53, 58, 329426), bounding_box=None)]
+2025-03-24 16:20:09,944 [INFO] mus1 - [StateManager] Notified 3 observers of state change
+2025-03-24 16:20:09,945 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
+2025-03-24 16:20:09,947 [INFO] mus1.core.project_manager - Project saved to projects/Demo Data/project_state.json
+2025-03-24 16:20:09,947 [INFO] mus1.core.project_manager - Updated master tracked objects to: [ObjectMetadata(name='Silo', date_added=datetime.datetime(2025, 3, 24, 14, 53, 52, 381000), bounding_box=None), ObjectMetadata(name='Pyramid', date_added=datetime.datetime(2025, 3, 24, 14, 53, 58, 329426), bounding_box=None), ObjectMetadata(name='Diamond', date_added=datetime.datetime(2025, 3, 24, 16, 19, 39, 908841), bounding_box=None)]
+2025-03-24 16:20:09,949 [INFO] mus1 - [StateManager] Notified 3 observers of state change
+2025-03-24 16:20:09,950 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
+2025-03-24 16:20:13,886 [INFO] mus1.core.project_manager - Loading project from projects/test 4
+2025-03-24 16:20:13,887 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
+2025-03-24 16:20:13,887 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
+2025-03-24 16:20:13,890 [INFO] mus1 - [StateManager] Notified 3 observers of state change
+2025-03-24 16:20:13,891 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
+2025-03-24 16:20:13,892 [INFO] mus1.core.data_manager - Frame rate functionality is disabled and no specific frame rate provided; returning 'OFF'
+2025-03-24 16:20:13,894 [INFO] mus1 - [SubjectView] Refreshing subject list: 0 subjects found
+2025-03-24 16:20:13,894 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
+2025-03-24 16:20:19,557 [INFO] mus1.core.project_manager - Loading project from projects/Demo Data
+2025-03-24 16:20:19,558 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
+2025-03-24 16:20:19,558 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
+2025-03-24 16:20:19,560 [INFO] mus1 - [StateManager] Notified 3 observers of state change
+2025-03-24 16:20:19,561 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
+2025-03-24 16:20:19,561 [INFO] mus1.core.data_manager - Frame rate functionality is disabled and no specific frame rate provided; returning 'OFF'
+2025-03-24 16:20:19,563 [INFO] mus1 - [SubjectView] Refreshing subject list: 0 subjects found
+2025-03-24 16:20:19,563 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
+2025-03-24 16:20:28,672 [INFO] mus1.core.state_manager - Project settings updated: global_sort_mode
+2025-03-24 16:20:28,678 [INFO] mus1 - [StateManager] Notified 3 observers of state change
+2025-03-24 16:20:28,679 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
+2025-03-24 16:20:28,684 [INFO] mus1.core.project_manager - Project saved to projects/Demo Data/project_state.json
+2025-03-24 16:20:37,974 [INFO] mus1.core.project_manager - Loading project from projects/test 4
+2025-03-24 16:20:37,975 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
+2025-03-24 16:20:37,975 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
+2025-03-24 16:20:37,980 [INFO] mus1 - [StateManager] Notified 3 observers of state change
+2025-03-24 16:20:37,981 [INFO] mus1 - Log file rotated, deleted 5 oldest lines
+2025-03-24 16:20:37,982 [INFO] mus1.core.data_manager - Frame rate functionality is disabled and no specific frame rate provided; returning 'OFF'
+2025-03-24 16:20:37,984 [INFO] mus1 - [SubjectView] Refreshing subject list: 0 subjects found
+2025-03-24 16:20:37,985 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
+2025-03-24 16:20:52,223 [INFO] mus1.core.project_manager - Loading project from projects/Demo Data
+2025-03-24 16:20:52,224 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
+2025-03-24 16:20:52,224 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
+2025-03-24 16:20:52,229 [INFO] mus1 - [StateManager] Notified 3 observers of state change
+2025-03-24 16:20:52,230 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
+2025-03-24 16:20:52,231 [INFO] mus1.core.data_manager - Frame rate functionality is disabled and no specific frame rate provided; returning 'OFF'
+2025-03-24 16:20:52,233 [INFO] mus1 - [SubjectView] Refreshing subject list: 0 subjects found
+2025-03-24 16:20:52,234 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
+2025-03-24 16:20:58,910 [INFO] mus1.core.state_manager - Project settings updated: global_sort_mode
+2025-03-24 16:20:58,913 [INFO] mus1 - [StateManager] Notified 3 observers of state change
+2025-03-24 16:20:58,914 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
+2025-03-24 16:20:58,915 [INFO] mus1.core.project_manager - Project saved to projects/Demo Data/project_state.json
+2025-03-24 16:21:05,723 [INFO] mus1.core.project_manager - Loading project from projects/test 4
+2025-03-24 16:21:05,724 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
+2025-03-24 16:21:05,724 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
+2025-03-24 16:21:05,728 [INFO] mus1 - [StateManager] Notified 3 observers of state change
+2025-03-24 16:21:05,729 [INFO] mus1 - Log file rotated, deleted 5 oldest lines
+2025-03-24 16:21:05,730 [INFO] mus1.core.data_manager - Frame rate functionality is disabled and no specific frame rate provided; returning 'OFF'
+2025-03-24 16:21:05,732 [INFO] mus1 - [SubjectView] Refreshing subject list: 0 subjects found
+2025-03-24 16:21:05,732 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
+2025-03-24 16:21:17,166 [INFO] mus1.core.state_manager - Project settings updated: global_sort_mode
+2025-03-24 16:21:17,171 [INFO] mus1 - [StateManager] Notified 3 observers of state change
+2025-03-24 16:21:17,173 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
+2025-03-24 16:21:17,174 [INFO] mus1.core.project_manager - Project saved to projects/test 4/project_state.json
+2025-03-24 16:21:23,678 [INFO] mus1.core.project_manager - Loading project from projects/Demo Data
+2025-03-24 16:21:23,679 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
+2025-03-24 16:21:23,679 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
+2025-03-24 16:21:23,682 [INFO] mus1 - [StateManager] Notified 3 observers of state change
+2025-03-24 16:21:23,683 [INFO] mus1 - Log file rotated, deleted 5 oldest lines
+2025-03-24 16:21:23,683 [INFO] mus1.core.data_manager - Frame rate functionality is disabled and no specific frame rate provided; returning 'OFF'
+2025-03-24 16:21:23,684 [INFO] mus1 - [SubjectView] Refreshing subject list: 0 subjects found
+2025-03-24 16:21:23,685 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
+2025-03-24 16:21:33,770 [INFO] mus1.core.state_manager - Project settings updated: theme_mode, global_sort_mode, global_frame_rate_enabled, global_frame_rate
+2025-03-24 16:21:33,776 [INFO] mus1 - [StateManager] Notified 3 observers of state change
+2025-03-24 16:21:33,777 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
+2025-03-24 16:21:33,779 [INFO] mus1.core.project_manager - Project saved to projects/Demo Data/project_state.json
+2025-03-24 16:21:33,781 [INFO] mus1 - [StateManager] Notified 3 observers of state change
+2025-03-24 16:21:33,781 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
+2025-03-24 16:21:33,782 [INFO] mus1.core.theme_manager - Applying theme: dark
+2025-03-24 16:21:33,912 [INFO] mus1.core.theme_manager - Successfully applied theme stylesheet with plugin overrides
+2025-03-24 16:21:35,602 [INFO] mus1.core.state_manager - Project settings updated: theme_mode, global_sort_mode, global_frame_rate_enabled, global_frame_rate
+2025-03-24 16:21:35,608 [INFO] mus1 - [StateManager] Notified 3 observers of state change
+2025-03-24 16:21:35,609 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
+2025-03-24 16:21:35,611 [INFO] mus1.core.project_manager - Project saved to projects/Demo Data/project_state.json
+2025-03-24 16:21:35,613 [INFO] mus1 - [StateManager] Notified 3 observers of state change
+2025-03-24 16:21:35,613 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
+2025-03-24 16:21:35,614 [INFO] mus1.core.theme_manager - Applying theme: dark
+2025-03-24 16:21:35,745 [INFO] mus1.core.theme_manager - Successfully applied theme stylesheet with plugin overrides
+2025-03-24 16:21:36,080 [INFO] mus1.core.state_manager - Project settings updated: theme_mode, global_sort_mode, global_frame_rate_enabled, global_frame_rate
+2025-03-24 16:21:36,084 [INFO] mus1 - [StateManager] Notified 3 observers of state change
+2025-03-24 16:21:36,084 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
+2025-03-24 16:21:36,086 [INFO] mus1.core.project_manager - Project saved to projects/Demo Data/project_state.json
+2025-03-24 16:21:36,088 [INFO] mus1 - [StateManager] Notified 3 observers of state change
+2025-03-24 16:21:36,088 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
+2025-03-24 16:21:36,089 [INFO] mus1.core.theme_manager - Applying theme: dark
+2025-03-24 16:21:36,217 [INFO] mus1.core.theme_manager - Successfully applied theme stylesheet with plugin overrides
+2025-03-24 16:21:36,830 [INFO] mus1.core.state_manager - Project settings updated: global_frame_rate_enabled, global_frame_rate
+2025-03-24 16:21:36,834 [INFO] mus1 - [StateManager] Notified 3 observers of state change
+2025-03-24 16:21:36,835 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
+2025-03-24 16:21:36,836 [INFO] mus1.core.project_manager - Project saved to projects/Demo Data/project_state.json
+2025-03-24 16:21:49,492 [INFO] mus1.core.project_manager - Loading project from projects/test 4
+2025-03-24 16:21:49,492 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
+2025-03-24 16:21:49,493 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
+2025-03-24 16:21:49,497 [INFO] mus1 - [StateManager] Notified 3 observers of state change
+2025-03-24 16:21:49,497 [INFO] mus1 - Log file rotated, deleted 5 oldest lines
+2025-03-24 16:21:49,498 [INFO] mus1.core.data_manager - Frame rate functionality is disabled and no specific frame rate provided; returning 'OFF'
+2025-03-24 16:21:49,500 [INFO] mus1 - [SubjectView] Refreshing subject list: 0 subjects found
+2025-03-24 16:21:49,501 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
+2025-03-24 16:21:57,664 [INFO] mus1.core.state_manager - Project settings updated: theme_mode, global_sort_mode, global_frame_rate_enabled, global_frame_rate
+2025-03-24 16:21:57,671 [INFO] mus1 - [StateManager] Notified 3 observers of state change
+2025-03-24 16:21:57,673 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
+2025-03-24 16:21:57,675 [INFO] mus1.core.project_manager - Project saved to projects/test 4/project_state.json
+2025-03-24 16:21:57,678 [INFO] mus1 - [StateManager] Notified 3 observers of state change
+2025-03-24 16:21:57,679 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
+2025-03-24 16:21:57,680 [INFO] mus1.core.theme_manager - Applying theme: dark
+2025-03-24 16:21:57,810 [INFO] mus1.core.theme_manager - Successfully applied theme stylesheet with plugin overrides
+2025-03-24 16:23:00,543 [INFO] __main__ - Launching MUS1...
+2025-03-24 16:23:00,543 [INFO] mus1.core.metadata - Initializing metadata system
+2025-03-24 16:23:00,543 [INFO] mus1.core.metadata - Metadata system initialized successfully
+2025-03-24 16:23:00,648 [INFO] mus1 - Log file rotated, deleted 5 oldest lines
+2025-03-24 16:23:00,648 [INFO] mus1 - [MainApp] LoggingEventBus initialized
+2025-03-24 16:23:00,648 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
+2025-03-24 16:23:00,652 [INFO] mus1 - [StateManager] StateManager initialized
+2025-03-24 16:23:00,652 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
+2025-03-24 16:23:00,652 [INFO] mus1 - [ProjectManager] ProjectManager initialized
+2025-03-24 16:23:00,652 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
+2025-03-24 16:23:00,652 [INFO] mus1 - [ProjectManager] Registered 3 plugins
+2025-03-24 16:23:00,653 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
+2025-03-24 16:23:00,653 [INFO] mus1.core.project_manager - Registered 3 plugins
+2025-03-24 16:23:00,653 [INFO] __main__ - Core managers created. Launching Project Selection Dialog.
+2025-03-24 16:23:04,285 [INFO] __main__ - Project selected: Demo Data
+2025-03-24 16:23:04,285 [INFO] mus1.core.theme_manager - Applying theme: dark
+2025-03-24 16:23:04,295 [INFO] mus1.core.theme_manager - Successfully applied theme stylesheet with plugin overrides
+2025-03-24 16:23:04,306 [INFO] mus1 - [MainWindow] MainWindow initializing
+2025-03-24 16:23:04,306 [INFO] mus1 - Log file rotated, deleted 5 oldest lines
+2025-03-24 16:24:42,860 [INFO] __main__ - Launching MUS1...
+2025-03-24 16:24:42,860 [INFO] mus1.core.metadata - Initializing metadata system
+2025-03-24 16:24:42,860 [INFO] mus1.core.metadata - Metadata system initialized successfully
+2025-03-24 16:24:42,959 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
+2025-03-24 16:24:42,959 [INFO] mus1 - [MainApp] LoggingEventBus initialized
+2025-03-24 16:24:42,959 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
+2025-03-24 16:24:42,962 [INFO] mus1 - [StateManager] StateManager initialized
+2025-03-24 16:24:42,963 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
+2025-03-24 16:24:42,963 [INFO] mus1 - [ProjectManager] ProjectManager initialized
+2025-03-24 16:24:42,963 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
+2025-03-24 16:24:42,963 [INFO] mus1 - [ProjectManager] Registered 3 plugins
+2025-03-24 16:24:42,963 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
+2025-03-24 16:24:42,963 [INFO] mus1.core.project_manager - Registered 3 plugins
+2025-03-24 16:24:42,964 [INFO] __main__ - Core managers created. Launching Project Selection Dialog.
+2025-03-24 16:24:45,731 [INFO] __main__ - Project selected: Demo Data
+2025-03-24 16:24:45,731 [INFO] mus1.core.theme_manager - Applying theme: dark
+2025-03-24 16:24:45,743 [INFO] mus1.core.theme_manager - Successfully applied theme stylesheet with plugin overrides
+2025-03-24 16:24:45,756 [INFO] mus1 - [MainWindow] MainWindow initializing
+2025-03-24 16:24:45,757 [INFO] mus1 - Log file rotated, deleted 5 oldest lines
+2025-03-24 16:25:54,250 [INFO] __main__ - Launching MUS1...
+2025-03-24 16:25:54,250 [INFO] mus1.core.metadata - Initializing metadata system
+2025-03-24 16:25:54,250 [INFO] mus1.core.metadata - Metadata system initialized successfully
+2025-03-24 16:25:54,351 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
+2025-03-24 16:25:54,351 [INFO] mus1 - [MainApp] LoggingEventBus initialized
+2025-03-24 16:25:54,351 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
+2025-03-24 16:25:54,355 [INFO] mus1 - [StateManager] StateManager initialized
+2025-03-24 16:25:54,355 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
+2025-03-24 16:25:54,355 [INFO] mus1 - [ProjectManager] ProjectManager initialized
+2025-03-24 16:25:54,355 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
+2025-03-24 16:25:54,356 [INFO] mus1 - [ProjectManager] Registered 3 plugins
+2025-03-24 16:25:54,356 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
+2025-03-24 16:25:54,356 [INFO] mus1.core.project_manager - Registered 3 plugins
+2025-03-24 16:25:54,356 [INFO] __main__ - Core managers created. Launching Project Selection Dialog.
+2025-03-24 16:25:57,549 [INFO] __main__ - Project selected: Demo Data
+2025-03-24 16:25:57,550 [INFO] mus1.core.theme_manager - Applying theme: dark
+2025-03-24 16:25:57,561 [INFO] mus1.core.theme_manager - Successfully applied theme stylesheet with plugin overrides
+2025-03-24 16:25:57,574 [INFO] mus1 - [MainWindow] MainWindow initializing
+2025-03-24 16:25:57,574 [INFO] mus1 - Log file rotated, deleted 5 oldest lines
+2025-03-24 16:25:57,595 [INFO] mus1.core.data_manager - Frame rate functionality is disabled and no specific frame rate provided; returning 'OFF'
+2025-03-24 16:25:57,596 [INFO] mus1 - [SubjectView] SubjectView initialized
+2025-03-24 16:25:57,597 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
+2025-03-24 16:25:57,611 [INFO] mus1 - [SubjectView] Refreshing subject list: 0 subjects found
+2025-03-24 16:25:57,611 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
+2025-03-24 16:25:57,644 [INFO] mus1 - [MainWindow] Registered log observer for projectView
+2025-03-24 16:25:57,645 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
+2025-03-24 16:25:57,645 [INFO] mus1 - [MainWindow] Registered log observer for subjectView
+2025-03-24 16:25:57,645 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
+2025-03-24 16:25:57,645 [INFO] mus1 - [MainWindow] Registered log observer for experimentView
+2025-03-24 16:25:57,645 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
+2025-03-24 16:25:57,645 [INFO] mus1 - [MainWindow] Switched to Project tab
+2025-03-24 16:25:57,645 [INFO] mus1 - Log file rotated, deleted 2 oldest lines
+2025-03-24 16:25:57,645 [INFO] mus1.core.theme_manager - Applying theme: dark
+2025-03-24 16:25:57,742 [INFO] mus1.core.theme_manager - Successfully applied theme stylesheet with plugin overrides
+2025-03-24 16:25:57,743 [INFO] mus1.core.project_manager - Loading project from projects/Demo Data
+2025-03-24 16:25:57,743 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
+2025-03-24 16:25:57,743 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
+2025-03-24 16:25:57,744 [INFO] mus1 - [StateManager] Notified 2 observers of state change
+2025-03-24 16:25:57,744 [INFO] mus1 - Log file rotated, deleted 5 oldest lines
+2025-03-24 16:25:57,744 [INFO] mus1.core.data_manager - Using global frame rate: 90
+2025-03-24 16:25:57,744 [INFO] mus1 - [MainWindow] Project 'Demo Data' loaded successfully
+2025-03-24 16:25:57,745 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
+2025-03-24 16:25:57,745 [INFO] mus1 - [SubjectView] Refreshing subject list: 0 subjects found
+2025-03-24 16:25:57,745 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
+2025-03-24 16:25:57,745 [INFO] mus1.core.theme_manager - Applying theme: dark
+2025-03-24 16:25:57,847 [INFO] mus1.core.theme_manager - Successfully applied theme stylesheet with plugin overrides
+2025-03-24 16:25:57,859 [INFO] __main__ - MUS1 init complete. Starting application event loop.
+2025-03-24 16:26:03,480 [INFO] mus1.core.project_manager - Loading project from projects/test 4
+2025-03-24 16:26:03,481 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
+2025-03-24 16:26:03,482 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
+2025-03-24 16:26:03,486 [INFO] mus1 - [StateManager] Notified 3 observers of state change
+2025-03-24 16:26:03,488 [INFO] mus1 - Log file rotated, deleted 5 oldest lines
+2025-03-24 16:26:03,489 [INFO] mus1.core.data_manager - Frame rate functionality is disabled and no specific frame rate provided; returning 'OFF'
+2025-03-24 16:26:03,492 [INFO] mus1 - [SubjectView] Refreshing subject list: 0 subjects found
+2025-03-24 16:26:03,493 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
+2025-03-24 16:26:10,951 [INFO] mus1.core.project_manager - Loading project from projects/Demo Data
+2025-03-24 16:26:10,952 [INFO] mus1.core.project_manager - ProjectState loaded successfully from JSON.
+2025-03-24 16:26:10,952 [INFO] mus1.core.project_manager - Project loaded and ready in memory.
+2025-03-24 16:26:10,955 [INFO] mus1 - [StateManager] Notified 3 observers of state change
+2025-03-24 16:26:10,956 [INFO] mus1 - Log file rotated, deleted 5 oldest lines
+2025-03-24 16:26:10,957 [INFO] mus1.core.data_manager - Using global frame rate: 90
+2025-03-24 16:26:10,959 [INFO] mus1 - [SubjectView] Refreshing subject list: 0 subjects found
+2025-03-24 16:26:10,959 [INFO] mus1 - Log file rotated, deleted 4 oldest lines
+2025-03-24 16:26:14,594 [INFO] mus1 - [MainWindow] Switched to Subjects tab
+2025-03-24 16:26:14,595 [INFO] mus1 - Log file rotated, deleted 3 oldest lines
+2025-03-24 16:26:14,597 [INFO] mus1 - [SubjectView] Refreshing subject list: 0 subjects found
+2025-03-24 16:26:14,598 [INFO] mus1 - Log file rotated, deleted 2 oldest lines

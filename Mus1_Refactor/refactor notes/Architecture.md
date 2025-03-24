@@ -3,11 +3,9 @@
 ## Core Components
 
 ### ProjectManager
-- Manages project-level operations (adding subjects/experiments, renaming projects, and handling file operations).
-- Handles theme detection, application, and dynamic QSS integration for consistent UI styling.
-- Delegates validation and analysis to plugins.
-- Coordinates project data persistence using JSON serialization with `pydantic_encoder`.
-- Consistently converts and updates metadata objects (for subjects, body parts, and tracked objects) to maintain type integrity.
+- Manages project-level operations (adding subjects/experiments, renaming projects, and handling file operations) and delegates plugin validation and analysis.
+- Collaborates with the UI (e.g., MainWindow) to apply dynamic QSS styling and theme changes.
+- Coordinates project data persistence (using JSON serialization with `pydantic_encoder`) and ensures type integrity for metadata objects such as subjects, body parts, and tracked objects.
 
 ### StateManager
 - Maintains the in-memory `ProjectState` and implements the observer pattern for responsive UI updates.
@@ -35,9 +33,8 @@
 ## UI Integration
 
 ### Observer Pattern
-- UI components subscribe to `StateManager` to receive updates.
-- Updates propagate automatically to ensure synchronized, reactive interfaces.
-- Components register callbacks on initialization and unsubscribe on destruction to avoid memory leaks.
+- UI components register observer callbacks with `StateManager` during initialization and reliably unsubscribe on teardown, ensuring that state updates propagate without risking memory leaks.
+- For instance, `ExperimentView` now consistently uses its internal `_state_manager` attribute for state subscriptions.
 
 ### Theme Handling Architecture
 - Themes are managed via a centralized QSS system that enforces consistent widget sizing, padding, and spacing.
@@ -45,6 +42,12 @@
 - **ProjectManager** applies themes by updating QPalette and injecting CSS.
 - **BaseView** propagates theme settings and all centralized layout helpers (e.g., `create_form_section`, `create_form_row`, `create_form_label`) to its child components.
 - **ProjectView** offers UI for theme selection and delegates logic to MainWindow.
+
+UI components—including `ProjectView`, `SubjectView`, and `ExperimentView`—fetch core managers (e.g., `ProjectManager` and `StateManager`) from MainWindow to access data and operations.
+Business logic remains encapsulated in core modules while UI components focus on data presentation and user interactions.
+Notably, the project switching widget in `ProjectView` has been refactored:
+  - The current project is now displayed above the switch dropdown.
+  - The label preceding the dropdown has been changed to "Switch to:" for clarity.
 
 ## Best Practices for Uniform UI Styling Using QSS and Centralized Layout Helpers
 
@@ -180,25 +183,11 @@
 
 This document serves as a comprehensive reference for developers to understand the architecture and implementation details of MUS1.
 
-### Recent Updates- now less recent lol 
-
-- **Persistent UI-to-State Synchronization:**
-  - Updated the handling of project notes in the UI (NotesBox) so that changes are explicitly committed to the project state (`state.settings["project_notes"]`) and persisted via a call to `save_project()`. This ensures that notes persist across project switches and application reloads.
-
-- **State Serialization Enhancements:**
-  - Modified `ProjectManager.save_project` to use `pydantic_encoder` for JSON serialization, preserving non-native types (e.g., sets) and ensuring the state is correctly reconstructed on reload.
-
-- **Type Consistency for Object Metadata:**
-  - Identified that objects added via `add_tracked_object` were stored as plain strings, causing a type mismatch in the UI (which expects objects with a `.name` attribute). Future improvements should either store objects as proper metadata objects or adjust the key function to handle strings appropriately.
-
-- **Decoupling Business Logic and UI:**
-  - Reinforced the design where UI components focus solely on data presentation and user input, while business logic such as duplicate checking, file validations, and state updates is delegated to core modules like `ProjectManager`, `StateManager`, and `DataManager`.
-
-- **Enhanced Observer Pattern Usage:**
-  - Ensured that state updates via the observer pattern trigger consistent UI refreshes. This reinforces that any changes to the underlying state are properly reflected across all subscribed UI components.
-
-**Next Steps:**
-  - Verify that objects added to the tracked objects list are correctly converted to or stored as full metadata objects.
-  - Review and ensure consistent UI-to-state synchronization for other components (e.g., subject list updates), and refine conversion routines as needed.
+### Recent Updates
+- **Recent Updates**
+  - The observer pattern in StateManager has been enhanced so that any change in state (e.g., experiment or subject updates) is accurately reflected across all subscribed views.
+  - ExperimentView's state subscription issue was resolved by standardizing use of the internal `_state_manager` attribute.
+  - The project switching UI in ProjectView has been improved by repositioning the current project display and revising the label to "Switch to:", making the widget more intuitive.
+  - Core components (ProjectManager, StateManager, PluginManager, DataManager) continue to be the single source of business logic, with UI components acting solely as presentation layers.
 
 End of file

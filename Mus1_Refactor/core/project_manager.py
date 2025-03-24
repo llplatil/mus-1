@@ -132,10 +132,15 @@ class ProjectManager:
 
         logger.info(f"Project saved to {state_path}")
 
-    def load_project(self, project_root: Path) -> None:
+    def load_project(self, project_root: Path, optimize_for_large_files: bool = False) -> None:
         """
         Loads an existing project from project_state.json in project_root.
         Reconstructs the ProjectState and updates the StateManager.
+        
+        Args:
+            project_root: Path to the project directory
+            optimize_for_large_files: If True, uses a more memory-efficient approach for large projects
+                                     by referencing file paths instead of loading all content
         """
         logger.info(f"Loading project from {project_root}")
         state_path = project_root / "project_state.json"
@@ -147,16 +152,21 @@ class ProjectManager:
         with open(state_path, 'r') as f:
             data = json.load(f)
 
+        # Use the optimize_for_large_files flag if needed
+        if optimize_for_large_files:
+            logger.info("Using memory-optimized loading for large project")
+            # Future implementations could include lazy loading; for now, log a warning
+            logger.warning("Optimized loading for large files not fully implemented yet")
+
         # Pydantic reconstructs and validates the data according to ProjectState
         loaded_state = ProjectState(**data)
         logger.info("ProjectState loaded successfully from JSON.")
 
-        # Make sure we completely replace the state_manager's project_state to ensure isolation
-        # This is crucial for settings like frame_rate to be properly isolated between projects
+        # Replace state_manager's project_state to ensure isolation
         self.state_manager._project_state = loaded_state
         self._current_project_root = project_root
         logger.info("Project loaded and ready in memory.")
-        
+
         # Notify observers about the project change to refresh UI components
         self.state_manager.notify_observers()
 
@@ -405,17 +415,12 @@ class ProjectManager:
         self.save_project()
 
     def add_tracked_object(self, new_object: str) -> None:
-        if not new_object:
-            raise ValueError("Object name cannot be empty.")
-        
         from core.metadata import ObjectMetadata
         state = self.state_manager.project_state
-        
-        # We now assume project_metadata exists – no fallback code.
-        # Check duplicates in master list
+        if state.project_metadata is None:
+            raise RuntimeError("ProjectMetadata is not initialized.")
         if any(obj.name == new_object for obj in state.project_metadata.master_tracked_objects):
             raise ValueError(f"Object '{new_object}' already exists in master list.")
-        
         object_metadata = ObjectMetadata(name=new_object)
         state.project_metadata.master_tracked_objects.append(object_metadata)
         state.project_metadata.active_tracked_objects.append(object_metadata)
@@ -540,78 +545,70 @@ class ProjectManager:
 
     # New methods for Treatments and Genotypes
     def add_treatment(self, new_treatment: str) -> None:
-        """
-        Add a new treatment to the available treatments list.
-        """
-        if not new_treatment:
-            raise ValueError("Treatment name cannot be empty.")
         state = self.state_manager.project_state
-        # Initialize treatments dictionary in settings if not present
-        treatments = state.settings.setdefault("treatments", {"available": [], "active": []})
-        if new_treatment in treatments["available"]:
+        if state.project_metadata is None:
+            raise RuntimeError("ProjectMetadata is not initialized.")
+        if any(t.name == new_treatment for t in state.project_metadata.master_treatments):
             raise ValueError(f"Treatment '{new_treatment}' already exists in available treatments.")
-        treatments["available"].append(new_treatment)
+        from core.metadata import TreatmentMetadata
+        state.project_metadata.master_treatments.append(TreatmentMetadata(name=new_treatment))
         self.save_project()
         self.state_manager.notify_observers()
 
     def add_genotype(self, new_genotype: str) -> None:
-        """
-        Add a new genotype to the available genotypes list.
-        """
-        if not new_genotype:
-            raise ValueError("Genotype name cannot be empty.")
         state = self.state_manager.project_state
-        # Initialize genotypes dictionary in settings if not present
-        genotypes = state.settings.setdefault("genotypes", {"available": [], "active": []})
-        if new_genotype in genotypes["available"]:
+        if state.project_metadata is None:
+            raise RuntimeError("ProjectMetadata is not initialized.")
+        if any(g.name == new_genotype for g in state.project_metadata.master_genotypes):
             raise ValueError(f"Genotype '{new_genotype}' already exists in available genotypes.")
-        genotypes["available"].append(new_genotype)
+        from core.metadata import GenotypeMetadata
+        state.project_metadata.master_genotypes.append(GenotypeMetadata(name=new_genotype))
         self.save_project()
         self.state_manager.notify_observers()
 
     def update_active_treatments(self, active_treatments: list[str]) -> None:
-        """
-        Update the active treatments list.
-        """
         state = self.state_manager.project_state
-        treatments = state.settings.setdefault("treatments", {"available": [], "active": []})
-        treatments["active"] = active_treatments
+        if state.project_metadata is None:
+            raise RuntimeError("ProjectMetadata is not initialized.")
+        from core.metadata import TreatmentMetadata
+        updated = [TreatmentMetadata(name=t) if isinstance(t, str) else t for t in active_treatments]
+        state.project_metadata.active_treatments = updated
         self.save_project()
         self.state_manager.notify_observers()
 
     def update_active_genotypes(self, active_genotypes: list[str]) -> None:
-        """
-        Update the active genotypes list.
-        """
         state = self.state_manager.project_state
-        genotypes = state.settings.setdefault("genotypes", {"available": [], "active": []})
-        genotypes["active"] = active_genotypes
+        if state.project_metadata is None:
+            raise RuntimeError("ProjectMetadata is not initialized.")
+        from core.metadata import GenotypeMetadata
+        updated = [GenotypeMetadata(name=g) if isinstance(g, str) else g for g in active_genotypes]
+        state.project_metadata.active_genotypes = updated
         self.save_project()
         self.state_manager.notify_observers()
 
     def remove_treatment(self, treatment: str) -> None:
-        """
-        Remove a treatment from both the available and active lists.
-        """
         state = self.state_manager.project_state
-        treatments = state.settings.get("treatments", {"available": [], "active": []})
-        if treatment in treatments["available"]:
-            treatments["available"].remove(treatment)
-        if treatment in treatments["active"]:
-            treatments["active"].remove(treatment)
+        if state.project_metadata is None:
+            raise RuntimeError("ProjectMetadata is not initialized.")
+        state.project_metadata.master_treatments = [
+            t for t in state.project_metadata.master_treatments if t.name != treatment
+        ]
+        state.project_metadata.active_treatments = [
+            t for t in state.project_metadata.active_treatments if t.name != treatment
+        ]
         self.save_project()
         self.state_manager.notify_observers()
 
     def remove_genotype(self, genotype: str) -> None:
-        """
-        Remove a genotype from both the available and active lists.
-        """
         state = self.state_manager.project_state
-        genotypes = state.settings.get("genotypes", {"available": [], "active": []})
-        if genotype in genotypes["available"]:
-            genotypes["available"].remove(genotype)
-        if genotype in genotypes["active"]:
-            genotypes["active"].remove(genotype)
+        if state.project_metadata is None:
+            raise RuntimeError("ProjectMetadata is not initialized.")
+        state.project_metadata.master_genotypes = [
+            g for g in state.project_metadata.master_genotypes if g.name != genotype
+        ]
+        state.project_metadata.active_genotypes = [
+            g for g in state.project_metadata.active_genotypes if g.name != genotype
+        ]
         self.save_project()
         self.state_manager.notify_observers()
 

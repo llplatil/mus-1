@@ -237,14 +237,22 @@ class StateManager:
             settings_dict["active_body_parts"] = self._project_state.project_metadata.active_body_parts
             settings_dict["master_tracked_objects"] = self._project_state.project_metadata.master_tracked_objects
             settings_dict["active_tracked_objects"] = self._project_state.project_metadata.active_tracked_objects
+            settings_dict["master_treatments"] = self._project_state.project_metadata.master_treatments
+            settings_dict["active_treatments"] = self._project_state.project_metadata.active_treatments
+            settings_dict["master_genotypes"] = self._project_state.project_metadata.master_genotypes
+            settings_dict["active_genotypes"] = self._project_state.project_metadata.active_genotypes
         else:
-            settings_dict["global_sort_mode"] = self._project_state.settings.get("global_sort_mode", "Natural Order (Numbers as Numbers)")
+            settings_dict["global_sort_mode"] = self._project_state.settings.get("global_sort_mode", "Lexicographical Order (Numbers as Characters)")
             settings_dict["global_frame_rate"] = self._project_state.settings.get("global_frame_rate", 60)
             settings_dict["global_frame_rate_enabled"] = self._project_state.settings.get("global_frame_rate_enabled", False)
             settings_dict["master_body_parts"] = self._project_state.settings.get("body_parts", [])
             settings_dict["active_body_parts"] = self._project_state.settings.get("active_body_parts", [])
             settings_dict["master_tracked_objects"] = self._project_state.settings.get("master_tracked_objects", [])
             settings_dict["active_tracked_objects"] = self._project_state.settings.get("active_tracked_objects", [])
+            settings_dict["master_treatments"] = self._project_state.settings.get("treatments", {}).get("available", [])
+            settings_dict["active_treatments"] = self._project_state.settings.get("treatments", {}).get("active", [])
+            settings_dict["master_genotypes"] = self._project_state.settings.get("genotypes", {}).get("available", [])
+            settings_dict["active_genotypes"] = self._project_state.settings.get("genotypes", {}).get("active", [])
         return settings_dict
 
     def get_treatments(self) -> dict:
@@ -253,11 +261,17 @@ class StateManager:
         sorted according to the global sort mode from sort_manager.
         """
         from .sort_manager import sort_items
-        treatments = self._project_state.settings.get("treatments", {"available": [], "active": []})
+        if self._project_state.project_metadata is not None:
+            available = self._project_state.project_metadata.master_treatments
+            active = self._project_state.project_metadata.active_treatments
+        else:
+            treatments = self._project_state.settings.get("treatments", {"available": [], "active": []})
+            available = treatments.get("available", [])
+            active = treatments.get("active", [])
         sort_mode = self.global_settings.get("global_sort_mode")
-        treatments["available"] = sort_items(treatments["available"], sort_mode, key_func=lambda x: x)
-        treatments["active"] = sort_items(treatments["active"], sort_mode, key_func=lambda x: x)
-        return treatments
+        available = sort_items(available, sort_mode, key_func=lambda x: x.name.lower() if hasattr(x, "name") else str(x))
+        active = sort_items(active, sort_mode, key_func=lambda x: x.name.lower() if hasattr(x, "name") else str(x))
+        return {"available": available, "active": active}
 
     def get_genotypes(self) -> dict:
         """
@@ -265,11 +279,17 @@ class StateManager:
         sorted according to the global sort mode from sort_manager.
         """
         from .sort_manager import sort_items
-        genotypes = self._project_state.settings.get("genotypes", {"available": [], "active": []})
+        if self._project_state.project_metadata is not None:
+            available = self._project_state.project_metadata.master_genotypes
+            active = self._project_state.project_metadata.active_genotypes
+        else:
+            genotypes = self._project_state.settings.get("genotypes", {"available": [], "active": []})
+            available = genotypes.get("available", [])
+            active = genotypes.get("active", [])
         sort_mode = self.global_settings.get("global_sort_mode")
-        genotypes["available"] = sort_items(genotypes["available"], sort_mode, key_func=lambda x: x)
-        genotypes["active"] = sort_items(genotypes["active"], sort_mode, key_func=lambda x: x)
-        return genotypes
+        available = sort_items(available, sort_mode, key_func=lambda x: x.name.lower() if hasattr(x, "name") else str(x))
+        active = sort_items(active, sort_mode, key_func=lambda x: x.name.lower() if hasattr(x, "name") else str(x))
+        return {"available": available, "active": active}
 
     def get_global_sort_mode(self) -> str:
         """
@@ -442,6 +462,41 @@ class StateManager:
         # Update project_state.settings with new settings and notify observers
         self._project_state.settings.update(new_settings)
         logger.info("Global settings updated.")
+        self.notify_observers()
+
+    def update_project_settings(self, settings: dict) -> None:
+        """
+        Unified method to update project settings in both project_metadata and settings dictionary.
+        
+        Args:
+            settings: Dictionary containing settings to update, can include:
+                - global_sort_mode: Sort mode for lists
+                - global_frame_rate: Frame rate value
+                - global_frame_rate_enabled: Whether global frame rate is enabled
+                - theme_mode: UI theme preference
+        """
+        # Update ProjectMetadata if it exists
+        if self._project_state.project_metadata:
+            # Update sort mode if provided
+            if "global_sort_mode" in settings:
+                self._project_state.project_metadata.global_sort_mode = settings["global_sort_mode"]
+                
+            # Update frame rate settings if provided
+            if "global_frame_rate" in settings:
+                self._project_state.project_metadata.global_frame_rate = settings["global_frame_rate"]
+            if "global_frame_rate_enabled" in settings:
+                self._project_state.project_metadata.global_frame_rate_enabled = settings["global_frame_rate_enabled"]
+                
+            # Update theme if provided
+            if "theme_mode" in settings:
+                self._project_state.project_metadata.theme_mode = settings["theme_mode"]
+        
+        # Always update settings dictionary as well for backward compatibility
+        self._project_state.settings.update(settings)
+        
+        logger.info(f"Project settings updated: {', '.join(settings.keys())}")
+        
+        # Notify observers to update UI
         self.notify_observers()
 
     # New convenience method for retrieving sorted subjects

@@ -392,7 +392,7 @@ class ProjectView(BaseView):
         self.navigation_pane.add_log_message("Body parts lists refreshed.", "info")
         
         # Also refresh the objects lists
-        self.update_objects_from_state()
+        self.refresh_objects_ui()
         self.navigation_pane.add_log_message("Objects lists refreshed.", "info")
 
     def update_theme(self, theme):
@@ -401,119 +401,325 @@ class ProjectView(BaseView):
         self.navigation_pane.add_log_message(f"Theme updated to {theme}.", "info")
    
 
-    def handle_add_object(self):
+    def add_object_by_name(self):
         new_obj = self.new_object_line_edit.text().strip()
         if not new_obj:
-            msg = "No object name entered."
-            print(msg)
-            self.navigation_pane.add_log_message(msg, 'warning')
+            self.navigation_pane.add_log_message("No object name entered.", 'warning')
             return
         try:
-            # Delegate duplicate-checking and addition to the core
             self.window().project_manager.add_tracked_object(new_obj)
             self.new_object_line_edit.clear()
             self.navigation_pane.add_log_message(f"Added new object: {new_obj}", 'success')
         except ValueError as e:
-            print(e)
             self.navigation_pane.add_log_message(str(e), 'warning')
-        self.refresh_lists()
+        self.refresh_objects_ui()
 
-    def handle_add_to_active_objects(self):
-        """Handle adding selected objects to the active objects list."""
+    def move_objects_master_to_active(self):
         selected_items = self.all_objects_list.selectedItems()
         if not selected_items:
-            msg = "No objects selected to add."
-            print(msg)
-            self.navigation_pane.add_log_message(msg, 'warning')
+            self.navigation_pane.add_log_message("No objects selected to move to Active.", 'warning')
             return
-        
-        pm = self.window().project_manager
-        state = self.window().project_manager.state_manager.project_state
-        
-        # Get current active objects
-        current_active = []
-        if state.project_metadata and hasattr(state.project_metadata, 'active_tracked_objects'):
-            current_active = state.project_metadata.active_tracked_objects
-        else:
-            current_active = state.settings.get("active_tracked_objects", [])
-        
-        # Convert selected items to ObjectMetadata
-        selected = [ObjectMetadata(name=item.text()) for item in selected_items]
-        
-        # Combine lists, avoiding duplicates by name
-        existing_names = [self.format_item(obj) for obj in current_active]
-        new_active = list(current_active)
-        
-        for obj in selected:
-            if obj.name not in existing_names:
-                new_active.append(obj)
-                existing_names.append(obj.name)
-        
-        # Update active objects list specifically
-        pm.update_tracked_objects(new_active, list_type="active")
-        self.navigation_pane.add_log_message(f"Added {len(selected)} objects to active list", 'success')
-        self.refresh_lists()
-    
-    def handle_remove_object(self):
+        master_list = self._get_master_objects()
+        active_list = self._get_active_objects()
+        existing_active = [self.format_item(obj) for obj in active_list]
+        selected_names = [item.text() for item in selected_items]
+        moving_objects = [obj for obj in master_list if self.format_item(obj) in selected_names]
+        for obj in moving_objects:
+            if self.format_item(obj) not in existing_active:
+                active_list.append(obj)
+        self.window().project_manager.update_tracked_objects(active_list, list_type="active")
+        self.navigation_pane.add_log_message(f"Moved {len(moving_objects)} object(s) from Master to Active.", 'success')
+        self.refresh_objects_ui()
+
+    def move_objects_active_to_master(self):
         selected_items = self.current_objects_list.selectedItems()
         if not selected_items:
-            msg = "No objects selected for removal."
-            print(msg)
-            self.navigation_pane.add_log_message(msg, 'warning')
+            self.navigation_pane.add_log_message("No objects selected to move back to Master.", 'warning')
             return
+        active_list = self._get_active_objects()
+        master_list = self._get_master_objects()
+        selected_names = [item.text() for item in selected_items]
+        active_list = [obj for obj in active_list if self.format_item(obj) not in selected_names]
+        master_names = [self.format_item(obj) for obj in master_list]
+        for item in selected_items:
+            obj_name = item.text()
+            if obj_name not in master_names:
+                master_list.append(ObjectMetadata(name=obj_name))
+        self.window().project_manager.update_tracked_objects(active_list, list_type="active")
+        self.window().project_manager.update_tracked_objects(master_list, list_type="master")
+        self.navigation_pane.add_log_message(f"Moved {len(selected_items)} object(s) from Active to Master.", 'success')
+        self.refresh_objects_ui()
+
+    def delete_object_from_master(self):
+        selected_items = self.all_objects_list.selectedItems()
+        if not selected_items:
+            self.navigation_pane.add_log_message("No objects selected for deletion from Master.", 'warning')
+            return
+        selected_names = [item.text() for item in selected_items]
+        master_list = self._get_master_objects()
+        active_list = self._get_active_objects()
+        master_list = [obj for obj in master_list if self.format_item(obj) not in selected_names]
+        active_list = [obj for obj in active_list if self.format_item(obj) not in selected_names]
+        self.window().project_manager.update_tracked_objects(master_list, list_type="master")
+        self.window().project_manager.update_tracked_objects(active_list, list_type="active")
+        self.navigation_pane.add_log_message(f"Deleted {len(selected_names)} object(s) from Master.", 'success')
+        self.refresh_objects_ui()
+
+    def refresh_objects_ui(self):
+        # Clear list widgets if they exist
+        if hasattr(self, 'all_objects_list'):
+            self.all_objects_list.clear()
+        if hasattr(self, 'current_objects_list'):
+            self.current_objects_list.clear()
+        # Retrieve sorted objects via state_manager for consistency
+        master_list = self.state_manager.get_sorted_objects("master")
+        active_list = self.state_manager.get_sorted_objects("active")
+        for obj in master_list:
+            self.all_objects_list.addItem(self.format_item(obj))
+        for obj in active_list:
+            self.current_objects_list.addItem(self.format_item(obj))
+    def _get_active_objects(self):
+        return self.state_manager.project_state.project_metadata.active_tracked_objects
+
+    def _get_master_objects(self):
+        return self.state_manager.project_state.project_metadata.master_tracked_objects
+   
+    def setup_objects_page(self):
+        """Setup the Objects page with object list widgets."""
+        self.objects_page = QWidget()
+        layout = QVBoxLayout(self.objects_page)
+        layout.setSpacing(self.SECTION_SPACING)
+
+        objects_group, objects_layout = self.create_form_section("Objects Management", layout)
+
+        add_row = self.create_form_row(objects_layout)
+        new_object_label = self.create_form_label("New Object:")
+        self.new_object_line_edit = QLineEdit()
+        self.new_object_line_edit.setPlaceholderText("Enter new object name...")
+        self.new_object_line_edit.setProperty("class", "mus1-text-input")
+        add_button = QPushButton("Add Object")
+        add_button.setProperty("class", "mus1-primary-button")
+        add_button.clicked.connect(self.add_object_by_name)
+        add_row.addWidget(new_object_label)
+        add_row.addWidget(self.new_object_line_edit, 1)
+        add_row.addWidget(add_button)
+
+        lists_layout = QHBoxLayout()
+        lists_layout.setSpacing(self.SECTION_SPACING)
+        objects_layout.addLayout(lists_layout)
+
+        # Available (Master) Objects Column
+        available_column, available_layout = self.create_form_section("Available Objects:", None, is_subgroup=True)
+        self.all_objects_list = QListWidget()
+        self.all_objects_list.setProperty("class", "mus1-list-widget")
+        self.all_objects_list.setSelectionMode(QListWidget.ExtendedSelection)
+        available_layout.addWidget(self.all_objects_list)
         
-        pm = self.window().project_manager
+        # Button row for available (master) objects
+        available_button_row = self.create_button_row(available_layout, add_stretch=True)
+        add_to_active_button = QPushButton("Add Selected to Active →")
+        add_to_active_button.setProperty("class", "mus1-secondary-button")
+        add_to_active_button.clicked.connect(self.move_objects_master_to_active)
+        available_button_row.addWidget(add_to_active_button)
+        remove_from_master_object_button = QPushButton("Remove Selected from Master")
+        remove_from_master_object_button.setProperty("class", "mus1-secondary-button")
+        remove_from_master_object_button.clicked.connect(self.delete_object_from_master)
+        available_button_row.addWidget(remove_from_master_object_button)
+
+        # Active Objects Column
+        active_column, active_layout = self.create_form_section("Active Objects:", None, is_subgroup=True)
+        self.current_objects_list = QListWidget()
+        self.current_objects_list.setProperty("class", "mus1-list-widget")
+        self.current_objects_list.setSelectionMode(QListWidget.ExtendedSelection)
+        active_layout.addWidget(self.current_objects_list)
+        
+        # Button row for active objects with a "move back" button
+        active_button_row = self.create_button_row(active_layout, add_stretch=True)
+        remove_from_active_object_button = QPushButton("← Remove Selected from Active")
+        remove_from_active_object_button.setProperty("class", "mus1-secondary-button")
+        remove_from_active_object_button.clicked.connect(self.move_objects_active_to_master)
+        active_button_row.addWidget(remove_from_active_object_button)
+
+        lists_layout.addWidget(available_column, 1)
+        lists_layout.addWidget(active_column, 1)
+
+        layout.addStretch(1)
+        self.add_page(self.objects_page, "Objects")
+        self.refresh_objects_ui()
+
+    def setup_general_settings_page(self):
+        """Setup the General Settings page with application-wide settings."""
+        self.general_settings_page = QWidget()
+        layout = QVBoxLayout(self.general_settings_page)
+        layout.setSpacing(self.SECTION_SPACING)
+        
+        # 1. Display Settings Group
+        display_group, display_layout = self.create_form_section("Display Settings", layout)
+        theme_row = self.create_form_row(display_layout)
+        theme_label = self.create_form_label("Application Theme:")
+        self.theme_dropdown = QComboBox()
+        self.theme_dropdown.setProperty("class", "mus1-combo-box")
+        self.theme_dropdown.addItems(["dark", "light", "os"])
+        theme_button = QPushButton("Apply Theme")
+        theme_button.setProperty("class", "mus1-primary-button")
+        theme_button.clicked.connect(lambda: self.handle_change_theme(self.theme_dropdown.currentText()))
+        theme_row.addWidget(theme_label)
+        theme_row.addWidget(self.theme_dropdown, 1)
+        theme_row.addWidget(theme_button)
+        
+        # 2. List Sort Settings Group
+        sort_group, sort_layout = self.create_form_section("List Sort Settings", layout)
+        sort_row = self.create_form_row(sort_layout)
+        sort_label = self.create_form_label("Global Sort Mode:")
+        self.sort_mode_dropdown = QComboBox()
+        self.sort_mode_dropdown.setProperty("class", "mus1-combo-box")
+        self.sort_mode_dropdown.addItems([
+            "Natural Order (Numbers as Numbers)",
+            "Lexicographical Order (Numbers as Characters)",
+            "Date Added",
+            "By ID"
+        ])
+        sort_row.addWidget(sort_label)
+        sort_row.addWidget(self.sort_mode_dropdown, 1)
+        apply_sort_mode_button = QPushButton("Apply Sort Mode")
+        apply_sort_mode_button.setProperty("class", "mus1-primary-button")
+        apply_sort_mode_button.clicked.connect(lambda: self.on_sort_mode_changed(self.sort_mode_dropdown.currentText()))
+        sort_row.addWidget(apply_sort_mode_button)
+        
+        # 3. Video Settings Group
+        video_group, video_layout = self.create_form_section("Video Settings", layout)
+        
+        # Create the frame rate row first
+        frame_rate_row = self.create_form_row(video_layout)
+        
+        self.enable_frame_rate_checkbox = QCheckBox("Enable Global Frame Rate")
+        self.enable_frame_rate_checkbox.setChecked(False)
+        
+        self.frame_rate_slider = QSlider(Qt.Horizontal)
+        self.frame_rate_slider.setRange(0, 120)
+        self.frame_rate_slider.setValue(60)
+        self.frame_rate_slider.setProperty("mus1-slider", True)
+        self.frame_rate_slider.setEnabled(False)
+        self.enable_frame_rate_checkbox.toggled.connect(self.frame_rate_slider.setEnabled)
+        
+        # Create a label to display the current slider value
+        self.frame_rate_value_label = QLabel(str(self.frame_rate_slider.value()))
+        self.frame_rate_value_label.setFixedWidth(40)  # Fixed width for consistent UI sizing
+        self.frame_rate_slider.valueChanged.connect(lambda val: self.frame_rate_value_label.setText(str(val)))
+        
+        frame_rate_row.addWidget(self.enable_frame_rate_checkbox)
+        frame_rate_row.addWidget(self.frame_rate_slider, 1)  # Slider with stretch factor
+        frame_rate_row.addWidget(self.frame_rate_value_label)
+        apply_frame_rate_button = QPushButton("Apply Frame Rate")
+        apply_frame_rate_button.setProperty("class", "mus1-primary-button")
+        apply_frame_rate_button.clicked.connect(self.handle_apply_frame_rate)
+        frame_rate_row.addWidget(apply_frame_rate_button)
+        
+        help_label = QLabel("When enabled, this global frame rate will be used for all files unless explicitly overridden.")
+        help_label.setWordWrap(True)
+        help_label.setProperty("class", "mus1-help-text")
+        help_label.setVisible(False)
+        video_layout.addWidget(help_label)
+        
+        self.enable_frame_rate_checkbox.toggled.connect(lambda checked: help_label.setVisible(checked))
+        
+        apply_button_row = self.create_button_row(layout)
+        apply_settings_button = QPushButton("Apply All Settings")
+        apply_settings_button.setProperty("class", "mus1-primary-button")
+        apply_settings_button.clicked.connect(self.handle_apply_general_settings)
+        apply_button_row.addWidget(apply_settings_button)
+        
+        layout.addStretch(1)
+        self.add_page(self.general_settings_page, "Settings")
+        
+        self.populate_project_list()
+        self.update_sort_mode_from_state()
+        self.update_frame_rate_from_state()  # Initialize frame rate settings from state
+        
+    def set_initial_project(self, project_name: str):
+        """
+        Handle project change/update from MainWindow.
+        Updates the current project label and loads project notes from state.
+        """
+        # Update the label showing the current project
+        self.current_project_label.setText("Current Project: " + project_name)
+        
+        # Get the current state
         state = self.window().project_manager.state_manager.project_state
         
-        # Get active tracked objects
-        active_objects = []
-        if state.project_metadata and hasattr(state.project_metadata, 'active_tracked_objects'):
-            active_objects = state.project_metadata.active_tracked_objects
-        else:
-            active_objects = state.settings.get("active_tracked_objects", [])
+        # Load and set project notes (if available)
+        notes = state.settings.get("project_notes", "")
+        self.project_notes_box.set_text(notes)
         
-        # Get the names of objects to remove
-        to_remove = [item.text() for item in selected_items]
+        # Update UI settings from the loaded project
+        self.update_frame_rate_from_state()
+        self.update_sort_mode_from_state()
         
-        # Filter objects - keeping those not in to_remove
-        new_objects = [obj for obj in active_objects 
-                     if self.format_item(obj) not in to_remove]
-        
-        # Update only the active list
-        pm.update_tracked_objects(new_objects, list_type="active")
-        self.navigation_pane.add_log_message(f"Removed {len(to_remove)} object(s) from active objects", 'success')
+        # Refresh all UI lists including objects and body parts
         self.refresh_lists()
 
-    def handle_save_objects(self):
-        # Get all object names from the current list
-        object_names = [self.current_objects_list.item(i).text() 
-                      for i in range(self.current_objects_list.count())]
+    def handle_apply_general_settings(self):
+        """Apply the general settings."""
+        # First, apply the theme based on the theme dropdown
+        theme_choice = self.theme_dropdown.currentText()
         
-        # Convert to ObjectMetadata objects
-        new_objects = [ObjectMetadata(name=name) for name in object_names]
+        # Retrieve other settings from the UI
+        sort_mode = self.sort_mode_dropdown.currentText()
+        frame_rate_enabled = self.enable_frame_rate_checkbox.isChecked()
+        frame_rate = self.frame_rate_slider.value()  # Get value from slider instead of spin box
         
-        # Update tracked objects (active list only)
-        self.window().project_manager.update_tracked_objects(new_objects, list_type="active")
-        print("Saved active objects. (Entire project not fully re-saved.)")
-        self.refresh_lists()
+        # Create settings dictionary with all values
+        settings = {
+            "theme_mode": theme_choice,
+            "global_sort_mode": sort_mode,
+            "global_frame_rate_enabled": frame_rate_enabled,
+            "global_frame_rate": frame_rate
+        }
+        
+        # Update settings using the unified method
+        if self.state_manager:
+            self.state_manager.update_project_settings(settings)
+            
+            # Save the project to persist these settings
+            self.window().project_manager.save_project()
+            
+            # Call through MainWindow to propagate theme changes across the application
+            self.window().change_theme(theme_choice)
+                
+        self.navigation_pane.add_log_message("Applied general settings to current project.", "success")
+   
+    def handle_apply_frame_rate(self):
+        """Handle the 'Apply Frame Rate' button click."""
+        frame_rate_enabled = self.enable_frame_rate_checkbox.isChecked()
+        frame_rate = self.frame_rate_slider.value()
+        
+        # Create settings dictionary with frame rate values
+        settings = {
+            "global_frame_rate_enabled": frame_rate_enabled,
+            "global_frame_rate": frame_rate
+        }
+        
+        # Update settings using the unified method
+        if self.state_manager:
+            self.state_manager.update_project_settings(settings)
+            
+            # Save project to persist changes
+            self.window().project_manager.save_project()
+            
+        self.navigation_pane.add_log_message(f"Applied frame rate settings: {'Enabled' if frame_rate_enabled else 'Disabled'}, {frame_rate} fps", "success")
+   
+    def on_sort_mode_changed(self, new_sort_mode: str):
+        """Update the project state's global_sort_mode using the unified settings method."""
+        if self.state_manager:
+            # Update sort mode using the unified method
+            self.state_manager.update_project_settings({"global_sort_mode": new_sort_mode})
+            
+            # Save project to persist changes
+            self.window().project_manager.save_project()
+            
+            # Refresh lists to show new sorting
+            self.refresh_lists()
 
-    def set_initial_project(self, project_name: str):
-        self.populate_project_list()
-        index = self.switch_project_combo.findText(project_name)
-        if index >= 0:
-            self.switch_project_combo.setCurrentIndex(index)
-            self.handle_switch_project()
-        else:
-            print(f"Project '{project_name}' was not found in combo box; selection unchanged.")
-
-    def on_sort_mode_changed(self):
-        new_sort_mode = self.sort_mode_dropdown.currentText()
-        # Update the project state's global_sort_mode if project_manager is accessible via parent
-        if self.parent() and hasattr(self.parent(), 'project_manager'):
-            self.parent().project_manager.state_manager.project_state.settings["global_sort_mode"] = new_sort_mode
-            # Refresh lists to reflect new sorting
-            self.parent().project_manager.refresh_all_lists()
-        
     def closeEvent(self, event):
         """Handle clean up when the view is closed."""
         # Unsubscribe from state manager to prevent memory leaks
@@ -564,45 +770,6 @@ class ProjectView(BaseView):
         # These components might not exist yet in the current version
         print("INFO: Likelihood filter update skipped - components not implemented yet")
 
-    def update_objects_from_state(self):
-        """Update objects list from the current state."""
-        pm = self.window().project_manager
-        if not pm or not pm.state_manager:
-            return
-        # Use the cached state_manager reference
-        state = self.state_manager.project_state
-        
-        # Clear existing lists
-        if hasattr(self, 'all_objects_list'):
-            self.all_objects_list.clear()
-        if hasattr(self, 'current_objects_list'):
-            self.current_objects_list.clear()
-        
-        # Get master tracked objects from state
-        master_objects = []
-        if state.project_metadata and hasattr(state.project_metadata, 'master_tracked_objects'):
-            master_objects = state.project_metadata.master_tracked_objects
-        else:
-            master_objects = state.settings.get('master_tracked_objects', [])
-        
-        # Get active tracked objects from state
-        active_objects = []
-        if state.project_metadata and hasattr(state.project_metadata, 'active_tracked_objects'):
-            active_objects = state.project_metadata.active_tracked_objects
-        else:
-            active_objects = state.settings.get('active_tracked_objects', [])
-        
-        # Update the lists using the centralized format_item helper
-        if hasattr(self, 'all_objects_list') and isinstance(master_objects, list):
-            for obj in master_objects:
-                obj_name = self.format_item(obj)
-                self.all_objects_list.addItem(obj_name)
-                
-        if hasattr(self, 'current_objects_list') and isinstance(active_objects, list):
-            for obj in active_objects:
-                obj_name = self.format_item(obj)
-                self.current_objects_list.addItem(obj_name)
-    
     def update_sort_mode_from_state(self):
         """Update sort mode dropdown from the current state."""
         pm = self.window().project_manager
@@ -645,6 +812,7 @@ class ProjectView(BaseView):
                 return
             try:
                 self.navigation_pane.add_log_message(f"Switching to project: {selected_project}", 'info')
+                # Load the project using project_manager
                 self.window().project_manager.load_project(project_path)
                 
                 # Update UI elements with project data
@@ -654,12 +822,8 @@ class ProjectView(BaseView):
                 # Get the project state
                 state = self.window().project_manager.state_manager.project_state
                 
-                # Load project notes from state - now robustly grabbing from settings if not in project_metadata
-                notes = ""
-                if state.project_metadata:
-                    notes = state.settings.get("project_notes", "")
-                else:
-                    notes = state.settings.get("project_notes", "")
+                # Load project notes from state
+                notes = state.settings.get("project_notes", "")
                 self.project_notes_box.set_text(notes)
                 
                 # Update UI settings from the loaded project
@@ -668,6 +832,10 @@ class ProjectView(BaseView):
                 
                 # Refresh all UI lists including objects and body parts
                 self.refresh_lists()
+                
+                # Notify main window about project change to update other views if needed
+                if hasattr(self.window(), 'refresh_all_views'):
+                    self.window().refresh_all_views()
                 
                 self.navigation_pane.add_log_message(f"Successfully switched to project: {selected_project}", 'success')
             except Exception as e:
@@ -708,22 +876,6 @@ class ProjectView(BaseView):
         selection_group.setProperty("class", "mus1-input-group")
         selection_layout = QVBoxLayout(selection_group)
         
-        # Project selector
-        selector_layout = QHBoxLayout()
-        select_label = QLabel("Select Project:")
-        select_label.setProperty("formLabel", True)
-        
-        self.switch_project_combo = QComboBox()
-        self.switch_project_combo.setProperty("class", "mus1-combo-box")
-        self.switch_project_button = QPushButton("Switch")
-        self.switch_project_button.setProperty("class", "mus1-primary-button")
-        self.switch_project_button.clicked.connect(self.handle_switch_project)
-        
-        selector_layout.addWidget(select_label)
-        selector_layout.addWidget(self.switch_project_combo, 1)
-        selector_layout.addWidget(self.switch_project_button)
-        selection_layout.addLayout(selector_layout)
-        
         # Current project display
         current_layout = QHBoxLayout()
         self.current_project_label = QLabel("Current Project: None")
@@ -732,7 +884,23 @@ class ProjectView(BaseView):
         current_layout.addStretch(1)
         selection_layout.addLayout(current_layout)
         
-        # Add selection group to main layout
+        # Project selector
+        selector_layout = QHBoxLayout()
+        switch_label = QLabel("Switch to:")
+        switch_label.setProperty("formLabel", True)
+        
+        self.switch_project_combo = QComboBox(selection_group)  # Set parent to selection_group
+        self.switch_project_combo.setProperty("class", "mus1-combo-box")
+        self.switch_project_button = QPushButton("Switch")
+        self.switch_project_button.setProperty("class", "mus1-primary-button")
+        self.switch_project_button.clicked.connect(self.handle_switch_project)
+        
+        selector_layout.addWidget(switch_label)
+        selector_layout.addWidget(self.switch_project_combo, 1)
+        selector_layout.addWidget(self.switch_project_button)
+        selection_layout.addLayout(selector_layout)
+        
+        # Add the selection group to the main layout to preserve its children (including the combo box)
         layout.addWidget(selection_group)
         
         # Project renaming group
@@ -793,215 +961,6 @@ class ProjectView(BaseView):
             print(error_msg)
             self.navigation_pane.add_log_message(error_msg, 'error')
 
-    def setup_objects_page(self):
-        """Setup the Objects page with object list widgets."""
-        self.objects_page = QWidget()
-        layout = QVBoxLayout(self.objects_page)
-        layout.setSpacing(self.SECTION_SPACING)
 
-        objects_group, objects_layout = self.create_form_section("Objects Management", layout)
-
-        add_row = self.create_form_row(objects_layout)
-        new_object_label = self.create_form_label("New Object:")
-        self.new_object_line_edit = QLineEdit()
-        self.new_object_line_edit.setPlaceholderText("Enter new object name...")
-        self.new_object_line_edit.setProperty("class", "mus1-text-input")
-        add_button = QPushButton("Add Object")
-        add_button.setProperty("class", "mus1-primary-button")
-        add_button.clicked.connect(self.handle_add_object)
-        add_row.addWidget(new_object_label)
-        add_row.addWidget(self.new_object_line_edit, 1)
-        add_row.addWidget(add_button)
-
-        lists_layout = QHBoxLayout()
-        lists_layout.setSpacing(self.SECTION_SPACING)
-        objects_layout.addLayout(lists_layout)
-
-        available_column, available_layout = self.create_form_section("Available Objects:", None, is_subgroup=True)
-        self.all_objects_list = QListWidget()
-        self.all_objects_list.setProperty("class", "mus1-list-widget")
-        self.all_objects_list.setSelectionMode(QListWidget.ExtendedSelection)
-        available_layout.addWidget(self.all_objects_list)
         
-        # Use create_button_row for consistent button styling
-        available_button_row = self.create_button_row(available_layout, add_stretch=True)
-        add_to_active_button = QPushButton("Add Selected to Active →")
-        add_to_active_button.setProperty("class", "mus1-secondary-button")
-        add_to_active_button.clicked.connect(self.handle_add_to_active_objects)
-        available_button_row.addWidget(add_to_active_button)
-
-        active_column, active_layout = self.create_form_section("Active Objects:", None, is_subgroup=True)
-        self.current_objects_list = QListWidget()
-        self.current_objects_list.setProperty("class", "mus1-list-widget")
-        self.current_objects_list.setSelectionMode(QListWidget.ExtendedSelection)
-        active_layout.addWidget(self.current_objects_list)
-        
-        # Use create_button_row for consistent button styling
-        active_button_row = self.create_button_row(active_layout, add_stretch=True)
-        remove_button = QPushButton("← Remove Selected")
-        remove_button.setProperty("class", "mus1-secondary-button")
-        remove_button.clicked.connect(self.handle_remove_object)
-        active_button_row.addWidget(remove_button)
-
-        lists_layout.addWidget(available_column, 1)
-        lists_layout.addWidget(active_column, 1)
-
-        # Use create_button_row for consistent button styling
-        save_button_row = self.create_button_row(objects_layout, add_stretch=True)
-        save_button = QPushButton("Save Objects")
-        save_button.setProperty("class", "mus1-primary-button")
-        save_button.clicked.connect(self.handle_save_objects)
-        save_button_row.addWidget(save_button)
-
-        layout.addStretch(1)
-        self.add_page(self.objects_page, "Objects")
-        self.update_objects_from_state()
-
-    def setup_general_settings_page(self):
-        """Setup the General Settings page with application-wide settings."""
-        self.general_settings_page = QWidget()
-        layout = QVBoxLayout(self.general_settings_page)
-        layout.setSpacing(self.SECTION_SPACING)
-        
-        # 1. Display Settings Group
-        display_group, display_layout = self.create_form_section("Display Settings", layout)
-        theme_row = self.create_form_row(display_layout)
-        theme_label = self.create_form_label("Application Theme:")
-        self.theme_dropdown = QComboBox()
-        self.theme_dropdown.setProperty("class", "mus1-combo-box")
-        self.theme_dropdown.addItems(["dark", "light", "os"])
-        theme_button = QPushButton("Apply Theme")
-        theme_button.setProperty("class", "mus1-primary-button")
-        theme_button.clicked.connect(lambda: self.handle_change_theme(self.theme_dropdown.currentText()))
-        theme_row.addWidget(theme_label)
-        theme_row.addWidget(self.theme_dropdown, 1)
-        theme_row.addWidget(theme_button)
-        
-        # 2. List Sort Settings Group
-        sort_group, sort_layout = self.create_form_section("List Sort Settings", layout)
-        sort_row = self.create_form_row(sort_layout)
-        sort_label = self.create_form_label("Global Sort Mode:")
-        self.sort_mode_dropdown = QComboBox()
-        self.sort_mode_dropdown.setProperty("class", "mus1-combo-box")
-        self.sort_mode_dropdown.addItems([
-            "Natural Order (Numbers as Numbers)",
-            "Alphabetical",
-            "By Creation Date",
-            "By ID"
-        ])
-        sort_row.addWidget(sort_label)
-        sort_row.addWidget(self.sort_mode_dropdown, 1)
-        apply_sort_mode_button = QPushButton("Apply Sort Mode")
-        apply_sort_mode_button.setProperty("class", "mus1-primary-button")
-        apply_sort_mode_button.clicked.connect(lambda: self.on_sort_mode_changed(self.sort_mode_dropdown.currentText()))
-        sort_row.addWidget(apply_sort_mode_button)
-        
-        # 3. Video Settings Group
-        video_group, video_layout = self.create_form_section("Video Settings", layout)
-        
-        # Create the frame rate row first
-        frame_rate_row = self.create_form_row(video_layout)
-        
-        self.enable_frame_rate_checkbox = QCheckBox("Enable Global Frame Rate")
-        self.enable_frame_rate_checkbox.setChecked(False)
-        
-        self.frame_rate_slider = QSlider(Qt.Horizontal)
-        self.frame_rate_slider.setRange(0, 120)
-        self.frame_rate_slider.setValue(60)
-        self.frame_rate_slider.setProperty("mus1-slider", True)
-        self.frame_rate_slider.setEnabled(False)
-        self.enable_frame_rate_checkbox.toggled.connect(self.frame_rate_slider.setEnabled)
-        
-        # Create a label to display the current slider value
-        self.frame_rate_value_label = QLabel(str(self.frame_rate_slider.value()))
-        self.frame_rate_value_label.setFixedWidth(40)  # Fixed width for consistent UI sizing
-        self.frame_rate_slider.valueChanged.connect(lambda val: self.frame_rate_value_label.setText(str(val)))
-        
-        frame_rate_row.addWidget(self.enable_frame_rate_checkbox)
-        frame_rate_row.addWidget(self.frame_rate_slider, 1)  # Slider with stretch factor
-        frame_rate_row.addWidget(self.frame_rate_value_label)
-        apply_frame_rate_button = QPushButton("Apply Frame Rate")
-        apply_frame_rate_button.setProperty("class", "mus1-primary-button")
-        apply_frame_rate_button.clicked.connect(self.handle_apply_frame_rate)
-        frame_rate_row.addWidget(apply_frame_rate_button)
-        
-        help_label = QLabel("When enabled, this global frame rate will be used for all files unless explicitly overridden.")
-        help_label.setWordWrap(True)
-        help_label.setProperty("class", "mus1-help-text")
-        help_label.setVisible(False)
-        video_layout.addWidget(help_label)
-        
-        self.enable_frame_rate_checkbox.toggled.connect(lambda checked: help_label.setVisible(checked))
-        
-        apply_button_row = self.create_button_row(layout)
-        apply_settings_button = QPushButton("Apply All Settings")
-        apply_settings_button.setProperty("class", "mus1-primary-button")
-        apply_settings_button.clicked.connect(self.handle_apply_general_settings)
-        apply_button_row.addWidget(apply_settings_button)
-        
-        layout.addStretch(1)
-        self.add_page(self.general_settings_page, "Settings")
-        
-        self.populate_project_list()
-        self.update_sort_mode_from_state()
-        self.update_frame_rate_from_state()  # Initialize frame rate settings from state
-   
-    def handle_apply_general_settings(self):
-        """Apply the general settings."""
-        # First, apply the theme based on the theme dropdown
-        theme_choice = self.theme_dropdown.currentText()
-        # Call through MainWindow to propagate theme changes across the application
-        self.window().change_theme(theme_choice)
-        
-        # Retrieve other settings from the UI
-        sort_mode = self.sort_mode_dropdown.currentText()
-        frame_rate_enabled = self.enable_frame_rate_checkbox.isChecked()
-        frame_rate = self.frame_rate_slider.value()  # Get value from slider instead of spin box
-        
-        # Update project-specific settings in the current project state
-        if self.state_manager:
-            # Store theme-related settings might already be handled in change_theme, 
-            # so here we update sort and frame rate settings.
-            if self.state_manager.project_state.project_metadata:
-                self.state_manager.project_state.project_metadata.global_frame_rate = frame_rate
-                self.state_manager.project_state.project_metadata.global_frame_rate_enabled = frame_rate_enabled
-                
-            # Update the settings dictionary
-            self.state_manager.project_state.settings.update({
-                "global_sort_mode": sort_mode,
-                "global_frame_rate_enabled": frame_rate_enabled,
-                "global_frame_rate": frame_rate
-            })
-            
-            # Save the project to persist these settings
-            self.window().project_manager.save_project()
-            
-            # Notify observers so that UI elements refresh with new settings
-            self.state_manager.notify_observers()
-                
-        self.navigation_pane.add_log_message("Applied general settings to current project.", "success")
-   
-    def handle_apply_frame_rate(self):
-        """Handle the 'Apply Frame Rate' button click."""
-        frame_rate_enabled = self.enable_frame_rate_checkbox.isChecked()
-        frame_rate = self.frame_rate_slider.value()
-        
-        # Update the state with frame rate settings
-        if self.state_manager:
-            # Update project_metadata if it exists
-            if self.state_manager.project_state.project_metadata:
-                self.state_manager.project_state.project_metadata.global_frame_rate = frame_rate
-                self.state_manager.project_state.project_metadata.global_frame_rate_enabled = frame_rate_enabled
-                
-            # Update settings dictionary
-            self.state_manager.project_state.settings.update({
-                "global_frame_rate_enabled": frame_rate_enabled,
-                "global_frame_rate": frame_rate
-            })
-            
-            # Save project and notify observers
-            self.window().project_manager.save_project()
-            self.state_manager.notify_observers()
-            
-        self.navigation_pane.add_log_message(f"Applied frame rate settings: {'Enabled' if frame_rate_enabled else 'Disabled'}, {frame_rate} fps", "success")
    
