@@ -9,7 +9,7 @@ import logging
 import sys
 from core.theme_manager import ThemeManager
 from pathlib import Path
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 
 logger = logging.getLogger("mus1.gui.main_window")
 
@@ -31,7 +31,6 @@ class MainWindow(QMainWindow):
         self.setProperty("class", "mus1-main-window")
         
         # Configure main window
-        self.setWindowTitle("Mus1")
         self.resize(1200, 800)
         self.setMinimumSize(800, 600)  # Enforce minimum size as per UI guidelines
         
@@ -39,7 +38,7 @@ class MainWindow(QMainWindow):
         self.state_manager = state_manager
         self.data_manager = data_manager
         self.project_manager = project_manager
-        self.selected_project = selected_project
+        self.selected_project_name = selected_project
         self.theme_manager = ThemeManager(self.state_manager)
         
         # Get the LoggingEventBus singleton
@@ -63,6 +62,9 @@ class MainWindow(QMainWindow):
         # Apply theme during initialization
         self.apply_theme()
         
+        # Set initial window title before project selection
+        self.update_window_title()
+        
         # Perform project selection (either load selected or show dialog)
         self.perform_project_selection()
         
@@ -79,6 +81,14 @@ class MainWindow(QMainWindow):
         window_icon.addFile(str(icon_path / "m1logo no background.png"))  # For Linux/general
         
         self.setWindowIcon(window_icon)
+
+    def update_window_title(self):
+        """Sets the window title based on the current project."""
+        if self.selected_project_name:
+            self.setWindowTitle(f"Mus1 - {self.selected_project_name}")
+        else:
+            # Consistent title when no project is loaded or selected yet
+            self.setWindowTitle("Mus1 - No Project Loaded")
 
     def create_menu_bar(self):
         """Create the main menu bar with application menus."""
@@ -132,6 +142,12 @@ class MainWindow(QMainWindow):
         self.project_view = ProjectView(self)
         self.subject_view = SubjectView(self)
         self.experiment_view = ExperimentView(self)
+
+        # Connect the rename signal from ProjectView
+        if hasattr(self.project_view, 'project_renamed'):
+             self.project_view.project_renamed.connect(self.handle_project_rename)
+        else:
+             self.log_bus.log("ProjectView does not have 'project_renamed' signal.", "warning", "MainWindow")
 
         # Add tabs to the tab widget
         self.tab_widget.addTab(self.project_view, "Project")
@@ -187,81 +203,120 @@ class MainWindow(QMainWindow):
 
     def perform_project_selection(self):
         """Handle project selection or load pre-selected project."""
-        if self.selected_project is not None:
-            # Use pre-selected project
-            self.load_project(self.selected_project)
+        if self.selected_project_name is not None:
+            # Use pre-selected project name
+            self.load_project(self.selected_project_name)
         else:
             # Show project selection dialog
             self.show_project_selection_dialog()
 
     def load_project(self, project_name):
-        """Load a project by name and initialize all views."""
-        # First, find the project path based on name
+        """
+        Loads a project by name, updates UI including title, initializes views,
+        and refreshes data. This is the central method for loading projects.
+        """
+        self.log_bus.log(f"Attempting to load project: {project_name}", "info", "MainWindow")
         available_projects = self.project_manager.list_available_projects()
         project_path = next((p for p in available_projects if p.name == project_name), None)
-        
+
         if project_path:
-            # Check if this is likely a large project (could be based on file size or other criteria)
-            project_state_path = project_path / "project_state.json"
-            is_large_project = project_state_path.exists() and project_state_path.stat().st_size > 5 * 1024 * 1024  # 5MB
-            
-            # Load the project with optimization flag for large projects
-            self.project_manager.load_project(project_path, optimize_for_large_files=is_large_project)
-            
-            # Initialize experiment view
-            if hasattr(self.experiment_view, 'set_core'):
-                self.experiment_view.set_core(self.project_manager, self.state_manager)
+            try:
+                # Check for large project state file
+                project_state_path = project_path / "project_state.json"
+                is_large_project = project_state_path.exists() and project_state_path.stat().st_size > 5 * 1024 * 1024  # 5MB
 
-            # Initialize subject view
-            if hasattr(self.subject_view, 'set_state_manager'):
-                self.subject_view.set_state_manager(self.state_manager)
-            else:
-                # Fallback if subject_view doesn't have set_state_manager, simply pass state_manager if possible
-                if hasattr(self.subject_view, 'set_project_manager'):
-                    self.subject_view.set_project_manager(self.state_manager)
+                # Load the project using project_manager
+                self.project_manager.load_project(project_path, optimize_for_large_files=is_large_project)
 
-            # Initialize project view solely using state_manager
-            self.project_view.set_initial_project(project_name)
-            
-            # Log success
-            self.log_bus.log(f"Project '{project_name}' loaded successfully", "success", "MainWindow")
+                # --- Project Loaded Successfully ---
+                self.selected_project_name = project_name
+                self.update_window_title() # Update the window title
 
-            # Refresh all views
-            self.refresh_all_views()
-            
-            # Apply theme after project loading and view initialization
-            self.apply_theme()
+                # Initialize/update views with necessary managers/state
+                # Experiment View
+                if hasattr(self.experiment_view, 'set_core'):
+                    self.experiment_view.set_core(self.project_manager, self.state_manager)
+                else:
+                     self.log_bus.log("ExperimentView missing 'set_core' method.", "warning", "MainWindow")
+
+                # Subject View
+                if hasattr(self.subject_view, 'set_state_manager'):
+                    self.subject_view.set_state_manager(self.state_manager)
+                else:
+                    self.log_bus.log("SubjectView missing 'set_state_manager' method.", "warning", "MainWindow")
+                    # Fallback attempt (consider removing if set_state_manager is standard)
+                    # if hasattr(self.subject_view, 'set_project_manager'):
+                    #     self.subject_view.set_project_manager(self.state_manager)
+
+                # Project View - Update its internal state/display
+                # This call ensures ProjectView's labels/fields reflect the loaded project
+                self.project_view.set_initial_project(project_name)
+
+                self.log_bus.log(f"Project '{project_name}' loaded successfully.", "success", "MainWindow")
+
+                # Refresh data across all views
+                self.refresh_all_views()
+
+                # Re-apply theme in case project settings affect it
+                self.apply_theme()
+
+            except Exception as e:
+                self.log_bus.log(f"Error loading project '{project_name}': {e}", "error", "MainWindow")
+                # Reset state on error
+                self.selected_project_name = None
+                self.update_window_title() # Update title to 'No Project Loaded'
+                # Optionally, show an error dialog to the user here
         else:
-            self.log_bus.log(f"Could not find project path for '{project_name}'", "error", "MainWindow")
+            self.log_bus.log(f"Could not find project path for '{project_name}'. Available: {[p.name for p in available_projects]}", "error", "MainWindow")
+            # Reset state if project not found
+            self.selected_project_name = None
+            self.update_window_title() # Update title to 'No Project Loaded'
+            # Optionally, show an error dialog
 
     def refresh_all_views(self):
         """Refresh data in all views."""
-        if hasattr(self.experiment_view, 'refresh_data'):
+        self.log_bus.log("Refreshing all views...", "info", "MainWindow")
+        # Use getattr for safer checks
+        if getattr(self.experiment_view, 'refresh_data', None):
             self.experiment_view.refresh_data()
-            
-        if hasattr(self.subject_view, 'refresh_subject_list_display'):
+
+        if getattr(self.subject_view, 'refresh_subject_list_display', None):
             self.subject_view.refresh_subject_list_display()
-            
-        if hasattr(self.project_view, 'refresh_lists'):
+
+        if getattr(self.project_view, 'refresh_lists', None):
+            # ProjectView refresh might be implicitly handled by set_initial_project
+            # but calling it ensures consistency if other lists are added later.
             self.project_view.refresh_lists()
+        self.log_bus.log("View refresh complete.", "info", "MainWindow")
 
     def show_project_selection_dialog(self):
         """Show dialog for selecting a project."""
         dialog = ProjectSelectionDialog(self.project_manager, self)
-        
+
         if dialog.exec() == QDialog.Accepted:
-            # Get the selected project name
             chosen_project = getattr(dialog, 'selected_project_name', None)
-            
             if chosen_project:
-                # Load the selected project
-                self.load_project(chosen_project)
+                self.load_project(chosen_project) # Use the central load method
             else:
-                self.log_bus.log("No project selected from dialog", "warning", "MainWindow")
+                self.log_bus.log("No project selected from dialog.", "warning", "MainWindow")
+                self.update_window_title() # Ensure title is correct
+                # Decide if the app should close or stay open with 'No Project'
+                # self.close()
         else:
             # User cancelled the dialog
-            self.log_bus.log("Project selection cancelled, closing application", "warning", "MainWindow")
-            self.close()
+            self.log_bus.log("Project selection cancelled.", "warning", "MainWindow")
+            self.update_window_title() # Ensure title is correct
+            # Close if no project was previously loaded and selection is cancelled
+            if not self.selected_project_name:
+                 self.log_bus.log("Closing application as no project was selected.", "info", "MainWindow")
+                 self.close()
+
+    def handle_project_rename(self, new_name: str):
+        """Slot to handle the project_renamed signal from ProjectView."""
+        self.log_bus.log(f"MainWindow received project rename to: {new_name}", "info", "MainWindow")
+        self.selected_project_name = new_name
+        self.update_window_title()
+        # The project list in ProjectView should already be updated by its own handler.
 
     def apply_theme(self):
         """Apply the current theme to the application and propagate to all views."""

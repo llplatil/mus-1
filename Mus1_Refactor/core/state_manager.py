@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from typing import Optional, List, Union, Callable, Dict, Any
-from .metadata import ProjectState, SubjectMetadata, ExperimentMetadata, PluginMetadata
+from .metadata import ProjectState, SubjectMetadata, ExperimentMetadata, PluginMetadata, SortMode
 from .sort_manager import sort_items
 from .logging_bus import LoggingEventBus
 
@@ -470,7 +470,7 @@ class StateManager:
         
         Args:
             settings: Dictionary containing settings to update, can include:
-                - global_sort_mode: Sort mode for lists
+                - global_sort_mode: Sort mode for lists (as string)
                 - global_frame_rate: Frame rate value
                 - global_frame_rate_enabled: Whether global frame rate is enabled
                 - theme_mode: UI theme preference
@@ -479,7 +479,15 @@ class StateManager:
         if self._project_state.project_metadata:
             # Update sort mode if provided
             if "global_sort_mode" in settings:
-                self._project_state.project_metadata.global_sort_mode = settings["global_sort_mode"]
+                sort_mode_str = settings["global_sort_mode"]
+                try:
+                    # Convert string to enum member before assigning
+                    sort_mode_enum = SortMode(sort_mode_str)
+                    self._project_state.project_metadata.global_sort_mode = sort_mode_enum
+                except ValueError:
+                    # Log a warning if the string doesn't match any enum value
+                    logger.warning(f"Invalid sort mode string '{sort_mode_str}' received. Setting to default.")
+                    self._project_state.project_metadata.global_sort_mode = SortMode.NATURAL # Default
                 
             # Update frame rate settings if provided
             if "global_frame_rate" in settings:
@@ -491,7 +499,7 @@ class StateManager:
             if "theme_mode" in settings:
                 self._project_state.project_metadata.theme_mode = settings["theme_mode"]
         
-        # Always update settings dictionary as well for backward compatibility
+        # Always update settings dictionary as well (keeping the string value here is fine)
         self._project_state.settings.update(settings)
         
         logger.info(f"Project settings updated: {', '.join(settings.keys())}")

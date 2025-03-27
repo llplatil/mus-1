@@ -215,10 +215,11 @@ class BatchMetadata(BaseModel):
         """Returns True if the batch contains no experiments."""
         return len(self.experiment_ids) == 0
 
-class GlobalSortMode(str, Enum):
-    NATURAL_ORDER = "Natural Order (Numbers as Numbers)"
-    ALPHABETICAL = "Lexicographical Order (Numbers as Characters)"
+class SortMode(str, Enum):
+    NATURAL = "Natural Order (Numbers as Numbers)"
+    LEXICOGRAPHICAL = "Lexicographical Order (Numbers as Characters)"
     DATE_ADDED = "Date Added"
+    BY_ID = "By ID"
 
 class ProjectMetadata(BaseModel):
     """
@@ -269,7 +270,7 @@ class ProjectMetadata(BaseModel):
         return v
 
     # Global sort mode stored with the project
-    global_sort_mode: GlobalSortMode = GlobalSortMode.ALPHABETICAL
+    global_sort_mode: SortMode = SortMode.NATURAL
 
     # Global frame rate settings
     global_frame_rate: int = 60

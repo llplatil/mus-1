@@ -1,6 +1,7 @@
 from PySide6.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QStackedWidget, QListWidget,
-    QGroupBox, QFormLayout, QLineEdit, QComboBox, QTextEdit, QPushButton, QLabel, QDateTimeEdit, QCheckBox
+    QGroupBox, QFormLayout, QLineEdit, QComboBox, QTextEdit, QPushButton, QLabel, QDateTimeEdit, QCheckBox,
+    QSpinBox, QDoubleSpinBox, QSlider, QFileDialog
 )
 from core.metadata import Sex
 from gui.navigation_pane import NavigationPane  
@@ -9,6 +10,8 @@ from PySide6.QtCore import QDateTime
 from core.logging_bus import LoggingEventBus
 from PySide6.QtCore import Qt
 from gui.metadata_display import MetadataTreeView  # Import for overview display
+from pathlib import Path
+from core import ObjectMetadata, BodyPartMetadata  # Import needed for body parts and objects pages
 
 class SubjectView(BaseView):
     def __init__(self, parent=None):
@@ -21,141 +24,25 @@ class SubjectView(BaseView):
 
         # Immediately assign the project_manager so that subsequent methods can use it
         self.project_manager = self.window().project_manager
+        # Assign state_manager for easier access
+        self.state_manager = self.window().state_manager
 
-        # Setup navigation for this view with three pages:
-        # "Subject Metadata" for adding new subjects and
-        # "Add Subject" for adding new subjects and
-        # "Subjects Overview" for viewing subjects using a tree display.
-        self.setup_navigation(["Subject Metadata", "Add Subject", "Subjects Overview"])
+        # Setup navigation for this view with six pages
+        self.setup_navigation(["Subject Overview", "Bodyparts", "Genotypes", "Treatments", "Objects", "Subjects"])
         
-        # Create all pages:
-        self.setup_subject_metadata_page()
-        self.setup_add_subject_page()
-        self.setup_view_subjects_page()
+        # Create all pages in the new order:
+        self.setup_view_subjects_page()       # 1. Subject Overview
+        self.setup_body_parts_page()          # 2. Bodyparts
+        self.setup_genotypes_page()           # 3. Genotypes
+        self.setup_treatments_page()          # 4. Treatments
+        self.setup_objects_page()             # 5. Objects
+        self.setup_add_subject_page()         # 6. Subjects
         
-        # Set default selection; you can change which page is default (here index 1 = "Add Subject")
-        self.change_page(1)  # This will trigger the appropriate refresh methods
-
-    def setup_subject_metadata_page(self):
-        """Setup the Subject Metadata page for managing treatments and genotypes."""
-        self.page_metadata = QWidget()
-        meta_layout = QVBoxLayout(self.page_metadata)
-        meta_layout.setContentsMargins(10, 10, 10, 10)
-        meta_layout.setSpacing(10)
-
-        # ---- Treatments Management Section ----
-        treatments_group, treatments_layout = self.create_form_section("Treatments Management", meta_layout)
-
-        # New Treatment entry row
-        new_treatment_row = QHBoxLayout()
-        new_treatment_label = self.create_form_label("New Treatment:")
-        self.new_treatment_line_edit = QLineEdit()
-        self.new_treatment_line_edit.setPlaceholderText("Enter new treatment name...")
-        self.new_treatment_line_edit.setProperty("class", "mus1-text-input")
-        treatment_add_button = QPushButton("Add Treatment")
-        treatment_add_button.setProperty("class", "mus1-primary-button")
-        treatment_add_button.clicked.connect(self.handle_add_treatment)
-        new_treatment_row.addWidget(new_treatment_label)
-        new_treatment_row.addWidget(self.new_treatment_line_edit, 1)
-        new_treatment_row.addWidget(treatment_add_button)
-        treatments_layout.addLayout(new_treatment_row)
-
-        # Treatments lists: available and active
-        treatments_lists_layout = QHBoxLayout()
-        treatments_layout.addLayout(treatments_lists_layout)
-
-        available_treatment_col, available_treatment_layout = self.create_form_section("Available Treatments:", treatments_lists_layout, True)
-        self.all_treatments_list = QListWidget()
-        self.all_treatments_list.setProperty("class", "mus1-list-widget")
-        self.all_treatments_list.setSelectionMode(QListWidget.ExtendedSelection)
-        available_treatment_layout.addWidget(self.all_treatments_list)
-        available_treatment_buttons = self.create_button_row(available_treatment_layout, True)
-        add_to_active_treatment_button = QPushButton("Add Selected to Active →")
-        add_to_active_treatment_button.setProperty("class", "mus1-secondary-button")
-        add_to_active_treatment_button.clicked.connect(self.handle_add_to_active_treatments)
-        available_treatment_buttons.addWidget(add_to_active_treatment_button)
-
-        active_treatment_col, active_treatment_layout = self.create_form_section("Active Treatments:", treatments_lists_layout, True)
-        self.current_treatments_list = QListWidget()
-        self.current_treatments_list.setProperty("class", "mus1-list-widget")
-        self.current_treatments_list.setSelectionMode(QListWidget.ExtendedSelection)
-        active_treatment_layout.addWidget(self.current_treatments_list)
-        active_treatment_buttons = self.create_button_row(active_treatment_layout, True)
-        remove_treatment_button = QPushButton("← Remove Selected")
-        remove_treatment_button.setProperty("class", "mus1-secondary-button")
-        remove_treatment_button.clicked.connect(self.handle_remove_active_treatments)
-        active_treatment_buttons.addWidget(remove_treatment_button)
-
-        treatments_lists_layout.addWidget(available_treatment_col, 1)
-        treatments_lists_layout.addWidget(active_treatment_col, 1)
-
-        # ---- Genotypes Management Section ----
-        genotypes_group, genotypes_layout = self.create_form_section("Genotypes Management", meta_layout)
-
-        new_genotype_row = QHBoxLayout()
-        new_genotype_label = self.create_form_label("New Genotype:")
-        self.new_genotype_line_edit = QLineEdit()
-        self.new_genotype_line_edit.setPlaceholderText("Enter new genotype name...")
-        self.new_genotype_line_edit.setProperty("class", "mus1-text-input")
-        genotype_add_button = QPushButton("Add Genotype")
-        genotype_add_button.setProperty("class", "mus1-primary-button")
-        genotype_add_button.clicked.connect(self.handle_add_genotype)
-        new_genotype_row.addWidget(new_genotype_label)
-        new_genotype_row.addWidget(self.new_genotype_line_edit, 1)
-        new_genotype_row.addWidget(genotype_add_button)
-        genotypes_layout.addLayout(new_genotype_row)
-
-        genotypes_lists_layout = QHBoxLayout()
-        genotypes_layout.addLayout(genotypes_lists_layout)
-
-        available_genotype_col, available_genotype_layout = self.create_form_section("Available Genotypes:", genotypes_lists_layout, True)
-        self.all_genotypes_list = QListWidget()
-        self.all_genotypes_list.setProperty("class", "mus1-list-widget")
-        self.all_genotypes_list.setSelectionMode(QListWidget.ExtendedSelection)
-        available_genotype_layout.addWidget(self.all_genotypes_list)
-        available_genotype_buttons = self.create_button_row(available_genotype_layout, True)
-        add_to_active_genotype_button = QPushButton("Add Selected to Active →")
-        add_to_active_genotype_button.setProperty("class", "mus1-secondary-button")
-        add_to_active_genotype_button.clicked.connect(self.handle_add_to_active_genotypes)
-        available_genotype_buttons.addWidget(add_to_active_genotype_button)
-
-        active_genotype_col, active_genotype_layout = self.create_form_section("Active Genotypes:", genotypes_lists_layout, True)
-        self.current_genotypes_list = QListWidget()
-        self.current_genotypes_list.setProperty("class", "mus1-list-widget")
-        self.current_genotypes_list.setSelectionMode(QListWidget.ExtendedSelection)
-        active_genotype_layout.addWidget(self.current_genotypes_list)
-        active_genotype_buttons = self.create_button_row(active_genotype_layout, True)
-        remove_genotype_button = QPushButton("← Remove Selected")
-        remove_genotype_button.setProperty("class", "mus1-secondary-button")
-        remove_genotype_button.clicked.connect(self.handle_remove_active_genotypes)
-        active_genotype_buttons.addWidget(remove_genotype_button)
-
-        genotypes_lists_layout.addWidget(available_genotype_col, 1)
-        genotypes_lists_layout.addWidget(active_genotype_col, 1)
-
-        meta_layout.addStretch(1)
-        self.add_page(self.page_metadata, "Subject Metadata")
-
-    def refresh_active_metadata_dropdowns(self):
-        """Populate the genotype and treatment dropdowns in the Add Subject page from the active lists."""
-        self.genotype_combo.clear()
-        self.treatment_combo.clear()
-        # Fetch updated active lists from state
-        active_genotypes = self.project_manager.state_manager.get_genotypes().get("active", [])
-        active_treatments = self.project_manager.state_manager.get_treatments().get("active", [])
-        for genotype in active_genotypes:
-            if hasattr(genotype, "name"):
-                self.genotype_combo.addItem(genotype.name)
-            else:
-                self.genotype_combo.addItem(genotype)
-        for treatment in active_treatments:
-            if hasattr(treatment, "name"):
-                self.treatment_combo.addItem(treatment.name)
-            else:
-                self.treatment_combo.addItem(treatment)
+        # Set default selection to Subject Overview
+        self.change_page(0)
 
     def setup_add_subject_page(self):
-        """Setup the Add Subject page."""
+        """Setup the Subjects page (previously named Add Subject)."""
         # Create the page widget
         self.page_add_subject = QWidget()
         add_layout = QVBoxLayout(self.page_add_subject)
@@ -254,7 +141,7 @@ class SubjectView(BaseView):
         
         # Before adding the page, refresh the genotype and treatment dropdowns from active metadata
         self.refresh_active_metadata_dropdowns()
-        self.add_page(self.page_add_subject, "Add Subject")
+        self.add_page(self.page_add_subject, "Subjects")
     
     def handle_add_subject(self):
         """Handle the logic for adding a new subject, as before."""
@@ -389,17 +276,25 @@ class SubjectView(BaseView):
         super().change_page(index)
         
         # Update appropriate data based on which page we're viewing
-        if index == 0:  # Subject Metadata
-            # Refresh the treatments and genotypes lists
-            self.refresh_treatments_lists()
-            self.refresh_genotypes_lists()
-        elif index == 1:  # Add Subject
+        if index == 0:  # Subject Overview
+            # Refresh the overview only
+            self.refresh_overview()
+        elif index == 1:  # Bodyparts
+            # Refresh the body parts page
+            self.refresh_body_parts_page()
+        elif index == 2:  # Genotypes
+            # Refresh the genotypes page
+            self.refresh_genotypes_page()
+        elif index == 3:  # Treatments
+            # Refresh the treatments page
+            self.refresh_treatments_page()
+        elif index == 4:  # Objects
+            # Refresh the objects page
+            self.refresh_objects_page()
+        elif index == 5:  # Subjects
             # Refresh the subjects list and the active dropdowns
             self.refresh_subject_list_display()
             self.refresh_active_metadata_dropdowns()
-        elif index == 2:  # Subjects Overview
-            # Refresh the overview only
-            self.refresh_overview()
 
     def handle_remove_selected_subject(self):
         """Handle removal of the selected subject from the list."""
@@ -771,3 +666,575 @@ class SubjectView(BaseView):
                 self.current_genotypes_list.addItem(genotype.name)
             else:
                 self.current_genotypes_list.addItem(genotype)
+
+    def refresh_body_parts_page(self):
+        """Refresh the body parts lists."""
+        if not hasattr(self, 'all_bodyparts_list') or not hasattr(self, 'current_body_parts_list'):
+            return
+        
+        # Get sorted body parts from state_manager
+        sorted_parts = self.state_manager.get_sorted_body_parts()
+        
+        self.all_bodyparts_list.clear()
+        for bp in sorted_parts["master"]:
+            self.all_bodyparts_list.addItem(self.format_item(bp))
+        
+        self.current_body_parts_list.clear()
+        for bp in sorted_parts["active"]:
+            self.current_body_parts_list.addItem(self.format_item(bp))
+        
+        self.navigation_pane.add_log_message("Body parts lists refreshed.", "info")
+
+    def refresh_objects_page(self):
+        """Refresh the objects lists."""
+        self.refresh_objects_ui()  # Reuse the existing refresh_objects_ui method
+
+    def refresh_genotypes_page(self):
+        """Refresh the genotypes lists."""
+        self.refresh_genotypes_lists()  # Reuse the existing refresh method
+
+    def refresh_treatments_page(self):
+        """Refresh the treatments lists."""
+        self.refresh_treatments_lists()  # Reuse the existing refresh method
+
+    def format_item(self, item):
+        """Utility to return the proper display string for an item."""
+        return item.name if hasattr(item, "name") else str(item)
+
+    def setup_genotypes_page(self):
+        """Initialize the Genotypes page."""
+        self.genotypes_page = QWidget()
+        layout = QVBoxLayout(self.genotypes_page)
+        layout.setSpacing(self.SECTION_SPACING)
+
+        # ---- Genotypes Management Section ----
+        genotypes_group, genotypes_layout = self.create_form_section("Genotypes Management", layout)
+
+        new_genotype_row = self.create_form_row(genotypes_layout)
+        new_genotype_label = self.create_form_label("New Genotype:")
+        self.new_genotype_line_edit = QLineEdit()
+        self.new_genotype_line_edit.setPlaceholderText("Enter new genotype name...")
+        self.new_genotype_line_edit.setProperty("class", "mus1-text-input")
+        genotype_add_button = QPushButton("Add Genotype")
+        genotype_add_button.setProperty("class", "mus1-primary-button")
+        genotype_add_button.clicked.connect(self.handle_add_genotype)
+        new_genotype_row.addWidget(new_genotype_label)
+        new_genotype_row.addWidget(self.new_genotype_line_edit, 1)
+        new_genotype_row.addWidget(genotype_add_button)
+
+        genotypes_lists_layout = QHBoxLayout()
+        genotypes_layout.addLayout(genotypes_lists_layout)
+
+        available_genotype_col, available_genotype_layout = self.create_form_section("Available Genotypes:", None, is_subgroup=True)
+        self.all_genotypes_list = QListWidget()
+        self.all_genotypes_list.setProperty("class", "mus1-list-widget")
+        self.all_genotypes_list.setSelectionMode(QListWidget.ExtendedSelection)
+        available_genotype_layout.addWidget(self.all_genotypes_list)
+        available_genotype_buttons = self.create_button_row(available_genotype_layout, True)
+        add_to_active_genotype_button = QPushButton("Add Selected to Active →")
+        add_to_active_genotype_button.setProperty("class", "mus1-secondary-button")
+        add_to_active_genotype_button.clicked.connect(self.handle_add_to_active_genotypes)
+        available_genotype_buttons.addWidget(add_to_active_genotype_button)
+
+        active_genotype_col, active_genotype_layout = self.create_form_section("Active Genotypes:", None, is_subgroup=True)
+        self.current_genotypes_list = QListWidget()
+        self.current_genotypes_list.setProperty("class", "mus1-list-widget")
+        self.current_genotypes_list.setSelectionMode(QListWidget.ExtendedSelection)
+        active_genotype_layout.addWidget(self.current_genotypes_list)
+        active_genotype_buttons = self.create_button_row(active_genotype_layout, True)
+        remove_genotype_button = QPushButton("← Remove Selected")
+        remove_genotype_button.setProperty("class", "mus1-secondary-button")
+        remove_genotype_button.clicked.connect(self.handle_remove_active_genotypes)
+        active_genotype_buttons.addWidget(remove_genotype_button)
+
+        genotypes_lists_layout.addWidget(available_genotype_col, 1)
+        genotypes_lists_layout.addWidget(active_genotype_col, 1)
+
+        layout.addStretch(1)
+        self.add_page(self.genotypes_page, "Genotypes")
+        self.refresh_genotypes_lists()
+
+    def setup_treatments_page(self):
+        """Initialize the Treatments page."""
+        self.treatments_page = QWidget()
+        layout = QVBoxLayout(self.treatments_page)
+        layout.setSpacing(self.SECTION_SPACING)
+
+        # ---- Treatments Management Section ----
+        treatments_group, treatments_layout = self.create_form_section("Treatments Management", layout)
+
+        # New Treatment entry row
+        new_treatment_row = self.create_form_row(treatments_layout)
+        new_treatment_label = self.create_form_label("New Treatment:")
+        self.new_treatment_line_edit = QLineEdit()
+        self.new_treatment_line_edit.setPlaceholderText("Enter new treatment name...")
+        self.new_treatment_line_edit.setProperty("class", "mus1-text-input")
+        treatment_add_button = QPushButton("Add Treatment")
+        treatment_add_button.setProperty("class", "mus1-primary-button")
+        treatment_add_button.clicked.connect(self.handle_add_treatment)
+        new_treatment_row.addWidget(new_treatment_label)
+        new_treatment_row.addWidget(self.new_treatment_line_edit, 1)
+        new_treatment_row.addWidget(treatment_add_button)
+
+        # Treatments lists: available and active
+        treatments_lists_layout = QHBoxLayout()
+        treatments_layout.addLayout(treatments_lists_layout)
+
+        available_treatment_col, available_treatment_layout = self.create_form_section("Available Treatments:", None, is_subgroup=True)
+        self.all_treatments_list = QListWidget()
+        self.all_treatments_list.setProperty("class", "mus1-list-widget")
+        self.all_treatments_list.setSelectionMode(QListWidget.ExtendedSelection)
+        available_treatment_layout.addWidget(self.all_treatments_list)
+        available_treatment_buttons = self.create_button_row(available_treatment_layout, True)
+        add_to_active_treatment_button = QPushButton("Add Selected to Active →")
+        add_to_active_treatment_button.setProperty("class", "mus1-secondary-button")
+        add_to_active_treatment_button.clicked.connect(self.handle_add_to_active_treatments)
+        available_treatment_buttons.addWidget(add_to_active_treatment_button)
+
+        active_treatment_col, active_treatment_layout = self.create_form_section("Active Treatments:", None, is_subgroup=True)
+        self.current_treatments_list = QListWidget()
+        self.current_treatments_list.setProperty("class", "mus1-list-widget")
+        self.current_treatments_list.setSelectionMode(QListWidget.ExtendedSelection)
+        active_treatment_layout.addWidget(self.current_treatments_list)
+        active_treatment_buttons = self.create_button_row(active_treatment_layout, True)
+        remove_treatment_button = QPushButton("← Remove Selected")
+        remove_treatment_button.setProperty("class", "mus1-secondary-button")
+        remove_treatment_button.clicked.connect(self.handle_remove_active_treatments)
+        active_treatment_buttons.addWidget(remove_treatment_button)
+
+        treatments_lists_layout.addWidget(available_treatment_col, 1)
+        treatments_lists_layout.addWidget(active_treatment_col, 1)
+
+        layout.addStretch(1)
+        self.add_page(self.treatments_page, "Treatments")
+        self.refresh_treatments_lists()
+
+    def setup_body_parts_page(self):
+        """Initialize the user interface for managing body parts."""
+        self.bodyparts_page = QWidget()
+        layout = QVBoxLayout(self.bodyparts_page)
+        layout.setSpacing(self.SECTION_SPACING)
+
+        extract_group, extract_layout = self.create_form_section("Extract Body Parts", layout)
+
+        file_row = self.create_form_row(extract_layout)
+        file_label = self.create_form_label("File Path:")
+
+        self.csv_path_input = QLineEdit()
+        self.csv_path_input.setPlaceholderText("Enter CSV/YAML file path")
+        self.csv_path_input.setProperty("class", "mus1-text-input")
+
+        browse_button = QPushButton("Browse...")
+        browse_button.setProperty("class", "mus1-secondary-button")
+        browse_button.clicked.connect(self.handle_browse_for_bodyparts_file)
+
+        file_row.addWidget(file_label)
+        file_row.addWidget(self.csv_path_input, 1)
+        file_row.addWidget(browse_button)
+
+        method_row = self.create_form_row(extract_layout)
+        method_label = self.create_form_label("Method:")
+
+        self.extraction_method_dropdown = QComboBox()
+        self.extraction_method_dropdown.setObjectName("mus1-combo-box")
+        self.extraction_method_dropdown.addItems(["BasicCSV", "DLC yaml"])
+        self.extraction_method_dropdown.currentTextChanged.connect(self.update_extraction_method)
+        self.extraction_method_dropdown.style().unpolish(self.extraction_method_dropdown)
+        self.extraction_method_dropdown.style().polish(self.extraction_method_dropdown)
+
+        extract_button = QPushButton("Extract")
+        extract_button.setProperty("class", "mus1-primary-button")
+        extract_button.clicked.connect(self.handle_extract_bodyparts)
+
+        method_row.addWidget(method_label)
+        method_row.addWidget(self.extraction_method_dropdown, 1)
+        method_row.addWidget(extract_button)
+
+        extracted_group, extracted_layout = self.create_form_section("Extracted Body Parts", layout)
+
+        self.extracted_bodyparts_list = QListWidget()
+        self.extracted_bodyparts_list.setProperty("class", "mus1-list-widget")
+        self.extracted_bodyparts_list.setSelectionMode(QListWidget.ExtendedSelection)
+        extracted_layout.addWidget(self.extracted_bodyparts_list)
+
+        buttons_row = self.create_button_row(extracted_layout, add_stretch=False)
+
+        master_button_all = QPushButton("Add All to Master")
+        master_button_all.setProperty("class", "mus1-primary-button")
+        master_button_all.clicked.connect(self.handle_add_all_bodyparts_to_master)
+
+        master_button_selected = QPushButton("Add Selected to Master")
+        master_button_selected.setProperty("class", "mus1-secondary-button")
+        master_button_selected.clicked.connect(self.handle_add_selected_bodyparts_to_master)
+
+        buttons_row.addWidget(master_button_all)
+        buttons_row.addWidget(master_button_selected)
+        buttons_row.addStretch(1)
+
+        management_group, management_layout = self.create_form_section("Manage Body Parts", layout)
+
+        columns_layout = QHBoxLayout()
+        columns_layout.setSpacing(self.SECTION_SPACING)
+        management_layout.addLayout(columns_layout)
+
+        master_column, master_layout = self.create_form_section("Master Body Parts", None, is_subgroup=True)
+
+        self.all_bodyparts_list = QListWidget()
+        self.all_bodyparts_list.setProperty("class", "mus1-list-widget")
+        self.all_bodyparts_list.setSelectionMode(QListWidget.ExtendedSelection)
+        master_layout.addWidget(self.all_bodyparts_list)
+
+        master_buttons_row = self.create_button_row(master_layout)
+        remove_from_master_button = QPushButton("Remove Selected from Master")
+        remove_from_master_button.setProperty("class", "mus1-secondary-button")
+        remove_from_master_button.clicked.connect(self.handle_remove_from_master)
+        master_buttons_row.addWidget(remove_from_master_button)
+
+        add_to_active_button = QPushButton("Add Selected to Active →")
+        add_to_active_button.setProperty("class", "mus1-secondary-button")
+        add_to_active_button.clicked.connect(self.handle_add_selected_bodyparts_to_active)
+        master_buttons_row.addWidget(add_to_active_button)
+
+        active_column, active_layout = self.create_form_section("Active Body Parts", None, is_subgroup=True)
+
+        self.current_body_parts_list = QListWidget()
+        self.current_body_parts_list.setProperty("class", "mus1-list-widget")
+        self.current_body_parts_list.setSelectionMode(QListWidget.ExtendedSelection)
+        active_layout.addWidget(self.current_body_parts_list)
+
+        active_buttons_row = self.create_button_row(active_layout)
+        remove_button = QPushButton("← Remove Selected from Active List")
+        remove_button.setProperty("class", "mus1-secondary-button")
+        remove_button.clicked.connect(self.handle_remove_active_bodyparts)
+        active_buttons_row.addWidget(remove_button)
+
+        columns_layout.addWidget(master_column, 1)
+        columns_layout.addWidget(active_column, 1)
+
+        layout.addStretch(1)
+        self.add_page(self.bodyparts_page, "Bodyparts")
+        
+        # Refresh the lists initially
+        self.refresh_body_parts_page()
+
+    def update_extraction_method(self):
+        """Update any UI elements based on the selected extraction method."""
+        method = self.extraction_method_dropdown.currentText()
+        if method == "DLC yaml":
+            self.csv_path_input.setPlaceholderText("Enter YAML config file path")
+        else:
+            self.csv_path_input.setPlaceholderText("Enter CSV file path")
+        
+    def handle_browse_for_bodyparts_file(self):
+        """Open a file dialog to select a CSV or YAML file."""
+        method = self.extraction_method_dropdown.currentText()
+        
+        # Determine file filter based on selected method
+        if method == "DLC yaml":
+            file_filter = "YAML Files (*.yaml *.yml);;All Files (*)"
+            dialog_title = "Select DLC Config File"
+        else:
+            file_filter = "CSV Files (*.csv);;All Files (*)"
+            dialog_title = "Select Body Parts File"
+        
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            dialog_title,
+            "",
+            file_filter
+        )
+        if file_path:
+            self.csv_path_input.setText(file_path)
+        
+    def handle_extract_bodyparts(self):
+        """Extract body parts from the specified file using DataManager."""
+        try:
+            file_path = Path(self.csv_path_input.text().strip())
+            method = self.extraction_method_dropdown.currentText()
+            
+            if method == "BasicCSV":
+                extracted = self.window().data_manager.extract_bodyparts_from_dlc_csv(file_path)
+            elif method == "DLC yaml":
+                extracted = self.window().data_manager.extract_bodyparts_from_dlc_config(file_path)
+            else:
+                self.navigation_pane.add_log_message("Unknown extraction method.", "error")
+                return
+
+            self.extracted_bodyparts_list.clear()
+            for bp in extracted:
+                self.extracted_bodyparts_list.addItem(self.format_item(bp))
+            self.navigation_pane.add_log_message(f"Extracted {len(extracted)} body parts.", "success")
+        except Exception as e:
+            self.navigation_pane.add_log_message(f"Extraction error: {e}", "error")
+
+    def handle_add_all_bodyparts_to_master(self):
+        """Add every extracted body part to the master list."""
+        new_bodyparts = [self.extracted_bodyparts_list.item(i).text() 
+                         for i in range(self.extracted_bodyparts_list.count())]
+        state = self.state_manager.project_state
+        current_master = []
+        if state.project_metadata:
+            current_master = [self.format_item(bp) for bp in state.project_metadata.master_body_parts]
+        else:
+            current_master = [str(bp) for bp in self.state_manager.global_settings.get("body_parts", [])]
+        
+        additions = [bp for bp in new_bodyparts if bp not in current_master]
+        if additions:
+            self.window().project_manager.update_master_body_parts(additions)
+            self.navigation_pane.add_log_message(f"Added {len(additions)} body parts to master list.", "success")
+        else:
+            self.navigation_pane.add_log_message("No new body parts to add.", "info")
+        self.refresh_body_parts_page()
+
+    def handle_add_selected_bodyparts_to_master(self):
+        """Add selected extracted body parts to the master list."""
+        selected_items = self.extracted_bodyparts_list.selectedItems()
+        if not selected_items:
+            self.navigation_pane.add_log_message("No body parts selected for master list.", "warning")
+            return
+        selected = [item.text() for item in selected_items]
+        state = self.state_manager.project_state
+        if state.project_metadata:
+            current_master = [self.format_item(bp) for bp in state.project_metadata.master_body_parts]
+        else:
+            current_master = [str(bp) for bp in self.state_manager.global_settings.get("body_parts", [])]
+        
+        new_master = current_master.copy()
+        for bp in selected:
+            if bp not in new_master:
+                new_master.append(bp)
+        
+        if new_master != current_master:
+            self.window().project_manager.update_master_body_parts(new_master)
+            added_count = len(new_master) - len(current_master)
+            self.navigation_pane.add_log_message(f"Added {added_count} selected body parts to master list.", "success")
+        else:
+            self.navigation_pane.add_log_message("No new body parts selected for master list.", "info")
+        self.refresh_body_parts_page()
+
+    def handle_remove_from_master(self):
+        """Delete selected body parts from the master list."""
+        selected_items = self.all_bodyparts_list.selectedItems()
+        if not selected_items:
+            self.navigation_pane.add_log_message("No body parts selected for deletion from master list.", "warning")
+            return
+        selected = [item.text() for item in selected_items]
+        state = self.state_manager.project_state
+        if state.project_metadata:
+            current_master = [self.format_item(bp) for bp in state.project_metadata.master_body_parts]
+        else:
+            current_master = [str(bp) for bp in self.state_manager.global_settings.get("body_parts", [])]
+        new_master = [bp for bp in current_master if bp not in selected]
+
+        current_active = [self.current_body_parts_list.item(i).text() for i in range(self.current_body_parts_list.count())]
+        new_active = [bp for bp in current_active if bp not in selected]
+        
+        self.window().project_manager.update_master_body_parts(new_master)
+        self.window().project_manager.update_active_body_parts(new_active)
+        self.navigation_pane.add_log_message(f"Deleted {len(selected)} body parts from project.", "success")
+        self.refresh_body_parts_page()
+
+    def handle_add_selected_bodyparts_to_active(self):
+        """Add selected body parts from the master list into the active list."""
+        selected_items = self.all_bodyparts_list.selectedItems()
+        if not selected_items:
+            self.navigation_pane.add_log_message("No body parts selected for active list.", "warning")
+            return
+        selected = [item.text() for item in selected_items]
+        current = [self.current_body_parts_list.item(i).text() for i in range(self.current_body_parts_list.count())]
+        updated = current + [bp for bp in selected if bp not in current]
+        self.window().project_manager.update_active_body_parts(updated)
+        self.navigation_pane.add_log_message(f"Added {len(selected)} body parts to active list.", "success")
+        self.refresh_body_parts_page()
+
+    def handle_remove_active_bodyparts(self):
+        """Move selected body parts from the active list back to the master list."""
+        selected_items = self.current_body_parts_list.selectedItems()
+        if not selected_items:
+            self.navigation_pane.add_log_message("No body parts selected from active list.", "warning")
+            return
+        current_active = [self.current_body_parts_list.item(i).text() for i in range(self.current_body_parts_list.count())]
+        items_to_move = [item.text() for item in selected_items]
+        updated_active = [bp for bp in current_active if bp not in items_to_move]
+        self.window().project_manager.update_active_body_parts(updated_active)
+        
+        state = self.state_manager.project_state
+        if state.project_metadata:
+            current_master = [self.format_item(bp) for bp in state.project_metadata.master_body_parts]
+        else:
+            current_master = [str(bp) for bp in self.state_manager.global_settings.get("body_parts", [])]
+        
+        new_master = current_master.copy()
+        for bp in items_to_move:
+            if bp not in new_master:
+                new_master.append(bp)
+        if new_master != current_master:
+            self.window().project_manager.update_master_body_parts(new_master)
+        
+        self.navigation_pane.add_log_message(f"Moved {len(items_to_move)} body parts from active to master list.", "success")
+        self.refresh_body_parts_page()
+
+    def setup_objects_page(self):
+        """Setup the Objects page with object list widgets."""
+        self.objects_page = QWidget()
+        layout = QVBoxLayout(self.objects_page)
+        layout.setSpacing(self.SECTION_SPACING)
+
+        objects_group, objects_layout = self.create_form_section("Objects Management", layout)
+
+        add_row = self.create_form_row(objects_layout)
+        new_object_label = self.create_form_label("New Object:")
+        self.new_object_line_edit = QLineEdit()
+        self.new_object_line_edit.setPlaceholderText("Enter new object name...")
+        self.new_object_line_edit.setProperty("class", "mus1-text-input")
+        add_button = QPushButton("Add Object")
+        add_button.setProperty("class", "mus1-primary-button")
+        add_button.clicked.connect(self.add_object_by_name)
+        add_row.addWidget(new_object_label)
+        add_row.addWidget(self.new_object_line_edit, 1)
+        add_row.addWidget(add_button)
+
+        lists_layout = QHBoxLayout()
+        lists_layout.setSpacing(self.SECTION_SPACING)
+        objects_layout.addLayout(lists_layout)
+
+        # Available (Master) Objects Column
+        available_column, available_layout = self.create_form_section("Available Objects:", None, is_subgroup=True)
+        self.all_objects_list = QListWidget()
+        self.all_objects_list.setProperty("class", "mus1-list-widget")
+        self.all_objects_list.setSelectionMode(QListWidget.ExtendedSelection)
+        available_layout.addWidget(self.all_objects_list)
+        
+        # Button row for available (master) objects
+        available_button_row = self.create_button_row(available_layout, add_stretch=True)
+        add_to_active_button = QPushButton("Add Selected to Active →")
+        add_to_active_button.setProperty("class", "mus1-secondary-button")
+        add_to_active_button.clicked.connect(self.move_objects_master_to_active)
+        available_button_row.addWidget(add_to_active_button)
+        remove_from_master_object_button = QPushButton("Remove Selected from Master")
+        remove_from_master_object_button.setProperty("class", "mus1-secondary-button")
+        remove_from_master_object_button.clicked.connect(self.delete_object_from_master)
+        available_button_row.addWidget(remove_from_master_object_button)
+
+        # Active Objects Column
+        active_column, active_layout = self.create_form_section("Active Objects:", None, is_subgroup=True)
+        self.current_objects_list = QListWidget()
+        self.current_objects_list.setProperty("class", "mus1-list-widget")
+        self.current_objects_list.setSelectionMode(QListWidget.ExtendedSelection)
+        active_layout.addWidget(self.current_objects_list)
+        
+        # Button row for active objects with a "move back" button
+        active_button_row = self.create_button_row(active_layout, add_stretch=True)
+        remove_from_active_object_button = QPushButton("← Remove Selected from Active")
+        remove_from_active_object_button.setProperty("class", "mus1-secondary-button")
+        remove_from_active_object_button.clicked.connect(self.move_objects_active_to_master)
+        active_button_row.addWidget(remove_from_active_object_button)
+
+        lists_layout.addWidget(available_column, 1)
+        lists_layout.addWidget(active_column, 1)
+
+        layout.addStretch(1)
+        self.add_page(self.objects_page, "Objects")
+        self.refresh_objects_ui()
+
+    def add_object_by_name(self):
+        new_obj = self.new_object_line_edit.text().strip()
+        if not new_obj:
+            self.navigation_pane.add_log_message("No object name entered.", 'warning')
+            return
+        try:
+            self.window().project_manager.add_tracked_object(new_obj)
+            self.new_object_line_edit.clear()
+            self.navigation_pane.add_log_message(f"Added new object: {new_obj}", 'success')
+        except ValueError as e:
+            self.navigation_pane.add_log_message(str(e), 'warning')
+        self.refresh_objects_ui()
+
+    def move_objects_master_to_active(self):
+        selected_items = self.all_objects_list.selectedItems()
+        if not selected_items:
+            self.navigation_pane.add_log_message("No objects selected to move to Active.", 'warning')
+            return
+        master_list = self._get_master_objects()
+        active_list = self._get_active_objects()
+        existing_active = [self.format_item(obj) for obj in active_list]
+        selected_names = [item.text() for item in selected_items]
+        moving_objects = [obj for obj in master_list if self.format_item(obj) in selected_names]
+        for obj in moving_objects:
+            if self.format_item(obj) not in existing_active:
+                active_list.append(obj)
+        self.window().project_manager.update_tracked_objects(active_list, list_type="active")
+        self.navigation_pane.add_log_message(f"Moved {len(moving_objects)} object(s) from Master to Active.", 'success')
+        self.refresh_objects_ui()
+
+    def move_objects_active_to_master(self):
+        selected_items = self.current_objects_list.selectedItems()
+        if not selected_items:
+            self.navigation_pane.add_log_message("No objects selected to move back to Master.", 'warning')
+            return
+        active_list = self._get_active_objects()
+        master_list = self._get_master_objects()
+        selected_names = [item.text() for item in selected_items]
+        active_list = [obj for obj in active_list if self.format_item(obj) not in selected_names]
+        master_names = [self.format_item(obj) for obj in master_list]
+        for item in selected_items:
+            obj_name = item.text()
+            if obj_name not in master_names:
+                master_list.append(ObjectMetadata(name=obj_name))
+        self.window().project_manager.update_tracked_objects(active_list, list_type="active")
+        self.window().project_manager.update_tracked_objects(master_list, list_type="master")
+        self.navigation_pane.add_log_message(f"Moved {len(selected_items)} object(s) from Active to Master.", 'success')
+        self.refresh_objects_ui()
+
+    def delete_object_from_master(self):
+        selected_items = self.all_objects_list.selectedItems()
+        if not selected_items:
+            self.navigation_pane.add_log_message("No objects selected for deletion from Master.", 'warning')
+            return
+        selected_names = [item.text() for item in selected_items]
+        master_list = self._get_master_objects()
+        active_list = self._get_active_objects()
+        master_list = [obj for obj in master_list if self.format_item(obj) not in selected_names]
+        active_list = [obj for obj in active_list if self.format_item(obj) not in selected_names]
+        self.window().project_manager.update_tracked_objects(master_list, list_type="master")
+        self.window().project_manager.update_tracked_objects(active_list, list_type="active")
+        self.navigation_pane.add_log_message(f"Deleted {len(selected_names)} object(s) from Master.", 'success')
+        self.refresh_objects_ui()
+
+    def refresh_objects_ui(self):
+        # Clear list widgets if they exist
+        if hasattr(self, 'all_objects_list'):
+            self.all_objects_list.clear()
+        if hasattr(self, 'current_objects_list'):
+            self.current_objects_list.clear()
+        # Retrieve sorted objects via state_manager for consistency
+        master_list = self.state_manager.get_sorted_objects("master")
+        active_list = self.state_manager.get_sorted_objects("active")
+        for obj in master_list:
+            self.all_objects_list.addItem(self.format_item(obj))
+        for obj in active_list:
+            self.current_objects_list.addItem(self.format_item(obj))
+
+    def _get_active_objects(self):
+        return self.state_manager.project_state.project_metadata.active_tracked_objects
+
+    def _get_master_objects(self):
+        return self.state_manager.project_state.project_metadata.master_tracked_objects
+
+    def refresh_active_metadata_dropdowns(self):
+        """Populate the genotype and treatment dropdowns in the Add Subject page from the active lists."""
+        self.genotype_combo.clear()
+        self.treatment_combo.clear()
+        # Fetch updated active lists from state
+        active_genotypes = self.project_manager.state_manager.get_genotypes().get("active", [])
+        active_treatments = self.project_manager.state_manager.get_treatments().get("active", [])
+        for genotype in active_genotypes:
+            if hasattr(genotype, "name"):
+                self.genotype_combo.addItem(genotype.name)
+            else:
+                self.genotype_combo.addItem(genotype)
+        for treatment in active_treatments:
+            if hasattr(treatment, "name"):
+                self.treatment_combo.addItem(treatment.name)
+            else:
+                self.treatment_combo.addItem(treatment)

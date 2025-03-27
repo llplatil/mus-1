@@ -47,7 +47,8 @@ class BaseView(QWidget):
         self.splitter = QSplitter(Qt.Horizontal)
         self.splitter.setHandleWidth(2)
         self.splitter.setChildrenCollapsible(False)
-        self.splitter.setStyleSheet("QSplitter::handle { background-color: #CCCCCC; }")
+        # Removed inline style for splitter handle; now using stylesheet version
+        # self.splitter.setStyleSheet("QSplitter::handle { background-color: $BORDER_COLOR; }")
         
         # Create the navigation pane (left panel)
         self.navigation_pane = NavigationPane(self)
@@ -108,22 +109,23 @@ class BaseView(QWidget):
     def create_form_row(self, parent_layout=None):
         """
         Create a standardized form row with consistent spacing.
-        
+        Adds the row to the parent_layout if provided.
+
         Args:
             parent_layout: Optional parent layout to add the row to
-            
+
         Returns:
             QHBoxLayout: The row layout
         """
         row = QHBoxLayout()
         row.setSpacing(self.CONTROL_SPACING)
-        row.setContentsMargins(0, 0, 0, 0)  # Remove margins for better alignment
+        row.setContentsMargins(0, 0, 0, 0)
         row.setProperty("class", "form-row")
         row.setAlignment(Qt.AlignVCenter)
-        if parent_layout:
+        if parent_layout: # Add the layout back here
             parent_layout.addLayout(row)
         return row
-        
+
     def create_form_label(self, text, parent=None):
         """Create a standard label with proper styling for forms.
         
@@ -252,19 +254,19 @@ class BaseView(QWidget):
     def create_button_row(self, parent_layout=None, add_stretch=True):
         """
         Create a standardized row for buttons with consistent styling and stretch.
-        
+
         Args:
             parent_layout: Optional parent layout to add the row to
             add_stretch: Whether to add a stretch at the end of the row
-            
+
         Returns:
             QHBoxLayout: The row layout configured for buttons
         """
+        # Call the original create_form_row which adds the layout to parent_layout
         row = self.create_form_row(parent_layout)
-        
-        # If we want to add stretch automatically, do it after creation
-        # so buttons will align to the left
+
+        # Add stretch if requested
         if add_stretch:
             row.addStretch(1)
-            
+
         return row 

@@ -5,7 +5,7 @@ from PySide6.QtWidgets import (
 )
 from pathlib import Path
 from gui.base_view import BaseView
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from core import ObjectMetadata, BodyPartMetadata  # Import both from core package consistently
 from core.data_manager import FrameRateResolutionError  # Import custom exception
 
@@ -76,476 +76,21 @@ class NotesBox(QGroupBox):
 
 
 class ProjectView(BaseView):
+    project_renamed = Signal(str)
+
     def __init__(self, parent=None):
         super().__init__(parent, view_name="project")
-        self.state_manager = self.window().state_manager  # Cache state manager reference
-        self.setup_navigation(["Project Settings", "Body Parts", "Objects", "General Settings"])
-        self.setup_project_settings_page()
-        self.setup_body_parts_page()
-        self.setup_objects_page()
-        self.setup_general_settings_page()
-        self.change_page(0)
-
-        # Retrieve core managers from window
+        self.state_manager = self.window().state_manager
         self.project_manager = self.window().project_manager
         self.data_manager = self.window().data_manager
-        self.state_manager = self.window().state_manager
-        self.state_manager.subscribe(self.refresh_lists)
+        self.setup_navigation(["Project Settings", "General Settings"])
+        self.setup_project_settings_page()
+        self.setup_general_settings_page()
+        self.change_page(0)
 
     def format_item(self, item):
         """Utility to return the proper display string for an item."""
         return item.name if hasattr(item, "name") else str(item)
-
-    def setup_body_parts_page(self):
-        """Initialize the user interface for managing body parts."""
-        self.bodyparts_page = QWidget()
-        layout = QVBoxLayout(self.bodyparts_page)
-        layout.setSpacing(self.SECTION_SPACING)
-
-        extract_group, extract_layout = self.create_form_section("Extract Body Parts", layout)
-
-        file_row = self.create_form_row(extract_layout)
-        file_label = self.create_form_label("File Path:")
-
-        self.csv_path_input = QLineEdit()
-        self.csv_path_input.setPlaceholderText("Enter CSV/YAML file path")
-        self.csv_path_input.setProperty("class", "mus1-text-input")
-
-        browse_button = QPushButton("Browse...")
-        browse_button.setProperty("class", "mus1-secondary-button")
-        browse_button.clicked.connect(self.handle_browse_for_bodyparts_file)
-
-        file_row.addWidget(file_label)
-        file_row.addWidget(self.csv_path_input, 1)
-        file_row.addWidget(browse_button)
-
-        method_row = self.create_form_row(extract_layout)
-        method_label = self.create_form_label("Method:")
-
-        self.extraction_method_dropdown = QComboBox()
-        self.extraction_method_dropdown.setObjectName("mus1-combo-box")
-        self.extraction_method_dropdown.addItems(["BasicCSV", "DLC yaml"])
-        self.extraction_method_dropdown.currentTextChanged.connect(self.update_extraction_method)
-        self.extraction_method_dropdown.style().unpolish(self.extraction_method_dropdown)
-        self.extraction_method_dropdown.style().polish(self.extraction_method_dropdown)
-
-        extract_button = QPushButton("Extract")
-        extract_button.setProperty("class", "mus1-primary-button")
-        extract_button.clicked.connect(self.handle_extract_bodyparts)
-
-        method_row.addWidget(method_label)
-        method_row.addWidget(self.extraction_method_dropdown, 1)
-        method_row.addWidget(extract_button)
-
-        extracted_group, extracted_layout = self.create_form_section("Extracted Body Parts", layout)
-
-        self.extracted_bodyparts_list = QListWidget()
-        self.extracted_bodyparts_list.setProperty("class", "mus1-list-widget")
-        self.extracted_bodyparts_list.setSelectionMode(QListWidget.ExtendedSelection)
-        extracted_layout.addWidget(self.extracted_bodyparts_list)
-
-        # Use create_button_row instead of create_form_row for button rows
-        buttons_row = self.create_button_row(extracted_layout, add_stretch=False)
-
-        master_button_all = QPushButton("Add All to Master")
-        master_button_all.setProperty("class", "mus1-primary-button")
-        master_button_all.clicked.connect(self.handle_add_all_bodyparts_to_master)
-
-        master_button_selected = QPushButton("Add Selected to Master")
-        master_button_selected.setProperty("class", "mus1-secondary-button")
-        master_button_selected.clicked.connect(self.handle_add_selected_bodyparts_to_master)
-
-        buttons_row.addWidget(master_button_all)
-        buttons_row.addWidget(master_button_selected)
-        buttons_row.addStretch(1)
-
-        management_group, management_layout = self.create_form_section("Manage Body Parts", layout)
-
-        columns_layout = QHBoxLayout()
-        columns_layout.setSpacing(self.SECTION_SPACING)
-        management_layout.addLayout(columns_layout)
-
-        master_column, master_layout = self.create_form_section("Master Body Parts", None, is_subgroup=True)
-
-        self.all_bodyparts_list = QListWidget()
-        self.all_bodyparts_list.setProperty("class", "mus1-list-widget")
-        self.all_bodyparts_list.setSelectionMode(QListWidget.ExtendedSelection)
-        master_layout.addWidget(self.all_bodyparts_list)
-
-        # Use create_button_row for master list buttons
-        master_buttons_row = self.create_button_row(master_layout)
-        remove_from_master_button = QPushButton("Remove Selected from Master")
-        remove_from_master_button.setProperty("class", "mus1-secondary-button")
-        remove_from_master_button.clicked.connect(self.handle_remove_from_master)
-        master_buttons_row.addWidget(remove_from_master_button)
-
-        add_to_active_button = QPushButton("Add Selected to Active →")
-        add_to_active_button.setProperty("class", "mus1-secondary-button")
-        add_to_active_button.clicked.connect(self.handle_add_selected_bodyparts_to_active)
-        master_buttons_row.addWidget(add_to_active_button)
-
-        active_column, active_layout = self.create_form_section("Active Body Parts", None, is_subgroup=True)
-
-        self.current_body_parts_list = QListWidget()
-        self.current_body_parts_list.setProperty("class", "mus1-list-widget")
-        self.current_body_parts_list.setSelectionMode(QListWidget.ExtendedSelection)
-        active_layout.addWidget(self.current_body_parts_list)
-
-        # Use create_button_row for active list buttons
-        active_buttons_row = self.create_button_row(active_layout)
-        remove_button = QPushButton("← Remove Selected from Active List")
-        remove_button.setProperty("class", "mus1-secondary-button")
-        remove_button.clicked.connect(self.handle_remove_active_bodyparts)
-        active_buttons_row.addWidget(remove_button)
-
-        columns_layout.addWidget(master_column, 1)
-        columns_layout.addWidget(active_column, 1)
-
-        layout.addStretch(1)
-        self.add_page(self.bodyparts_page, "Body Parts")
-        self.refresh_lists()
-        
-    def update_extraction_method(self):
-        """Update any UI elements based on the selected extraction method."""
-        method = self.extraction_method_dropdown.currentText()
-        # Update file path placeholder based on selected method
-        if method == "DLC yaml":
-            self.csv_path_input.setPlaceholderText("Enter YAML config file path")
-        else:
-            self.csv_path_input.setPlaceholderText("Enter CSV file path")
-        
-    def handle_browse_for_bodyparts_file(self):
-        """Open a file dialog to select a CSV or YAML file."""
-        method = self.extraction_method_dropdown.currentText()
-        
-        # Determine file filter based on selected method
-        if method == "DLC yaml":
-            file_filter = "YAML Files (*.yaml *.yml);;All Files (*)"
-            dialog_title = "Select DLC Config File"
-        else:
-            file_filter = "CSV Files (*.csv);;All Files (*)"
-            dialog_title = "Select Body Parts File"
-            
-        file_path, _ = QFileDialog.getOpenFileName(
-            self,
-            dialog_title,
-            "",
-            file_filter
-        )
-        if file_path:
-            self.csv_path_input.setText(file_path)
-            
-    def handle_extract_bodyparts(self):
-        """Extract body parts from the specified file using DataManager."""
-        try:
-            file_path = Path(self.csv_path_input.text().strip())
-            method = self.extraction_method_dropdown.currentText()
-            
-            if method == "BasicCSV":
-                extracted = self.window().data_manager.extract_bodyparts_from_dlc_csv(file_path)
-            elif method == "DLC yaml":
-                extracted = self.window().data_manager.extract_bodyparts_from_dlc_config(file_path)
-            else:
-                self.navigation_pane.add_log_message("Unknown extraction method.", "error")
-                return
-
-            self.extracted_bodyparts_list.clear()
-            for bp in extracted:
-                self.extracted_bodyparts_list.addItem(self.format_item(bp))
-            self.navigation_pane.add_log_message(f"Extracted {len(extracted)} body parts.", "success")
-        except Exception as e:
-            self.navigation_pane.add_log_message(f"Extraction error: {e}", "error")
-
-    def handle_add_all_bodyparts_to_master(self):
-        """Add every extracted body part to the master list."""
-        # Get the currently extracted body parts as text
-        new_bodyparts = [self.extracted_bodyparts_list.item(i).text() 
-                         for i in range(self.extracted_bodyparts_list.count())]
-        # Get current master parts for comparison (normalize via format_item)
-        state = self.state_manager.project_state
-        current_master = []
-        if state.project_metadata:
-            current_master = [self.format_item(bp) for bp in state.project_metadata.master_body_parts]
-        else:
-            current_master = [str(bp) for bp in self.state_manager.global_settings.get("body_parts", [])]
-            
-        # Determine additions (only add if not already present)
-        additions = [bp for bp in new_bodyparts if bp not in current_master]
-        if additions:
-            self.window().project_manager.update_master_body_parts(additions)
-            self.navigation_pane.add_log_message(f"Added {len(additions)} body parts to master list.", "success")
-        else:
-            self.navigation_pane.add_log_message("No new body parts to add.", "info")
-        self.refresh_lists()
-
-    def handle_add_selected_bodyparts_to_master(self):
-        """Add selected extracted body parts to the master list."""
-        selected_items = self.extracted_bodyparts_list.selectedItems()
-        if not selected_items:
-            self.navigation_pane.add_log_message("No body parts selected for master list.", "warning")
-            return
-        selected = [item.text() for item in selected_items]
-        # Get current master parts for comparison (normalize via format_item)
-        state = self.state_manager.project_state
-        if state.project_metadata:
-            current_master = [self.format_item(bp) for bp in state.project_metadata.master_body_parts]
-        else:
-            current_master = [str(bp) for bp in self.state_manager.global_settings.get("body_parts", [])]
-        
-        # Compute the union of current master and newly selected body parts
-        new_master = current_master.copy()
-        for bp in selected:
-            if bp not in new_master:
-                new_master.append(bp)
-        
-        if new_master != current_master:
-            self.window().project_manager.update_master_body_parts(new_master)
-            added_count = len(new_master) - len(current_master)
-            self.navigation_pane.add_log_message(f"Added {added_count} selected body parts to master list.", "success")
-        else:
-            self.navigation_pane.add_log_message("No new body parts selected for master list.", "info")
-        self.refresh_lists()
-
-    def handle_remove_from_master(self):
-        """Delete selected body parts from the master list (remove them from the project)."""
-        selected_items = self.all_bodyparts_list.selectedItems()
-        if not selected_items:
-            self.navigation_pane.add_log_message("No body parts selected for deletion from master list.", "warning")
-            return
-        selected = [item.text() for item in selected_items]
-        # Get current master parts (normalize via format_item)
-        state = self.state_manager.project_state
-        if state.project_metadata:
-            current_master = [self.format_item(bp) for bp in state.project_metadata.master_body_parts]
-        else:
-            current_master = [str(bp) for bp in self.state_manager.global_settings.get("body_parts", [])]
-        # Create a new master list excluding the selected items
-        new_master = [bp for bp in current_master if bp not in selected]
-
-        # Also update the active list: remove any deleted body parts from active list
-        current_active = [self.current_body_parts_list.item(i).text() for i in range(self.current_body_parts_list.count())]
-        new_active = [bp for bp in current_active if bp not in selected]
-        
-        self.window().project_manager.update_master_body_parts(new_master)
-        self.window().project_manager.update_active_body_parts(new_active)
-        self.navigation_pane.add_log_message(f"Deleted {len(selected)} body parts from project.", "success")
-        self.refresh_lists()
-
-    def handle_add_selected_bodyparts_to_active(self):
-        """Add selected body parts from the master list into the active list."""
-        selected_items = self.all_bodyparts_list.selectedItems()
-        if not selected_items:
-            self.navigation_pane.add_log_message("No body parts selected for active list.", "warning")
-            return
-        selected = [item.text() for item in selected_items]
-        current = [self.current_body_parts_list.item(i).text() for i in range(self.current_body_parts_list.count())]
-        updated = current + [bp for bp in selected if bp not in current]
-        self.window().project_manager.update_active_body_parts(updated)
-        self.navigation_pane.add_log_message(f"Added {len(selected)} body parts to active list.", "success")
-        self.refresh_lists()
-
-    def handle_remove_active_bodyparts(self):
-        """Move selected body parts from the active list back to the master list."""
-        selected_items = self.current_body_parts_list.selectedItems()
-        if not selected_items:
-            self.navigation_pane.add_log_message("No body parts selected from active list.", "warning")
-            return
-        # Get current active list items from the UI
-        current_active = [self.current_body_parts_list.item(i).text() for i in range(self.current_body_parts_list.count())]
-        # Determine which items are to be moved back to master
-        items_to_move = [item.text() for item in selected_items]
-        # Update the active list by removing the items to be moved
-        updated_active = [bp for bp in current_active if bp not in items_to_move]
-        self.window().project_manager.update_active_body_parts(updated_active)
-        
-        # Get current master parts for comparison (normalize via format_item)
-        state = self.state_manager.project_state
-        if state.project_metadata:
-            current_master = [self.format_item(bp) for bp in state.project_metadata.master_body_parts]
-        else:
-            current_master = [str(bp) for bp in self.state_manager.global_settings.get("body_parts", [])]
-        
-        # Compute the new master list as the union of current_master and items_to_move
-        new_master = current_master.copy()
-        for bp in items_to_move:
-            if bp not in new_master:
-                new_master.append(bp)
-        if new_master != current_master:
-            self.window().project_manager.update_master_body_parts(new_master)
-        
-        self.navigation_pane.add_log_message(f"Moved {len(items_to_move)} body parts from active to master list.", "success")
-        self.refresh_lists()
-
-    def refresh_lists(self):
-        """Refresh the master and active lists from the current state."""
-        state = self.state_manager.project_state  # use the cached state_manager instead of self.window().state_manager
-        
-        # Get sorted body parts from state_manager
-        sorted_parts = self.state_manager.get_sorted_body_parts()
-        
-        self.all_bodyparts_list.clear()
-        for bp in sorted_parts["master"]:
-            self.all_bodyparts_list.addItem(self.format_item(bp))  # using the centralized format_item helper
-        self.current_body_parts_list.clear()
-        for bp in sorted_parts["active"]:
-            self.current_body_parts_list.addItem(self.format_item(bp))
-        self.navigation_pane.add_log_message("Body parts lists refreshed.", "info")
-        
-        # Also refresh the objects lists
-        self.refresh_objects_ui()
-        self.navigation_pane.add_log_message("Objects lists refreshed.", "info")
-
-    def update_theme(self, theme):
-        """Update theme for this view and propagate any view–specific changes."""
-        super().update_theme(theme)
-        self.navigation_pane.add_log_message(f"Theme updated to {theme}.", "info")
-   
-
-    def add_object_by_name(self):
-        new_obj = self.new_object_line_edit.text().strip()
-        if not new_obj:
-            self.navigation_pane.add_log_message("No object name entered.", 'warning')
-            return
-        try:
-            self.window().project_manager.add_tracked_object(new_obj)
-            self.new_object_line_edit.clear()
-            self.navigation_pane.add_log_message(f"Added new object: {new_obj}", 'success')
-        except ValueError as e:
-            self.navigation_pane.add_log_message(str(e), 'warning')
-        self.refresh_objects_ui()
-
-    def move_objects_master_to_active(self):
-        selected_items = self.all_objects_list.selectedItems()
-        if not selected_items:
-            self.navigation_pane.add_log_message("No objects selected to move to Active.", 'warning')
-            return
-        master_list = self._get_master_objects()
-        active_list = self._get_active_objects()
-        existing_active = [self.format_item(obj) for obj in active_list]
-        selected_names = [item.text() for item in selected_items]
-        moving_objects = [obj for obj in master_list if self.format_item(obj) in selected_names]
-        for obj in moving_objects:
-            if self.format_item(obj) not in existing_active:
-                active_list.append(obj)
-        self.window().project_manager.update_tracked_objects(active_list, list_type="active")
-        self.navigation_pane.add_log_message(f"Moved {len(moving_objects)} object(s) from Master to Active.", 'success')
-        self.refresh_objects_ui()
-
-    def move_objects_active_to_master(self):
-        selected_items = self.current_objects_list.selectedItems()
-        if not selected_items:
-            self.navigation_pane.add_log_message("No objects selected to move back to Master.", 'warning')
-            return
-        active_list = self._get_active_objects()
-        master_list = self._get_master_objects()
-        selected_names = [item.text() for item in selected_items]
-        active_list = [obj for obj in active_list if self.format_item(obj) not in selected_names]
-        master_names = [self.format_item(obj) for obj in master_list]
-        for item in selected_items:
-            obj_name = item.text()
-            if obj_name not in master_names:
-                master_list.append(ObjectMetadata(name=obj_name))
-        self.window().project_manager.update_tracked_objects(active_list, list_type="active")
-        self.window().project_manager.update_tracked_objects(master_list, list_type="master")
-        self.navigation_pane.add_log_message(f"Moved {len(selected_items)} object(s) from Active to Master.", 'success')
-        self.refresh_objects_ui()
-
-    def delete_object_from_master(self):
-        selected_items = self.all_objects_list.selectedItems()
-        if not selected_items:
-            self.navigation_pane.add_log_message("No objects selected for deletion from Master.", 'warning')
-            return
-        selected_names = [item.text() for item in selected_items]
-        master_list = self._get_master_objects()
-        active_list = self._get_active_objects()
-        master_list = [obj for obj in master_list if self.format_item(obj) not in selected_names]
-        active_list = [obj for obj in active_list if self.format_item(obj) not in selected_names]
-        self.window().project_manager.update_tracked_objects(master_list, list_type="master")
-        self.window().project_manager.update_tracked_objects(active_list, list_type="active")
-        self.navigation_pane.add_log_message(f"Deleted {len(selected_names)} object(s) from Master.", 'success')
-        self.refresh_objects_ui()
-
-    def refresh_objects_ui(self):
-        # Clear list widgets if they exist
-        if hasattr(self, 'all_objects_list'):
-            self.all_objects_list.clear()
-        if hasattr(self, 'current_objects_list'):
-            self.current_objects_list.clear()
-        # Retrieve sorted objects via state_manager for consistency
-        master_list = self.state_manager.get_sorted_objects("master")
-        active_list = self.state_manager.get_sorted_objects("active")
-        for obj in master_list:
-            self.all_objects_list.addItem(self.format_item(obj))
-        for obj in active_list:
-            self.current_objects_list.addItem(self.format_item(obj))
-    def _get_active_objects(self):
-        return self.state_manager.project_state.project_metadata.active_tracked_objects
-
-    def _get_master_objects(self):
-        return self.state_manager.project_state.project_metadata.master_tracked_objects
-   
-    def setup_objects_page(self):
-        """Setup the Objects page with object list widgets."""
-        self.objects_page = QWidget()
-        layout = QVBoxLayout(self.objects_page)
-        layout.setSpacing(self.SECTION_SPACING)
-
-        objects_group, objects_layout = self.create_form_section("Objects Management", layout)
-
-        add_row = self.create_form_row(objects_layout)
-        new_object_label = self.create_form_label("New Object:")
-        self.new_object_line_edit = QLineEdit()
-        self.new_object_line_edit.setPlaceholderText("Enter new object name...")
-        self.new_object_line_edit.setProperty("class", "mus1-text-input")
-        add_button = QPushButton("Add Object")
-        add_button.setProperty("class", "mus1-primary-button")
-        add_button.clicked.connect(self.add_object_by_name)
-        add_row.addWidget(new_object_label)
-        add_row.addWidget(self.new_object_line_edit, 1)
-        add_row.addWidget(add_button)
-
-        lists_layout = QHBoxLayout()
-        lists_layout.setSpacing(self.SECTION_SPACING)
-        objects_layout.addLayout(lists_layout)
-
-        # Available (Master) Objects Column
-        available_column, available_layout = self.create_form_section("Available Objects:", None, is_subgroup=True)
-        self.all_objects_list = QListWidget()
-        self.all_objects_list.setProperty("class", "mus1-list-widget")
-        self.all_objects_list.setSelectionMode(QListWidget.ExtendedSelection)
-        available_layout.addWidget(self.all_objects_list)
-        
-        # Button row for available (master) objects
-        available_button_row = self.create_button_row(available_layout, add_stretch=True)
-        add_to_active_button = QPushButton("Add Selected to Active →")
-        add_to_active_button.setProperty("class", "mus1-secondary-button")
-        add_to_active_button.clicked.connect(self.move_objects_master_to_active)
-        available_button_row.addWidget(add_to_active_button)
-        remove_from_master_object_button = QPushButton("Remove Selected from Master")
-        remove_from_master_object_button.setProperty("class", "mus1-secondary-button")
-        remove_from_master_object_button.clicked.connect(self.delete_object_from_master)
-        available_button_row.addWidget(remove_from_master_object_button)
-
-        # Active Objects Column
-        active_column, active_layout = self.create_form_section("Active Objects:", None, is_subgroup=True)
-        self.current_objects_list = QListWidget()
-        self.current_objects_list.setProperty("class", "mus1-list-widget")
-        self.current_objects_list.setSelectionMode(QListWidget.ExtendedSelection)
-        active_layout.addWidget(self.current_objects_list)
-        
-        # Button row for active objects with a "move back" button
-        active_button_row = self.create_button_row(active_layout, add_stretch=True)
-        remove_from_active_object_button = QPushButton("← Remove Selected from Active")
-        remove_from_active_object_button.setProperty("class", "mus1-secondary-button")
-        remove_from_active_object_button.clicked.connect(self.move_objects_active_to_master)
-        active_button_row.addWidget(remove_from_active_object_button)
-
-        lists_layout.addWidget(available_column, 1)
-        lists_layout.addWidget(active_column, 1)
-
-        layout.addStretch(1)
-        self.add_page(self.objects_page, "Objects")
-        self.refresh_objects_ui()
 
     def setup_general_settings_page(self):
         """Setup the General Settings page with application-wide settings."""
@@ -638,25 +183,35 @@ class ProjectView(BaseView):
         
     def set_initial_project(self, project_name: str):
         """
-        Handle project change/update from MainWindow.
-        Updates the current project label and loads project notes from state.
+        Updates UI elements specific to ProjectView when a project is loaded or switched.
+        Called by MainWindow after successful project load.
         """
+        self.navigation_pane.add_log_message(f"Updating ProjectView for project: {project_name}", "info")
         # Update the label showing the current project
-        self.current_project_label.setText("Current Project: " + project_name)
-        
-        # Get the current state
-        state = self.window().project_manager.state_manager.project_state
-        
-        # Load and set project notes (if available)
-        notes = state.settings.get("project_notes", "")
-        self.project_notes_box.set_text(notes)
-        
-        # Update UI settings from the loaded project
+        if hasattr(self, 'current_project_label'):
+            self.current_project_label.setText("Current Project: " + project_name)
+        # Pre-fill rename field
+        if hasattr(self, 'rename_line_edit'):
+            self.rename_line_edit.setText(project_name)
+
+        # Load project notes (still relevant here)
+        if hasattr(self, 'project_notes_box') and self.window().project_manager.state_manager:
+            state = self.window().project_manager.state_manager.project_state
+            notes = state.settings.get("project_notes", "")
+            self.project_notes_box.set_text(notes)
+
+        # Update UI settings from the loaded project state if needed here
+        # These might be redundant if MainWindow.refresh_all_views covers them via state changes
         self.update_frame_rate_from_state()
         self.update_sort_mode_from_state()
-        
-        # Refresh all UI lists including objects and body parts
-        self.refresh_lists()
+
+        # Refresh the project list dropdown to ensure it's up-to-date
+        self.populate_project_list()
+        # Select the current project in the dropdown
+        if hasattr(self, 'switch_project_combo'):
+            index = self.switch_project_combo.findText(project_name)
+            if index >= 0:
+                self.switch_project_combo.setCurrentIndex(index)
 
     def handle_apply_general_settings(self):
         """Apply the general settings."""
@@ -717,14 +272,14 @@ class ProjectView(BaseView):
             # Save project to persist changes
             self.window().project_manager.save_project()
             
-            # Refresh lists to show new sorting
+            # Refresh lists to show new sorting (e.g., project list if sorting applies)
             self.refresh_lists()
 
     def closeEvent(self, event):
         """Handle clean up when the view is closed."""
         # Unsubscribe from state manager to prevent memory leaks
-        if hasattr(self, '_state_manager'):
-            self._state_manager.unsubscribe(self.refresh_lists)
+        if hasattr(self, 'state_manager') and self.state_manager:
+            self.state_manager.unsubscribe(self.refresh_lists)
         super().closeEvent(event)
 
     def handle_change_theme(self, theme_choice: str):
@@ -796,73 +351,102 @@ class ProjectView(BaseView):
             self.sort_mode_dropdown.setCurrentIndex(index)
    
     def populate_project_list(self):
+        """Populates the project selection dropdown."""
+        if not hasattr(self, 'switch_project_combo'):
+            self.navigation_pane.add_log_message("Switch project combo box not found.", "warning")
+            return
+
+        current_selection = self.switch_project_combo.currentText()
         self.switch_project_combo.clear()
-        for path in self.window().project_manager.list_available_projects():
-            self.switch_project_combo.addItem(path.name)
+        try:
+            projects = self.window().project_manager.list_available_projects()
+            project_names = sorted([p.name for p in projects]) # Sort alphabetically
+            self.switch_project_combo.addItems(project_names)
+
+            # Try to restore previous selection or select current project
+            current_project = self.window().selected_project_name
+            if current_project in project_names:
+                 index = self.switch_project_combo.findText(current_project)
+                 if index >= 0:
+                     self.switch_project_combo.setCurrentIndex(index)
+            elif current_selection in project_names:
+                 index = self.switch_project_combo.findText(current_selection)
+                 if index >= 0:
+                     self.switch_project_combo.setCurrentIndex(index)
+
+        except Exception as e:
+            self.navigation_pane.add_log_message(f"Error populating project list: {e}", "error")
 
     def handle_switch_project(self):
+        """Handles the 'Switch' button click."""
         selected_project = self.switch_project_combo.currentText()
         if selected_project:
-            available_projects = self.window().project_manager.list_available_projects()
-            project_path = next((p for p in available_projects if p.name == selected_project), None)
-            if project_path is None:
-                error_msg = f"Project directory for '{selected_project}' not found."
-                print(error_msg)
-                self.navigation_pane.add_log_message(error_msg, 'error')
+            current_project = self.window().selected_project_name
+            if selected_project == current_project:
+                self.navigation_pane.add_log_message(f"Already in project: {selected_project}", 'info')
                 return
-            try:
-                self.navigation_pane.add_log_message(f"Switching to project: {selected_project}", 'info')
-                # Load the project using project_manager
-                self.window().project_manager.load_project(project_path)
-                
-                # Update UI elements with project data
-                self.current_project_label.setText("Current Project: " + selected_project)
-                self.rename_line_edit.setText(selected_project)
-                
-                # Get the project state
-                state = self.window().project_manager.state_manager.project_state
-                
-                # Load project notes from state
-                notes = state.settings.get("project_notes", "")
-                self.project_notes_box.set_text(notes)
-                
-                # Update UI settings from the loaded project
-                self.update_frame_rate_from_state()
-                self.update_sort_mode_from_state()
-                
-                # Refresh all UI lists including objects and body parts
-                self.refresh_lists()
-                
-                # Notify main window about project change to update other views if needed
-                if hasattr(self.window(), 'refresh_all_views'):
-                    self.window().refresh_all_views()
-                
-                self.navigation_pane.add_log_message(f"Successfully switched to project: {selected_project}", 'success')
-            except Exception as e:
-                error_msg = f"Error switching project: {e}"
-                print(error_msg)
-                self.navigation_pane.add_log_message(error_msg, 'error')
+
+            self.navigation_pane.add_log_message(f"Requesting switch to project: {selected_project}", 'info')
+            # Delegate loading entirely to MainWindow
+            self.window().load_project(selected_project)
+            # MainWindow's load_project now handles logging success/failure,
+            # title updates, and view refreshes (including calling set_initial_project).
         else:
-            msg = "No project selected to switch."
+            msg = "No project selected in the dropdown to switch to."
             print(msg)
             self.navigation_pane.add_log_message(msg, 'warning')
 
     def handle_rename_project(self):
+        """Handles the 'Rename' button click."""
         new_name = self.rename_line_edit.text().strip()
-        if new_name:
-            try:
-                self.navigation_pane.add_log_message(f"Renaming project to: {new_name}", 'info')
-                self.window().project_manager.rename_project(new_name)
-                self.navigation_pane.add_log_message(f"Project successfully renamed to: {new_name}", 'success')
-                self.populate_project_list()
-            except Exception as e:
-                error_msg = f"Error renaming project: {e}"
-                print(error_msg)
-                self.navigation_pane.add_log_message(error_msg, 'error')
-        else:
+        current_name = self.window().selected_project_name
+
+        if not new_name:
             msg = "New project name cannot be empty."
             print(msg)
             self.navigation_pane.add_log_message(msg, 'warning')
+            return
+
+        if new_name == current_name:
+             msg = "New name is the same as the current project name."
+             self.navigation_pane.add_log_message(msg, 'info')
+             return
+
+        if current_name is None:
+             msg = "Cannot rename, no project is currently loaded."
+             self.navigation_pane.add_log_message(msg, 'error')
+             return
+
+        try:
+            self.navigation_pane.add_log_message(f"Attempting to rename project '{current_name}' to: {new_name}", 'info')
+            # Perform rename using project_manager
+            self.window().project_manager.rename_project(new_name)
+
+            # --- Rename Successful ---
+            self.navigation_pane.add_log_message(f"Project successfully renamed to: {new_name}", 'success')
+
+            # Emit signal to notify MainWindow to update title etc.
+            self.project_renamed.emit(new_name)
+
+            # Update UI elements within this ProjectView
+            self.current_project_label.setText("Current Project: " + new_name)
+            # Keep rename_line_edit updated? Or clear it? Let's keep it updated.
+            # self.rename_line_edit.setText(new_name) # Already set by user input
+
+            # Refresh the project list dropdown
+            self.populate_project_list()
+            # Ensure the new name is selected in the dropdown
+            index = self.switch_project_combo.findText(new_name)
+            if index >= 0:
+                self.switch_project_combo.setCurrentIndex(index)
+
+
+        except Exception as e:
+            error_msg = f"Error renaming project '{current_name}' to '{new_name}': {e}"
+            print(error_msg)
+            self.navigation_pane.add_log_message(error_msg, 'error')
+            # Restore rename line edit to current name on failure?
+            self.rename_line_edit.setText(current_name)
 
     def setup_project_settings_page(self):
         """Setup the Project Settings page with project info controls."""
@@ -960,6 +544,17 @@ class ProjectView(BaseView):
             error_msg = f"Error saving project notes: {e}"
             print(error_msg)
             self.navigation_pane.add_log_message(error_msg, 'error')
+
+    def update_theme(self, theme):
+        """Update theme for this view and propagate any view-specific changes."""
+        super().update_theme(theme)
+        self.navigation_pane.add_log_message(f"Theme updated to {theme}.", "info")
+
+    def refresh_lists(self):
+        """Refreshes lists managed by this view, primarily the project list."""
+        self.navigation_pane.add_log_message("Refreshing ProjectView lists...", "info")
+        self.populate_project_list()
+        # Add other list refreshes here if needed in the future
 
 
         

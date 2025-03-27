@@ -423,8 +423,7 @@ class ProjectManager:
             raise ValueError(f"Object '{new_object}' already exists in master list.")
         object_metadata = ObjectMetadata(name=new_object)
         state.project_metadata.master_tracked_objects.append(object_metadata)
-        state.project_metadata.active_tracked_objects.append(object_metadata)
-        
+
         self.save_project()
         self.state_manager.notify_observers()
     
