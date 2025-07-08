@@ -3,15 +3,15 @@ from PySide6.QtWidgets import (
     QGroupBox, QFormLayout, QLineEdit, QComboBox, QTextEdit, QPushButton, QLabel, QDateTimeEdit, QCheckBox,
     QSpinBox, QDoubleSpinBox, QSlider, QFileDialog
 )
-from core.metadata import Sex
-from gui.navigation_pane import NavigationPane  
-from gui.base_view import BaseView
+from ..core.metadata import Sex
+from .navigation_pane import NavigationPane  
+from .base_view import BaseView
 from PySide6.QtCore import QDateTime
-from core.logging_bus import LoggingEventBus
+from ..core.logging_bus import LoggingEventBus
 from PySide6.QtCore import Qt
-from gui.metadata_display import MetadataTreeView  # Import for overview display
+from .metadata_display import MetadataTreeView  # Import for overview display
 from pathlib import Path
-from core import ObjectMetadata, BodyPartMetadata  # Import needed for body parts and objects pages
+from ..core import ObjectMetadata, BodyPartMetadata  # Import needed for body parts and objects pages
 
 class SubjectView(BaseView):
     def __init__(self, parent=None):
@@ -40,6 +40,14 @@ class SubjectView(BaseView):
         
         # Set default selection to Subject Overview
         self.change_page(0)
+
+        # --- New: subscribe to state changes so overview auto-updates ---
+        # Store reference for cleanup and ensure immediate population
+        self._state_manager = self.state_manager
+        self._state_subscription = self._handle_state_change
+        self._state_manager.subscribe(self._state_subscription)
+        # Populate UI immediately (in case a project is already loaded)
+        self._handle_state_change()
 
     def setup_add_subject_page(self):
         """Setup the Subjects page (previously named Add Subject)."""
@@ -205,34 +213,36 @@ class SubjectView(BaseView):
         """Refresh the list of all subjects in the project with full metadata details."""
         if not self.project_manager:
             return
+        
+        # Ensure the list widget exists before proceeding
+        if not hasattr(self, 'subjects_list'):
+            return
+        
+        # Update the UI by clearing and repopulating the subjects list regardless of the current page
+        self.subjects_list.clear()
+        all_subjects = self.project_manager.state_manager.get_sorted_subjects()
+        
+        # Log the refresh activity
+        self.log_bus.log(f"Refreshing subject list: {len(all_subjects)} subjects found", "info", "SubjectView")
+        
+        for subj in all_subjects:
+            birth_str = subj.birth_date.strftime('%Y-%m-%d %H:%M:%S') if subj.birth_date else 'N/A'
             
-        # Only refresh if the subjects list exists and we're on the right page (Add Subject)
-        if hasattr(self, 'subjects_list') and self.pages.currentIndex() == 1:
-            # Update the UI by clearing and repopulating the subjects list
-            self.subjects_list.clear()
-            all_subjects = self.project_manager.state_manager.get_sorted_subjects()
+            # Create the basic details string
+            details = (f"ID: {subj.id} | Sex: {subj.sex.value} | Genotype: {subj.genotype or 'N/A'} "
+                      f"| Training: {subj.in_training_set}")
             
-            # Log the refresh activity
-            self.log_bus.log(f"Refreshing subject list: {len(all_subjects)} subjects found", "info", "SubjectView")
+            # Add notes snippet if available
+            if subj.notes and subj.notes.strip():
+                # Get a truncated version of the notes
+                notes_snippet = subj.notes.strip()
+                if len(notes_snippet) > 30:
+                    notes_snippet = notes_snippet[:30] + "..."
+                
+                # Append notes to details string
+                details += f" | Notes: {notes_snippet}"
             
-            for subj in all_subjects:
-                birth_str = subj.birth_date.strftime('%Y-%m-%d %H:%M:%S') if subj.birth_date else 'N/A'
-                
-                # Create the basic details string
-                details = (f"ID: {subj.id} | Sex: {subj.sex.value} | Genotype: {subj.genotype or 'N/A'} "
-                          f"| Training: {subj.in_training_set}")
-                
-                # Add notes snippet if available
-                if subj.notes and subj.notes.strip():
-                    # Get a truncated version of the notes
-                    notes_snippet = subj.notes.strip()
-                    if len(notes_snippet) > 30:
-                        notes_snippet = notes_snippet[:30] + "..."
-                    
-                    # Append notes to details string
-                    details += f" | Notes: {notes_snippet}"
-                
-                self.subjects_list.addItem(details)
+            self.subjects_list.addItem(details)
 
     def refresh_experiment_list_by_subject_display(self):
         """Refresh the list widget displaying experiments by subject."""
@@ -242,11 +252,18 @@ class SubjectView(BaseView):
     def assign_project_manager(self, project_manager):
         """Assign the project_manager and subscribe for automatic refresh from state changes."""
         self.project_manager = project_manager
-        # Set the observer callback to refresh_subject_list_display
-        self._state_subscription = self.refresh_subject_list_display
-        # Store reference to state_manager for cleaner access
+        # Replace previous single-subscription with unified handler
+        self._state_subscription = self._handle_state_change
         self._state_manager = project_manager.state_manager
         self._state_manager.subscribe(self._state_subscription)
+        # Perform an immediate refresh so UI is populated right after project load
+        self._handle_state_change()
+
+    def _handle_state_change(self):
+        """Observer callback that updates all widgets on state changes or initial assignment."""
+        # Refresh both the overview tree and the subjects list so they stay in sync.
+        self.refresh_overview()
+        self.refresh_subject_list_display()
 
     def closeEvent(self, event):
         """Clean up when the view is closed."""
@@ -810,73 +827,19 @@ class SubjectView(BaseView):
         self.refresh_treatments_lists()
 
     def setup_body_parts_page(self):
-        """Initialize the user interface for managing body parts."""
+        """Initialize the user interface for managing body parts (Master vs Active)."""
         self.bodyparts_page = QWidget()
         layout = QVBoxLayout(self.bodyparts_page)
         layout.setSpacing(self.SECTION_SPACING)
 
-        extract_group, extract_layout = self.create_form_section("Extract Body Parts", layout)
-
-        file_row = self.create_form_row(extract_layout)
-        file_label = self.create_form_label("File Path:")
-
-        self.csv_path_input = QLineEdit()
-        self.csv_path_input.setPlaceholderText("Enter CSV/YAML file path")
-        self.csv_path_input.setProperty("class", "mus1-text-input")
-
-        browse_button = QPushButton("Browse...")
-        browse_button.setProperty("class", "mus1-secondary-button")
-        browse_button.clicked.connect(self.handle_browse_for_bodyparts_file)
-
-        file_row.addWidget(file_label)
-        file_row.addWidget(self.csv_path_input, 1)
-        file_row.addWidget(browse_button)
-
-        method_row = self.create_form_row(extract_layout)
-        method_label = self.create_form_label("Method:")
-
-        self.extraction_method_dropdown = QComboBox()
-        self.extraction_method_dropdown.setObjectName("mus1-combo-box")
-        self.extraction_method_dropdown.addItems(["BasicCSV", "DLC yaml"])
-        self.extraction_method_dropdown.currentTextChanged.connect(self.update_extraction_method)
-        self.extraction_method_dropdown.style().unpolish(self.extraction_method_dropdown)
-        self.extraction_method_dropdown.style().polish(self.extraction_method_dropdown)
-
-        extract_button = QPushButton("Extract")
-        extract_button.setProperty("class", "mus1-primary-button")
-        extract_button.clicked.connect(self.handle_extract_bodyparts)
-
-        method_row.addWidget(method_label)
-        method_row.addWidget(self.extraction_method_dropdown, 1)
-        method_row.addWidget(extract_button)
-
-        extracted_group, extracted_layout = self.create_form_section("Extracted Body Parts", layout)
-
-        self.extracted_bodyparts_list = QListWidget()
-        self.extracted_bodyparts_list.setProperty("class", "mus1-list-widget")
-        self.extracted_bodyparts_list.setSelectionMode(QListWidget.ExtendedSelection)
-        extracted_layout.addWidget(self.extracted_bodyparts_list)
-
-        buttons_row = self.create_button_row(extracted_layout, add_stretch=False)
-
-        master_button_all = QPushButton("Add All to Master")
-        master_button_all.setProperty("class", "mus1-primary-button")
-        master_button_all.clicked.connect(self.handle_add_all_bodyparts_to_master)
-
-        master_button_selected = QPushButton("Add Selected to Master")
-        master_button_selected.setProperty("class", "mus1-secondary-button")
-        master_button_selected.clicked.connect(self.handle_add_selected_bodyparts_to_master)
-
-        buttons_row.addWidget(master_button_all)
-        buttons_row.addWidget(master_button_selected)
-        buttons_row.addStretch(1)
-
-        management_group, management_layout = self.create_form_section("Manage Body Parts", layout)
+        # --- Renamed and Kept: Manage Body Parts Section ---
+        management_group, management_layout = self.create_form_section("Manage Body Parts (Master vs Active)", layout) # Renamed title slightly for clarity
 
         columns_layout = QHBoxLayout()
         columns_layout.setSpacing(self.SECTION_SPACING)
         management_layout.addLayout(columns_layout)
 
+        # Master Column (Available Body Parts)
         master_column, master_layout = self.create_form_section("Master Body Parts", None, is_subgroup=True)
 
         self.all_bodyparts_list = QListWidget()
@@ -884,132 +847,46 @@ class SubjectView(BaseView):
         self.all_bodyparts_list.setSelectionMode(QListWidget.ExtendedSelection)
         master_layout.addWidget(self.all_bodyparts_list)
 
-        master_buttons_row = self.create_button_row(master_layout)
+        master_buttons_row = self.create_button_row(master_layout) # Keep this row
+
+        # Button to remove from master list completely
         remove_from_master_button = QPushButton("Remove Selected from Master")
         remove_from_master_button.setProperty("class", "mus1-secondary-button")
         remove_from_master_button.clicked.connect(self.handle_remove_from_master)
         master_buttons_row.addWidget(remove_from_master_button)
 
+        # Button to move selected from master TO active
         add_to_active_button = QPushButton("Add Selected to Active →")
         add_to_active_button.setProperty("class", "mus1-secondary-button")
         add_to_active_button.clicked.connect(self.handle_add_selected_bodyparts_to_active)
         master_buttons_row.addWidget(add_to_active_button)
+        master_buttons_row.addStretch(1) # Ensure buttons align left/as desired
 
-        active_column, active_layout = self.create_form_section("Active Body Parts", None, is_subgroup=True)
+        # Active Column
+        active_column, active_layout = self.create_form_section("Active Body Parts (Used in Experiments)", None, is_subgroup=True) # Added clarity to title
 
         self.current_body_parts_list = QListWidget()
         self.current_body_parts_list.setProperty("class", "mus1-list-widget")
         self.current_body_parts_list.setSelectionMode(QListWidget.ExtendedSelection)
         active_layout.addWidget(self.current_body_parts_list)
 
-        active_buttons_row = self.create_button_row(active_layout)
+        active_buttons_row = self.create_button_row(active_layout) # Keep this row
+
+        # Button to remove selected FROM active (moves back to master implicitly if not deleted)
         remove_button = QPushButton("← Remove Selected from Active List")
         remove_button.setProperty("class", "mus1-secondary-button")
         remove_button.clicked.connect(self.handle_remove_active_bodyparts)
         active_buttons_row.addWidget(remove_button)
+        active_buttons_row.addStretch(1) # Ensure buttons align left/as desired
 
+        # Add columns to layout
         columns_layout.addWidget(master_column, 1)
         columns_layout.addWidget(active_column, 1)
 
         layout.addStretch(1)
         self.add_page(self.bodyparts_page, "Bodyparts")
-        
-        # Refresh the lists initially
-        self.refresh_body_parts_page()
 
-    def update_extraction_method(self):
-        """Update any UI elements based on the selected extraction method."""
-        method = self.extraction_method_dropdown.currentText()
-        if method == "DLC yaml":
-            self.csv_path_input.setPlaceholderText("Enter YAML config file path")
-        else:
-            self.csv_path_input.setPlaceholderText("Enter CSV file path")
-        
-    def handle_browse_for_bodyparts_file(self):
-        """Open a file dialog to select a CSV or YAML file."""
-        method = self.extraction_method_dropdown.currentText()
-        
-        # Determine file filter based on selected method
-        if method == "DLC yaml":
-            file_filter = "YAML Files (*.yaml *.yml);;All Files (*)"
-            dialog_title = "Select DLC Config File"
-        else:
-            file_filter = "CSV Files (*.csv);;All Files (*)"
-            dialog_title = "Select Body Parts File"
-        
-        file_path, _ = QFileDialog.getOpenFileName(
-            self,
-            dialog_title,
-            "",
-            file_filter
-        )
-        if file_path:
-            self.csv_path_input.setText(file_path)
-        
-    def handle_extract_bodyparts(self):
-        """Extract body parts from the specified file using DataManager."""
-        try:
-            file_path = Path(self.csv_path_input.text().strip())
-            method = self.extraction_method_dropdown.currentText()
-            
-            if method == "BasicCSV":
-                extracted = self.window().data_manager.extract_bodyparts_from_dlc_csv(file_path)
-            elif method == "DLC yaml":
-                extracted = self.window().data_manager.extract_bodyparts_from_dlc_config(file_path)
-            else:
-                self.navigation_pane.add_log_message("Unknown extraction method.", "error")
-                return
-
-            self.extracted_bodyparts_list.clear()
-            for bp in extracted:
-                self.extracted_bodyparts_list.addItem(self.format_item(bp))
-            self.navigation_pane.add_log_message(f"Extracted {len(extracted)} body parts.", "success")
-        except Exception as e:
-            self.navigation_pane.add_log_message(f"Extraction error: {e}", "error")
-
-    def handle_add_all_bodyparts_to_master(self):
-        """Add every extracted body part to the master list."""
-        new_bodyparts = [self.extracted_bodyparts_list.item(i).text() 
-                         for i in range(self.extracted_bodyparts_list.count())]
-        state = self.state_manager.project_state
-        current_master = []
-        if state.project_metadata:
-            current_master = [self.format_item(bp) for bp in state.project_metadata.master_body_parts]
-        else:
-            current_master = [str(bp) for bp in self.state_manager.global_settings.get("body_parts", [])]
-        
-        additions = [bp for bp in new_bodyparts if bp not in current_master]
-        if additions:
-            self.window().project_manager.update_master_body_parts(additions)
-            self.navigation_pane.add_log_message(f"Added {len(additions)} body parts to master list.", "success")
-        else:
-            self.navigation_pane.add_log_message("No new body parts to add.", "info")
-        self.refresh_body_parts_page()
-
-    def handle_add_selected_bodyparts_to_master(self):
-        """Add selected extracted body parts to the master list."""
-        selected_items = self.extracted_bodyparts_list.selectedItems()
-        if not selected_items:
-            self.navigation_pane.add_log_message("No body parts selected for master list.", "warning")
-            return
-        selected = [item.text() for item in selected_items]
-        state = self.state_manager.project_state
-        if state.project_metadata:
-            current_master = [self.format_item(bp) for bp in state.project_metadata.master_body_parts]
-        else:
-            current_master = [str(bp) for bp in self.state_manager.global_settings.get("body_parts", [])]
-        
-        new_master = current_master.copy()
-        for bp in selected:
-            if bp not in new_master:
-                new_master.append(bp)
-        
-        if new_master != current_master:
-            self.window().project_manager.update_master_body_parts(new_master)
-            added_count = len(new_master) - len(current_master)
-            self.navigation_pane.add_log_message(f"Added {added_count} selected body parts to master list.", "success")
-        else:
-            self.navigation_pane.add_log_message("No new body parts selected for master list.", "info")
+        # Refresh the lists initially (this function should still work)
         self.refresh_body_parts_page()
 
     def handle_remove_from_master(self):

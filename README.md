@@ -1,86 +1,90 @@
-# MUS1: Subject Behavior Analysis Tool
+# MUS1: Integrated Workflow for Behavior Analysis
 
-A Python-based tool designed to streamline the analysis of subject behavior data.
+A Python-based tool designed to streamline the analysis of subject behavior data, integrating DeepLabCut tracking outputs and Keypoint-MoSeq analysis within a unified project management framework.
 
 ## Overview
 
-MUS1 takes the CSV tracking files and arena images from your DeepLabCut projects and makes it easy to:
-1. Visualize subject movement patterns
-2. Organize experiments and subjects with metadata
-3. Batch process multiple experiments using optimized settings
-4. Apply consistent analysis across various experiment types
+MUS1 facilitates a workflow starting from DeepLabCut-generated tracking data, enabling users to:
+1. **Import and Organize:** Manage DeepLabCut tracking files, associated videos, and metadata within structured MUS1 projects. Import body part definitions directly from DLC `config.yaml` files.
+2. **Analyze Kinematics:** Perform foundational analyses like distance, speed, and zone occupancy using built-in analysis plugins.
+3. **Discover Behavioral Syllables:** Utilize the integrated **Keypoint-MoSeq plugin** to apply unsupervised machine learning for identifying behavioral motifs directly from keypoint data within MUS1.
+4. **Manage Experiments:** Organize experiments by subject, type, and batch, tracking processing stages.
+5. **Standardize:** Apply consistent analysis parameters and project settings.
 
-The project uses a modular architecture with plugin support for different experiment types and analysis methods.
+The project uses a modular architecture with plugins for data handling (e.g., DeepLabCut outputs), core kinematic analysis, and advanced behavioral sequencing (Keypoint-MoSeq).
 
 ## Features
 
-- **Material Design UI**: Clean, modern interface built with PySide6-Qt
-- **Responsive Layout**: BaseView implementation with QSplitter for consistent UI
-- **Theme System**: Light/dark themes with OS detection and CSS variables
-- **Flexible Project Structure**: Organize subjects, experiments, and batches
-- **Plugin Architecture**: Support for multiple experiment types (NOR, OpenField, etc.)
-- **Hierarchical Experiment Creation**: Step-by-step workflow for experiment setup
-- **Batch Processing**: Group and analyze experiments together
-- **Phase-Based Workflow**: Track experiments from planning through analysis
-- **Observer Pattern**: UI components subscribe to state changes for automatic updates
-- **Standardized Metadata Display**: Visualize complex relationships consistently
-- **Reusable Components**: NotesBox and other UI patterns for consistent interfaces
+- **Material Design UI**: Clean, modern interface built with PySide6-Qt.
+- **Project Management**: Centralized handling of subjects, experiments, metadata, and analysis results.
+- **DeepLabCut Integration**: Imports body parts from DLC configs and utilizes DLC tracking data (CSV/HDF5).
+- **Keypoint-MoSeq Integration**: Includes a plugin to run Keypoint-MoSeq analysis directly within the MUS1 environment.
+- **Plugin Architecture**: Supports data handlers (DLC) and various analysis modules (Kinematics, Keypoint-MoSeq).
+- **Hierarchical Experiment Setup**: Step-by-step workflow linking data files and analysis parameters.
+- **Batch Processing**: Group experiments for efficient management (analysis planned).
+- **Observer Pattern**: UI components update automatically based on project state changes.
+- **Theme System**: Light/dark themes with OS detection.
 
-## Architecture
+## Intended Workflow (v0.2.x - Target)
 
-MUS1 follows a modular architecture with clear separation of concerns:
-
-### Core Components
-- **ProjectManager**: Handles project-level operations, theme management, and plugin coordination
-- **StateManager**: Maintains in-memory state and implements observer pattern
-- **PluginManager**: Registers and manages experiment-specific plugins
-- **DataManager**: Handles data validation and transformation
-
-### UI Components
-- **MainWindow**: Main application window with central theme management
-- **BaseView**: Abstract base class for all views with standardized layout
-- **NavigationPane**: Left-side navigation with consistent sizing and log display
-- **Specialized Views**: ProjectView, SubjectView, ExperimentView for specific functions
-
-## Current Status (v0.1.0)
-
-MUS1 is under active development with the following functionality implemented:
-- ✅ Core application structure with theming
-- ✅ Project, subject, and experiment management
-- ✅ Plugin architecture foundation
-- ✅ Batch experiment system
-- ✅ Experiment phase tracking
-- ✅ Unified CSS variable system
-- ✅ Proper theme handling architecture
-- ✅ Consistent component styling
-
-We're currently working on enhanced visualization and analysis capabilities. See our [Development Roadmap](Mus1_Refactor/refactor%20notes/ROADMAP.md) for details.
+1.  **Tracking (External)**: Use **DeepLabCut** (installed separately) to track keypoints from your experimental videos (standard RGB or extracted IR from MKV, potentially using mixed training data). Generate tracking CSV/HDF5 files.
+2.  **MUS1 Project Setup**: Create a new project in MUS1.
+3.  **Import DLC Config (Optional)**: Use the `DlcProjectImporter` plugin within MUS1 to populate the project's master body part list from your DLC project's `config.yaml`.
+4.  **Define Experiments in MUS1**: Add subjects and experiments. Use the `DeepLabCutHandler` plugin parameters to link each experiment to its corresponding DLC tracking file (CSV/HDF5).
+5.  **Run Kinematic Analysis (MUS1)**: Use the `Mus1TrackingAnalysis` plugin via the MUS1 interface to calculate metrics like distance, speed, zone time, etc. Results are stored within the experiment's metadata.
+6.  **Run Keypoint-MoSeq (MUS1)**: Use the `KeypointMoSeqAnalysis` plugin via the MUS1 interface. Provide a Keypoint-MoSeq config file. The plugin will load the tracking data (specified in step 4) and run the kp-MoSeq fitting process. Results (like syllable sequences) will be stored, potentially linking back to detailed kp-MoSeq output files.
+7.  **Analyze Syllables (Future)**: Future MUS1 plugins or external tools can then analyze the syllable sequences and other results generated by Keypoint-MoSeq.
 
 ## Requirements
+
 - Python 3.10+
-- Processed DeepLabCut project files (tracking CSVs)
-- Arena images from your experiments
-- Dependencies (see requirements.txt):
-  - PySide6
-  - pydantic
-  - pandas/numpy/matplotlib
+- **DeepLabCut**: Must be installed separately in its own environment or managed carefully. Used externally for keypoint tracking *before* using MUS1. See [DeepLabCut Installation](https://deeplabcut.github.io/DeepLabCut/docs/installation.html).
+- **MUS1 & Keypoint-MoSeq Dependencies**: Handled via `requirements.txt` and separate `keypoint-moseq` installation (see Getting Started). This includes libraries like PySide6, Pandas, Numpy, JAX, and Keypoint-MoSeq itself.
+- **CUDA (Optional)**: For GPU acceleration with Keypoint-MoSeq (JAX), a compatible NVIDIA driver and CUDA toolkit are required.
 
 ## Documentation
 - [Development Roadmap](Mus1_Refactor/refactor%20notes/ROADMAP.md)
 - [Architecture Documentation](Mus1_Refactor/refactor%20notes/Architecture.md)
+- [Keypoint-MoSeq Documentation](https://keypoint-moseq.readthedocs.io/en/latest/)
 
 ## Getting Started
 
-1. Clone the repository into venv
-2. Install dependencies: `pip install -r requirements.txt`
-3. Run the application: `python -m Mus1_Refactor.main`
+It is highly recommended to use a dedicated environment manager like Conda.
+
+1.  **Clone MUS1**:
+    ```bash
+    git clone <your-mus1-repo-url>
+    cd Mus1_Refactor # Or your repo name
+    ```
+2.  **Create Environment**:
+    ```bash
+    conda create -n mus1-env python=3.10
+    conda activate mus1-env
+    ```
+3.  **Install MUS1 Dependencies**:
+    ```bash
+    pip install -r requirements.txt
+    ```
+4.  **Install Keypoint-MoSeq**:
+    *   **CPU:** `pip install keypoint-moseq`
+    *   **GPU (Requires CUDA Setup):** `pip install keypoint-moseq[cuda]`
+    *   *(Note: This installs JAX. Ensure your CUDA/CuDNN setup matches JAX requirements if using GPU.)*
+5.  **Install MUS1 (Editable Mode)**:
+    ```bash
+    pip install -e .
+    ```
+6.  **Run MUS1**:
+    ```bash
+    python -m Mus1_Refactor.main # Adjust if your main entry point differs
+    ```
+7.  **Install DeepLabCut (Separately)**: Follow DLC instructions to install it, preferably in its own dedicated environment to avoid conflicts. You will use this separate DLC installation to generate tracking files *before* importing data paths into MUS1.
 
 ## Future Goals
-- Advanced analysis visualizations
-- Automated arena detection
-- Statistical analysis tools
-- Cross-experiment correlation
-- Custom analysis pipeline creation
+- Enhanced visualization for kinematic and Keypoint-MoSeq results within MUS1.
+- Batch analysis execution for both kinematics and Keypoint-MoSeq syllables.
+- Statistical comparison tools for syllable usage across groups.
+- Streamlined export of MUS1/kp-MoSeq results.
+- Potential integration with labeling workflows (Long-term).
 
 
 

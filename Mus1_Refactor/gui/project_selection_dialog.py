@@ -3,11 +3,11 @@ import os
 
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QPushButton, QLineEdit, QMessageBox,
-    QGridLayout, QFrame, QListWidget, QListWidgetItem, QFileDialog, QCheckBox, QWidget
+    QGridLayout, QFrame, QListWidget, QListWidgetItem, QFileDialog, QCheckBox, QWidget,
+    QApplication
 )
 from PySide6.QtCore import Qt, QSize, Signal
 from PySide6.QtGui import QPixmap, QPalette, QBrush, QColor, QPainter, QImage, QIcon
-from PySide6.QtWidgets import QApplication
 
 
 class ProjectSelectionDialog(QDialog):
@@ -17,13 +17,16 @@ class ProjectSelectionDialog(QDialog):
         super().__init__(parent)
         
         self.setObjectName("projectSelectionDialog")
-        self.setProperty("class", "mus1-dialog")
-        
         self.project_manager = project_manager
         self.selected_project_name = None  # Will be set when a project is selected
         
         self.setWindowTitle("MUS1 Project Selection")
         self.setMinimumSize(700, 400)
+        
+        # Get the current application instance and its stylesheet
+        app = QApplication.instance()
+        if app:
+            self.setStyleSheet(app.styleSheet())
         
         # Main layout 
         main_layout = QHBoxLayout(self)
@@ -176,7 +179,7 @@ class ProjectSelectionDialog(QDialog):
         if self.custom_location_check.isChecked() and location:
             base_path = Path(location)
         else:
-            base_path = Path("projects")
+            base_path = self.project_manager.get_projects_directory()
 
         # Create the full project directory path
         project_root = base_path / project_name

@@ -1,54 +1,45 @@
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, QLineEdit,
     QComboBox, QPushButton, QListWidget, QLabel, QFileDialog, QTextEdit,
-    QCheckBox, QSpinBox, QDoubleSpinBox, QSlider
+    QCheckBox, QSpinBox, QDoubleSpinBox, QSlider, QMessageBox
 )
 from pathlib import Path
-from gui.base_view import BaseView
+from .base_view import BaseView
 from PySide6.QtCore import Qt, Signal
-from core import ObjectMetadata, BodyPartMetadata  # Import both from core package consistently
-from core.data_manager import FrameRateResolutionError  # Import custom exception
+from ..core import ObjectMetadata, BodyPartMetadata, PluginManager
+from ..core.data_manager import FrameRateResolutionError
+from ..plugins.base_plugin import BasePlugin
+from typing import Dict, Any
 
 
 class NotesBox(QGroupBox):
     """A reusable notes component that can be added to any view."""
     def __init__(self, parent=None, title="Notes", placeholder_text="Enter notes here..."):
         super().__init__(title, parent)
-        self.setProperty("class", "mus1-notes-container")
         
-        # Get access to BaseView constants through parent
-        base_view = self.find_base_view_parent(parent)
-        form_margin = BaseView.FORM_MARGIN
-        control_spacing = BaseView.CONTROL_SPACING
+        self.layout = QVBoxLayout(self)
+        self.layout.setContentsMargins(10, 15, 10, 10)
+        self.layout.setSpacing(8)
         
-        if base_view:
-            form_margin = base_view.FORM_MARGIN
-            control_spacing = base_view.CONTROL_SPACING
-        
-        # Set up the layout using the BaseView constants
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(form_margin, form_margin, form_margin, form_margin)
-        layout.setSpacing(control_spacing)
-        
-        # Create the text edit for notes
-        self.notes_edit = QTextEdit()
-        self.notes_edit.setProperty("class", "mus1-notes-edit")
+        # Set up the QTextEdit for notes
+        self.notes_edit = QTextEdit(self)
         self.notes_edit.setPlaceholderText(placeholder_text)
+        self.notes_edit.setProperty("class", "mus1-notes-edit")
+        self.layout.addWidget(self.notes_edit)
         
-        # Create a button row layout with consistent spacing
-        button_row = QHBoxLayout()
-        button_row.setContentsMargins(0, 0, 0, 0)
-        button_row.setSpacing(control_spacing)
-        
-        # Add save button to the button row
-        self.save_button = QPushButton("Save Notes")
+        # Add a save button
+        self.save_button = QPushButton("Save", self)
         self.save_button.setProperty("class", "mus1-primary-button")
-        button_row.addWidget(self.save_button)
-        button_row.addStretch(1)
         
-        # Add widgets to layout with consistent spacing
-        layout.addWidget(self.notes_edit)
-        layout.addLayout(button_row)
+        # Button row layout - no specific margins set here
+        button_layout = QHBoxLayout()
+        button_layout.addStretch(1)
+        button_layout.addWidget(self.save_button)
+        
+        self.layout.addLayout(button_layout)
+        
+        # Find base_view for accessing log functionality
+        self.base_view = self.find_base_view_parent(parent)
     
     def find_base_view_parent(self, parent):
         """Find the closest BaseView parent to access layout constants."""
@@ -82,8 +73,11 @@ class ProjectView(BaseView):
         super().__init__(parent, view_name="project")
         self.state_manager = self.window().state_manager
         self.project_manager = self.window().project_manager
+        self.plugin_manager = self.window().plugin_manager
         self.data_manager = self.window().data_manager
-        self.setup_navigation(["Project Settings", "General Settings"])
+        self.importer_param_widgets: Dict[str, QWidget] = {} # Initialize the dictionary here
+        self.setup_navigation(["Import Project", "Project Settings", "General Settings"])
+        self.setup_import_project_page()
         self.setup_project_settings_page()
         self.setup_general_settings_page()
         self.change_page(0)
@@ -91,6 +85,232 @@ class ProjectView(BaseView):
     def format_item(self, item):
         """Utility to return the proper display string for an item."""
         return item.name if hasattr(item, "name") else str(item)
+
+    def setup_import_project_page(self):
+        """Setup the page for importing data from external projects."""
+        self.import_project_page = QWidget()
+        layout = QVBoxLayout(self.import_project_page)
+        layout.setSpacing(self.SECTION_SPACING)
+
+        # 1. Importer Plugin Selection Group
+        importer_group, importer_layout = self.create_form_section("Select Importer", layout)
+        importer_row = self.create_form_row(importer_layout)
+        importer_label = self.create_form_label("Importer Type:")
+        self.importer_plugin_combo = QComboBox()
+        self.importer_plugin_combo.setProperty("class", "mus1-combo-box")
+        self.importer_plugin_combo.currentIndexChanged.connect(self.on_importer_plugin_selected)
+        importer_row.addWidget(importer_label)
+        importer_row.addWidget(self.importer_plugin_combo, 1)
+
+        # 2. Dynamic Parameter Fields Group
+        # Use a group box to visually contain the dynamic fields
+        self.importer_params_group, self.importer_params_layout = self.create_form_section("Importer Parameters", layout)
+        # Initially hide the group until a plugin is selected? Optional.
+        # self.importer_params_group.setVisible(False)
+
+        # Add stretch before the button
+        layout.addStretch(1)
+
+        # 3. Action Button
+        button_row = self.create_button_row(layout)
+        self.import_project_button = QPushButton("Import Project Settings")
+        self.import_project_button.setProperty("class", "mus1-primary-button")
+        self.import_project_button.clicked.connect(self.handle_import_project)
+        self.import_project_button.setEnabled(False) # Disable until a plugin is selected
+        button_row.addWidget(self.import_project_button)
+
+        self.add_page(self.import_project_page, "Import") # Add page to stacked widget
+        self.populate_importer_plugins() # Populate the dropdown
+
+    def populate_importer_plugins(self):
+        """Populates the importer plugin selection dropdown using StateManager."""
+        if not hasattr(self, 'importer_plugin_combo') or not self.state_manager:
+            return
+
+        self.importer_plugin_combo.blockSignals(True)
+        self.importer_plugin_combo.clear()
+        self.importer_plugin_combo.addItem("Select an importer...", None)
+
+        # --- Find Importer Plugins via StateManager ---
+        importer_plugins_meta = self.state_manager.get_plugins_by_type('importer')
+
+        if not importer_plugins_meta:
+            self.navigation_pane.add_log_message("No importer plugins found in state.", "warning")
+        else:
+            # The method already returns metadata, so we just sort and add it.
+            for meta in sorted(importer_plugins_meta, key=lambda m: m.name):
+                self.importer_plugin_combo.addItem(meta.name, meta.name)
+
+        self.importer_plugin_combo.blockSignals(False)
+        self.on_importer_plugin_selected(self.importer_plugin_combo.currentIndex())
+
+    def on_importer_plugin_selected(self, index):
+        """Handles selection changes in the importer plugin dropdown."""
+        # Clear previous dynamic widgets and layout content
+        self._clear_layout(self.importer_params_layout)
+        self.importer_param_widgets.clear()
+        self.importer_params_group.setVisible(False) # Hide group if no plugin selected
+        self.import_project_button.setEnabled(False)
+
+        plugin_name = self.importer_plugin_combo.itemData(index)
+        if not plugin_name:
+            return # Placeholder selected
+
+        plugin = self.plugin_manager.get_plugin_by_name(plugin_name)
+        if not plugin:
+            self.navigation_pane.add_log_message(f"Selected importer plugin '{plugin_name}' not found.", "error")
+            return
+
+        self.importer_params_group.setVisible(True) # Show the parameter group
+        self.importer_params_group.setTitle(f"{plugin_name} Parameters") # Update title
+
+        # Get fields from the selected plugin
+        required_fields = plugin.required_fields()
+        # optional_fields = plugin.optional_fields() # Add if needed later
+        field_types = plugin.get_field_types()
+        field_descriptions = plugin.get_field_descriptions()
+
+        # Dynamically create widgets for required fields
+        for field_name in required_fields:
+             field_type = field_types.get(field_name, "string") # Default to string
+             description = field_descriptions.get(field_name, "")
+
+             row_layout = self.create_form_row(self.importer_params_layout)
+             label_text = f"{field_name.replace('_', ' ').title()}:"
+             label = self.create_form_label(label_text)
+             label.setToolTip(description)
+             row_layout.addWidget(label)
+
+             widget = None
+             if field_type == 'file':
+                  widget = QLineEdit()
+                  widget.setProperty("class", "mus1-text-input")
+                  browse_button = QPushButton("Browse...")
+                  browse_button.setProperty("class", "mus1-secondary-button")
+                  # Use lambda to pass the line edit widget to the browse function
+                  browse_button.clicked.connect(lambda checked=False, le=widget: self._browse_file_for_importer(le))
+                  row_layout.addWidget(widget, 1) # Line edit takes stretch
+                  row_layout.addWidget(browse_button)
+             elif field_type == 'directory': # Example for directory
+                 widget = QLineEdit()
+                 widget.setProperty("class", "mus1-text-input")
+                 browse_button = QPushButton("Browse...")
+                 browse_button.setProperty("class", "mus1-secondary-button")
+                 browse_button.clicked.connect(lambda checked=False, le=widget: self._browse_directory_for_importer(le))
+                 row_layout.addWidget(widget, 1)
+                 row_layout.addWidget(browse_button)
+             # Add other types (string, int, float, enum -> QComboBox) as needed
+             else: # Default to QLineEdit for string or unknown
+                 widget = QLineEdit()
+                 widget.setProperty("class", "mus1-text-input")
+                 row_layout.addWidget(widget, 1)
+
+             if widget:
+                 # Store reference to the input widget (not the browse button)
+                 self.importer_param_widgets[field_name] = widget
+
+        # Enable the import button now that parameters are displayed
+        self.import_project_button.setEnabled(True)
+
+    def _clear_layout(self, layout):
+        """Removes all widgets from a layout."""
+        if layout is not None:
+            while layout.count():
+                item = layout.takeAt(0)
+                widget = item.widget()
+                if widget is not None:
+                    widget.deleteLater()
+                else:
+                    # If it's a layout item, clear it recursively
+                    layout_item = item.layout()
+                    if layout_item is not None:
+                        self._clear_layout(layout_item)
+
+    def _browse_file_for_importer(self, line_edit_widget: QLineEdit):
+        """Opens a file dialog and sets the path in the provided QLineEdit."""
+        # Consider adding file type filters based on plugin requirements if possible
+        file_path, _ = QFileDialog.getOpenFileName(self, "Select File")
+        if file_path:
+            line_edit_widget.setText(file_path)
+
+    def _browse_directory_for_importer(self, line_edit_widget: QLineEdit):
+         """Opens a directory dialog and sets the path in the provided QLineEdit."""
+         dir_path = QFileDialog.getExistingDirectory(self, "Select Directory")
+         if dir_path:
+              line_edit_widget.setText(dir_path)
+
+    def handle_import_project(self):
+        """Handles the 'Import Project Settings' button click."""
+        selected_index = self.importer_plugin_combo.currentIndex()
+        plugin_name = self.importer_plugin_combo.itemData(selected_index)
+
+        if not plugin_name:
+            QMessageBox.warning(self, "Import Error", "Please select an importer type.")
+            return
+
+        plugin = self.plugin_manager.get_plugin_by_name(plugin_name)
+        if not plugin:
+             QMessageBox.critical(self, "Import Error", f"Could not find plugin: {plugin_name}")
+             return
+
+        # Assume the first capability is the one we want for importers, or use a specific one
+        capabilities = plugin.analysis_capabilities()
+        if not capabilities:
+             QMessageBox.critical(self, "Import Error", f"Plugin '{plugin_name}' has no defined capabilities.")
+             return
+        capability_name = capabilities[0] # e.g., 'import_dlc_project_settings'
+
+        # Collect parameters from dynamically created widgets
+        parameters: Dict[str, Any] = {}
+        missing_required = []
+        try:
+            required_fields = plugin.required_fields()
+            for field_name, widget in self.importer_param_widgets.items():
+                value = ""
+                if isinstance(widget, QLineEdit):
+                    value = widget.text().strip()
+                # Add elif for other widget types (QComboBox, QSpinBox, etc.) if used
+                parameters[field_name] = value
+                # Check if required field is empty
+                if field_name in required_fields and not value:
+                    missing_required.append(field_name)
+
+            if missing_required:
+                 QMessageBox.warning(self, "Missing Information",
+                                     f"Please fill in the required fields: {', '.join(missing_required)}")
+                 return
+
+        except Exception as e:
+             QMessageBox.critical(self, "Parameter Error", f"Error collecting parameters: {e}")
+             return
+
+        # Run the project-level action via ProjectManager
+        self.navigation_pane.add_log_message(f"Starting import using {plugin_name}...", "info")
+        try:
+            result = self.project_manager.run_project_level_plugin_action(
+                plugin_name=plugin_name,
+                capability_name=capability_name,
+                parameters=parameters
+            )
+
+            if result.get("status") == "success":
+                 msg = result.get("message", "Import completed successfully.")
+                 imported = result.get("imported_bodyparts") # Example specific data
+                 if imported:
+                      msg += f" Imported: {', '.join(imported)}"
+                 QMessageBox.information(self, "Import Successful", msg)
+                 self.navigation_pane.add_log_message(msg, "success")
+                 # Optionally refresh other parts of the UI if needed (e.g., body part lists)
+                 # self.window().refresh_all_views() # Maybe too broad?
+            else:
+                 error_msg = result.get("error", "Unknown error during import.")
+                 QMessageBox.critical(self, "Import Failed", error_msg)
+                 self.navigation_pane.add_log_message(f"Import failed: {error_msg}", "error")
+
+        except Exception as e:
+            error_msg = f"An unexpected error occurred during import: {e}"
+            QMessageBox.critical(self, "Import Error", error_msg)
+            self.navigation_pane.add_log_message(error_msg, "error")
 
     def setup_general_settings_page(self):
         """Setup the General Settings page with application-wide settings."""
@@ -197,13 +417,18 @@ class ProjectView(BaseView):
         # Load project notes (still relevant here)
         if hasattr(self, 'project_notes_box') and self.window().project_manager.state_manager:
             state = self.window().project_manager.state_manager.project_state
-            notes = state.settings.get("project_notes", "")
-            self.project_notes_box.set_text(notes)
+            # Check if project_metadata exists before accessing settings through it
+            if state.project_metadata:
+                 notes = state.settings.get("project_notes", "") # Still access notes via settings for now
+                 self.project_notes_box.set_text(notes)
+            else:
+                 self.project_notes_box.set_text("") # Clear notes if no project loaded
 
-        # Update UI settings from the loaded project state if needed here
-        # These might be redundant if MainWindow.refresh_all_views covers them via state changes
+        # Update UI settings from the loaded project state
         self.update_frame_rate_from_state()
         self.update_sort_mode_from_state()
+        # Update theme dropdown based on loaded project
+        self.update_theme_dropdown_from_state()
 
         # Refresh the project list dropdown to ensure it's up-to-date
         self.populate_project_list()
@@ -212,6 +437,16 @@ class ProjectView(BaseView):
             index = self.switch_project_combo.findText(project_name)
             if index >= 0:
                 self.switch_project_combo.setCurrentIndex(index)
+
+        # Refresh importer plugin list as well (in case available plugins change based on project context, unlikely but good practice)
+        self.populate_importer_plugins()
+
+    def update_theme_dropdown_from_state(self):
+        if hasattr(self, 'theme_dropdown') and self.state_manager:
+            theme_pref = self.state_manager.get_theme_preference()
+            index = self.theme_dropdown.findText(theme_pref)
+            if index >= 0:
+                self.theme_dropdown.setCurrentIndex(index)
 
     def handle_apply_general_settings(self):
         """Apply the general settings."""
@@ -293,25 +528,44 @@ class ProjectView(BaseView):
     def update_frame_rate_from_state(self):
         """Update frame rate settings from the current state using DataManager resolution."""
         try:
-            final_frame_rate = self.window().data_manager._resolve_frame_rate(None, None, None)
+            # Check if data_manager exists before calling resolve_frame_rate
+            if not self.data_manager:
+                 self.navigation_pane.add_log_message("DataManager not available.", "warning")
+                 return
+
+            final_frame_rate = self.data_manager.resolve_frame_rate(None, None, None)
         except FrameRateResolutionError as e:
             self.navigation_pane.add_log_message(f"Frame rate resolution error: {str(e)}", "error")
-            final_frame_rate = 0
+            final_frame_rate = "OFF" # Default to OFF on error
+        except AttributeError:
+             self.navigation_pane.add_log_message("DataManager not fully initialized.", "warning")
+             return
+
 
         if final_frame_rate == "OFF":
             frame_rate_enabled = False
-            display_rate = 60  # Default display value when disabled
-            self.navigation_pane.add_log_message("Global frame rate is disabled - experiment-specific rates will be required", "info")
+            # Get default from metadata if available, otherwise fallback
+            default_rate = 60
+            if self.state_manager and self.state_manager.project_state and self.state_manager.project_state.project_metadata:
+                 default_rate = self.state_manager.project_state.project_metadata.global_frame_rate
+            display_rate = default_rate
         else:
             frame_rate_enabled = True
             display_rate = final_frame_rate
-            self.navigation_pane.add_log_message(f"Global frame rate is enabled: {final_frame_rate} fps", "info")
 
         # Update UI elements if they exist
         if hasattr(self, 'frame_rate_slider'):
-            self.frame_rate_slider.setValue(display_rate)
+             # Ensure value is within slider range
+             display_rate = max(self.frame_rate_slider.minimum(), min(display_rate, self.frame_rate_slider.maximum()))
+             self.frame_rate_slider.setValue(display_rate)
         if hasattr(self, 'enable_frame_rate_checkbox'):
+            # Block signals temporarily to avoid triggering handler during update
+            self.enable_frame_rate_checkbox.blockSignals(True)
             self.enable_frame_rate_checkbox.setChecked(frame_rate_enabled)
+            self.enable_frame_rate_checkbox.blockSignals(False)
+        if hasattr(self, 'frame_rate_value_label'):
+             self.frame_rate_value_label.setText(str(display_rate))
+
 
     def update_likelihood_filter_from_state(self):
         """Update likelihood filter settings from the current state."""
@@ -323,33 +577,30 @@ class ProjectView(BaseView):
         
         # Check if we have the likelihood filter components
         # These components might not exist yet in the current version
-        print("INFO: Likelihood filter update skipped - components not implemented yet")
+        # print("INFO: Likelihood filter update skipped - components not implemented yet") # Keep commented
 
     def update_sort_mode_from_state(self):
         """Update sort mode dropdown from the current state."""
-        pm = self.window().project_manager
-        if not pm or not pm.state_manager:
-            return
-        
-        state = pm.state_manager.project_state
-        
+        if not self.state_manager: return # Check if state_manager exists
+
+        state = self.state_manager.project_state
+
         # Check if we have the sort mode dropdown
         if not hasattr(self, 'sort_mode_dropdown'):
-            print("WARNING: Sort mode dropdown not found")
+            # print("WARNING: Sort mode dropdown not found") # Keep commented
             return
-            
-        # Get sort mode from state
-        sort_mode = "Natural Order (Numbers as Numbers)"  # Default value
-        if state.project_metadata and hasattr(state.project_metadata, 'global_sort_mode'):
-            sort_mode = state.project_metadata.global_sort_mode
-        elif 'global_sort_mode' in state.settings:
-            sort_mode = state.settings['global_sort_mode']
-        
+
+        # Get sort mode using the consolidated property access
+        sort_mode = self.state_manager.get_global_sort_mode()
+
         # Find and select the appropriate item in the dropdown
         index = self.sort_mode_dropdown.findText(sort_mode)
         if index >= 0:
             self.sort_mode_dropdown.setCurrentIndex(index)
-   
+        else:
+             # Log if the sort mode from state isn't in the dropdown options
+             self.navigation_pane.add_log_message(f"Sort mode '{sort_mode}' from state not found in dropdown.", "warning")
+
     def populate_project_list(self):
         """Populates the project selection dropdown."""
         if not hasattr(self, 'switch_project_combo'):
@@ -359,7 +610,12 @@ class ProjectView(BaseView):
         current_selection = self.switch_project_combo.currentText()
         self.switch_project_combo.clear()
         try:
-            projects = self.window().project_manager.list_available_projects()
+            # Ensure project_manager exists before calling list_available_projects
+            if not self.project_manager:
+                 self.navigation_pane.add_log_message("ProjectManager not available.", "error")
+                 return
+
+            projects = self.project_manager.list_available_projects()
             project_names = sorted([p.name for p in projects]) # Sort alphabetically
             self.switch_project_combo.addItems(project_names)
 
@@ -393,7 +649,7 @@ class ProjectView(BaseView):
             # title updates, and view refreshes (including calling set_initial_project).
         else:
             msg = "No project selected in the dropdown to switch to."
-            print(msg)
+            # print(msg) # Keep commented
             self.navigation_pane.add_log_message(msg, 'warning')
 
     def handle_rename_project(self):
@@ -403,7 +659,7 @@ class ProjectView(BaseView):
 
         if not new_name:
             msg = "New project name cannot be empty."
-            print(msg)
+            # print(msg) # Keep commented
             self.navigation_pane.add_log_message(msg, 'warning')
             return
 
@@ -420,7 +676,12 @@ class ProjectView(BaseView):
         try:
             self.navigation_pane.add_log_message(f"Attempting to rename project '{current_name}' to: {new_name}", 'info')
             # Perform rename using project_manager
-            self.window().project_manager.rename_project(new_name)
+            # Ensure project_manager exists
+            if not self.project_manager:
+                 self.navigation_pane.add_log_message("ProjectManager not available for rename.", "error")
+                 return
+
+            self.project_manager.rename_project(new_name)
 
             # --- Rename Successful ---
             self.navigation_pane.add_log_message(f"Project successfully renamed to: {new_name}", 'success')
@@ -429,24 +690,27 @@ class ProjectView(BaseView):
             self.project_renamed.emit(new_name)
 
             # Update UI elements within this ProjectView
-            self.current_project_label.setText("Current Project: " + new_name)
+            if hasattr(self, 'current_project_label'):
+                 self.current_project_label.setText("Current Project: " + new_name)
             # Keep rename_line_edit updated? Or clear it? Let's keep it updated.
             # self.rename_line_edit.setText(new_name) # Already set by user input
 
             # Refresh the project list dropdown
             self.populate_project_list()
             # Ensure the new name is selected in the dropdown
-            index = self.switch_project_combo.findText(new_name)
-            if index >= 0:
-                self.switch_project_combo.setCurrentIndex(index)
+            if hasattr(self, 'switch_project_combo'):
+                 index = self.switch_project_combo.findText(new_name)
+                 if index >= 0:
+                     self.switch_project_combo.setCurrentIndex(index)
 
 
         except Exception as e:
             error_msg = f"Error renaming project '{current_name}' to '{new_name}': {e}"
-            print(error_msg)
+            # print(error_msg) # Keep commented
             self.navigation_pane.add_log_message(error_msg, 'error')
             # Restore rename line edit to current name on failure?
-            self.rename_line_edit.setText(current_name)
+            if hasattr(self, 'rename_line_edit'):
+                 self.rename_line_edit.setText(current_name)
 
     def setup_project_settings_page(self):
         """Setup the Project Settings page with project info controls."""
@@ -464,16 +728,16 @@ class ProjectView(BaseView):
         current_layout = QHBoxLayout()
         self.current_project_label = QLabel("Current Project: None")
         self.current_project_label.setProperty("formLabel", True)
+        self.current_project_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         current_layout.addWidget(self.current_project_label)
         current_layout.addStretch(1)
         selection_layout.addLayout(current_layout)
         
         # Project selector
-        selector_layout = QHBoxLayout()
-        switch_label = QLabel("Switch to:")
-        switch_label.setProperty("formLabel", True)
+        selector_layout = self.create_form_row()
+        switch_label = self.create_form_label("Switch to:")
         
-        self.switch_project_combo = QComboBox(selection_group)  # Set parent to selection_group
+        self.switch_project_combo = QComboBox()
         self.switch_project_combo.setProperty("class", "mus1-combo-box")
         self.switch_project_button = QPushButton("Switch")
         self.switch_project_button.setProperty("class", "mus1-primary-button")
@@ -488,12 +752,10 @@ class ProjectView(BaseView):
         layout.addWidget(selection_group)
         
         # Project renaming group
-        rename_group = QGroupBox("Rename Project")
-        rename_group.setProperty("class", "mus1-input-group")
-        rename_layout = QHBoxLayout(rename_group)
+        rename_group, rename_layout_container = self.create_form_section("Rename Project", layout)
+        rename_layout = self.create_form_row(rename_layout_container)
         
-        rename_label = QLabel("New Name:")
-        rename_label.setProperty("formLabel", True)
+        rename_label = self.create_form_label("New Name:")
         self.rename_line_edit = QLineEdit()
         self.rename_line_edit.setProperty("class", "mus1-text-input")
         self.rename_button = QPushButton("Rename")
@@ -531,18 +793,23 @@ class ProjectView(BaseView):
             
         notes = self.project_notes_box.get_text()
         try:
+            # Ensure project_manager and state_manager are available
+            if not self.project_manager or not self.project_manager.state_manager:
+                 self.navigation_pane.add_log_message("Cannot save notes: Project or State manager not available.", 'error')
+                 return
+
             # Get the current project state
-            state = self.window().project_manager.state_manager.project_state
+            state = self.project_manager.state_manager.project_state
             # Update the notes in the state
             state.settings["project_notes"] = notes
             # Update internal state and persist changes to disk
-            self.window().project_manager.state_manager.notify_observers()
-            self.window().project_manager.save_project()
+            self.project_manager.state_manager.notify_observers()
+            self.project_manager.save_project()
             
             self.navigation_pane.add_log_message("Project notes saved successfully.", 'success')
         except Exception as e:
             error_msg = f"Error saving project notes: {e}"
-            print(error_msg)
+            # print(error_msg) # Keep commented
             self.navigation_pane.add_log_message(error_msg, 'error')
 
     def update_theme(self, theme):
@@ -551,10 +818,14 @@ class ProjectView(BaseView):
         self.navigation_pane.add_log_message(f"Theme updated to {theme}.", "info")
 
     def refresh_lists(self):
-        """Refreshes lists managed by this view, primarily the project list."""
+        """Refreshes lists managed by this view."""
         self.navigation_pane.add_log_message("Refreshing ProjectView lists...", "info")
         self.populate_project_list()
-        # Add other list refreshes here if needed in the future
+        self.populate_importer_plugins() # Also refresh importer list
+        # Refresh settings UI from state
+        self.update_frame_rate_from_state()
+        self.update_sort_mode_from_state()
+        self.update_theme_dropdown_from_state()
 
 
         

@@ -1,12 +1,18 @@
 import logging
 from pathlib import Path
 import pandas as pd
-from typing import Optional, Union
+from typing import Optional, Union, Dict, Any, List
 import yaml
 import numpy as np
 import matplotlib.pyplot as plt
 from PIL import Image
 from io import BytesIO
+
+# Import PluginManager type hint
+try:
+     from .plugin_manager import PluginManager
+except ImportError:
+     PluginManager = Any # Fallback for type checker
 
 # Custom Exception for Frame Rate Resolution
 class FrameRateResolutionError(Exception):
@@ -16,12 +22,13 @@ class FrameRateResolutionError(Exception):
 logger = logging.getLogger("mus1.core.data_manager")
 
 class DataManager:
-    def __init__(self, state_manager):
+    def __init__(self, state_manager: Any, plugin_manager: PluginManager):
         self.state_manager = state_manager
-        self._likelihood_threshold = None 
+        self.plugin_manager = plugin_manager # Store plugin manager instance
+        # Keep threshold resolution logic here for now, plugins can call it
+        # self._likelihood_threshold = None # This might be better managed per-call
 
-
-    
+    # --- Generic File Validation ---
     def _validate_file(self, file_path: Path, expected_extensions: list[str], file_type: str) -> None:
         """
         Validate that the file exists and has one of the expected extensions.
@@ -31,154 +38,181 @@ class DataManager:
         if file_path.suffix.lower() not in [ext.lower() for ext in expected_extensions]:
             raise ValueError(f"Expected a {file_type} with extension {expected_extensions}, got: {file_path.suffix}")
 
-    def _resolve_frame_rate(self, frame_rate: Optional[int], experiment_id: Optional[str], batch_id: Optional[str]) -> Union[int, str]:
+    # --- Generic File Readers ---
+    def read_yaml(self, file_path: Path) -> Dict[str, Any]:
+        """Reads a YAML file and returns its content as a dictionary."""
+        self._validate_file(file_path, [".yaml", ".yml"], "YAML file")
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                data = yaml.safe_load(f)
+            if not isinstance(data, dict):
+                raise ValueError("YAML content is not a dictionary.")
+            logger.debug(f"Successfully read YAML file: {file_path}")
+            return data
+        except yaml.YAMLError as e:
+            logger.error(f"Error parsing YAML file {file_path}: {e}")
+            raise ValueError(f"Invalid YAML format in {file_path}: {e}")
+        except Exception as e:
+            logger.error(f"Error reading YAML file {file_path}: {e}")
+            raise IOError(f"Could not read YAML file {file_path}: {e}")
+
+    def read_csv(self, file_path: Path, header_rows: Optional[List[int]] = None, index_col: Optional[int] = 0, **kwargs) -> pd.DataFrame:
         """
-        Determine the final frame rate using an explicit parameter or by checking experiment,
-        batch, or project defaults.
-        
-        Resolution logic:
-          1. If an explicit frame_rate is provided, use it.
-          2. If the global frame rate is enabled and a valid value exists, use the global frame rate.
-          3. If the global frame rate is enabled but the global value is missing, raise FrameRateResolutionError.
-          4. If the global frame rate is disabled, attempt to use an experiment or batch specific frame rate.
-          5. Otherwise, return "OFF" to indicate that frame rate functionality is turned off.
-        
+        Reads a CSV file into a Pandas DataFrame with flexible header options.
+
+        Args:
+            file_path: Path to the CSV file.
+            header_rows: List of row numbers to use as the header (e.g., [0, 1, 2] for DLC).
+                         If None, uses the first row as the header.
+            index_col: Column number to use as the index.
+            **kwargs: Additional keyword arguments passed directly to pd.read_csv.
+
         Returns:
-            An integer frame rate if resolved, or the string "OFF" if frame rate functionality is disabled.
-        
-        Raises:
-            FrameRateResolutionError: If frame rate is enabled but no valid frame rate value is provided.
+            A Pandas DataFrame.
         """
-        # 1. If an explicit frame_rate is provided, use it.
+        self._validate_file(file_path, [".csv"], "CSV file")
+        try:
+            # Determine header argument for pandas
+            header_arg = header_rows if header_rows is not None else 0
+            df = pd.read_csv(file_path, header=header_arg, index_col=index_col, **kwargs)
+            logger.debug(f"Successfully read CSV file: {file_path} with header={header_arg}")
+            return df
+        except Exception as e:
+            logger.error(f"Error reading CSV file {file_path}: {e}")
+            raise IOError(f"Could not read CSV file {file_path}: {e}")
+
+    # --- NEW Method to Call Handler Helpers ---
+    def call_handler_method(self, handler_name: str, method_name: str, **kwargs) -> Any:
+         """
+         Finds a handler plugin by name and calls a specified method on it.
+
+         Args:
+             handler_name: The unique name of the handler plugin (e.g., "DeepLabCutHandler").
+             method_name: The name of the public method to call on the handler instance
+                          (e.g., "get_tracking_dataframe").
+             **kwargs: Keyword arguments to pass directly to the handler's method
+                       (e.g., file_path=Path(...), likelihood_threshold=0.9).
+
+         Returns:
+             The result returned by the handler's method.
+
+         Raises:
+             ValueError: If the handler plugin or the specified method is not found.
+             Exception: If an error occurs during the handler method execution.
+         """
+         logger.debug(f"Attempting to call method '{method_name}' on handler '{handler_name}' with args: {kwargs}")
+         handler_instance = self.plugin_manager.get_plugin_by_name(handler_name)
+
+         if not handler_instance:
+             msg = f"Handler plugin '{handler_name}' not found by DataManager."
+             logger.error(msg)
+             raise ValueError(msg)
+
+         if not hasattr(handler_instance, method_name):
+             msg = f"Method '{method_name}' not found on handler plugin '{handler_name}'."
+             logger.error(msg)
+             raise ValueError(msg)
+
+         method_to_call = getattr(handler_instance, method_name)
+         if not callable(method_to_call):
+              msg = f"Attribute '{method_name}' on handler plugin '{handler_name}' is not callable."
+              logger.error(msg)
+              raise ValueError(msg)
+
+         try:
+             # Pass self (DataManager instance) to the handler method if needed?
+             # Check the signature of the target method. For get_tracking_dataframe,
+             # we decided it needs file_path, data_manager, likelihood_threshold.
+             # Let's ensure 'data_manager=self' is passed if the handler expects it.
+             import inspect
+             sig = inspect.signature(method_to_call)
+             if 'data_manager' in sig.parameters:
+                  kwargs['data_manager'] = self
+
+             result = method_to_call(**kwargs)
+             logger.debug(f"Successfully called method '{method_name}' on handler '{handler_name}'.")
+             return result
+         except Exception as e:
+             logger.error(f"Error executing method '{method_name}' on handler '{handler_name}': {e}", exc_info=True)
+             # Re-raise the exception so the calling plugin can handle it
+             raise e # Or wrap it in a custom DataManager exception
+
+    # --- Settings Resolution Helpers (Plugins can use these) ---
+    def resolve_likelihood_threshold(self, experiment_id: Optional[str] = None, batch_id: Optional[str] = None) -> Optional[float]:
+        """
+        Determine the likelihood threshold based on experiment, batch or project defaults.
+        (Made public for plugin use)
+        """
+        ps = self.state_manager.project_state
+        # Check experiment first
+        current_experiment = ps.experiments.get(experiment_id) if experiment_id else None
+        if current_experiment and hasattr(current_experiment, 'likelihood_threshold') and current_experiment.likelihood_threshold is not None:
+             logger.debug(f"Using likelihood threshold from experiment {experiment_id}: {current_experiment.likelihood_threshold}")
+             return current_experiment.likelihood_threshold
+
+        # Check batch next
+        current_batch = ps.batches.get(batch_id) if batch_id else None
+        if current_batch and hasattr(current_batch, 'likelihood_threshold') and current_batch.likelihood_threshold is not None:
+             logger.debug(f"Using likelihood threshold from batch {batch_id}: {current_batch.likelihood_threshold}")
+             return current_batch.likelihood_threshold
+
+        # Fallback to project default if filtering is enabled
+        if ps.project_metadata and ps.project_metadata.likelihood_filter_enabled:
+             threshold = ps.project_metadata.default_likelihood_threshold
+             logger.debug(f"Using project default likelihood threshold: {threshold}")
+             return threshold
+        elif ps.settings.get("likelihood_filter_enabled", False): # Check settings if metadata missing
+             threshold = ps.settings.get("default_likelihood_threshold")
+             logger.debug(f"Using project settings default likelihood threshold: {threshold}")
+             return threshold
+
+        logger.debug("Likelihood filtering disabled or no threshold found.")
+        return None # No threshold applicable
+
+    def resolve_frame_rate(self, frame_rate: Optional[int] = None, experiment_id: Optional[str] = None, batch_id: Optional[str] = None) -> Union[int, float, str]:
+        """
+        Determine the final frame rate. Returns rate as number or 'OFF'.
+        (Made public for plugin use) - Changed return type hint slightly
+        """
+        # 1. Explicit frame_rate
         if frame_rate is not None:
             logger.info(f"Using explicitly provided frame rate: {frame_rate}")
             return frame_rate
 
         ps = self.state_manager.project_state
 
-        # Retrieve global frame rate enabled flag and value.
+        # Retrieve global settings
         is_global_enabled = False
         global_rate = None
         if ps.project_metadata:
             is_global_enabled = ps.project_metadata.global_frame_rate_enabled
             global_rate = ps.project_metadata.global_frame_rate
-        else:
+        else: # Fallback to settings if metadata not loaded/available
             is_global_enabled = ps.settings.get("global_frame_rate_enabled", False)
             global_rate = ps.settings.get("global_frame_rate", None)
 
-        # 2. If global frame rate is enabled – then a valid value must exist.
+        # 2. Global enabled? Must have value.
         if is_global_enabled:
             if global_rate is None:
-                raise FrameRateResolutionError("Frame rate is enabled but no global frame rate value is set.")
+                raise FrameRateResolutionError("Global frame rate is enabled but no value is set.")
             logger.info(f"Using global frame rate: {global_rate}")
             return global_rate
 
-        # 3. If global frame rate is disabled, check experiment-specific settings.
+        # 3. Global disabled, check experiment
         current_experiment = ps.experiments.get(experiment_id) if experiment_id else None
         if current_experiment and hasattr(current_experiment, "frame_rate") and current_experiment.frame_rate is not None:
             logger.info(f"Using experiment-specific frame rate: {current_experiment.frame_rate}")
             return current_experiment.frame_rate
 
-        # 4. Check batch-specific settings.
+        # 4. Check batch
         current_batch = ps.batches.get(batch_id) if batch_id else None
         if current_batch and hasattr(current_batch, "frame_rate") and current_batch.frame_rate is not None:
             logger.info(f"Using batch-specific frame rate: {current_batch.frame_rate}")
             return current_batch.frame_rate
 
-        # 5. Otherwise, frame rate functionality is considered turned off.
+        # 5. Otherwise, OFF
         logger.info("Frame rate functionality is disabled and no specific frame rate provided; returning 'OFF'")
         return "OFF"
-
-    def _resolve_threshold(self, experiment_id: Optional[str], batch_id: Optional[str]) -> Optional[float]:
-        """
-        Determine the likelihood threshold based on an explicit internal threshold
-        or by checking experiment, batch or project defaults.
-        """
-        ps = self.state_manager.project_state
-        if self._likelihood_threshold is not None:
-            return self._likelihood_threshold
-        current_experiment = ps.experiments.get(experiment_id) if experiment_id else None
-        current_batch = ps.batches.get(batch_id) if batch_id else None
-        if current_experiment and current_experiment.likelihood_threshold is not None:
-            return current_experiment.likelihood_threshold
-        elif current_batch and current_batch.likelihood_threshold is not None:
-            return current_batch.likelihood_threshold
-        else:
-            if ps.likelihood_filter_enabled:
-                return ps.default_likelihood_threshold
-            else:
-                return None
-
-
-
-    def load_dlc_tracking_csv(
-        self, 
-        file_path: Path, 
-        frame_rate: Optional[int] = None,
-        experiment_id: Optional[str] = None,
-        batch_id: Optional[str] = None
-    ):
-        """
-        Load and process a DLC CSV tracking file.
-        Now we also look up the final frame rate from experiment/batch if not provided.
-        
-        Args:
-            file_path: Path to the CSV file
-            frame_rate: Optional explicit frame rate to use
-            experiment_id: Optional experiment ID to lookup frame rate
-            batch_id: Optional batch ID to lookup frame rate
-            
-        Returns:
-            DataFrame with processed tracking data
-            
-        Raises:
-            FileNotFoundError: If the file doesn't exist
-            ValueError: If no frame rate could be determined or file is invalid
-            FrameRateResolutionError: If frame rate is enabled but value is missing
-        """
-        # Validate file using the new helper
-        self._validate_file(file_path, [".csv"], "Tracking file")
-        
-        df = pd.read_csv(file_path, header=[0, 1, 2], index_col=0)
-
-        # Resolve frame rate using the helper method
-        try:
-            final_frame_rate = self._resolve_frame_rate(frame_rate, experiment_id, batch_id)
-            logger.info(f"Using frame rate {final_frame_rate} for {file_path}")
-        except FrameRateResolutionError as e:
-            error_msg = f"Cannot process {file_path}: {str(e)}"
-            logger.error(error_msg)
-            raise FrameRateResolutionError(error_msg)
-
-        # Resolve likelihood threshold using the helper method
-        final_threshold = self._resolve_threshold(experiment_id, batch_id)
-        if final_threshold is not None:
-            df = df[df.iloc[:, 2, 2] >= final_threshold]
-
-        logger.info(f"Successfully processed DLC CSV: {file_path}")
-        return df
-
-    def extract_bodyparts_from_dlc_config(self, config_file: Path) -> list:
-        """Extracts body parts from a DLC config YAML file and returns a list of unique body parts."""
-        # Validate config file using the helper (supporting YAML extensions)
-        self._validate_file(config_file, [".yaml", ".yml"], "Config file")
-        with open(config_file, 'r') as f:
-            config_data = yaml.safe_load(f)
-        bodyparts = config_data.get("bodyparts", [])
-        if not isinstance(bodyparts, list):
-            raise ValueError("Invalid format for bodyparts in config file")
-        # Return unique bodyparts while preserving order
-        unique_bodyparts = list(dict.fromkeys(bodyparts))
-        return unique_bodyparts 
-
-    def extract_bodyparts_from_dlc_csv(self, csv_file: Path) -> set:
-        """Extracts body parts from a DLC CSV file by reading the header (level 1) and returning a set of unique body parts."""
-        self._validate_file(csv_file, [".csv"], "CSV file")
-        try:
-            df = pd.read_csv(csv_file, header=[0,1,2], index_col=0)
-        except Exception as e:
-            raise ValueError(f"Error reading CSV file: {e}")
-        return set(df.columns.get_level_values(1)) 
 
     def validate_file_for_plugins(self, file_path: Path, plugins: list) -> dict:
         """Validate a file against the requirements of the given plugins.

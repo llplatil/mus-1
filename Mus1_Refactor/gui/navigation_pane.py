@@ -2,6 +2,9 @@ from PySide6.QtWidgets import QWidget, QVBoxLayout, QPushButton, QButtonGroup, Q
 from PySide6.QtCore import Signal, Qt
 from PySide6.QtGui import QColor, QTextCharFormat, QFont, QTextOption
 from datetime import datetime
+import logging
+
+logger = logging.getLogger(__name__)
 
 class NavigationPane(QWidget):
     """
@@ -187,29 +190,46 @@ class NavigationPane(QWidget):
     def _update_log_space(self):
         """Allocate remaining space to log display based on button stack size."""
         if not self.isVisible():
+            # Log why it's returning early
+            # logger.debug(f"[{self.parent().objectName() if self.parent() else 'Unknown'}] _update_log_space skipped: Pane not visible.")
             return
-            
+
         # Get current height of the navigation pane
         nav_height = self.height()
-        
+
         # Calculate space needed for the button container
         button_stack_height = self.button_container.height()
-        
+
         # Calculate available space for log display
         available_for_log = (
-            nav_height 
-            - button_stack_height 
-            - self.LOG_LABEL_HEIGHT
+            nav_height
+            - button_stack_height
+            # Include log label height in calculation
+            - self.log_label.height() # Use actual label height
             - (self.LAYOUT_MARGINS * 2)  # Top and bottom margins
-            - (self.LAYOUT_SPACING * 2)  # Spacing between components
+            - (self.LAYOUT_SPACING * 2)  # Spacing between button container, label, and log display
         )
-        
+
         # Ensure log has at least minimum height
         log_height = max(available_for_log, self.MIN_LOG_HEIGHT)
-        
-        # Set minimum height for log display
+
+        # ---> ADD LOGGING HERE <---
+        parent_name = self.parent().objectName() if self.parent() else 'UnknownView'
+        # logger.debug(                                  # Commented out
+        #     f"[{parent_name}] _update_log_space: NavHeight={nav_height}, "
+        #     f"ButtonStackHeight={button_stack_height}, LabelHeight={self.log_label.height()}, "
+        #     f"AvailableForLog={available_for_log}, FinalLogHeight={log_height}"
+        # )
+        # --- END LOGGING ---
+
+        # Set minimum height for log display container (if applicable) or log display itself
+        # If self.log_container exists and layout is managed correctly:
+        # self.log_container.setMinimumHeight(log_height + self.LOG_LABEL_HEIGHT)
+        # Or directly set the log display minimum height
         self.log_display.setMinimumHeight(log_height)
-        
+        # Force layout update if needed
+        self.layout.activate()
+
     def update_layout_sizes(self):
         """Update layout sizes based on the current button count and available space."""
         # Now just calls update_button_stack_size for backward compatibility
@@ -217,11 +237,24 @@ class NavigationPane(QWidget):
 
     def set_button_checked(self, index: int):
         """Sets the currently selected button as checked and others unchecked."""
+        # Log which view's pane is being called
+        parent_name = self.parent().objectName() if self.parent() else 'UnknownView'
+        # logger.debug(f"[{parent_name}] NavigationPane.set_button_checked called for index: {index}") # Commented out
         if not self.buttons:
+            logger.warning(f"[{parent_name}] No buttons in NavigationPane to set checked state.")
             return
             
         for i, btn in enumerate(self.buttons):
-            btn.setChecked(i == index)
+            is_target = (i == index)
+            # Log before setting
+            # logger.debug(f"  Setting button '{btn.text()}' (index {i}) checked state to: {is_target}") # Commented out
+            btn.setChecked(is_target)
+            # Log after setting to confirm property value
+            # logger.debug(f"  Button '{btn.text()}' checked state IS: {btn.isChecked()}") # Commented out
+
+        # Optional: Log final states after loop
+        final_states = {btn.text(): btn.isChecked() for btn in self.buttons}
+        # logger.debug(f"[{parent_name}] Final button checked states: {final_states}") # Commented out
 
     def connect_button_group(self):
         """Setup button group if explicit control is needed."""

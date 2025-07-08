@@ -121,50 +121,16 @@ class StateManager:
 
         return sort_items(all_items, sort_mode, key_func=key_func)
 
-    def sync_plugin_metadatas(self, plugin_manager) -> None:
-        """
-        Pull all plugin metadata from the plugin_manager, optionally sort them,
-        then store them in project_state.registered_plugin_metadatas.
-        """
-        all_metadata = plugin_manager.get_all_plugin_metadata()
-
-        # Use the global sort setting
-        sort_mode = self._project_state.settings.get("global_sort_mode", "Lexicographical Order (Numbers as Characters)")
-
-        if sort_mode == "Date Added":
-            all_metadata.sort(key=lambda pm: pm.date_created)
+    def sync_plugin_metadatas(self, plugin_manager):
+        """Syncs the registered plugin metadata into the project state."""
+        if self.project_state:
+            plugin_metas = plugin_manager.get_all_plugin_metadata()
+            self.project_state.registered_plugin_metadatas = plugin_metas
+            
+            self.notify_observers()
         else:
-            # Default: sort by name (case-insensitive)
-            all_metadata.sort(key=lambda pm: pm.name.lower())
+            logger.warning("Project state not loaded, cannot sync plugin metadatas.")
 
-        self._project_state.registered_plugin_metadatas = all_metadata
-        
-        # Also sync plugin styling preferences
-        self.sync_plugin_styling(plugin_manager)
-        
-        logger.info(f"Synced plugin metadata (sorted by '{sort_mode}'): {[m.name for m in all_metadata]}")
-
-    def sync_plugin_styling(self, plugin_manager) -> None:
-        """
-        Sync plugin styling preferences from the plugin_manager to the project state.
-        
-        This retrieves standardized styling preferences from all plugins and 
-        stores them in the project state for UI components to use.
-        """
-        styling_preferences = plugin_manager.get_all_plugin_styling_preferences()
-        styling_classes = plugin_manager.get_plugin_styling_classes()
-        
-        # Store in project state - ensure settings exists
-        if not hasattr(self._project_state, 'settings'):
-            self._project_state.settings = {}
-        
-        # Store both the raw preferences and the processed CSS classes
-        self._project_state.settings['plugin_styling_preferences'] = styling_preferences
-        self._project_state.settings['plugin_styling_classes'] = styling_classes
-        
-        logger.info(f"Synced styling preferences for {len(styling_preferences)} plugins")
-        self.log_bus.log(f"Synced styling for {len(styling_preferences)} plugins", "info", "StateManager")
-    
     def get_plugin_styling_classes(self, plugin_id: str) -> List[str]:
         """
         Get the CSS classes to apply for a specific plugin.
@@ -199,6 +165,13 @@ class StateManager:
                 if hasattr(pm, 'supported_experiment_types') and 
                 pm.supported_experiment_types and 
                 exp_type in pm.supported_experiment_types]
+
+    def get_plugins_by_type(self, plugin_type: str) -> List[PluginMetadata]:
+        """
+        Return a list of plugin metadata for plugins that match the given plugin_type.
+        """
+        return [pm for pm in self._project_state.registered_plugin_metadatas
+                if hasattr(pm, 'plugin_type') and pm.plugin_type == plugin_type]
 
     def get_sorted_body_parts(self) -> dict:
         """

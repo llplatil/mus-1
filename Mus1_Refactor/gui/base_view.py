@@ -1,6 +1,9 @@
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QStackedWidget, QLabel, QGroupBox
 from PySide6.QtCore import Qt
-from gui.navigation_pane import NavigationPane
+from .navigation_pane import NavigationPane
+import logging
+
+logger = logging.getLogger(__name__)
 
 class BaseView(QWidget):
     """
@@ -200,9 +203,14 @@ class BaseView(QWidget):
         Args:
             index: The index of the page to display
         """
+        logger.debug(f"[{self.objectName()}] BaseView.change_page received click for index: {index}") # Log which view received click
         if 0 <= index < self.pages.count():
+            logger.debug(f"  Setting stacked widget current index to: {index}")
             self.pages.setCurrentIndex(index)
+            # Call the navigation pane's method to update the button visually
             self.navigation_pane.set_button_checked(index)
+        else:
+             logger.warning(f"[{self.objectName()}] Attempted to change to invalid page index: {index} (Page count: {self.pages.count()})")
     
     def add_log_message(self, message, level='info'):
         """Add a message to the navigation pane's log display."""

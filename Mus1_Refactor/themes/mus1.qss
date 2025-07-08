@@ -11,12 +11,12 @@ QLabel {
   background: transparent;
 }
 
-/* Form labels specifically */
+/* Form labels specifically (used with create_form_label helper) */
 QLabel[formLabel="true"] {
   background: transparent;
   padding: 4px 0;
   margin: 0;
-  min-height: 24px;
+  min-height: 24px; /* Consistent height for alignment */
   height: 24px;
   line-height: 24px;
   min-width: 65px;
@@ -24,19 +24,36 @@ QLabel[formLabel="true"] {
   margin-right: 8px;
 }
 
-/* Make sure all labels in layouts get proper styling */
-QGroupBox > QLabel, 
-QHBoxLayout > QLabel, 
-QVBoxLayout > QLabel,
+/* Styling for section header labels (e.g., "Core Experiment Details") */
 .mus1-section-label {
-  background: transparent;
-  color: $TEXT_COLOR;
+  font-weight: bold;
+  color: $TEXT_COLOR; /* Inherits background from parent QWidget */
+  margin-bottom: 5px;
+  font-size: 14px;
+  background: transparent; /* Ensure transparency */
 }
 
+/* Styling for plugin parameter group headers */
+QLabel.mus1-plugin-param-header {
+    font-weight: bold;
+    margin-top: 5px;
+    padding-top: 5px;
+    border-top: 1px solid $BORDER_COLOR;
+    background: transparent; /* Ensure transparency */
+}
+
+/* Styling for labels marking required fields */
+QLabel[fieldRequired="true"] {
+    color: $PLUGIN_REQUIRED_COLOR;
+    /* font-weight: bold; */ /* Optional: Uncomment if needed */
+    background: transparent; /* Ensure transparency */
+}
+
+/* Main Application Window */
 .mus1-main-window {
   min-width: 800px;
   min-height: 600px;
-  background-color: $BACKGROUND_COLOR;
+  background-color: $BACKGROUND_COLOR; /* Already set by QWidget, but explicit for clarity */
   color: $TEXT_COLOR;
 }
 
@@ -81,6 +98,8 @@ QVBoxLayout > QLabel,
 }
 
 /* ==== INPUT AND FORM ELEMENTS ==== */
+
+/* Group boxes for sections of controls */
 .mus1-input-group {
   border: 1px solid $BORDER_COLOR;
   border-radius: 6px;
@@ -90,7 +109,7 @@ QVBoxLayout > QLabel,
   color: $TEXT_COLOR;
 }
 
-/* Subgroups inside input groups - for nested layouts */
+/* Subgroups within a main group */
 .mus1-subgroup {
   border: 1px solid $BORDER_COLOR;
   border-radius: 4px;
@@ -100,20 +119,13 @@ QVBoxLayout > QLabel,
   color: $TEXT_COLOR;
 }
 
-/* Make subgroup titles more subtle */
-.mus1-subgroup > .mus1-section-label, 
-.mus1-subgroup > QLabel[formLabel="true"] {
-  font-size: 11px;
-  color: $TEXT_COLOR;
-  opacity: 0.8;
-}
+/* Make subgroup titles slightly more subtle (if needed - relies on QLabel styling) */
+/* .mus1-subgroup > .mus1-section-label { ... } */ /* Maybe redundant now */
 
-/* Ensure all labels inside input groups have transparent backgrounds */
-.mus1-input-group QLabel, .mus1-subgroup QLabel {
-  background-color: transparent;
-}
+/* Ensure all labels inside input groups have transparent backgrounds (redundant with global QLabel) */
+/* .mus1-input-group QLabel, .mus1-subgroup QLabel { background-color: transparent; } */
 
-/* Consolidated ComboBox and Text Input Styling */
+/* Text Inputs and Combo Boxes */
 .mus1-text-input, .mus1-combo-box, QLineEdit, QComboBox {
   border-radius: 4px;
   padding: 4px 6px;
@@ -127,7 +139,7 @@ QVBoxLayout > QLabel,
   margin-bottom: 0;
 }
 
-/* Spinbox styling for consistent height with text inputs */
+/* Spin Boxes (Int and Double) */
 QSpinBox, QDoubleSpinBox {
   border-radius: 4px;
   padding: 4px 6px;
@@ -139,6 +151,7 @@ QSpinBox, QDoubleSpinBox {
   margin: 0;
 }
 
+/* Spin Box Buttons */
 QSpinBox::up-button, QDoubleSpinBox::up-button,
 QSpinBox::down-button, QDoubleSpinBox::down-button {
   width: 16px;
@@ -146,7 +159,7 @@ QSpinBox::down-button, QDoubleSpinBox::down-button {
   subcontrol-origin: margin;
 }
 
-/* Checkbox styling for consistent height with other controls */
+/* Check Boxes */
 QCheckBox {
   min-height: 24px;
   height: 24px;
@@ -167,7 +180,7 @@ QCheckBox:focus {
   background: transparent;
 }
 
-/* Dropdown button styling */
+/* Combo Box Dropdown Button */
 QComboBox::drop-down, .mus1-combo-box::drop-down {
   subcontrol-origin: padding;
   subcontrol-position: right center;
@@ -177,7 +190,7 @@ QComboBox::drop-down, .mus1-combo-box::drop-down {
   border-bottom-right-radius: 3px;
 }
 
-/* Using custom down arrow from external SVG file instead of inline SVG */
+/* Combo Box Dropdown Arrow */
 QComboBox::down-arrow {
     subcontrol-origin: padding;
     subcontrol-position: right center;
@@ -187,7 +200,7 @@ QComboBox::down-arrow {
     margin-right: 10px;
 }
 
-/* Update hover and focus rules similarly */
+/* Combo Box Hover/Focus States */
 QComboBox:hover, QComboBox#mus1-combo-box:hover {
   border-color: $PRIMARY_BUTTON_BG;
 }
@@ -197,7 +210,7 @@ QComboBox:focus, QComboBox#mus1-combo-box:focus {
   outline: none;
 }
 
-/* Dropdown popup styling */
+/* Combo Box Dropdown List View */
 QComboBox QAbstractItemView, .mus1-combo-box QAbstractItemView {
   background-color: $INPUT_BG;
   border: 1px solid $BORDER_COLOR;
@@ -207,34 +220,26 @@ QComboBox QAbstractItemView, .mus1-combo-box QAbstractItemView {
   padding: 4px;
 }
 
-/* When dropdown is opened */
+/* Combo Box Open State */
 QComboBox:on, .mus1-combo-box:on {
   border: 1px solid $PRIMARY_BUTTON_BG;
   background-color: $INPUT_BG;
 }
 
-/* Form layout rows */
+/* Form Layout Rows */
 QHBoxLayout.form-row, .form-row {
   padding: 0;
   margin: 0;
   min-height: 24px;
 }
 
-/* Form layout labels */
-QLabel[formLabel="true"] {
-  min-width: 65px;
-  text-align: right;
-  margin-right: 8px;
-  background: transparent;
-}
-
-/* Fix text selection highlighting */
+/* Text Selection Highlighting */
 QLineEdit::selection, QTextEdit::selection, QPlainTextEdit::selection {
   background-color: $SELECTION_BG;
   color: $SELECTION_TEXT;
 }
 
-/* Input label styling */
+/* Input Labels (Generic - review if still needed or covered by formLabel) */
 .mus1-input-label {
   color: $TEXT_COLOR;
   font-weight: normal;
@@ -269,24 +274,6 @@ QLineEdit::selection, QTextEdit::selection, QPlainTextEdit::selection {
   margin-bottom: 8px;
 }
 
-/* Notes save button */
-.mus1-notes-save-button {
-  border: none;
-  border-radius: 6px;
-  padding: 8px 16px;
-  background-color: $PRIMARY_BUTTON_BG;
-  color: $PRIMARY_BUTTON_TEXT;
-  margin-top: 8px;
-}
-
-.mus1-notes-save-button:hover {
-  background-color: $PRIMARY_BUTTON_HOVER;
-}
-
-.mus1-notes-save-button:pressed {
-  background-color: $PRIMARY_BUTTON_PRESSED;
-}
-
 /* ==== LIST WIDGET STYLING ==== */
 .mus1-list-widget {
   border: 1px solid $BORDER_COLOR;
@@ -313,14 +300,14 @@ QListWidget::item:hover, .mus1-list-widget::item:hover {
   background-color: $HOVER_BG;
 }
 
-/* ==== TABLE VIEWS ==== */
+/* ==== TABLE VIEW STYLING ==== */
 .mus1-table-view, QTableView {
   border: 1px solid $BORDER_COLOR;
   background-color: $INPUT_BG;
   color: $INPUT_TEXT;
 }
 
-/* Use QHeaderView directly for better Qt compatibility */
+/* Table Header */
 QHeaderView::section, .mus1-table-view QHeaderView::section {
   background-color: $HEADER_BG;
   color: $HEADER_TEXT;
@@ -328,6 +315,7 @@ QHeaderView::section, .mus1-table-view QHeaderView::section {
   font-weight: bold;
 }
 
+/* Table Items */
 QTableView::item, .mus1-table-view::item {
   padding: 4px;
 }
@@ -390,7 +378,7 @@ QTableView::item:selected, .mus1-table-view::item:selected {
   padding: 0;
 }
 
-/* ==== PLUGIN ELEMENTS ==== */
+/* ==== PLUGIN ELEMENTS (Containers) ==== */
 .plugin-panel {
   border: 1px solid $BORDER_COLOR;
   border-radius: 6px;
@@ -440,14 +428,14 @@ QSplitter::handle {
 
 /* ==== CONTENT AREAS ==== */
 .mus1-content-area {
-  background-color: $CONTENT_BG;
+  background-color: $BACKGROUND_COLOR;
   border-radius: 0;
   color: $CONTENT_TEXT;
 }
 
 .mus1-page {
   padding: 12px;
-  background-color: $CONTENT_BG;
+  background-color: $BACKGROUND_COLOR;
   border-radius: 6px;
   margin-bottom: 10px;
 }
@@ -461,14 +449,7 @@ QSplitter::handle {
   background-color: $WIDGET_BOX_BG;
 }
 
-.mus1-section-label {
-  font-weight: bold;
-  color: $TEXT_COLOR;
-  margin-bottom: 5px;
-  font-size: 14px;
-}
-
-/* ==== PLUGIN COMPONENT STYLES (Using Properties) ==== */
+/* ==== PLUGIN COMPONENT STYLING (Using Dynamic Properties) ==== */
 QWidget[pluginStage="preprocessing"] {
   background-color: $PLUGIN_PREPROCESSING_BG;
 }
@@ -586,11 +567,6 @@ QSlider[mus1-slider="true"]::tick:horizontal {
     height: 6px;
 }
 
-/* ==== SPLITTER STYLING ==== */
-QSplitter::handle {
-    background-color: $BORDER_COLOR;
-}
-
 /* ==== TAB WIDGET STYLES ==== */
 QTabWidget::pane {
     border: 1px solid $BORDER_COLOR;
@@ -616,3 +592,6 @@ QTabBar::tab:selected {
 QTabBar::tab:hover {
     background-color: $PRIMARY_BUTTON_HOVER;
 }
+
+/* ==== REQUIRED FIELD LABEL STYLING (Moved near other label styles) ==== */
+/* QLabel[fieldRequired="true"] { ... } */ /* Now defined earlier */

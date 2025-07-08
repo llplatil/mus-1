@@ -52,6 +52,8 @@ class PluginMetadata:
     supported_experiment_types: Optional[List[str]] = None
     supported_processing_stages: Optional[List[str]] = None
     supported_data_sources: Optional[List[str]] = None
+    readable_data_formats: List[str] = Field(default_factory=list)
+    analysis_capabilities: List[str] = Field(default_factory=list)
     plugin_type: Optional[str] = None  # delinites plugin type (eg experiment type, batch type, etc.) and has supported_experiment_types as sub classes
 
 class Sex(str, Enum):
@@ -165,7 +167,7 @@ class ExperimentMetadata(BaseModel):
     plugin_metadata: List[PluginMetadata] = Field(default_factory=list)
     
     # New fields for hierarchical experiment creation
-    processing_stage: str = ""
+    processing_stage: str = "planned" # Default stage
     data_source: str = ""
     associated_plugins: List[str] = Field(default_factory=list)
     
@@ -173,10 +175,40 @@ class ExperimentMetadata(BaseModel):
     batch_ids: Set[str] = Field(default_factory=set)
     file_ids: Set[str] = Field(default_factory=set)
     
+    # New field for storing analysis results
+    analysis_results: Dict[str, Any] = Field(default_factory=dict)
+
     @property
     def analysis_ready(self) -> bool:
-        """Return True if the experiment is ready for analysis (i.e. tracking_data is present)."""
-        return self.tracking_data is not None
+        """
+        Return True if the experiment might be ready for analysis.
+        Placeholder logic - needs refinement based on required plugin parameters.
+        Example: Check if a required tracking file path exists in plugin_params.
+        """
+        # Basic check: are there any associated plugins? More detailed checks needed.
+        # This property might be better determined by ProjectManager or specific plugins.
+        return bool(self.associated_plugins) and self.processing_stage in ["recorded", "tracked"]
+
+    @validator("id")
+    def validate_id(cls, v: str) -> str:
+        if not v or len(v.strip()) < 3:
+            raise ValueError("Experiment ID must be at least 3 characters")
+        return v.strip()
+    
+    @validator("date_recorded")
+    def validate_date_recorded(cls, v: datetime) -> datetime:
+        if v > datetime.now():
+            raise ValueError("Recording date cannot be in the future")
+        return v
+        
+    @root_validator(skip_on_failure=True) # Use skip_on_failure=True for Pydantic v2 style
+    def validate_experiment(cls, values: Dict[str, Any]) -> Dict[str, Any]:
+        if not values.get("type"):
+            raise ValueError("Experiment type is required")
+        if not values.get("subject_id"):
+            raise ValueError("Subject ID is required")
+        # Removed check related to data_files
+        return values
 
 
 class BatchMetadata(BaseModel):

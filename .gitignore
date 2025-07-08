@@ -75,3 +75,17 @@ Thumbs.db
 **/temp/
 **/cache/
 **/backups/
+
+# ---------------------------------------------------
+# MUS1-specific ignores (development / local helpers)
+# ---------------------------------------------------
+# Local demo or scratch data (not for version control)
+Mus1_Refactor/test_data/
+
+# One-off helper scripts or text dumps generated locally
+Mus1_Refactor/repo_to_text.py
+Mus1_Refactor/**/repo_dump_*.txt
+Mus1_Refactor/**/third_party_repo_*.txt
+
+# Any other large reference repos extracted as plain text
+Mus1_Refactor/**/reference_repos/

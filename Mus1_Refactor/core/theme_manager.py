@@ -16,11 +16,6 @@ class ThemeManager:
         # Cache for processed stylesheets
         self.processed_stylesheets = {}
         
-        # New: Registry for plugin-specific style overrides
-        self.plugin_style_registry = {}
-        self.plugin_styles_dirty = True
-        self.combined_stylesheet = {"dark": "", "light": ""}
-        
         # Define theme color palettes
         self.theme_colors = {
             "dark": {
@@ -77,13 +72,23 @@ class ThemeManager:
                 "$LOG_TEXT": "#E0E0E0",
                 "$LOG_LABEL_COLOR": "#BB86FC",
                 
-                # Plugin colors
-                "$PLUGIN_PREPROCESSING_BG": "rgba(0, 41, 82, 0.25)",
-                "$PLUGIN_ANALYSIS_BG": "rgba(0, 82, 41, 0.25)",
-                "$PLUGIN_RESULTS_BG": "rgba(82, 41, 0, 0.25)",
-                "$PLUGIN_REQUIRED_COLOR": "#ff8787",
-                "$PLUGIN_OPTIONAL_COLOR": "#4dabf7",
-                "$PLUGIN_COMPONENT_ACCENT": "#BB86FC"
+                # Plugin/Field colors (Simplified)
+                "$PLUGIN_REQUIRED_COLOR": "#ff8787", # Red for required fields
+                "$PLUGIN_OPTIONAL_COLOR": "#4dabf7", # Blue for optional (if needed)
+                "$PLUGIN_COMPONENT_ACCENT": "#BB86FC", # Accent border (if needed)
+
+                # Experiment Stage Colors
+                "$STAGE_PLANNED_COLOR": "#888888",  # Grey
+                "$STAGE_RECORDED_COLOR": "#4dabf7", # Blue
+                "$STAGE_LABELED_COLOR": "#fcc419",  # Yellow
+                "$STAGE_TRACKED_COLOR": "#74b816",  # Green
+                "$STAGE_INTERPRETED_COLOR": "#e03131", # Red
+                "$STAGE_UNKNOWN_COLOR": "#cccccc",   # Light Grey for unknown/default
+
+                # ---> ADD MISSING PLUGIN VARIABLES (Dark Theme) <---
+                "$PLUGIN_PREPROCESSING_BG": "#2c3e50", # Dark blue-grey example
+                "$PLUGIN_ANALYSIS_BG": "#34495e",      # Slightly lighter blue-grey example
+                "$PLUGIN_RESULTS_BG": "#273746",        # Darker blue-grey example
             },
             "light": {
                 # Base colors
@@ -139,13 +144,23 @@ class ThemeManager:
                 "$LOG_TEXT": "#333333",
                 "$LOG_LABEL_COLOR": "#4A90E2",
                 
-                # Plugin colors
-                "$PLUGIN_PREPROCESSING_BG": "rgba(240, 248, 255, 0.6)",
-                "$PLUGIN_ANALYSIS_BG": "rgba(240, 255, 240, 0.6)",
-                "$PLUGIN_RESULTS_BG": "rgba(255, 248, 240, 0.6)",
-                "$PLUGIN_REQUIRED_COLOR": "rgba(238, 141, 141, 0.57)",
-                "$PLUGIN_OPTIONAL_COLOR": "rgba(116, 193, 252, 0.57)",
-                "$PLUGIN_COMPONENT_ACCENT": "#4A90E2"
+                # Plugin/Field colors (Simplified)
+                "$PLUGIN_REQUIRED_COLOR": "#e03131", # Red for required fields
+                "$PLUGIN_OPTIONAL_COLOR": "#4A90E2", # Blue for optional (if needed)
+                "$PLUGIN_COMPONENT_ACCENT": "#4A90E2", # Accent border (if needed)
+
+                # Experiment Stage Colors
+                "$STAGE_PLANNED_COLOR": "#888888",  # Grey
+                "$STAGE_RECORDED_COLOR": "#4A90E2", # Blue
+                "$STAGE_LABELED_COLOR": "#f59f00",  # Orange/Yellow
+                "$STAGE_TRACKED_COLOR": "#40c057",  # Green
+                "$STAGE_INTERPRETED_COLOR": "#c92a2a", # Red
+                "$STAGE_UNKNOWN_COLOR": "#555555",   # Dark Grey for unknown/default
+
+                # ---> ADD MISSING PLUGIN VARIABLES (Light Theme) <---
+                "$PLUGIN_PREPROCESSING_BG": "#ecf0f1", # Light grey example
+                "$PLUGIN_ANALYSIS_BG": "#e0e6e8",      # Slightly darker grey example
+                "$PLUGIN_RESULTS_BG": "#d3dade",        # Medium grey example
             }
         }
 
@@ -166,165 +181,100 @@ class ThemeManager:
         effective_theme = self.get_effective_theme()
         logger.info(f"Applying theme: {effective_theme}")
 
-        # Set up the palette based on effective theme
+        # Get the color dictionary for the effective theme
+        colors = self.theme_colors.get(effective_theme, self.theme_colors["dark"]) # Fallback to dark
+
+        # Set up the palette based on effective theme using theme variables
         palette = QPalette()
-        if effective_theme == "dark":
-            palette.setColor(QPalette.Window, QColor("#121212"))
-            palette.setColor(QPalette.WindowText, QColor("white"))
-            palette.setColor(QPalette.Base, QColor("#1E1E1E"))
-            palette.setColor(QPalette.Button, QColor("#1E1E1E"))
-            palette.setColor(QPalette.ButtonText, QColor("white"))
-            palette.setColor(QPalette.Highlight, QColor("#BB86FC"))
-            palette.setColor(QPalette.HighlightedText, QColor("black"))
-            
-            # Set specific colors for text to ensure good contrast
-            palette.setColor(QPalette.Text, QColor("white"))
-        else:
-            palette = app.style().standardPalette()
-            
+        try:
+            # Use variables from the 'colors' dictionary - THESE ARE HEX CODES
+            palette.setColor(QPalette.Window, QColor(colors.get("$BACKGROUND_COLOR", "#FFFFFF")))
+            palette.setColor(QPalette.WindowText, QColor(colors.get("$TEXT_COLOR", "#000000")))
+            palette.setColor(QPalette.Base, QColor(colors.get("$CONTENT_BG", "#FFFFFF")))
+            palette.setColor(QPalette.AlternateBase, QColor(colors.get("$INPUT_BG", "#F0F0F0")))
+            palette.setColor(QPalette.ToolTipBase, QColor(colors.get("$WIDGET_BOX_BG", "#FFFFE0")))
+            palette.setColor(QPalette.ToolTipText, QColor(colors.get("$TEXT_COLOR", "#000000")))
+            palette.setColor(QPalette.Text, QColor(colors.get("$TEXT_COLOR", "#000000")))
+            palette.setColor(QPalette.Button, QColor(colors.get("$SECONDARY_BUTTON_BG", "#F0F0F0")))
+            palette.setColor(QPalette.ButtonText, QColor(colors.get("$SECONDARY_BUTTON_TEXT", "#000000")))
+            palette.setColor(QPalette.BrightText, QColor(colors.get("$PRIMARY_BUTTON_TEXT", "#FFFFFF")))
+            palette.setColor(QPalette.Highlight, QColor(colors.get("$SELECTION_BG", "#0078D7")))
+            palette.setColor(QPalette.HighlightedText, QColor(colors.get("$SELECTION_TEXT", "#FFFFFF")))
+
+            # Handle disabled state colors (can derive or use defaults)
+            palette.setColor(QPalette.Disabled, QPalette.Text, QColor(colors.get("$BORDER_COLOR", "#A0A0A0")))
+            palette.setColor(QPalette.Disabled, QPalette.ButtonText, QColor(colors.get("$BORDER_COLOR", "#A0A0A0")))
+
+        except KeyError as e:
+             logger.error(f"Missing color variable for QPalette setup: {e}. Using fallback defaults.")
+             # Apply very basic defaults if a key is missing
+             if effective_theme == "dark":
+                 palette.setColor(QPalette.Window, QColor("#121212"))
+                 palette.setColor(QPalette.WindowText, QColor("#FFFFFF")) # Use hex code instead of "white"
+             else:
+                 palette = app.style().standardPalette() # Fallback to system style standard palette
+
         app.setPalette(palette)
         
-        # Process base stylesheet if not cached
-        if effective_theme not in self.processed_stylesheets:
+        # Initialize processed_stylesheet to None BEFORE checking cache or processing
+        processed_stylesheet = None 
+        
+        # Check cache first
+        if effective_theme in self.processed_stylesheets:
+            processed_stylesheet = self.processed_stylesheets[effective_theme]
+            logger.debug(f"Using cached stylesheet for theme: {effective_theme}")
+        else:
+            # Not in cache, try processing
             try:
                 if not self.base_qss_path.exists():
                     logger.error(f"Base QSS file not found: {self.base_qss_path}")
                     self._apply_minimal_stylesheet(app, effective_theme)
-                    return effective_theme
+                    return effective_theme # Return early after applying minimal
+
                 with open(self.base_qss_path, "r", encoding="utf-8") as f:
                     stylesheet = f.read()
-                colors = self.theme_colors.get(effective_theme, self.theme_colors["dark"])
+                
+                # Substitute theme variables
+                # logger.debug(f"Starting variable substitution for theme: {effective_theme}") # Commented out
                 for var, value in colors.items():
-                    stylesheet = stylesheet.replace(var, value)
-                # Clean up any erroneous appended suffixes in hex colors (e.g., "#555555_HOVER" -> "#555555")
-                stylesheet = re.sub(r"(#[0-9a-fA-F]{6})_[A-Z]+", r"\1", stylesheet)
+                    # Original pattern: pattern = r'\b' + re.escape(var) + r'\b'
+                    # Revised pattern: Remove the leading \b because $ is not a word character
+                    pattern = re.escape(var) + r'\b'
+                    # logger.debug(f"Substituting pattern '{pattern}' with '{value}'") # Commented out
+                    stylesheet = re.sub(pattern, value, stylesheet)
+                
+                # Check if any variables remain
+                remaining_vars = re.findall(r'\$[\w_]+', stylesheet)
+                if remaining_vars:
+                    logger.warning(f"Unsubstituted variables remaining in stylesheet: {set(remaining_vars)}")
+
+                # logger.info(f"Processed Stylesheet content sample:\n{stylesheet[:1000]}...") # Commented out
+
                 self.processed_stylesheets[effective_theme] = stylesheet
+                processed_stylesheet = stylesheet # Assign the newly processed stylesheet
+
             except Exception as e:
-                logger.error(f"Error processing stylesheet: {e}")
+                logger.error(f"Error processing stylesheet: {e}", exc_info=True)
                 self._apply_minimal_stylesheet(app, effective_theme)
-                return effective_theme
-        
-        # Combine base stylesheet with plugin-specific CSS
-        if self.plugin_styles_dirty or not self.combined_stylesheet.get(effective_theme):
-            base_stylesheet = self.processed_stylesheets[effective_theme]
-            plugin_css = self._generate_plugin_css(effective_theme)
-            combined_css = base_stylesheet
-            if plugin_css:
-                combined_css += "\n/* PLUGIN-SPECIFIC STYLES */\n" + plugin_css
-            self.combined_stylesheet[effective_theme] = combined_css
-            self.plugin_styles_dirty = False
-        
-        # Apply the combined stylesheet
-        app.setStyleSheet(self.combined_stylesheet[effective_theme])
-        logger.info("Successfully applied theme stylesheet with plugin overrides")
-        
+                # Return early after applying minimal in case of error
+                return effective_theme 
+
+        # Apply the processed stylesheet (now processed_stylesheet is guaranteed to be assigned or None)
+        if processed_stylesheet:
+            logger.info("Attempting to apply the processed stylesheet...")
+            try:
+                app.setStyleSheet(processed_stylesheet)
+                logger.info("Stylesheet applied via app.setStyleSheet.")
+            except Exception as apply_error: # Catch potential errors during Qt's application
+                 logger.error(f"Qt failed to apply stylesheet: {apply_error}", exc_info=True)
+                 logger.warning("Applying minimal fallback stylesheet due to Qt application error.")
+                 self._apply_minimal_stylesheet(app, effective_theme)
+        else:
+             # This case means cache miss AND processing failed AND error handling didn't return early
+             logger.error("No processed stylesheet was available and minimal wasn't applied in error handler. Applying minimal now.")
+             self._apply_minimal_stylesheet(app, effective_theme)
+
         return effective_theme
-
-    def register_plugin_styles(self, plugin_id, style_overrides):
-        """Register plugin-specific style overrides."""
-        self.plugin_style_registry[plugin_id] = style_overrides
-        self.plugin_styles_dirty = True
-        logger.info(f"Registered style overrides for plugin: {plugin_id}")
-
-    def unregister_plugin_styles(self, plugin_id):
-        """Unregister plugin-specific style overrides."""
-        if plugin_id in self.plugin_style_registry:
-            del self.plugin_style_registry[plugin_id]
-            self.plugin_styles_dirty = True
-            logger.info(f"Unregistered style overrides for plugin: {plugin_id}")
-
-    def refresh_plugin_styles(self):
-        """Mark plugin styles as dirty to trigger reprocessing."""
-        self.plugin_styles_dirty = True
-
-    def merge_plugin_overrides(self):
-        """Merge all registered plugin base overrides, applying first-registered wins if conflicts occur."""
-        merged = {}
-        for plugin_id, overrides in self.plugin_style_registry.items():
-            base_overrides = overrides.get("base", {})
-            for var, value in base_overrides.items():
-                if var in merged:
-                    if merged[var] != value:
-                        logger.warning(f"Conflict for {var} from plugin {plugin_id}; using '{merged[var]}' (first registered wins).")
-                else:
-                    merged[var] = value
-        return merged
-
-    def _generate_plugin_css(self, theme):
-        """Generate CSS for all registered plugin style overrides."""
-        if not self.plugin_style_registry:
-            return ""
-        plugin_css = ""
-        # Generate individual plugin CSS rules
-        for plugin_id, overrides in self.plugin_style_registry.items():
-            if "base" not in overrides:
-                continue
-            plugin_css += f"\n/* Plugin: {plugin_id} */\n"
-            plugin_css += f'QWidget[pluginId="{plugin_id}"] {{'
-            for var, value in overrides["base"].items():
-                prop = self._map_variable_to_property(var)
-                if prop:
-                    if prop == "border-left":
-                        plugin_css += f"\n    {prop}: 3px solid {value};"
-                    else:
-                        plugin_css += f"\n    {prop}: {value};"
-            plugin_css += "\n}\n"
-        
-        # Merge overrides from all plugins for combined UI components
-        merged_overrides = self.merge_plugin_overrides()
-        if merged_overrides:
-            plugin_css += "\n/* Combined Plugin Overrides */\n"
-            plugin_css += ".plugin-combined-overrides {"
-            for var, value in merged_overrides.items():
-                prop = self._map_variable_to_property(var)
-                if prop:
-                    if prop == "border-left":
-                        plugin_css += f"\n    {prop}: 3px solid {value};"
-                    else:
-                        plugin_css += f"\n    {prop}: {value};"
-            plugin_css += "\n}\n"
-        return plugin_css
-
-    def _map_variable_to_property(self, variable):
-        """Map a placeholder variable to its corresponding CSS property."""
-        mapping = {
-            "$BACKGROUND_COLOR": "background-color",
-            "$TEXT_COLOR": "color",
-            "$BORDER_COLOR": "border-color",
-            "$PRIMARY_BUTTON_BG": "background-color",
-            "$PRIMARY_BUTTON_TEXT": "color",
-            "$PRIMARY_BUTTON_HOVER": "background-color",
-            "$PRIMARY_BUTTON_PRESSED": "background-color",
-            "$SECONDARY_BUTTON_BG": "background-color",
-            "$SECONDARY_BUTTON_TEXT": "color",
-            "$SECONDARY_BUTTON_HOVER": "background-color",
-            "$NAV_BG": "background-color",
-            "$NAV_BUTTON_BG": "background-color",
-            "$NAV_BUTTON_TEXT": "color",
-            "$NAV_BUTTON_HOVER": "background-color",
-            "$NAV_BUTTON_SELECTED": "background-color",
-            "$CONTENT_BG": "background-color",
-            "$CONTENT_TEXT": "color",
-            "$INPUT_BG": "background-color",
-            "$INPUT_TEXT": "color",
-            "$WIDGET_BOX_BG": "background-color",
-            "$SELECTION_BG": "background-color",
-            "$SELECTION_TEXT": "color",
-            "$BORDER_LIGHT": "border-color",
-            "$SCROLLBAR_BG": "background-color",
-            "$SCROLLBAR_HANDLE": "background-color",
-            "$SCROLLBAR_HANDLE_HOVER": "background-color",
-            "$HEADER_BG": "background-color",
-            "$HEADER_TEXT": "color",
-            "$HOVER_BG": "background-color",
-            "$PLUGIN_PREPROCESSING_BG": "background-color",
-            "$PLUGIN_ANALYSIS_BG": "background-color",
-            "$PLUGIN_RESULTS_BG": "background-color",
-            "$PLUGIN_REQUIRED_COLOR": "border-left",
-            "$PLUGIN_OPTIONAL_COLOR": "border-left",
-            "$PLUGIN_COMPONENT_ACCENT": "border-left"
-        }
-        return mapping.get(variable)
 
     def _apply_minimal_stylesheet(self, app, theme):
         """Apply an absolutely minimal stylesheet when all else fails."""
@@ -349,64 +299,10 @@ class ThemeManager:
         logger.info(f"Changing theme to: {theme_choice}")
         self.state_manager.set_theme_preference(theme_choice)
         app = QApplication.instance()
+        # Force reprocessing of stylesheet by clearing cache for the new theme
+        effective_theme_to_apply = self.get_effective_theme()
+        if effective_theme_to_apply in self.processed_stylesheets:
+             del self.processed_stylesheets[effective_theme_to_apply]
+             
         effective_theme = self.apply_theme(app)
         return effective_theme
-        
-    def collect_plugin_styles_from_manager(self, plugin_manager):
-        """
-        Collect and register styles from all plugins in the plugin manager.
-        
-        Args:
-            plugin_manager: The application's PluginManager instance
-        """
-        for plugin in plugin_manager.get_all_plugins():
-            try:
-                plugin_id = plugin.plugin_self_metadata().name
-                styling_prefs = plugin.get_styling_preferences()
-                
-                # Convert plugin preferences to our style format
-                style_data = {
-                    "dark": {
-                        "base": {},
-                        "stages": {},
-                        "importance": {}
-                    },
-                    "light": {
-                        "base": {},
-                        "stages": {},
-                        "importance": {}
-                    }
-                }
-                
-                # Process plugin's styling preferences into our format
-                # (This is a simplified example - expand as needed)
-                for theme in ["dark", "light"]:
-                    # Handle base styling
-                    theme_colors = styling_prefs.get("colors", {}).get(theme, {})
-                    for color_key, color_value in theme_colors.items():
-                        if color_key == "primary":
-                            style_data[theme]["base"]["background-color"] = color_value
-                        elif color_key == "text":
-                            style_data[theme]["base"]["color"] = color_value
-                            
-                    # Handle stage-specific styling
-                    for stage in ["preprocessing", "analysis", "results"]:
-                        stage_color = styling_prefs.get("stages", {}).get(stage, {}).get(theme)
-                        if stage_color:
-                            style_data[theme]["stages"][stage] = {
-                                "background-color": stage_color
-                            }
-                            
-                    # Handle importance levels
-                    for level in ["required", "optional"]:
-                        border_color = styling_prefs.get("importance", {}).get(level, {}).get(theme)
-                        if border_color:
-                            style_data[theme]["importance"][level] = {
-                                "border-left": f"3px solid {border_color}"
-                            }
-                
-                # Register the processed style data
-                self.register_plugin_styles(plugin_id, style_data)
-                
-            except Exception as e:
-                logger.warning(f"Error processing styles for plugin {plugin.plugin_self_metadata().name}: {e}")

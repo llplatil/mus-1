@@ -3,13 +3,24 @@ import sys
 from pathlib import Path
 import logging.handlers  # Import the handlers module
 
+# --- Add diagnostic prints ---
+import os
+print(f"Current Working Directory: {os.getcwd()}")
+print(f"Python Executable: {sys.executable}")
+print("--- sys.path ---")
+for p in sys.path:
+    print(p)
+print("----------------")
+# --- End diagnostic prints ---
+
+
 # Set log file path to be in the same directory as main.py
 log_file = Path(__file__).parent / "mus1.log"
 
 # --- Configure RotatingFileHandler ---
 # Get the specific logger used by LoggingEventBus and other parts of the app
 logger = logging.getLogger('mus1') 
-logger.setLevel(logging.INFO) # Set the desired minimum level for this logger
+logger.setLevel(logging.DEBUG) # Set the desired minimum level for this logger
 
 # Prevent logs from propagating to the root logger if it has other handlers
 logger.propagate = False 
@@ -34,6 +45,7 @@ try:
     file_handler = logging.handlers.RotatingFileHandler(
         str(log_file), maxBytes=max_bytes, backupCount=backup_count, encoding='utf-8'
     )
+    # file_handler level is not explicitly set, so it inherits INFO from the logger
     file_handler.setFormatter(formatter)
     logger.addHandler(file_handler)
 except Exception as e:
@@ -43,34 +55,33 @@ except Exception as e:
 # --- End Logging Configuration ---
 
 
-from PySide6.QtWidgets import QApplication, QSplashScreen
+from PySide6.QtWidgets import QApplication, QSplashScreen, QDialog
 from PySide6.QtGui import QPixmap, QIcon
 from PySide6.QtTest import QTest
 
 # 1) Bring in relevant classes/functions from core
-from core import (
+print("Attempting to import from core...") # Add print right before import
+from .core import (
     init_metadata,
     StateManager,
     DataManager,
     ProjectManager,
-    ThemeManager
+    ThemeManager,
+    PluginManager
 )
-from core.logging_bus import LoggingEventBus
+from .core.logging_bus import LoggingEventBus
 
 # Import the project selection dialog
-from gui.project_selection_dialog import ProjectSelectionDialog
+from .gui.project_selection_dialog import ProjectSelectionDialog
 
 def main():
-    # Use the configured 'mus1' logger instead of the root logger (__name__)
-    logger = logging.getLogger('mus1') 
+    logger = logging.getLogger('mus1')
     logger.info("Launching MUS1...")
 
-    # Initialize data-model checks
     if not init_metadata():
         logger.error("Metadata init failed. Exiting.")
         sys.exit(1)
 
-    # Create our Qt application
     app = QApplication(sys.argv)
     
     # Set application icon
@@ -82,50 +93,56 @@ def main():
     app_icon.addFile(str(icon_dir / "m1logo no background.png"))  # For Linux/general
     app.setWindowIcon(app_icon)
     
-    # Initialize the LoggingEventBus singleton
     log_bus = LoggingEventBus.get_instance()
-    # Log bus already uses the 'mus1' logger internally, so this log goes through the handler
-    log_bus.log("LoggingEventBus initialized", "info", "MainApp") 
+    log_bus.log("LoggingEventBus initialized", "info", "MainApp")
 
-    # Create the core managers (no longer need to pass log_bus)
+    # Create the core managers
     state_manager = StateManager()
-    data_manager = DataManager(state_manager)
-    project_manager = ProjectManager(state_manager)
+    plugin_manager = PluginManager()
+    data_manager = DataManager(state_manager, plugin_manager)
+    project_manager = ProjectManager(state_manager, plugin_manager, data_manager)
     theme_manager = ThemeManager(state_manager)
 
-    # Use the 'mus1' logger for consistency
-    logger.info("Core managers created. Launching Project Selection Dialog.") 
+    # Determine and apply the theme *before* showing any UI that depends on it
+    effective_theme = theme_manager.get_effective_theme()
+    # Validate theme preference before applying
+    if effective_theme not in ["light", "dark", "os"]: # Include 'os' if it's a valid direct choice
+        log_bus.log(f"Invalid theme preference '{effective_theme}' detected. Defaulting to dark.", "warning", "Main")
+        effective_theme = "dark"
+        # If defaulting, update the state manager preference if necessary
+        if state_manager.get_theme_preference() != effective_theme:
+             state_manager.set_theme_preference(effective_theme)
+             # Re-get effective theme in case 'os' resolved differently
+             effective_theme = theme_manager.get_effective_theme()
 
-    # Show the project selection dialog
-    from PySide6.QtWidgets import QDialog
+    # Apply the theme to the application instance
+    theme_manager.apply_theme(app)
+    logger.info(f"Initial theme '{effective_theme}' applied.")
+    # --- END THEME APPLICATION ---
+
+    logger.info("Core managers created. Launching Project Selection Dialog.")
+
+    # Show the project selection dialog (now styled correctly)
     dialog = ProjectSelectionDialog(project_manager)
     if dialog.exec() != QDialog.Accepted:
-        # Use the 'mus1' logger
-        logger.info("Project selection was cancelled. Exiting application.") 
+        logger.info("Project selection was cancelled. Exiting application.")
         sys.exit(0)
 
-    # Use the 'mus1' logger
-    logger.info("Project selected: {}".format(getattr(dialog, 'selected_project_name', 'Unknown'))) 
-
-    # Apply theme using ThemeManager instead of ProjectManager
-    effective_theme = theme_manager.get_effective_theme()
-    if effective_theme not in ["light", "dark"]:
-        # Log bus uses 'mus1' logger
-        log_bus.log("Invalid theme preference detected. Defaulting to dark.", "warning", "Main") 
-        effective_theme = "dark"
-        theme_manager.change_theme(effective_theme)
-    else:
-        # Apply the theme to the application
-        theme_manager.apply_theme(app)
+    logger.info("Project selected: {}".format(getattr(dialog, 'selected_project_name', 'Unknown')))
 
     # Create and launch our MainWindow after project selection
-    from gui.main_window import MainWindow
+    from .gui.main_window import MainWindow
     selected_project = getattr(dialog, 'selected_project_name', None)
-    main_window = MainWindow(state_manager, data_manager, project_manager, selected_project=selected_project)
+    main_window = MainWindow(
+        state_manager=state_manager,
+        data_manager=data_manager,
+        project_manager=project_manager,
+        plugin_manager=plugin_manager,
+        selected_project=selected_project
+    )
     main_window.show()
 
-    # Use the 'mus1' logger
-    logger.info("MUS1 init complete. Starting application event loop.") 
+    logger.info("MUS1 init complete. Starting application event loop.")
     sys.exit(app.exec())
 
 if __name__ == "__main__":

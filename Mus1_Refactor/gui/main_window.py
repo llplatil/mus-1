@@ -1,13 +1,13 @@
 from PySide6.QtWidgets import QMainWindow, QTabWidget, QDialog, QMenu, QMenuBar, QApplication
 from PySide6.QtGui import QAction, QIcon, QPixmap
-from gui.project_view import ProjectView
-from gui.subject_view import SubjectView
-from gui.experiment_view import ExperimentView
-from gui.project_selection_dialog import ProjectSelectionDialog
-from core.logging_bus import LoggingEventBus
+from .project_view import ProjectView
+from .subject_view import SubjectView
+from .experiment_view import ExperimentView
+from .project_selection_dialog import ProjectSelectionDialog
+from ..core.logging_bus import LoggingEventBus
+from ..core import ThemeManager, PluginManager
 import logging
 import sys
-from core.theme_manager import ThemeManager
 from pathlib import Path
 from PySide6.QtCore import Qt, Signal
 
@@ -23,7 +23,7 @@ class MainWindow(QMainWindow):
     - Handles global menu actions
     - Manages project selection and view setup
     """
-    def __init__(self, state_manager, data_manager, project_manager, selected_project=None):
+    def __init__(self, state_manager, data_manager, project_manager, plugin_manager, selected_project=None):
         super().__init__()
         
         # Set object name and class for styling
@@ -38,6 +38,7 @@ class MainWindow(QMainWindow):
         self.state_manager = state_manager
         self.data_manager = data_manager
         self.project_manager = project_manager
+        self.plugin_manager = plugin_manager
         self.selected_project_name = selected_project
         self.theme_manager = ThemeManager(self.state_manager)
         
@@ -232,22 +233,10 @@ class MainWindow(QMainWindow):
                 self.selected_project_name = project_name
                 self.update_window_title() # Update the window title
 
-                # Initialize/update views with necessary managers/state
-                # Experiment View
-                if hasattr(self.experiment_view, 'set_core'):
-                    self.experiment_view.set_core(self.project_manager, self.state_manager)
-                else:
-                     self.log_bus.log("ExperimentView missing 'set_core' method.", "warning", "MainWindow")
-
-                # Subject View
-                if hasattr(self.subject_view, 'set_state_manager'):
-                    self.subject_view.set_state_manager(self.state_manager)
-                else:
-                    self.log_bus.log("SubjectView missing 'set_state_manager' method.", "warning", "MainWindow")
-                    # Fallback attempt (consider removing if set_state_manager is standard)
-                    # if hasattr(self.subject_view, 'set_project_manager'):
-                    #     self.subject_view.set_project_manager(self.state_manager)
-
+                # Notify views of the newly loaded project via their refresh methods
+                # ExperimentView subscribes to StateManager changes automatically and will refresh below.
+                # SubjectView likewise handles state updates internally.
+                
                 # Project View - Update its internal state/display
                 # This call ensures ProjectView's labels/fields reflect the loaded project
                 self.project_view.set_initial_project(project_name)
