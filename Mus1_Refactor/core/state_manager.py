@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from typing import Optional, List, Union, Callable, Dict, Any
+from pathlib import Path
 from .metadata import ProjectState, SubjectMetadata, ExperimentMetadata, PluginMetadata, SortMode
 from .sort_manager import sort_items
 from .logging_bus import LoggingEventBus
@@ -313,6 +314,20 @@ class StateManager:
         batch = self._project_state.batches[batch_id]
         return [self._project_state.experiments[exp_id] for exp_id in batch.experiment_ids 
                 if exp_id in self._project_state.experiments]
+
+    # ------------------------------------------------------------------
+    # Quick helpers – Recording counts (used by UI)
+    # ------------------------------------------------------------------
+
+    def get_recording_count_for_experiment(self, exp_id: str) -> int:
+        """Return number of linked videos for a given experiment ID."""
+        videos = self._project_state.experiment_videos
+        return sum(1 for vm in videos.values() if exp_id in vm.experiment_ids)
+
+    def get_recording_count_for_subject(self, subj_id: str) -> int:
+        """Return total number of recordings across all experiments for a subject."""
+        exp_ids = [e.id for e in self._project_state.experiments.values() if e.subject_id == subj_id]
+        return sum(self.get_recording_count_for_experiment(eid) for eid in exp_ids)
     
     def get_batches_for_experiment(self, experiment_id):
         """
@@ -382,28 +397,8 @@ class StateManager:
         # Log notification to the LoggingEventBus
         self.log_bus.log(f"Notified {len(self._observers)} observers of state change", "info", "StateManager")
 
-    def get_compatible_processing_stages(self, plugin_manager, exp_type: str) -> list:
-        """Return processing stages compatible with the given experiment type using the plugin manager."""
-        stages = set()
-        for plugin in plugin_manager.get_all_plugins():
-            if exp_type in plugin.get_supported_experiment_types():
-                stages.update(plugin.get_supported_processing_stages())
-        return sorted(list(stages))
-
-    def get_compatible_data_sources(self, plugin_manager, exp_type: str, stage: str) -> list:
-        """Return data sources compatible with the given experiment type and processing stage."""
-        sources = set()
-        for plugin in plugin_manager.get_all_plugins():
-            if exp_type in plugin.get_supported_experiment_types() and stage in plugin.get_supported_processing_stages():
-                sources.update(plugin.get_supported_data_sources())
-        return sorted(list(sources))
-
-    def compile_required_fields(self, plugins: list) -> list:
-        """Compile and return a sorted list of unique required fields from the given plugins."""
-        fields = set()
-        for plugin in plugins:
-            fields.update(plugin.required_fields())
-        return sorted(list(fields))
+    # Removed get_compatible_processing_stages, get_compatible_data_sources,
+    # and compile_required_fields – these responsibilities now live in PluginManager.
 
     def subscribe(self, callback: Callable[[], None]) -> None:
         """Subscribe an observer callback to be notified of state changes."""
@@ -480,8 +475,29 @@ class StateManager:
         # Notify observers to update UI
         self.notify_observers()
 
+    # ------------------------------------------------------------------
+    # Video helpers
+    # ------------------------------------------------------------------
+
+    def is_video_already_linked(self, video_path: Path, sample_hash: str) -> bool:
+        """Return True if a video with the same sample-hash OR exact path is already linked in the project."""
+        try:
+            videos_dict = self._project_state.experiment_videos
+            for vm in videos_dict.values():
+                # Compare by hash primarily; fall back to absolute path comparison
+                if vm.sample_hash == sample_hash or vm.path.resolve() == video_path.resolve():
+                    return True
+        except Exception:
+            pass
+        return False
+
     # New convenience method for retrieving sorted subjects
     def get_sorted_subjects(self) -> list:
         """Return a sorted list of subject metadata objects based on the current global sort mode."""
         return self.get_sorted_list("subjects")
+
+    def get_processing_stages(self) -> List[str]:
+        """Return the canonical list of experiment processing stages."""
+        from .metadata import DEFAULT_PROCESSING_STAGES
+        return list(DEFAULT_PROCESSING_STAGES)
 

@@ -1,7 +1,8 @@
 from pathlib import Path
 from datetime import datetime
-from core.metadata import PluginMetadata, ExperimentMetadata, ProjectState
-from plugins.base_plugin import BasePlugin
+# Relative imports to work inside 'Mus1_Refactor.plugins'
+from ..core.metadata import PluginMetadata, ExperimentMetadata, ProjectState
+from .base_plugin import BasePlugin
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -14,7 +15,7 @@ import traceback
 
 # Assuming DataManager is importable for type hinting
 try:
-    from core.data_manager import DataManager
+    from ..core.data_manager import DataManager
 except ImportError:
     DataManager = Any # Placeholder if import fails during type checking
 

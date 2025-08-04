@@ -38,9 +38,8 @@ class DeepLabCutHandlerPlugin(BasePlugin):
         return self.plugin_self_metadata().readable_data_formats or []
 
     def required_fields(self) -> List[str]:
-        """ Fields needed when *using* this plugin's capabilities. """
-        # Depends on capability, e.g., 'load_tracking_data' needs 'tracking_file_path'
-        return ['tracking_file_path'] # Example for loading data
+        """Fields that are generally required: tracking_file_path is needed once the experiment reaches 'tracked' stage."""
+        return ['tracking_file_path']
 
     def optional_fields(self) -> List[str]:
         return ['config_file_path', 'likelihood_threshold_override']
@@ -67,6 +66,12 @@ class DeepLabCutHandlerPlugin(BasePlugin):
         # Check file existence more strictly if load_tracking_data is the intended goal implicitly
         # For now, analyze_experiment handles the strict check.
         tracking_path_str = plugin_params.get('tracking_file_path')
+
+        # Enforce presence when experiment is at or beyond 'tracked' stage
+        stage_requires_file = experiment.processing_stage in ("tracked", "interpreted")
+        if stage_requires_file and not tracking_path_str:
+            raise ValueError("'tracking_file_path' parameter is required once the experiment reaches the 'tracked' stage. Please attach the DLC tracking file before running analysis.")
+
         if tracking_path_str:
              tracking_path = Path(tracking_path_str)
              if not tracking_path.exists():

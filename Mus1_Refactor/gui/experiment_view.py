@@ -1,7 +1,7 @@
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QFormLayout, QLabel, QLineEdit, 
                          QComboBox, QDateTimeEdit, QPushButton, QGroupBox, QScrollArea, 
-                         QCheckBox, QMessageBox, QListWidget, QTextEdit, QHBoxLayout,
-                         QFileDialog, QTableWidget, QTableWidgetItem, QHeaderView, QSpinBox, QDoubleSpinBox, QAbstractItemView)
+                         QCheckBox, QMessageBox, QListWidget, QListWidgetItem, QTextEdit, QHBoxLayout,
+                         QFileDialog, QTableWidget, QTableWidgetItem, QHeaderView, QSpinBox, QDoubleSpinBox, QAbstractItemView, QStackedWidget, QLayout)
 from PySide6.QtCore import QTimer, Qt, QDateTime
 from datetime import datetime
 from .navigation_pane import NavigationPane 
@@ -23,12 +23,16 @@ class ExperimentView(BaseView):
         self.project_manager = self.window().project_manager
         self.data_manager = self.window().data_manager
         self.plugin_manager = self.window().plugin_manager
+
+        # Fetch processing stages from the core metadata instead of hard-coding
+        self.PROCESSING_STAGES = self.state_manager.get_processing_stages()
         
-        # Set up navigation first
-        self.setup_navigation(["Add Experiment", "View Experiments", "Create Batch"])
+        # Set up navigation first (added 'Add Multiple Experiments')
+        self.setup_navigation(["Add Experiment", "Add Multiple Experiments", "View Experiments", "Create Batch"])
         
         # Set up pages
         self.setup_add_experiment_page()
+        self.setup_add_multiple_experiments_page()
         self.setup_view_experiments_page()
         self.setup_create_batch_page()
         
@@ -40,106 +44,164 @@ class ExperimentView(BaseView):
 
     def setup_add_experiment_page(self):
         """Sets up the 'Add Experiment' sub-page according to the new workflow."""
-        page_widget = QWidget()
-        page_layout = QVBoxLayout(page_widget)
-        page_layout.setAlignment(Qt.AlignmentFlag.AlignTop) # Keep content at the top
-        page_layout.setSpacing(self.SECTION_SPACING) # Use BaseView spacing
+        # ------------------------------------------------------------------
+        # Build container → scroll area → content hierarchy
+        # ------------------------------------------------------------------
+        # Top-level container that will be inserted into the BaseView pages
+        page_container = QWidget()
+        container_layout = QVBoxLayout(page_container)
+        container_layout.setContentsMargins(0, 0, 0, 0)
+        container_layout.setSpacing(0)
 
-        # --- 1. Core Experiment Details ---
-        # Use create_form_section for the group box and layout
+        # Scroll area keeps the long form usable on small screens
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        container_layout.addWidget(scroll)
+
+        # Inner widget – real content of the Add-Experiment form
+        page_widget = QWidget()
+        scroll.setWidget(page_widget)
+
+        # Layout for the inner widget
+        page_layout = QVBoxLayout(page_widget)
+        page_layout.setAlignment(Qt.AlignTop)
+        page_layout.setSpacing(self.SECTION_SPACING)
+
+        # --- 1. Recording Details (placed first) ---
+        rec_group, rec_container_layout = self.create_form_section("Recording Details", page_layout)
+
+        # --- Video file row ---
+        video_row = self.create_form_row(rec_container_layout)
+        video_label = self.create_form_label("Video File:")
+        self.video_path_edit = QLineEdit()
+        self.video_path_edit.setProperty("class", "mus1-text-input")
+        self.video_path_edit.setPlaceholderText("Select video file…")
+        browse_video_btn = QPushButton("Browse…")
+        browse_video_btn.setProperty("class", "mus1-secondary-button")
+        browse_video_btn.clicked.connect(lambda: self._browse_for_path(self.video_path_edit, "file"))
+        video_row.addWidget(video_label)
+        video_row.addWidget(self.video_path_edit, 1)
+        video_row.addWidget(browse_video_btn)
+
+        # --- Arena image row (optional) ---
+        arena_row = self.create_form_row(rec_container_layout)
+        arena_label = self.create_form_label("Arena Image:")
+        self.arena_image_edit = QLineEdit()
+        self.arena_image_edit.setProperty("class", "mus1-text-input")
+        self.arena_image_edit.setPlaceholderText("Select arena image (optional)…")
+        browse_arena_btn = QPushButton("Browse…")
+        browse_arena_btn.setProperty("class", "mus1-secondary-button")
+        browse_arena_btn.clicked.connect(lambda: self._browse_for_path(self.arena_image_edit, "file"))
+        arena_row.addWidget(arena_label)
+        arena_row.addWidget(self.arena_image_edit, 1)
+        arena_row.addWidget(browse_arena_btn)
+
+        # --- Processing stage row ---
+        stage_row = self.create_form_row(rec_container_layout)
+        stage_label = self.create_form_label("Processing Stage:")
+        self.processing_stage_combo = QComboBox()
+        self.processing_stage_combo.setProperty("class", "mus1-combo-box")
+        self.processing_stage_combo.addItems(self.PROCESSING_STAGES)
+        stage_row.addWidget(stage_label)
+        stage_row.addWidget(self.processing_stage_combo, 1)
+
+        # --- Quick Sample Hash Row (auto-computed) ---
+        hash_row = self.create_form_row(rec_container_layout)
+        hash_label = self.create_form_label("Sample Hash:")
+        self.sample_hash_value = QLabel("—")
+        self.sample_hash_value.setProperty("class", "mus1-input-label")
+        hash_row.addWidget(hash_label)
+        hash_row.addWidget(self.sample_hash_value, 1)
+
+        # Auto-change stage when video selected
+        self.video_path_edit.textChanged.connect(self._auto_stage_from_video)
+        self.video_path_edit.textChanged.connect(self._suggest_experiment_id)
+        self.video_path_edit.textChanged.connect(self._on_video_path_changed)
+
+        # Initialize hash and date based on blank path
+        self._on_video_path_changed("")
+
+        # --- 2. Core Experiment Details ---
         details_group, details_layout = self.create_form_section("Core Experiment Details", page_layout)
 
         # Experiment ID
-        id_row = self.create_form_row(details_layout) # Use helper for row
-        id_label = self.create_form_label("Experiment ID*:") # Use helper for label
+        id_row = self.create_form_row(details_layout)
+        id_label = self.create_form_label("Experiment ID*:")
         self.experiment_id_input = QLineEdit()
         self.experiment_id_input.setObjectName("experimentIdInput")
         self.experiment_id_input.setProperty("class", "mus1-text-input")
         self.experiment_id_input.setPlaceholderText("Enter unique experiment ID")
         id_row.addWidget(id_label)
         id_row.addWidget(self.experiment_id_input)
-        self.experiment_id_input.textChanged.connect(self._update_add_button_state) # Connect state update
+        self.experiment_id_input.textChanged.connect(self._update_add_button_state)
 
         # Subject ID
-        subject_row = self.create_form_row(details_layout) # Use helper for row
-        subject_label = self.create_form_label("Subject ID*:") # Use helper for label
+        subject_row = self.create_form_row(details_layout)
+        subject_label = self.create_form_label("Subject ID*:")
         self.subject_id_combo = QComboBox()
         self.subject_id_combo.setObjectName("subjectIdCombo")
         self.subject_id_combo.setProperty("class", "mus1-combo-box")
-        # Items will be populated by refresh_data
         subject_row.addWidget(subject_label)
         subject_row.addWidget(self.subject_id_combo)
-        self.subject_id_combo.currentIndexChanged.connect(self._update_add_button_state) # Connect state update
+        self.subject_id_combo.currentIndexChanged.connect(self._update_add_button_state)
 
         # Experiment Type
-        type_row = self.create_form_row(details_layout) # Use helper for row
-        type_label = self.create_form_label("Experiment Type*:") # Use helper for label
+        type_row = self.create_form_row(details_layout)
+        type_label = self.create_form_label("Experiment Type*:")
         self.experiment_type_combo = QComboBox()
         self.experiment_type_combo.setObjectName("experimentTypeCombo")
         self.experiment_type_combo.setProperty("class", "mus1-combo-box")
-        self.experiment_type_combo.addItem("Select Type...", None) # Add placeholder
-        # Items will be populated by refresh_data
+        self.experiment_type_combo.addItem("Select Type...", None)
         type_row.addWidget(type_label)
         type_row.addWidget(self.experiment_type_combo)
-        # Connect type change to DISCOVER PLUGINS and update button state
         self.experiment_type_combo.currentIndexChanged.connect(self._discover_plugins)
         self.experiment_type_combo.currentIndexChanged.connect(self._update_add_button_state)
 
         # Date Recorded
-        date_row = self.create_form_row(details_layout) # Use helper for row
-        date_label = self.create_form_label("Date Recorded*:") # Use helper for label
-        self.date_recorded_edit = QDateTimeEdit(QDateTime.currentDateTime()) # Use QDateTime
+        date_row = self.create_form_row(details_layout)
+        date_label = self.create_form_label("Date Recorded*:")
+        self.date_recorded_edit = QDateTimeEdit(QDateTime.currentDateTime())
         self.date_recorded_edit.setCalendarPopup(True)
         self.date_recorded_edit.setDisplayFormat("yyyy-MM-dd")
         date_row.addWidget(date_label)
         date_row.addWidget(self.date_recorded_edit)
 
-        # --- 2. Select Tools (Plugins) ---
-        tools_group, tools_section_layout = self.create_form_section("Select Tools (Plugins)", page_layout)
-        # Use a horizontal layout for the two columns
-        plugin_columns_layout = QHBoxLayout()
-        plugin_columns_layout.setSpacing(self.CONTROL_SPACING * 2) # More spacing between lists
-        tools_section_layout.addLayout(plugin_columns_layout)
+        # --- 3. Plugin Selection ---
+        # Importer Plugins (includes handler-type plugins)
+        importer_group, importer_layout = self.create_form_section("Importer Plugins", page_layout)
+        self.importer_plugin_list = QListWidget()
+        self.importer_plugin_list.setSelectionMode(QAbstractItemView.MultiSelection)
+        self.importer_plugin_list.itemSelectionChanged.connect(self._update_add_button_state)
+        self.importer_plugin_list.itemSelectionChanged.connect(self._on_plugin_selection_changed)
+        importer_layout.addWidget(self.importer_plugin_list)
 
-        # Column 1: Data Handlers
-        # Use is_subgroup=True for consistent styling within the main section
-        handler_group, handler_layout = self.create_form_section("Data Handler Plugin:", None, is_subgroup=True)
-        self.data_handler_plugin_list = QListWidget()
-        self.data_handler_plugin_list.setObjectName("dataHandlerPluginList")
-        self.data_handler_plugin_list.setProperty("class", "mus1-list-widget")
-        self.data_handler_plugin_list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection) # Assuming one handler
-        self.data_handler_plugin_list.currentItemChanged.connect(self._on_plugin_selection_changed) # Connect update
-        handler_layout.addWidget(self.data_handler_plugin_list)
-        plugin_columns_layout.addWidget(handler_group, 1) # Add column with stretch factor 1
+        # Keep backward-compat alias so existing methods referencing data_handler_plugin_list still work
+        self.data_handler_plugin_list = self.importer_plugin_list
 
-        # Column 2: Analysis Plugins
-        analysis_group, analysis_layout = self.create_form_section("Analysis Plugin(s):", None, is_subgroup=True)
+        # Analysis Plugins
+        analysis_group, analysis_layout = self.create_form_section("Analysis Plugins", page_layout)
         self.analysis_plugin_list = QListWidget()
-        self.analysis_plugin_list.setObjectName("analysisPluginList")
-        self.analysis_plugin_list.setProperty("class", "mus1-list-widget")
-        self.analysis_plugin_list.setSelectionMode(QAbstractItemView.SelectionMode.MultiSelection) # Allow multiple analysis plugins
-        self.analysis_plugin_list.itemSelectionChanged.connect(self._on_plugin_selection_changed) # Connect update
+        self.analysis_plugin_list.setSelectionMode(QAbstractItemView.MultiSelection)
+        self.analysis_plugin_list.itemSelectionChanged.connect(self._update_add_button_state)
+        self.analysis_plugin_list.itemSelectionChanged.connect(self._on_plugin_selection_changed)
         analysis_layout.addWidget(self.analysis_plugin_list)
-        plugin_columns_layout.addWidget(analysis_group, 1) # Add column with stretch factor 1
 
-        # --- 3. Plugin Parameters ---
-        # Create the group box and layout, keep reference to layout
-        self.plugin_params_group, self.plugin_fields_layout = self.create_form_section("Plugin Parameters", page_layout)
-        # Ensure layout is QFormLayout as expected by _update_plugin_fields
-        if not isinstance(self.plugin_fields_layout, QFormLayout):
-             # If create_form_section returns QVBoxLayout, replace it
-             qgroupbox_layout = self.plugin_params_group.layout()
-             if qgroupbox_layout:
-                 # Remove existing layout items if any
-                 while qgroupbox_layout.count():
-                      item = qgroupbox_layout.takeAt(0)
-                      if item.widget(): item.widget().deleteLater()
-             self.plugin_fields_layout = QFormLayout() # Create the correct layout type
-             self.plugin_params_group.setLayout(self.plugin_fields_layout) # Set the new layout
-             self.plugin_fields_layout.setContentsMargins(self.FORM_MARGIN, self.FORM_MARGIN, self.FORM_MARGIN, self.FORM_MARGIN)
-             self.plugin_fields_layout.setVerticalSpacing(self.CONTROL_SPACING)
+        # Exporter Plugins
+        exporter_group, exporter_layout = self.create_form_section("Exporter Plugins", page_layout)
+        self.exporter_plugin_list = QListWidget()
+        self.exporter_plugin_list.setSelectionMode(QAbstractItemView.MultiSelection)
+        self.exporter_plugin_list.itemSelectionChanged.connect(self._update_add_button_state)
+        self.exporter_plugin_list.itemSelectionChanged.connect(self._on_plugin_selection_changed)
+        exporter_layout.addWidget(self.exporter_plugin_list)
 
-        self.plugin_params_group.setVisible(False) # Hide initially
+        # --- 4. Plugin Parameters ---
+        # Use a dedicated form layout that will be populated on-the-fly in update_plugin_fields()
+        self.plugin_params_group, plugin_params_container_layout = self.create_form_section("Plugin Parameters", page_layout)
+        self.plugin_fields_layout = QFormLayout()
+        self.plugin_fields_layout.setContentsMargins(self.FORM_MARGIN, self.FORM_MARGIN, self.FORM_MARGIN, self.FORM_MARGIN)
+        self.plugin_fields_layout.setVerticalSpacing(self.CONTROL_SPACING)
+        plugin_params_container_layout.addLayout(self.plugin_fields_layout)
+        self.plugin_params_group.setVisible(False)  # Hidden until at least one field is shown
 
         # --- Add Button ---
         # Use helper to create a button row that aligns button to the right
@@ -151,20 +213,67 @@ class ExperimentView(BaseView):
         self.add_experiment_button.clicked.connect(self.handle_add_experiment)
         button_row.addWidget(self.add_experiment_button)
 
-        # --- Add Page to Stack ---
-        # Add the container widget holding the entire page layout
-        self.add_page(page_widget, "Add Experiment")
+        # --- Add Page to Main View Stack ---
+        # Add the top-level container (which now hosts the wizard) to the
+        # ExperimentView's stacked widget system
+        self.add_page(page_container, "Add Experiment")
 
         # Initial data population (like subject/type combos) will happen in refresh_data
         # Initial plugin discovery will also be triggered by refresh_data
+
+        # Ensure button state is correct on first display
+        self._update_add_button_state()
+
+    def setup_add_multiple_experiments_page(self):
+        """Sets up the 'Add Multiple Experiments' sub-page with an entry table."""
+        page_container = QWidget()
+        page_layout = QVBoxLayout(page_container)
+        page_layout.setContentsMargins(self.FORM_MARGIN, self.FORM_MARGIN, self.FORM_MARGIN, self.FORM_MARGIN)
+        page_layout.setSpacing(self.SECTION_SPACING)
+
+        title_label = QLabel("Add Multiple Experiments")
+        title_label.setProperty("class", "mus1-page-title")
+        page_layout.addWidget(title_label)
+
+        # Table for experiment entry
+        self.multi_exp_table = QTableWidget(0, 6)
+        self.multi_exp_table.setHorizontalHeaderLabels(["Experiment ID", "Subject", "Type", "Date", "Stage", "Video Path"])
+        self.multi_exp_table.horizontalHeader().setStretchLastSection(True)
+        self.multi_exp_table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        page_layout.addWidget(self.multi_exp_table)
+
+        # Buttons row
+        btn_row = self.create_button_row(page_layout, add_stretch=True)
+        add_row_btn = QPushButton("Add Row")
+        add_row_btn.setProperty("class", "mus1-secondary-button")
+        add_row_btn.clicked.connect(self._multi_add_row)
+        btn_row.addWidget(add_row_btn)
+
+        remove_row_btn = QPushButton("Remove Selected")
+        remove_row_btn.setProperty("class", "mus1-secondary-button")
+        remove_row_btn.clicked.connect(self._multi_remove_selected_rows)
+        btn_row.addWidget(remove_row_btn)
+
+        save_btn = QPushButton("Save Experiments")
+        save_btn.setProperty("class", "mus1-primary-button")
+        save_btn.clicked.connect(self._multi_save_experiments)
+        btn_row.addWidget(save_btn)
+
+        # Back button
+        back_button = QPushButton("Back to Single Experiment Add")
+        back_button.setProperty("class", "mus1-secondary-button")
+        back_button.clicked.connect(lambda: self.change_page(0))
+        page_layout.addWidget(back_button)
+
+        self.add_page(page_container, "Add Multiple Experiments")
 
     def setup_view_experiments_page(self):
         """Setup the View Experiments page."""
         # Create the page widget
         self.page_view_exp = QWidget()
         view_exp_layout = QVBoxLayout(self.page_view_exp)
-        view_exp_layout.setContentsMargins(10, 10, 10, 10)
-        view_exp_layout.setSpacing(10)
+        view_exp_layout.setContentsMargins(self.FORM_MARGIN, self.FORM_MARGIN, self.FORM_MARGIN, self.FORM_MARGIN)
+        view_exp_layout.setSpacing(self.SECTION_SPACING)
         
         # Add title
         view_exp_layout.addWidget(QLabel("Experiments"))
@@ -172,6 +281,28 @@ class ExperimentView(BaseView):
         # Create experiment list
         self.experimentListWidget = QListWidget()
         view_exp_layout.addWidget(self.experimentListWidget)
+        
+        # --- Actions Row ---
+        actions_row = self.create_button_row(view_exp_layout)
+        self.link_video_button = QPushButton("Link Video…")
+        self.link_video_button.setObjectName("linkVideoButton")
+        self.link_video_button.setProperty("class", "mus1-secondary-button")
+        self.link_video_button.clicked.connect(self.handle_link_video)
+        actions_row.addWidget(self.link_video_button)
+
+        # --- Recording Info Group ---
+        info_group, info_layout = self.create_form_section("Recording Info", view_exp_layout)
+        self.rec_path_label = QLabel("Path: —")
+        self.rec_status_label = QLabel("Status: —")
+        self.rec_size_label = QLabel("Size: —")
+        self.rec_hash_label = QLabel("Sample-hash: —")
+        info_layout.addWidget(self.rec_path_label)
+        info_layout.addWidget(self.rec_status_label)
+        info_layout.addWidget(self.rec_size_label)
+        info_layout.addWidget(self.rec_hash_label)
+
+        # Connect selection change to update info
+        self.experimentListWidget.currentItemChanged.connect(self._on_experiment_selected)
         
         # Add the page to the stacked widget
         self.add_page(self.page_view_exp, "View Experiments")
@@ -181,8 +312,8 @@ class ExperimentView(BaseView):
         # Main widget for the page
         self.page_create_batch = QWidget()
         batch_layout = QVBoxLayout(self.page_create_batch)
-        batch_layout.setContentsMargins(10, 10, 10, 10)
-        batch_layout.setSpacing(10)
+        batch_layout.setContentsMargins(self.FORM_MARGIN, self.FORM_MARGIN, self.FORM_MARGIN, self.FORM_MARGIN)
+        batch_layout.setSpacing(self.SECTION_SPACING)
 
         # Batch Details Section
         batch_details_group, batch_details_form = self.create_form_section("Batch Details", batch_layout)
@@ -349,22 +480,26 @@ class ExperimentView(BaseView):
         experiment_id = self.experiment_id_input.text().strip()
         subject_id = self.subject_id_combo.currentData()
         exp_type = self.experiment_type_combo.currentData()
-        date_recorded = self.date_recorded_edit.dateTime().toPyDateTime() # Use toPyDateTime
+        # Convert QDateTime -> datetime (PySide 6.4+: toPython(); older: toPyDateTime())
+        qt_dt = self.date_recorded_edit.dateTime()
+        try:
+            date_recorded = qt_dt.toPython()
+        except AttributeError:
+            date_recorded = qt_dt.toPyDateTime()
 
         # Redundant basic checks, but good as a safeguard
         if not all([experiment_id, subject_id, exp_type]):
             self.show_error_message("Validation Error", "Experiment ID, Subject ID, and Experiment Type are required.")
             return
 
-        selected_plugins = self._get_selected_plugins()
-        if not selected_plugins:
-            self.show_error_message("Validation Error", "At least one data handler or analysis plugin must be selected.")
-            return
+        selected_plugins = self._get_selected_plugins()  # May be empty
+        # Allow experiment without plugins; but if none selected skip plugin validation
+        if selected_plugins:
+            associated_plugin_names = [p.plugin_self_metadata().name for p in selected_plugins]
+        else:
+            associated_plugin_names = []
 
-        # --- Collect Data ---
-        associated_plugin_names = [p.plugin_self_metadata().name for p in selected_plugins]
-
-        # Collect plugin parameters
+        # Collect plugin parameters (empty dict if no plugins)
         plugin_params_data = {}
         try:
             # Ensure plugin_field_widgets exists
@@ -409,6 +544,10 @@ class ExperimentView(BaseView):
                         value = widget.value()
                     elif isinstance(widget, QCheckBox):
                         value = widget.isChecked()
+                    elif isinstance(widget, QTextEdit):
+                        value = widget.toPlainText().strip()
+                        if not value:
+                            is_empty = True
                     # Add other widget types if needed
 
                     plugin_params_data[plugin_name][field_name] = value
@@ -422,18 +561,19 @@ class ExperimentView(BaseView):
             return
 
 
-        # Determine initial processing stage based on selected plugins
-        initial_stage = "planned" # Default
-        for plugin in selected_plugins:
-             # If any selected plugin can load tracking data, assume it's at least 'recorded'
-             if 'load_tracking_data' in plugin.analysis_capabilities():
-                 initial_stage = "recorded"
-                 # Check if the file path parameter for this handler is actually filled
-                 # (Requires knowing the specific parameter name, e.g., 'tracking_file_path')
-                 # This adds complexity - maybe defer stage inference to ProjectManager?
-                 # For now, 'recorded' if handler is selected is a reasonable starting point.
-                 break
+        # Determine processing stage
+        processing_stage = self.processing_stage_combo.currentText()
+        if not processing_stage:
+            processing_stage = "planned"
 
+        if not associated_plugin_names:
+            # If no plugins, keep stage as chosen (could be recorded if video provided)
+            pass
+        else:
+            for plugin in selected_plugins:
+                if 'load_tracking_data' in plugin.analysis_capabilities():
+                    processing_stage = "recorded"
+                    break
 
         # --- Call ProjectManager ---
         try:
@@ -452,7 +592,7 @@ class ExperimentView(BaseView):
                 subject_id=subject_id,
                 date_recorded=date_recorded,
                 exp_type=exp_type,
-                processing_stage=initial_stage, # Pass inferred stage
+                processing_stage=processing_stage,
                 associated_plugins=associated_plugin_names,
                 plugin_params=plugin_params_data
             )
@@ -463,9 +603,42 @@ class ExperimentView(BaseView):
             self.experiment_type_combo.setCurrentIndex(0) # Reset type triggers plugin clear
             # self.date_recorded_edit.setDateTime(datetime.now()) # Keep date?
             self.clear_plugin_fields() # This is called by _discover_plugins when type changes
+            # Link video if provided
+            video_path_text = self.video_path_edit.text().strip()
+            if video_path_text:
+                video_path = Path(video_path_text)
+                try:
+                    if video_path.exists():
+                        logger.debug(f"Linking video {video_path} to {experiment_id}")
+                        self.project_manager.link_video_to_experiment(
+                            experiment_id=experiment_id,
+                            video_path=video_path,
+                            notes="Linked via Add-Experiment form",
+                        )
+                        logger.debug("Video linked successfully")
+                        # Auto-set stage to recorded if not already
+                        if processing_stage == "planned":
+                            exp_meta = self.state_manager.get_experiment_by_id(experiment_id)
+                            if exp_meta:
+                                exp_meta.processing_stage = "recorded"
+                except FileNotFoundError as fnf:
+                    logger.error(f"Video file not found: {fnf}")
+                    self.show_error_message("File Error", str(fnf))
+                except ValueError as ve:
+                    logger.error(f"Linking failed: {ve}")
+                    self.show_error_message("Linking Error", str(ve))
+                except Exception as e:
+                    logger.error(f"Unexpected error linking video: {e}", exc_info=True)
+                    self.show_error_message("Unexpected Error", str(e))
+                    raise  # Re-raise unexpected errors
+
             # Manually clear lists after successful add
-            self.data_handler_plugin_list.clearSelection()
-            self.analysis_plugin_list.clearSelection()
+            if hasattr(self, 'data_handler_plugin_list'):
+                self.data_handler_plugin_list.clearSelection()
+            if hasattr(self, 'analysis_plugin_list'):
+                self.analysis_plugin_list.clearSelection()
+            if hasattr(self, 'exporter_plugin_list'):
+                self.exporter_plugin_list.clearSelection()
             # Button will be disabled by _update_add_button_state triggered by combo/list changes
 
             logger.info(f"Experiment '{experiment_id}' added successfully.")
@@ -493,9 +666,25 @@ class ExperimentView(BaseView):
                 exp_id = getattr(e, 'id', 'N/A')
                 exp_type = getattr(e, 'type', 'N/A')
                 stage = getattr(e, 'processing_stage', 'N/A')
-                # data_source removed, maybe add subject_id?
                 subject_id = getattr(e, 'subject_id', 'N/A')
-                self.experimentListWidget.addItem(f"{exp_id} ({exp_type}, Subj: {subject_id}, Stage: {stage})")
+
+                # Check if any video is linked to this experiment
+                has_video = False
+                try:
+                    videos_dict = self.state_manager.project_state.experiment_videos
+                    for vm in videos_dict.values():
+                        if exp_id in vm.experiment_ids:
+                            has_video = True
+                            break
+                except Exception:
+                    pass
+
+                video_marker = " 📹" if has_video else ""
+
+                display_text = f"{exp_id} ({exp_type}, Subj: {subject_id}, Stage: {stage}){video_marker}"
+                item = QListWidgetItem(display_text)
+                item.setData(Qt.ItemDataRole.UserRole, exp_id)  # Store ID for reliable lookup
+                self.experimentListWidget.addItem(item)
         else:
              self.experimentListWidget.addItem("No experiments found in project.")
 
@@ -727,14 +916,17 @@ class ExperimentView(BaseView):
             if not self.plugin_manager:
                  logger.error("Plugin manager still not available after re-check.")
                  # Clear lists to avoid showing stale data
-                 self.data_handler_plugin_list.clear()
+                 self.importer_plugin_list.clear()
                  self.analysis_plugin_list.clear()
+                 self.exporter_plugin_list.clear()
                  self.clear_plugin_fields()
                  return
 
         # Clear previous entries and parameter fields
-        self.data_handler_plugin_list.clear()
+        self.importer_plugin_list.clear()
         self.analysis_plugin_list.clear()
+        if hasattr(self, 'exporter_plugin_list'):
+            self.exporter_plugin_list.clear()
         self.clear_plugin_fields()
 
         # Get the selected experiment type
@@ -746,22 +938,23 @@ class ExperimentView(BaseView):
         # logger.debug(f"Discovering plugins for experiment type: {selected_type}") # Commented out
 
         all_plugins = self.plugin_manager.get_all_plugins()
-        handler_plugins = set()
+        importer_plugins = set()
         analysis_plugins = set()
+        exporter_plugins = set()
 
         # --- Find Data Handler Plugins ---
         # Find plugins capable of loading data. We generally don't filter handlers by experiment type,
         # as their primary function is data format recognition.
         data_loading_capability = 'load_tracking_data'
         potential_handlers = self.plugin_manager.get_plugins_with_capability(data_loading_capability)
-        handler_plugins.update(potential_handlers)
+        importer_plugins.update(potential_handlers)
         # logger.debug(f"Found {len(handler_plugins)} potential data handler plugins with capability '{data_loading_capability}'.") # Commented out
 
         # Populate Data Handler List (Sorted)
-        for plugin in sorted(list(handler_plugins), key=lambda p: p.plugin_self_metadata().name):
+        for plugin in sorted(list(importer_plugins), key=lambda p: p.plugin_self_metadata().name):
             item = QListWidgetItem(plugin.plugin_self_metadata().name)
             item.setData(Qt.ItemDataRole.UserRole, plugin) # Store the actual plugin object
-            self.data_handler_plugin_list.addItem(item)
+            self.importer_plugin_list.addItem(item)
 
         # --- Find Analysis Plugins ---
         # Find plugins that offer capabilities other than just data loading AND support the selected experiment type.
@@ -775,8 +968,15 @@ class ExperimentView(BaseView):
             meta = plugin.plugin_self_metadata()
             supports_type = (selected_type in getattr(meta, 'supported_experiment_types', []))
 
-            if has_analysis_capability and supports_type:
-                analysis_plugins.add(plugin)
+            # Categorize by plugin_type
+            p_type = getattr(meta, 'plugin_type', None)
+            if p_type == 'exporter':
+                exporter_plugins.add(plugin)
+            elif p_type == 'importer':
+                importer_plugins.add(plugin)
+            else:
+                if has_analysis_capability and supports_type:
+                    analysis_plugins.add(plugin)
 
         # logger.debug(f"Found {len(analysis_plugins)} potential analysis plugins supporting type '{selected_type}'.") # Commented out
 
@@ -785,6 +985,13 @@ class ExperimentView(BaseView):
             item = QListWidgetItem(plugin.plugin_self_metadata().name)
             item.setData(Qt.ItemDataRole.UserRole, plugin) # Store the actual plugin object
             self.analysis_plugin_list.addItem(item)
+
+        # Populate Exporter Plugin List
+        if hasattr(self, 'exporter_plugin_list'):
+            for plugin in sorted(list(exporter_plugins), key=lambda p: p.plugin_self_metadata().name):
+                item = QListWidgetItem(plugin.plugin_self_metadata().name)
+                item.setData(Qt.ItemDataRole.UserRole, plugin)
+                self.exporter_plugin_list.addItem(item)
 
         # Update button state based on whether plugins are now available etc.
         self._update_add_button_state()
@@ -808,6 +1015,15 @@ class ExperimentView(BaseView):
                  if plugin and plugin not in selected_plugins:
                      selected_plugins.append(plugin)
 
+        # Exporter Plugins (multi-selection)
+        if hasattr(self, 'exporter_plugin_list'):
+            for i in range(self.exporter_plugin_list.count()):
+                item = self.exporter_plugin_list.item(i)
+                if item.isSelected():
+                    plugin = item.data(Qt.ItemDataRole.UserRole)
+                    if plugin and plugin not in selected_plugins:
+                        selected_plugins.append(plugin)
+
         return selected_plugins
 
     def _on_plugin_selection_changed(self):
@@ -827,15 +1043,24 @@ class ExperimentView(BaseView):
              self.experiment_type_combo.currentIndex() > 0 and self.experiment_type_combo.currentData() is not None
         )
 
-        # 2. Check if at least one plugin is selected
+        # 2. Determine plugin selection status
         selected_plugins = self._get_selected_plugins()
         plugins_selected = bool(selected_plugins)
 
-        # 3. Check if all required plugin parameters are filled
+        # Determine selected processing stage
+        processing_stage_selected = self.processing_stage_combo.currentText()
+
+        # 3. Check required plugin parameters (only if plugins selected)
         required_params_filled = True
         if plugins_selected and hasattr(self, 'plugin_field_widgets'):
             for plugin in selected_plugins:
                 plugin_name = plugin.plugin_self_metadata().name
+
+                # Allow DeepLabCutHandler tracking file to be blank until stage >= tracked
+                if plugin_name == "DeepLabCutHandler" and processing_stage_selected in ("planned", "recorded"):
+                    # Skip checking its required fields in early stages
+                    continue
+
                 required_fields = plugin.required_fields()
                 field_widgets = self.plugin_field_widgets.get(plugin_name, {})
 
@@ -859,6 +1084,10 @@ class ExperimentView(BaseView):
                         value = widget.value() # Numeric types usually have a default, check if default is invalid? (More complex validation)
                     elif isinstance(widget, QCheckBox):
                         value = widget.isChecked() # Boolean always has a value
+                    elif isinstance(widget, QTextEdit):
+                        value = widget.toPlainText().strip()
+                        if not value:
+                            is_empty = True
                     # Add checks for other widget types if necessary
 
                     if is_empty:
@@ -868,19 +1097,20 @@ class ExperimentView(BaseView):
                 if not required_params_filled:
                     break # Stop checking other plugins
 
-        # 4. Determine final state
-        can_add = core_details_valid and plugins_selected and required_params_filled
-        self.add_experiment_button.setEnabled(can_add)
+        # 4. Final decision: button enabled when core valid AND (no plugins OR all plugin params valid)
+        enable_create = core_details_valid and required_params_filled
+        self.add_experiment_button.setEnabled(enable_create)
 
-        # Optional: Provide feedback if button is disabled
-        if not self.add_experiment_button.isEnabled():
-             tooltip_parts = []
-             if not core_details_valid: tooltip_parts.append("Core details missing.")
-             if not plugins_selected: tooltip_parts.append("Plugin selection missing.")
-             if not required_params_filled and plugins_selected: tooltip_parts.append("Required plugin parameters missing.")
-             self.add_experiment_button.setToolTip("Cannot add experiment: " + " ".join(tooltip_parts))
+        # Tooltip for disabled state
+        if not enable_create:
+            tooltip_parts = []
+            if not core_details_valid:
+                tooltip_parts.append("Core details missing.")
+            if plugins_selected and not required_params_filled:
+                tooltip_parts.append("Required plugin parameters missing.")
+            self.add_experiment_button.setToolTip("Cannot create experiment: " + " ".join(tooltip_parts))
         else:
-             self.add_experiment_button.setToolTip("") # Clear tooltip when enabled
+            self.add_experiment_button.setToolTip("")
 
     def clear_plugin_fields(self):
         """Clears the dynamically generated plugin parameter fields."""
@@ -933,6 +1163,9 @@ class ExperimentView(BaseView):
         self.plugin_field_widgets = {}
         any_fields_added = False
 
+        # The self.plugin_fields_layout (a QFormLayout) was created in setup_add_experiment_page.
+        # clear_plugin_fields() above has removed any previous rows, so we can reuse it here.
+
         for plugin in selected_plugins:
              plugin_name = plugin.plugin_self_metadata().name
              self.plugin_field_widgets[plugin_name] = {}
@@ -947,19 +1180,21 @@ class ExperimentView(BaseView):
 
              any_fields_added = True # Mark that we are adding fields
 
-             # Add a separator/label for the plugin's parameters
-             plugin_label = QLabel(f"Parameters for {plugin_name}:")
-             # Set a property to allow styling via QSS instead of inline
-             plugin_label.setProperty("class", "mus1-plugin-param-header") 
-             # Add label spanning both columns of the QFormLayout
-             self.plugin_fields_layout.addRow(plugin_label)
+             # Wrap this plugin's parameters in a collapsible QGroupBox
+             plugin_box = QGroupBox(plugin_name)
+             plugin_box.setCheckable(True)
+             plugin_box.setChecked(True)
+             plugin_box.setProperty("class", "mus1-plugin-groupbox")
+             box_layout = QFormLayout(plugin_box)
+             box_layout.setContentsMargins(self.FORM_MARGIN, self.FORM_MARGIN, self.FORM_MARGIN, self.FORM_MARGIN)
+             box_layout.setVerticalSpacing(self.CONTROL_SPACING)
 
              field_types = plugin.get_field_types()
              field_descriptions = plugin.get_field_descriptions()
 
              for field_name in all_fields:
                  is_required = field_name in required
-                 field_type = field_types.get(field_name, 'string') # Default to string
+                 field_type = field_types.get(field_name, 'string')
                  description = field_descriptions.get(field_name, '')
 
                  widget_or_layout = self._create_field_widget(plugin, field_name, field_type)
@@ -967,32 +1202,26 @@ class ExperimentView(BaseView):
                      label_text = f"{field_name}{' *' if is_required else ''}:"
                      form_label = self.create_form_label(label_text)
                      if description:
-                         form_label.setToolTip(description) # Add tooltip for description
-
-                     # Set property for QSS styling of required fields
+                         form_label.setToolTip(description)
                      form_label.setProperty("fieldRequired", is_required)
-                     # Reapply style to ensure property takes effect (might be redundant if theme updates handle it)
-                     # self.style().unpolish(form_label)
-                     # self.style().polish(form_label)
 
-                     # Add the row with the label and the widget/layout
                      if isinstance(widget_or_layout, QLayout):
-                         self.plugin_fields_layout.addRow(form_label, widget_or_layout)
-                         # Find the primary input widget within the layout for storage
-                         # (Assuming QLineEdit is the main input for file/dir)
+                         box_layout.addRow(form_label, widget_or_layout)
+                         # find line edit inside layout for storage
                          input_widget = None
                          for i in range(widget_or_layout.count()):
-                              item_widget = widget_or_layout.itemAt(i).widget()
-                              if isinstance(item_widget, QLineEdit):
-                                  input_widget = item_widget
-                                  break
+                             w = widget_or_layout.itemAt(i).widget()
+                             if isinstance(w, (QLineEdit, QTextEdit)):
+                                 input_widget = w
+                                 break
                          if input_widget:
                              self.plugin_field_widgets[plugin_name][field_name] = input_widget
-                         else:
-                              logger.warning(f"Could not find primary input widget in layout for field '{field_name}'")
-                     else: # It's a simple widget
-                         self.plugin_fields_layout.addRow(form_label, widget_or_layout)
+                     else:
+                         box_layout.addRow(form_label, widget_or_layout)
                          self.plugin_field_widgets[plugin_name][field_name] = widget_or_layout
+
+             # Add the groupbox as a single row spanning both columns of the main layout
+             self.plugin_fields_layout.addRow(plugin_box)
 
         # Make the parameters group box visible only if any fields were actually added
         self.plugin_params_group.setVisible(any_fields_added)
@@ -1023,6 +1252,17 @@ class ExperimentView(BaseView):
             widget.setProperty("class", "mus1-combo-box")
             options = field_type.split(':', 1)[1].split(',')
             widget.addItems([opt.strip() for opt in options])
+        elif field_type == 'text':
+            # Multiline text
+            widget = QTextEdit()
+            widget.setProperty("class", "mus1-text-edit")
+            widget.setPlaceholderText("Enter text…")
+        elif field_type == 'dict':
+            # Simple JSON dictionary input
+            widget = QTextEdit()
+            widget.setProperty("class", "mus1-text-edit")
+            widget.setPlaceholderText("Enter JSON dictionary, e.g. {\"key\": \"value\"}")
+            widget.setAcceptRichText(False)
         elif field_type == 'file' or field_type == 'directory':
             # Create a layout with LineEdit and Browse button
             hbox = QHBoxLayout()
@@ -1061,3 +1301,267 @@ class ExperimentView(BaseView):
         if path:
             line_edit_widget.setText(path)
         
+    def _auto_stage_from_video(self):
+        """Automatically switch stage to 'recorded' when a video file is selected."""
+        path_text = self.video_path_edit.text().strip()
+        if path_text:
+            idx_rec = self.processing_stage_combo.findText("recorded")
+            idx_planned = self.processing_stage_combo.findText("planned")
+            if idx_rec != -1 and self.processing_stage_combo.currentIndex() == idx_planned:
+                self.processing_stage_combo.setCurrentIndex(idx_rec)
+
+    def handle_link_video(self):
+        """Prompt the user to pick a video file and link it to the currently
+        selected experiment via ProjectManager.link_video_to_experiment."""
+
+        # Validate ProjectManager availability
+        if not self.project_manager:
+            self.show_error_message("Internal Error", "Project Manager not initialized.")
+            return
+
+        # Validate selection
+        current_item = self.experimentListWidget.currentItem()
+        if current_item is None:
+            QMessageBox.warning(self, "No Experiment Selected", "Please select an experiment from the list first.")
+            return
+
+        # Prefer the ID stored in UserRole for reliability
+        exp_id = current_item.data(Qt.ItemDataRole.UserRole)
+        if not exp_id:
+            # Fallback: parse from text if for some reason data is missing
+            exp_text = current_item.text()
+            exp_id = exp_text.split(" ")[0]
+
+        # Ask the user to choose a video file
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select Video File",
+            str(Path.home()),
+            "Video Files (*.mp4 *.avi *.mov *.mkv *.mpg *.mpeg *.m4v);;All Files (*)",
+        )
+
+        if not file_path:
+            return  # Dialog cancelled
+
+        try:
+            self.project_manager.link_video_to_experiment(
+                experiment_id=exp_id,
+                video_path=Path(file_path),
+                notes="Linked via ExperimentView",
+            )
+            QMessageBox.information(self, "Success", f"Video linked to experiment '{exp_id}'.")
+        except Exception as e:
+            logger.error(f"Failed to link video to experiment {exp_id}: {e}", exc_info=True)
+            QMessageBox.critical(self, "Error", f"Failed to link video:\n{e}")
+
+        # Refresh info
+        self._update_recording_info(exp_id)
+
+    # ------------------------------------------------------------------
+    # Recording info UI helpers
+    # ------------------------------------------------------------------
+
+    def _on_experiment_selected(self, current, previous):
+        """Slot triggered when user selects a different experiment in list."""
+        if current is None:
+            # Clear info
+            self._clear_recording_info()
+            return
+        exp_id = current.data(Qt.ItemDataRole.UserRole) or current.text().split(" ")[0]
+        self._update_recording_info(exp_id)
+
+    def _clear_recording_info(self):
+        self.rec_path_label.setText("Path: —")
+        self.rec_status_label.setText("Status: —")
+        self.rec_size_label.setText("Size: —")
+        self.rec_hash_label.setText("Sample-hash: —")
+        # Clear missing property styling
+        self.rec_path_label.setProperty("missing", False)
+        self.rec_path_label.style().unpolish(self.rec_path_label)
+        self.rec_path_label.style().polish(self.rec_path_label)
+
+    def _update_recording_info(self, exp_id: str):
+        """Populate the recording info panel for the given experiment ID."""
+        if not self.state_manager:
+            self._clear_recording_info()
+            return
+
+        vids = []
+        for vm in self.state_manager.project_state.experiment_videos.values():
+            if exp_id in vm.experiment_ids:
+                vids.append(vm)
+
+        if not vids:
+            self._clear_recording_info()
+            self.rec_status_label.setText("Status: No video linked")
+            return
+
+        if len(vids) > 1:
+            self.rec_status_label.setText(f"Status: {len(vids)} videos linked ⚠️")
+        else:
+            self.rec_status_label.setText("Status: 1 video linked")
+
+        vm = vids[0]  # Show first for now
+        path_str = str(vm.path)
+        exists = vm.path.exists()
+        self.rec_path_label.setText(f"Path: {path_str}")
+        self.rec_size_label.setText(f"Size: {vm.size_bytes / (1024*1024):.2f} MB")
+        self.rec_hash_label.setText(f"Sample-hash: {vm.sample_hash}")
+        if exists:
+            self.rec_path_label.setProperty("missing", False)
+            self.rec_path_label.style().unpolish(self.rec_path_label)
+            self.rec_path_label.style().polish(self.rec_path_label)
+        else:
+            self.rec_path_label.setProperty("missing", True)
+            self.rec_path_label.style().unpolish(self.rec_path_label)
+            self.rec_path_label.style().polish(self.rec_path_label)
+
+    def _suggest_experiment_id(self, video_path_text):
+        """
+        Automatically suggests an experiment ID based on the video filename.
+        If the experiment ID input is empty, it will be filled with the video filename stem.
+        """
+        if not self.experiment_id_input.text().strip() and video_path_text:
+            suggested_id = Path(video_path_text).stem
+            self.experiment_id_input.setText(suggested_id)
+            logger.debug(f"Suggested experiment ID: {suggested_id} from video path: {video_path_text}") 
+
+    def _on_video_path_changed(self, path_text: str):
+        """
+        Computes and displays the sample hash of the currently linked video
+        when the video path changes.
+        """
+        if not path_text:
+            self.sample_hash_value.setText("—")
+            return
+
+        video_path = Path(path_text)
+        if not video_path.exists():
+            self.sample_hash_value.setText("—")
+            return
+
+        try:
+            # Use DataManager's fast hashing utility directly
+            if self.data_manager:
+                sample_hash = self.data_manager.compute_sample_hash(video_path)
+                self.sample_hash_value.setText(sample_hash)
+            else:
+                self.sample_hash_value.setText("—")
+
+            # Auto-populate the Date Recorded field with the file's mtime
+            mtime = int(video_path.stat().st_mtime)
+            self.date_recorded_edit.setDateTime(QDateTime.fromSecsSinceEpoch(mtime))
+            logger.debug(f"Auto-set recording date from video mtime: {self.date_recorded_edit.dateTime().toString('yyyy-MM-dd')}")
+        except Exception as e:
+            logger.error(f"Error computing sample hash for {video_path}: {e}", exc_info=True)
+            self.sample_hash_value.setText("—") 
+
+    # ------------- Multiple experiment helpers -------------
+    def _multi_add_row(self):
+        """Insert a new blank row with suitable widgets."""
+        row = self.multi_exp_table.rowCount()
+        self.multi_exp_table.insertRow(row)
+
+        # Experiment ID
+        self.multi_exp_table.setCellWidget(row, 0, QLineEdit())
+
+        # Subject combo
+        subj_combo = QComboBox()
+        if self.state_manager:
+            subjects = self.state_manager.get_sorted_subjects()
+            for subj in subjects:
+                subj_combo.addItem(subj.id, subj.id)
+        self.multi_exp_table.setCellWidget(row, 1, subj_combo)
+
+        # Type combo
+        type_combo = QComboBox()
+        if self.state_manager:
+            types = self.state_manager.get_supported_experiment_types()
+            for t in types:
+                type_combo.addItem(t, t)
+        self.multi_exp_table.setCellWidget(row, 2, type_combo)
+
+        # Date widget
+        date_edit = QDateTimeEdit(QDateTime.currentDateTime())
+        date_edit.setCalendarPopup(True)
+        date_edit.setDisplayFormat("yyyy-MM-dd")
+        self.multi_exp_table.setCellWidget(row, 3, date_edit)
+
+        # Stage combo
+        stage_combo = QComboBox()
+        stage_combo.addItems(self.PROCESSING_STAGES)
+        self.multi_exp_table.setCellWidget(row, 4, stage_combo)
+
+        # Video path line edit
+        self.multi_exp_table.setCellWidget(row, 5, QLineEdit())
+
+    def _multi_remove_selected_rows(self):
+        rows = sorted({idx.row() for idx in self.multi_exp_table.selectedIndexes()}, reverse=True)
+        for r in rows:
+            self.multi_exp_table.removeRow(r)
+
+    def _multi_save_experiments(self):
+        """Iterate rows and save experiments via ProjectManager."""
+        if not self.project_manager or not self.state_manager:
+            QMessageBox.critical(self, "Error", "Core managers not available.")
+            return
+
+        errors = []
+        added = 0
+        for row in range(self.multi_exp_table.rowCount()):
+            exp_id_widget = self.multi_exp_table.cellWidget(row, 0)
+            subj_widget = self.multi_exp_table.cellWidget(row, 1)
+            type_widget = self.multi_exp_table.cellWidget(row, 2)
+            date_widget = self.multi_exp_table.cellWidget(row, 3)
+            stage_widget = self.multi_exp_table.cellWidget(row, 4)
+            video_widget = self.multi_exp_table.cellWidget(row, 5)
+
+            exp_id = exp_id_widget.text().strip() if exp_id_widget else ""
+            subj_id = subj_widget.currentData() if subj_widget else None
+            exp_type = type_widget.currentData() if type_widget else None
+            qt_dt = date_widget.dateTime() if date_widget else QDateTime.currentDateTime()
+            try:
+                date_recorded = qt_dt.toPython()
+            except AttributeError:
+                date_recorded = qt_dt.toPyDateTime()
+            stage = stage_widget.currentText() if stage_widget else "planned"
+
+            if not exp_id or not subj_id or not exp_type:
+                errors.append(f"Row {row+1}: missing required fields.")
+                continue
+
+            try:
+                self.project_manager.add_experiment(
+                    experiment_id=exp_id,
+                    subject_id=subj_id,
+                    date_recorded=date_recorded,
+                    exp_type=exp_type,
+                    processing_stage=stage,
+                    associated_plugins=[],
+                    plugin_params={},
+                )
+
+                # Link video if path provided
+                if video_widget:
+                    video_path_text = video_widget.text().strip()
+                    if video_path_text:
+                        path_obj = Path(video_path_text)
+                        try:
+                            self.project_manager.link_video_to_experiment(
+                                experiment_id=exp_id,
+                                video_path=path_obj,
+                                notes="Bulk import video link",
+                            )
+                        except Exception as e:
+                            errors.append(f"Row {row+1}: video link failed – {e}")
+
+                added += 1
+            except Exception as e:
+                errors.append(f"Row {row+1}: {e}")
+
+        if added:
+            QMessageBox.information(self, "Success", f"Added {added} experiments.")
+            self.multi_exp_table.setRowCount(0)  # Clear table
+            self.state_manager.notify_observers()
+        if errors:
+            QMessageBox.warning(self, "Completed with Issues", "\n".join(errors[:10])) 

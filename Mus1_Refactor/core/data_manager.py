@@ -7,6 +7,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from PIL import Image
 from io import BytesIO
+import hashlib  # For fast file hashing
 
 # Import PluginManager type hint
 try:
@@ -259,6 +260,47 @@ class DataManager:
             raise ValueError(f"Arena image source '{arena_source}' not supported. Must be one of: {supported}")
 
         return {"valid": True, "source": arena_source, "path": str(image_path)}
+
+    # ------------------------------------------------------------------
+    # Fast file hashing utility (used for video integrity checks)
+    # ------------------------------------------------------------------
+    @staticmethod
+    def compute_sample_hash(file_path: Path, chunk_size: int = 4 * 1024 * 1024) -> str:
+        """Compute a quick BLAKE2b hash from three sampled chunks.
+
+        This mirrors the previous helper in ProjectManager but lives here so that
+        hashing logic is reusable across core components without making
+        ProjectManager heavier.
+
+        Args:
+            file_path: Path to the file to hash.
+            chunk_size: Size (bytes) of each chunk to sample from start/middle/end.
+
+        Returns:
+            32-character hex digest string.
+        """
+        if not file_path.exists():
+            raise FileNotFoundError(f"File not found for hashing: {file_path}")
+
+        file_size = file_path.stat().st_size
+        h = hashlib.blake2b(digest_size=16)
+
+        with open(file_path, "rb") as f:
+            # First chunk
+            h.update(f.read(min(chunk_size, file_size)))
+
+            # Middle chunk
+            if file_size > chunk_size * 2:
+                middle_pos = file_size // 2
+                f.seek(max(0, middle_pos - chunk_size // 2))
+                h.update(f.read(chunk_size))
+
+            # Last chunk
+            if file_size > chunk_size:
+                f.seek(max(0, file_size - chunk_size))
+                h.update(f.read(chunk_size))
+
+        return h.hexdigest()
 
     def import_subject_metadata_from_excel(self, excel_path: Path):
         """Import subject metadata from an Excel file and update the project state with SubjectMetadata entries."""

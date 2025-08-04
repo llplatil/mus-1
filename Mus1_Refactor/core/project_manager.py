@@ -103,6 +103,10 @@ class ProjectManager:
                         # Check if it's a class defined in *this specific module* (not imported into it)
                         # and if it's a subclass of BasePlugin (but not BasePlugin itself)
                         if inspect.getmodule(obj) == module and issubclass(obj, BasePlugin) and obj is not BasePlugin:
+                            # Skip abstract plugin classes
+                            if inspect.isabstract(obj):
+                                logger.info(f"Skipping abstract plugin class {name} (incomplete implementation).")
+                                continue
                             try:
                                 plugin_instance = obj() # Instantiate the plugin
                                 self.plugin_manager.register_plugin(plugin_instance)
@@ -365,7 +369,75 @@ class ProjectManager:
         self.state_manager.project_state.subjects[subject_id].experiment_ids.add(experiment_id)
 
         logger.info(f"Experiment '{experiment_id}' added for subject '{subject_id}'.")
+
+        # Persist change
+        self.save_project()
         self.state_manager.notify_observers()
+
+    # ---------------------------------------------------------------------
+    # Video Linking Utilities
+    # ---------------------------------------------------------------------
+
+    def link_video_to_experiment(self, *, experiment_id: str, video_path: Path, notes: str = "") -> None:
+        """Link an existing local video file to a MUS1 experiment.
+
+        The method records essential metadata (path, timestamps, quick hash) in
+        ``ProjectState.experiment_videos`` and registers the association with
+        the target experiment.  It **does not** copy or move the file.
+
+        Args:
+            experiment_id: ID of the experiment to link the video to.
+            video_path: Path object pointing to the video on disk.
+            notes: Optional free-text notes to store with the link.
+
+        Raises:
+            ValueError: If the experiment does not exist or the file is invalid.
+        """
+
+        if not self._current_project_root:
+            raise ValueError("No current project loaded – cannot link video.")
+
+        exp = self.state_manager.get_experiment_by_id(experiment_id)
+        if exp is None:
+            raise ValueError(f"Experiment '{experiment_id}' not found in project.")
+
+        if not video_path.exists() or not video_path.is_file():
+            raise ValueError(f"Video file not found: {video_path}")
+
+        # Collect fast-to-compute fingerprint information
+        size_bytes = video_path.stat().st_size
+        last_modified = video_path.stat().st_mtime
+        # Use DataManager hashing utility for integrity check
+        sample_hash = self.data_manager.compute_sample_hash(video_path)
+
+        # Create a unique key for storage – use absolute path to avoid clashes
+        video_key = str(video_path.resolve())
+
+        # Avoid duplicate entry if already linked
+        existing_vm = self.state_manager.project_state.experiment_videos.get(video_key)
+        if existing_vm:
+            # Ensure experiment is listed in its experiment_ids
+            existing_vm.experiment_ids.add(experiment_id)
+        else:
+            from .metadata import VideoMetadata  # Local import to avoid cycles
+            vm = VideoMetadata(
+                path=video_path.resolve(),
+                date=datetime.now(),
+                notes=notes,
+                experiment_ids={experiment_id},
+                size_bytes=size_bytes,
+                last_modified=last_modified,
+                sample_hash=sample_hash,
+            )
+            self.state_manager.project_state.experiment_videos[video_key] = vm
+
+        # Update ExperimentMetadata.file_ids for quick reverse lookup
+        exp.file_ids.add(video_key)
+
+        # Persist and notify
+        self.save_project()
+        self.state_manager.notify_observers()
+        logger.info(f"Linked video '{video_path.name}' to experiment '{experiment_id}'.")
 
     def create_batch(self, batch_id, batch_name=None, description=None, experiment_ids=None, selection_criteria=None):
         """

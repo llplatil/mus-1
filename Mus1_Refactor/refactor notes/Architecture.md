@@ -327,3 +327,28 @@ MUS1 is designed to serve as a central hub for organizing and preprocessing dive
 This document serves as a comprehensive reference for developers to understand the architecture and implementation details of MUS1.
 
 End of file
+
+## 2025-07 Refactor Snapshot (UI & Core)
+
+### ExperimentView Updates
+* Navigation now offers **Add Experiment**, **Add Multiple Experiments**, **View Experiments**, **Create Batch**.
+* Plugin selection area is split into three group-boxes:
+  * **Importer Plugins** (data handlers such as `DeepLabCutHandler`).
+  * **Analysis Plugins**.
+  * **Exporter Plugins**.
+* Parameter widgets for each plugin are wrapped in a collapsible `QGroupBox`, eliminating field overlap and improving readability.
+* New field-types supported by dynamic form generator:
+  * `text` → multiline `QTextEdit`.
+  * `dict` → JSON-oriented `QTextEdit`.
+* "Add Multiple Experiments" page provides a table where users can batch-enter core metadata and optional video path; rows are persisted via `ProjectManager.add_experiment` and `link_video_to_experiment`.
+* Date-time conversion is now version-safe (`QDateTime.toPython()` fallback).
+
+### Core Contract Changes
+* `ProjectManager.add_experiment` immediately calls `save_project()` after inserting the new metadata, ensuring persistence without UI involvement.
+* DeepLabCutHandler’s `validate_experiment` enforces the presence of `tracking_file_path` **only** once an experiment’s `processing_stage` ≥ `tracked`.  UI therefore accepts “planned/recorded” experiments without the DLC file.
+* Experiment stages remain a string enum (`planned`, `recorded`, `tracked`, `interpreted`) stored solely in `ExperimentMetadata`.  A future task (see Roadmap) will expose a canonical stage list from the core layer so UIs no longer hard-code it.
+
+### Upcoming Responsibility Separation (agreed)
+* Move reusable helpers currently in `ExperimentView` (sample-hash computation, video path browse helpers, etc.) into `DataManager` / `ProjectManager`.
+* UI will request the canonical stage list from `StateManager` instead of defining `PROCESSING_STAGES` locally.
+* Video-related convenience utilities (e.g., suggested experiment ID from video filename, automatic stage inference) will be centralised in `ProjectManager`.

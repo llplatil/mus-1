@@ -35,8 +35,21 @@ class HasDateAdded(Protocol):
 class HasName(Protocol):
     name: str
 
-# Removed legacy enums for experiment sessions and arena image source
-# Define constants instead
+# ---------------------------------------------
+# Experiment processing stage (centralized)
+# ---------------------------------------------
+class ProcessingStage(str, Enum):
+    PLANNED = "planned"
+    RECORDED = "recorded"
+    TRACKED = "tracked"
+    INTERPRETED = "interpreted"
+
+# Convenience constant list (kept for quick access)
+DEFAULT_PROCESSING_STAGES: List[str] = [stage.value for stage in ProcessingStage]
+
+# ---------------------------------------------
+# Arena image source (centralized)
+# ---------------------------------------------
 ARENA_SOURCE_DLC_EXPORT = "DLC_Export"
 ARENA_SOURCE_MANUAL = "Manual"
 ARENA_SOURCE_UNKNOWN = "Unknown"
@@ -353,6 +366,10 @@ class VideoMetadata(BaseModel):
     notes: str = ""
     experiment_ids: Set[str] = set()
     media_type: str = "video"
+    # --- File identity / integrity fields ---
+    size_bytes: int = 0  # File size in bytes (quick integrity check)
+    last_modified: float = 0.0  # POSIX mtime (seconds since epoch)
+    sample_hash: Optional[str] = None  # Fast hash of sampled chunks for integrity verification
 
 
 class ExternalConfigMetadata(BaseModel):
@@ -424,5 +441,7 @@ class GenotypeMetadata(BaseModel):
     name: str
     date_added: datetime = Field(default_factory=datetime.now)
     description: Optional[str] = None
+
+
 
     

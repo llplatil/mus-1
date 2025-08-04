@@ -593,5 +593,10 @@ QTabBar::tab:hover {
     background-color: $PRIMARY_BUTTON_HOVER;
 }
 
+/* ==== STATUS INDICATORS ==== */
+QLabel[missing="true"] {
+    color: #EB5757; /* red for missing file paths */
+}
+
 /* ==== REQUIRED FIELD LABEL STYLING (Moved near other label styles) ==== */
 /* QLabel[fieldRequired="true"] { ... } */ /* Now defined earlier */

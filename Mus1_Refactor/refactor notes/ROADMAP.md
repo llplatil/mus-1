@@ -4,36 +4,29 @@ This document outlines the planned development roadmap for MUS1, defining milest
 
 ## Current Phase (v0.1.x -> v0.2.x) - Plugin & Experiment Refactor + Initial kp-MoSeq Integration
 
-**Recently Completed Tasks:**
+### Recently Completed Tasks (2025-07)
+* ExperimentView plugin-selection split into Importer / Analysis / Exporter lists with collapsible parameter boxes.
+* Added "Add Multiple Experiments" page with bulk table entry and save.
+* Added support for `text` and `dict` parameter field types.
+* DeepLabCut tracking file requirement shifted to stage-aware core validation; UI no longer blocks early stages.
+* `ProjectManager.add_experiment` now persists immediately after creation.
 
-1.  **Plugin Architecture Overhaul**
-    *   [x] Shifted from experiment-type plugins to tool-based plugins.
-    *   [x] Created `Mus1TrackingAnalysisPlugin` consolidating NOR/OF/basic analysis logic.
-    *   [x] Renamed DLC plugin to `DeepLabCutHandlerPlugin` focusing on format handling.
-    *   [x] Added `readable_data_formats` and `analysis_capabilities` concepts to plugins.
-    *   [x] Refactored `BasePlugin` (updated signatures, added abstract methods).
-    *   [x] Refactored `PluginManager` (new filtering, removed analysis/validation/styling methods).
-    *   [x] Added interpolation (`handle_gaps`) to `Mus1TrackingAnalysisPlugin`.
-    *   [x] Added `run_project_level_plugin_action` and refined `update_master_body_parts` in `ProjectManager`.
-    *   [x] Drafted `DlcProjectImporterPlugin` structure.
-    *   [x] Outlined plan for integrating Keypoint-MoSeq as a MUS1 plugin.
-    *   [x] Drafted `KeypointMoSeqAnalysisPlugin` skeleton structure.
-    *   [x] Updated `README.md` and `requirements.txt` for kp-MoSeq integration.
-    *   [x] Implemented `ProjectManager.run_analysis` orchestration logic.
-    *   [x] **Implemented Data Loading via DataManager/Handler Helpers:** Refactored data loading so analysis plugins call `DataManager.call_handler_method`, which finds the correct Handler plugin (e.g., `DeepLabCutHandler`) and executes its public helper method (e.g., `get_tracking_dataframe`) to load and process data (including likelihood filtering).
-
-2.  **Styling Unification & Experiment Stages**
-    *   [x] Centralized styling in `mus1.qss` and `ThemeManager`.
-    *   [x] Removed complex plugin-specific styling methods (`get_styling_preferences`, etc.).
-    *   [x] Implemented consistent styling for experiment `processing_stage` via QSS property.
-    *   [x] Implemented unified styling for required plugin parameters via QSS property.
-    *   [x] Cleaned up `ThemeManager` logic related to plugin styles.
-
-3.  **Metadata & Core Logic**
-    *   [x] Updated `ExperimentMetadata` (removed `data_files`, added `analysis_results`, `associated_plugins`, `plugin_params`).
-    *   [x] Updated `ProjectManager.add_experiment` signature.
-    *   [x] Clarified roles: `DataManager` (generic I/O, handler coordination), `Handler Plugins` (format expertise, loading helpers), `Analysis Plugins` (calculations), `ProjectManager` (orchestration).
-    *   [x] Applied likelihood thresholding within `DeepLabCutHandlerPlugin` loading helper method.
+### New High-Priority Tasks (Next Sprint)
+1. **Responsibility Separation Refactor**
+   * Move video-related helpers (sample-hash, video path suggestion) from `ExperimentView` to `ProjectManager`/`DataManager`.
+   * Expose canonical `PROCESSING_STAGES` list from core (StateManager or separate constants module) and have UIs query it.
+   * Provide core wrapper for browsing/selecting files so multiple views can reuse.
+2. **Plugin Parameter UI Enhancements**
+   * Allow collapsible plugin boxes to remember open/closed state per session.
+   * Syntax-check `dict` (`JSON`) text fields and highlight errors in red.
+3. **Batch & View Pages Update**
+   * Migrate View Experiments & Create Batch pages to `MetadataGridDisplay`, showing stage badges.
+4. **Documentation & Tests**
+   * Update developer docs for new plugin categories and UI flow.
+   * Add unit tests for stage-aware validation and bulk experiment creation.
+5. **Future Large-Scale Refactor**
+   * Ensure UI layers contain *no* business logic – only delegate to core managers.
+   * Evaluate signals/slots vs observer pattern consistency across all views.
 
 **Current High-Priority Tasks:**
 

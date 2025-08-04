@@ -1,7 +1,7 @@
 from PySide6.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QStackedWidget, QListWidget,
     QGroupBox, QFormLayout, QLineEdit, QComboBox, QTextEdit, QPushButton, QLabel, QDateTimeEdit, QCheckBox,
-    QSpinBox, QDoubleSpinBox, QSlider, QFileDialog
+    QSpinBox, QDoubleSpinBox, QSlider, QFileDialog, QAbstractItemView
 )
 from ..core.metadata import Sex
 from .navigation_pane import NavigationPane  
@@ -343,13 +343,20 @@ class SubjectView(BaseView):
         tree_group, tree_layout = self.create_form_section("Subjects and Experiments Overview", overview_layout)
         self.metadata_tree = MetadataTreeView(tree_group)
         tree_layout.addWidget(self.metadata_tree)
-        
-        # Add a refresh button to allow manual updates
-        refresh_row = self.create_button_row(tree_layout)
+
+        # Add toolbar row with refresh button and edit-mode toggle
+        toolbar_row = self.create_button_row(tree_layout, add_stretch=False)
         refresh_button = QPushButton("Refresh Overview")
-        refresh_button.setProperty("class", "mus1-primary-button")
+        refresh_button.setProperty("class", "mus1-secondary-button")
         refresh_button.clicked.connect(self.refresh_overview)
-        refresh_row.addWidget(refresh_button)
+
+        self.edit_mode_toggle = QCheckBox("Edit mode")
+        self.edit_mode_toggle.setToolTip("Toggle inline editing of subject rows")
+        self.edit_mode_toggle.toggled.connect(self.set_overview_edit_mode)
+
+        toolbar_row.addWidget(refresh_button)
+        toolbar_row.addStretch(1)
+        toolbar_row.addWidget(self.edit_mode_toggle)
         
         # Add the overview page with title "Subjects Overview" to the stacked widget
         self.add_page(self.page_overview, "Subjects Overview")
@@ -362,7 +369,7 @@ class SubjectView(BaseView):
         subjects = state.subjects          # Dictionary of subject metadata
         experiments = state.experiments      # Dictionary of experiment metadata
         # Populate the metadata tree view with subjects and their experiments
-        self.metadata_tree.populate_subjects_with_experiments(subjects, experiments)
+        self.metadata_tree.populate_subjects_with_experiments(subjects, experiments, state_manager=self.state_manager)
 
     def handle_edit_subject(self):
         """Handle editing of a selected subject."""
@@ -1115,3 +1122,62 @@ class SubjectView(BaseView):
                 self.treatment_combo.addItem(treatment.name)
             else:
                 self.treatment_combo.addItem(treatment)
+
+    def set_overview_edit_mode(self, checked):
+        """Toggle inline editing of subject rows in the overview tree."""
+        # Adjust edit triggers
+        triggers = QAbstractItemView.AllEditTriggers if checked else QAbstractItemView.NoEditTriggers
+        self.metadata_tree.setEditTriggers(triggers)
+
+        # Connect or disconnect itemChanged handler
+        try:
+            self.metadata_tree.itemChanged.disconnect(self._on_overview_item_changed)
+        except Exception:
+            pass
+
+        if checked:
+            self.metadata_tree.itemChanged.connect(self._on_overview_item_changed)
+
+        self.log_bus.log(f"Overview tree edit mode {'enabled' if checked else 'disabled'}", "info", "SubjectView")
+
+    def _on_overview_item_changed(self, item, column):
+        """Handle edits to subject rows and persist changes."""
+        # Only process subject-level rows (no parent) and editable columns 1 or 2 (Sex, Genotype)
+        if item.parent() is not None:
+            return  # Skip experiment rows
+
+        subj_id = item.text(0)
+        field_map = {1: 'sex', 2: 'genotype'}
+        if column not in field_map:
+            return
+
+        field = field_map[column]
+        new_value = item.text(column).strip()
+
+        # Validation and update via ProjectManager
+        subj = None
+        try:
+            sm = self.state_manager
+            subj = sm.project_state.subjects.get(subj_id)
+            if not subj:
+                raise ValueError(f"Subject {subj_id} not found")
+
+            if field == 'sex':
+                # Normalize to Sex enum value
+                from ..core.metadata import Sex as SexEnum
+                if new_value not in (SexEnum.M.value, SexEnum.F.value, SexEnum.UNKNOWN.value):
+                    raise ValueError("Sex must be M, F, or Unknown")
+                subj.sex = SexEnum(new_value)
+            elif field == 'genotype':
+                subj.genotype = new_value
+
+            # Persist project
+            self.project_manager.save_project()
+            self.log_bus.log(f"Updated {field} for subject {subj_id}", "success", "SubjectView")
+        except Exception as e:
+            self.log_bus.log(f"Failed to update subject: {e}", "error", "SubjectView")
+            # Revert cell to original value
+            original = getattr(subj, field, '') if subj else ''
+            if field == 'sex' and hasattr(original, 'value'):
+                original = original.value
+            item.setText(column, str(original))

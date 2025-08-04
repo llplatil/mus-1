@@ -1,6 +1,7 @@
 from PySide6.QtWidgets import (
     QTreeWidget, QTreeWidgetItem, QWidget, QVBoxLayout, 
-    QLabel, QFrame, QTableWidget, QTableWidgetItem, QHeaderView, QCheckBox, QSizePolicy, QHBoxLayout
+    QLabel, QFrame, QTableWidget, QTableWidgetItem, QHeaderView, QCheckBox, QSizePolicy, QHBoxLayout,
+    QAbstractItemView
 )
 from PySide6.QtCore import Qt, Signal
 from datetime import datetime
@@ -43,8 +44,8 @@ class SubjectTreeWidgetItem(QTreeWidgetItem):
             return super().__lt__(other)
         column = tree.sortColumn()
         # Columns: 0 Subject ID, 1 Sex, 2 Genotype, 3 Experiments
-        # For numeric columns (0 and 3) attempt int comparison
-        if column in (0, 3):
+        # For numeric columns (0, 3, 4) attempt int comparison (4 = Recordings)
+        if column in (0, 3, 4):
             try:
                 return int(self.text(column)) < int(other.text(column))
             except ValueError:
@@ -75,6 +76,8 @@ class MetadataTreeView(QTreeWidget):
         self.setAlternatingRowColors(True)
         self.setSelectionMode(QTreeWidget.SingleSelection)
         self.setSelectionBehavior(QTreeWidget.SelectRows)
+        # Disable inline editing by default – SubjectView toggles this
+        self.setEditTriggers(QAbstractItemView.NoEditTriggers)
         
         # Configure sizing
         self.setMinimumHeight(200)
@@ -86,17 +89,19 @@ class MetadataTreeView(QTreeWidget):
         header.setSortIndicatorShown(True)
         self.setSortingEnabled(True)
         
-    def populate_subjects_with_experiments(self, subjects_dict, experiments_dict):
+    def populate_subjects_with_experiments(self, subjects_dict, experiments_dict, state_manager=None):
         """
         Populate tree with subjects as parents and experiments as children.
         Adds a Genotype column when available so users can quickly see subject genotypes.
         """
         self.clear()
         # New header includes Genotype column
-        self.setHeaderLabels(["Subject ID", "Sex", "Genotype", "Experiments"])
+        self.setHeaderLabels(["Subject ID", "Sex", "Genotype", "Experiments", "Recordings"])
         
         for subject_id, subject in subjects_dict.items():
             item = SubjectTreeWidgetItem(self)
+            # Allow editing (SubjectView guards commit handling)
+            item.setFlags(item.flags() | Qt.ItemIsEditable)
             item.setText(0, subject_id)
             item.setText(1, subject.sex.value if hasattr(subject.sex, 'value') else str(subject.sex))
             # Safely handle missing genotype values
@@ -106,6 +111,14 @@ class MetadataTreeView(QTreeWidget):
             # Count experiments
             subject_experiments = [exp for exp in experiments_dict.values() if exp.subject_id == subject_id]
             item.setText(3, str(len(subject_experiments)))
+            # Recording count per subject
+            rec_count = 0
+            if state_manager is not None:
+                try:
+                    rec_count = state_manager.get_recording_count_for_subject(subject_id)
+                except Exception:
+                    pass
+            item.setText(4, str(rec_count))
             
             # Add experiment children
             for experiment in subject_experiments:
@@ -114,6 +127,14 @@ class MetadataTreeView(QTreeWidget):
                 exp_item.setText(1, "")  # Sex column blank for experiments
                 exp_item.setText(2, "")  # Genotype column blank for experiments
                 exp_item.setText(3, experiment.type)
+                # Column 4 – recordings per experiment
+                rec_exp = 0
+                if state_manager is not None:
+                    try:
+                        rec_exp = state_manager.get_recording_count_for_experiment(experiment.id)
+                    except Exception:
+                        pass
+                exp_item.setText(4, str(rec_exp))
         
         # Expand all items for better visibility
         self.expandAll()
@@ -356,6 +377,11 @@ class MetadataGridDisplay(QWidget):
                      table_item = SortableTableWidgetItem(display_value, sort_key)
                      self.table.setItem(row, col, table_item)
 
+                elif key == "Recordings":
+                     sort_key = int(item_data.get("Recordings", 0))
+                     table_item = SortableTableWidgetItem(display_value, sort_key)
+                     self.table.setItem(row, col, table_item)
+
                 # Default handling for other columns
                 else:
                     # Use standard QTableWidgetItem if no special sorting needed
@@ -408,7 +434,7 @@ class MetadataGridDisplay(QWidget):
             selectable: Whether to add checkboxes for selection
         """
         # Define the columns we want to display
-        columns = ["Select", "ID", "Type", "Subject", "Date", "Stage"]
+        columns = ["Select", "ID", "Type", "Subject", "Date", "Stage", "Recordings"]
         items = []
         
         for exp_id, exp in experiments_dict.items():
@@ -433,10 +459,18 @@ class MetadataGridDisplay(QWidget):
                 "Subject": getattr(exp, 'subject_id', 'N/A'),
                 "Date": date_str, # Display string
                 "Stage": raw_stage or 'N/A', # Display string (use raw stage directly)
+                "Recordings": 0,
                 # Raw data for sorting keys used in populate_data
                 "raw_date": raw_date,
                 "raw_stage": raw_stage
             }
+            # Determine recording count if a state manager reference is available via parent widget chain
+            try:
+                root_window = self.window()
+                if hasattr(root_window, 'state_manager'):
+                    item["Recordings"] = root_window.state_manager.get_recording_count_for_experiment(exp.id)
+            except Exception:
+                pass
             items.append(item)
             
         # Call populate_data which now uses SortableTableWidgetItem

@@ -112,6 +112,31 @@ class PluginManager:
             self._supported_arena_sources = sorted(list(sources))
         return self._supported_arena_sources
 
+    # --- Compatibility Helpers (moved from StateManager) ---
+
+    def get_compatible_processing_stages(self, exp_type: str) -> List[str]:
+        """Return a sorted list of processing stages supported by plugins for a given experiment type."""
+        stages: Set[str] = set()
+        for plugin in self._plugins:
+            if exp_type in plugin.get_supported_experiment_types():
+                stages.update(plugin.get_supported_processing_stages())
+        return sorted(list(stages))
+
+    def get_compatible_data_sources(self, exp_type: str, stage: str) -> List[str]:
+        """Return data sources compatible with a given experiment type and processing stage."""
+        sources: Set[str] = set()
+        for plugin in self._plugins:
+            if exp_type in plugin.get_supported_experiment_types() and stage in plugin.get_supported_processing_stages():
+                sources.update(plugin.get_supported_data_sources())
+        return sorted(list(sources))
+
+    def compile_required_fields(self, plugins: List[BasePlugin]) -> List[str]:
+        """Return a sorted list of unique required fields from the provided plugins."""
+        fields: Set[str] = set()
+        for plugin in plugins:
+            fields.update(plugin.required_fields())
+        return sorted(list(fields))
+
     # --- Utility Methods ---
 
     def get_all_plugin_metadata(self) -> List[PluginMetadata]:
