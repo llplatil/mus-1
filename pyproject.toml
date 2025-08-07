@@ -1,0 +1,12 @@
+[project]
+name = "mus1"
+version = "0.1.0"
+description = "MUS1 Behavior Analysis Tool"
+requires-python = ">=3.10"
+dependencies = ["PySide6>=6.5.2", "qt-material>=2.14.0", "pydantic>=1.9.0", "pandas>=1.5.0", "numpy>=1.21.0,<=1.26.4", "matplotlib>=3.5.0", "PyYAML>=6.0", "shapely>=2.0.7", "keypoint-moseq", "Flask-Session==0.6.0", "google-cloud-storage>=2.0.0,<3.0.0", "requests>=2.20.0,<3.0.0"]
+
+[project.scripts]
+mus1 = "Mus1_Refactor.cli_ty:run"
+
+[tool.setuptools]
+packages = ["Mus1_Refactor"]

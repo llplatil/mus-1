@@ -1344,11 +1344,14 @@ class ExperimentView(BaseView):
             return  # Dialog cancelled
 
         try:
-            self.project_manager.link_video_to_experiment(
-                experiment_id=exp_id,
-                video_path=Path(file_path),
-                notes="Linked via ExperimentView",
-            )
+            # --- New workflow: register + link via unassigned list ---
+            video_path = Path(file_path)
+            sample_hash = self.data_manager.compute_sample_hash(video_path)
+            start_time = self.data_manager._extract_start_time(video_path)  # pylint: disable=protected-access
+            # Register if not already known
+            self.project_manager.register_unlinked_videos([(video_path, sample_hash, start_time)])
+            # Link to the chosen experiment
+            self.project_manager.link_unassigned_video(sample_hash, exp_id)
             QMessageBox.information(self, "Success", f"Video linked to experiment '{exp_id}'.")
         except Exception as e:
             logger.error(f"Failed to link video to experiment {exp_id}: {e}", exc_info=True)

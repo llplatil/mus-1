@@ -4,6 +4,16 @@ This document outlines the planned development roadmap for MUS1, defining milest
 
 ## Current Phase (v0.1.x -> v0.2.x) - Plugin & Experiment Refactor + Initial kp-MoSeq Integration
 
+### Recently Completed Tasks (2025-08)
+* Implemented threaded video-discovery pipeline in DataManager (`discover_video_files`, `deduplicate_video_list`).
+* Added `ProjectState.unassigned_videos` plus migration logic.
+* Added `ProjectManager.register_unlinked_videos` and `link_unassigned_video` (GUI + CLI now share ingestion path).
+* Replaced legacy argparse CLI with Typer‐based app (`mus1`).
+* New commands: `mus1 scan videos`, `mus1 scan dedup`, `mus1 project add-videos`.
+* Rotating log handler per-project (`LoggingEventBus.configure_default_file_handler`).
+* GUI `Add Experiment` page now registers/links videos via the unassigned workflow.
+* Deleted deprecated scripts (`cli.py`, `scripts/scan_videos.py`, `process_video_list.py`, `index_videos.py`).
+
 ### Recently Completed Tasks (2025-07)
 * ExperimentView plugin-selection split into Importer / Analysis / Exporter lists with collapsible parameter boxes.
 * Added "Add Multiple Experiments" page with bulk table entry and save.
@@ -12,6 +22,44 @@ This document outlines the planned development roadmap for MUS1, defining milest
 * `ProjectManager.add_experiment` now persists immediately after creation.
 
 ### New High-Priority Tasks (Next Sprint)
+
+#### CLI Modernization (Typer Migration ✅ planned)
+
+*Enhancements added after disk-space & editable-install success*
+
+| Milestone | Description |
+|-----------|-------------|
+| `0.2.0`   | Migrate to Typer, console-script `mus1`, keep legacy stub |
+| `0.2.1`   | Add progress bar (`tqdm`) to `scan videos` and hashing steps |
+| `0.2.2`   | `mus1 project add-videos` – link videos into **existing** project from a prepared `video_list.txt` (uses ProjectManager) |
+| `0.2.3`   | Config file (`mus1.toml`) – default scan roots, exclude patterns, preferred progress settings |
+| `0.3.0`   | Remove `scripts/` duplicates; all new CLI functionality lives either in core Typer app or as Typer sub-apps in `plugins/` |
+
+Upcoming tasks:
+1. **DataManager.discover_video_files** – move scanning logic from `scripts/scan_videos.py` (✅ code draft exists).  Add progress‐callback support.
+2. **DataManager.deduplicate_video_list** – hash-based deduplication; yields JSON Lines.
+3. **ProjectState.unassigned_videos** – schema update + migration on load.
+4. **ProjectManager.register_unlinked_videos / link_unassigned_video** – core ingestion.
+5. **CLI**
+   * `mus1 scan videos`, `mus1 scan dedup` (Typer sub-app).
+   * `mus1 project add-videos` (progress bar, stdin friendly).
+6. **GUI stub** – show count of unassigned videos; simple assignment dialog.
+7. Deprecate `scripts/*.py` once Typer commands are stable.
+8. CI tests for scanner/dedup and add-videos on Windows & Linux.
+
+1. **Create `mus1/__main__.py` Typer app** exposing the existing sub-commands.
+2. **Command grouping**
+   * `mus1 scan-videos` → becomes `mus1 scan videos …`
+   * `mus1 process-video-list` → `mus1 scan dedup …`
+   * `mus1 create-project` & `index-videos` move under `mus1 project …`
+3. **Context object** initialises shared managers once and injects into
+   sub-commands to avoid slow re-initialisation.
+4. **Add console-script entrypoint** in `pyproject.toml` so users type `mus1`
+   instead of `python -m Mus1_Refactor.cli`.
+5. **Progressive transition** – `cli.py` remains for one minor version; a stub
+   will forward to `mus1.__main__` and show a deprecation warning.
+6. **Update docs & CI tests** to use the new interface.
+
 1. **Responsibility Separation Refactor**
    * Move video-related helpers (sample-hash, video path suggestion) from `ExperimentView` to `ProjectManager`/`DataManager`.
    * Expose canonical `PROCESSING_STAGES` list from core (StateManager or separate constants module) and have UIs query it.

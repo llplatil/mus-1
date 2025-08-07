@@ -2,7 +2,7 @@ import logging
 import json
 from pathlib import Path
 from datetime import datetime
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Iterable
 import os
 import importlib
 import importlib.util
@@ -45,13 +45,32 @@ class ProjectManager:
         
         # Decoupled plugin UI state from current state; not syncing plugin data into StateManager
 
-    def get_projects_directory(self) -> Path:
-        """Returns the default directory where projects are stored, ensuring it exists."""
-        # project_manager.py is in core, projects is a sibling of the parent of core
-        # Mus1_Refactor/core/project_manager.py -> Mus1_Refactor/projects
-        script_dir = Path(__file__).parent
-        base_dir = script_dir.parent.parent / "projects"
-        base_dir.mkdir(exist_ok=True)
+    def get_projects_directory(self, custom_base: Path | None = None) -> Path:
+        """Return the directory where MUS1 projects are stored.
+
+        Precedence for the base directory is:
+        1. *custom_base* argument (used by CLI `--base-dir` or tests).
+        2. Environment variable ``MUS1_PROJECTS_DIR`` if set.
+        3. `<repo>/projects` directory (sibling to `Mus1_Refactor`).
+
+        The returned directory is created if it does not exist so callers can
+        rely on its presence.
+        """
+        if custom_base:
+            base_dir = Path(custom_base).expanduser().resolve()
+        else:
+            env_dir = os.environ.get("MUS1_PROJECTS_DIR")
+            if env_dir:
+                base_dir = Path(env_dir).expanduser().resolve()
+            else:
+                # Default to repo‐local "projects" folder – convenient for dev but
+                # still works when MUS1 is installed site-packages (falls back to
+                # the *current working directory*/projects in that case).
+                script_dir = Path(__file__).parent
+                base_dir = (script_dir.parent.parent / "projects").resolve()
+
+        # Ensure existence
+        base_dir.mkdir(parents=True, exist_ok=True)
         return base_dir
 
     def _sync_core_components(self):
@@ -379,6 +398,12 @@ class ProjectManager:
     # ---------------------------------------------------------------------
 
     def link_video_to_experiment(self, *, experiment_id: str, video_path: Path, notes: str = "") -> None:
+        """(LEGACY) Directly link *video_path* to an experiment, computing its hash on the fly.
+
+        New ingestion path prefers :pymeth:`register_unlinked_videos` &
+        :pymeth:`link_unassigned_video`, but this remains for backwards
+        compatibility and quick tests until the old CLI is fully removed.
+        """
         """Link an existing local video file to a MUS1 experiment.
 
         The method records essential metadata (path, timestamps, quick hash) in
@@ -710,8 +735,8 @@ class ProjectManager:
         # Notify observers that active body parts have been updated
         self.state_manager.notify_observers()
 
-    def list_available_projects(self) -> list[Path]:
-        base_dir = self.get_projects_directory()
+    def list_available_projects(self, base_dir: Path | None = None) -> list[Path]:
+        base_dir = self.get_projects_directory(base_dir)
         project_paths = []
         
         # Check if the base directory exists before iterating
@@ -996,6 +1021,57 @@ class ProjectManager:
             logger.error(msg, exc_info=True)
             # Raise a runtime error because the state is now inconsistent
             raise RuntimeError(f"Failed to save analysis results or update state: {e}")
+
+    # ------------------------------------------------------------------
+    # Video ingestion helpers (unassigned → assigned workflow)
+    # ------------------------------------------------------------------
+    def register_unlinked_videos(self, video_iter: Iterable[tuple[Path, str, datetime]]) -> None:
+        """Add newly discovered videos to *unassigned_videos*."""
+        from .metadata import VideoMetadata  # Avoid circular ref
+        state = self.state_manager.project_state
+        new_count = 0
+        for path, hsh, start_time in video_iter:
+            if hsh in state.unassigned_videos or hsh in state.experiment_videos:
+                continue
+            try:
+                vm = VideoMetadata(
+                    path=path,
+                    date=start_time,
+                    sample_hash=hsh,
+                    size_bytes=path.stat().st_size,
+                    last_modified=path.stat().st_mtime,
+                )
+                state.unassigned_videos[hsh] = vm
+                new_count += 1
+            except Exception as exc:
+                logger.warning(f"Failed to register video {path}: {exc}")
+        if new_count:
+            self.save_project()
+            self.state_manager.notify_observers()
+            self.log_bus.log(f"Registered {new_count} unassigned videos", "info", "ProjectManager")
+
+    def link_unassigned_video(self, sample_hash: str, experiment_id: str) -> None:
+        """Move a video from *unassigned_videos* into *experiment_videos* and link to an experiment."""
+        state = self.state_manager.project_state
+        if sample_hash not in state.unassigned_videos:
+            raise ValueError(f"Video hash {sample_hash} not found in unassigned_videos")
+        if experiment_id not in state.experiments:
+            raise ValueError(f"Experiment {experiment_id} does not exist")
+
+        vid_meta = state.unassigned_videos.pop(sample_hash)
+        vid_meta.experiment_ids.add(experiment_id)
+        state.experiment_videos[sample_hash] = vid_meta
+
+        exp_meta = state.experiments[experiment_id]
+        exp_meta.file_ids.add(sample_hash)
+
+        self.save_project()
+        self.state_manager.notify_observers()
+        self.log_bus.log(
+            f"Linked video {sample_hash} to experiment {experiment_id}",
+            "success",
+            "ProjectManager",
+        )
 
     def run_project_level_plugin_action(self, plugin_name: str, capability_name: str, parameters: Dict[str, Any]) -> Dict[str, Any]:
         """

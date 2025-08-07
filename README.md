@@ -1,6 +1,6 @@
-# MUS1: Integrated Workflow for Behavior Analysis
+# MUS1: An Open Source Workflow Integration Platform for Animal Behavior Analysis 
 
-A Python-based tool designed to streamline the analysis of subject behavior data, integrating DeepLabCut tracking outputs and Keypoint-MoSeq analysis within a unified project management framework.
+Mus-1 is a Python-based tool with an intuitive UI layer designed to streamline the analysis of subject behavior data allowing multidisciplinary workflows through a plugin based infrastructure. Mus-1 users can integrate multiple 3rd party open source tools within their respective pipline while maintaining data integrity without the hassle of managing import and export workflows from one analysis tool to the next. At its core, Mus-1 is built to accommodate each lab's unique research through its ability to support a variety of workflows and data types either through existing plugins or by developing a plugin that meets one's exact needs as outlined by the documentation provided within the Mus-1 install.
 
 ## Overview
 
@@ -38,8 +38,8 @@ The project uses a modular architecture with plugins for data handling (e.g., De
 ## Requirements
 
 - Python 3.10+
-- **DeepLabCut**: Must be installed separately in its own environment or managed carefully. Used externally for keypoint tracking *before* using MUS1. See [DeepLabCut Installation](https://deeplabcut.github.io/DeepLabCut/docs/installation.html).
-- **MUS1 & Keypoint-MoSeq Dependencies**: Handled via `requirements.txt` and separate `keypoint-moseq` installation (see Getting Started). This includes libraries like PySide6, Pandas, Numpy, JAX, and Keypoint-MoSeq itself.
+- **DeepLabCut**: Must be installed separately in its own environment or managed carefully, even if MUS1 plugins exist for integration (required during development). Used externally for keypoint tracking *before* using MUS1. See [DeepLabCut Installation](https://deeplabcut.github.io/DeepLabCut/docs/installation.html).
+- **MUS1 & Keypoint-MoSeq Dependencies**: Handled via `requirements.txt` and separate `keypoint-moseq` installation (see Getting Started), even if MUS1 plugins exist for integration (required during development). This includes libraries like PySide6, Pandas, Numpy, JAX, and Keypoint-MoSeq itself.
 - **CUDA (Optional)**: For GPU acceleration with Keypoint-MoSeq (JAX), a compatible NVIDIA driver and CUDA toolkit are required.
 
 ## Documentation
@@ -49,35 +49,41 @@ The project uses a modular architecture with plugins for data handling (e.g., De
 
 ## Getting Started
 
-It is highly recommended to use a dedicated environment manager like Conda.
+We recommend using UV for faster, isolated environments. Third-party tools like DeepLabCut and keypoint-moseq should be installed separately, even with MUS1 plugins, especially during development.
 
-1.  **Clone MUS1**:
-    ```bash
-    git clone <your-mus1-repo-url>
-    cd Mus1_Refactor # Or your repo name
-    ```
-2.  **Create Environment**:
-    ```bash
-    conda create -n mus1-env python=3.10
-    conda activate mus1-env
-    ```
-3.  **Install MUS1 Dependencies**:
-    ```bash
-    pip install -r requirements.txt
-    ```
-4.  **Install Keypoint-MoSeq**:
-    *   **CPU:** `pip install keypoint-moseq`
-    *   **GPU (Requires CUDA Setup):** `pip install keypoint-moseq[cuda]`
-    *   *(Note: This installs JAX. Ensure your CUDA/CuDNN setup matches JAX requirements if using GPU.)*
-5.  **Install MUS1 (Editable Mode)**:
-    ```bash
-    pip install -e .
-    ```
-6.  **Run MUS1**:
-    ```bash
-    python -m Mus1_Refactor.main # Adjust if your main entry point differs
-    ```
-7.  **Install DeepLabCut (Separately)**: Follow DLC instructions to install it, preferably in its own dedicated environment to avoid conflicts. You will use this separate DLC installation to generate tracking files *before* importing data paths into MUS1.
+### Preferred: UV Setup
+1. **Install UV**: `pipx install uv` (or `pip install uv` if pipx is unavailable).
+2. **Clone MUS1**:
+   ```bash
+   git clone &lt;your-mus1-repo-url&gt;
+   cd Mus1_Refactor # Or your repo name
+   ```
+3. **Create Environment**:
+   ```bash
+   uv venv .venv
+   . .venv/Scripts/activate  # Windows
+   # or source .venv/bin/activate  # Unix
+   ```
+4. **Install MUS1 Dependencies**:
+   ```bash
+   uv pip install -r requirements.txt
+   ```
+5. **Install Keypoint-MoSeq** (separately):
+   * **CPU:** `uv pip install keypoint-moseq`
+   * **GPU (Requires CUDA Setup):** `uv pip install keypoint-moseq[cuda]`
+   * *(Note: This installs JAX. Ensure your CUDA/CuDNN setup matches JAX requirements if using GPU.)*
+6. **Install MUS1 (Editable Mode for Development)**:
+   ```bash
+   uv pip install -e .
+   ```
+7. **Install DeepLabCut** (separately): Follow DLC instructions to install it in its own dedicated environment to avoid conflicts. You will use this separate DLC installation to generate tracking files *before* importing data paths into MUS1.
+8. **Run MUS1**:
+   ```bash
+   python -m Mus1_Refactor.main # Adjust if your main entry point differs
+   ```
+
+### Alternative: Conda Setup
+It is highly recommended to use a dedicated environment manager like Conda if UV is not suitable.
 
 ## Future Goals
 - Enhanced visualization for kinematic and Keypoint-MoSeq results within MUS1.

@@ -405,6 +405,8 @@ class ProjectState(BaseModel):
     batches: Dict[str, BatchMetadata] = Field(default_factory=dict)
     arena_images: Dict[str, ArenaImageMetadata] = Field(default_factory=dict)
     experiment_videos: Dict[str, VideoMetadata] = Field(default_factory=dict)
+    # Videos discovered but not yet linked to an Experiment
+    unassigned_videos: Dict[str, VideoMetadata] = Field(default_factory=dict)
     external_configs: Dict[str, ExternalConfigMetadata] = Field(default_factory=dict)
 
     project_metadata: Optional[ProjectMetadata] = None

@@ -8,6 +8,10 @@ import matplotlib.pyplot as plt
 from PIL import Image
 from io import BytesIO
 import hashlib  # For fast file hashing
+import subprocess
+import json
+from datetime import datetime
+from typing import Callable, Iterable, Iterator, Tuple
 
 # Import PluginManager type hint
 try:
@@ -301,6 +305,109 @@ class DataManager:
                 h.update(f.read(chunk_size))
 
         return h.hexdigest()
+
+    # ------------------------------------------------------------------
+    # Video discovery & deduplication helpers
+    # ------------------------------------------------------------------
+    def _extract_start_time(self, video_path: Path) -> datetime:
+        """Return creation time from video metadata (ffprobe) or fallback to mtime."""
+        try:
+            result = subprocess.run(
+                [
+                    "ffprobe",
+                    "-v",
+                    "quiet",
+                    "-print_format",
+                    "json",
+                    "-show_format",
+                    str(video_path),
+                ],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            data = json.loads(result.stdout)
+            creation_time_str = data.get("format", {}).get("tags", {}).get("creation_time")
+            if creation_time_str:
+                return datetime.fromisoformat(creation_time_str.rstrip("Z"))
+        except Exception:
+            # Silently fall back – logging would be noisy during large scans
+            pass
+        return datetime.fromtimestamp(video_path.stat().st_mtime)
+
+    def discover_video_files(
+        self,
+        roots: Iterable[str | Path],
+        *,
+        extensions: Iterable[str] | None = None,
+        recursive: bool = True,
+        excludes: Iterable[str] | None = None,
+        progress_cb: Callable[[int, int], None] | None = None,
+    ) -> Iterator[Tuple[Path, str]]:
+        """Yield ``(path, sample_hash)`` for every video found under *roots*.
+
+        This is deliberately lightweight: no hashing duplicates, no start-time
+        extraction – those are handled by :py:meth:`deduplicate_video_list`.
+        """
+        DEFAULT_EXTS = {".mp4", ".mkv", ".avi", ".mov", ".mpg", ".mpeg"}
+        ext_set = {e.lower() if e.startswith(".") else f".{e.lower()}" for e in (extensions or DEFAULT_EXTS)}
+        exclude_subs = set(excludes or [])
+
+        # Collect first so we know *total* for the progress callback
+        all_files: list[Path] = []
+        for root in roots:
+            root_path = Path(root).expanduser().resolve()
+            if not root_path.is_dir():
+                continue
+            walker = root_path.rglob("*") if recursive else root_path.glob("*")
+            for p in walker:
+                try:
+                    if p.is_dir():
+                        continue
+                    if any(sub in str(p) for sub in exclude_subs):
+                        continue
+                    if p.suffix.lower() in ext_set and p.is_file():
+                        all_files.append(p)
+                except OSError:
+                    continue
+        total = len(all_files)
+        done = 0
+        for p in all_files:
+            try:
+                sample_hash = self.compute_sample_hash(p)
+                yield (p, sample_hash)
+            finally:
+                done += 1
+                if progress_cb:
+                    progress_cb(done, total)
+
+    def deduplicate_video_list(
+        self,
+        paths_with_hashes: Iterable[Tuple[Path, str]],
+        *,
+        progress_cb: Callable[[int, int], None] | None = None,
+    ) -> Iterator[Tuple[Path, str, datetime]]:
+        """Remove duplicate hashes and attach ``start_time``.
+
+        Accepts an *iterator* of ``(Path, hash)`` – typically from
+        :py:meth:`discover_video_files` – and yields only the first occurrence
+        of each unique hash as ``(Path, hash, start_time)``.
+        """
+        unique: dict[str, Path] = {}
+        paths = list(paths_with_hashes)  # Materialise so we can know total
+        total = len(paths)
+        done = 0
+        for path, hsh in paths:
+            if hsh in unique:
+                # Already seen, skip
+                pass
+            else:
+                unique[hsh] = path
+                start_time = self._extract_start_time(path)
+                yield (path, hsh, start_time)
+            done += 1
+            if progress_cb:
+                progress_cb(done, total)
 
     def import_subject_metadata_from_excel(self, excel_path: Path):
         """Import subject metadata from an Excel file and update the project state with SubjectMetadata entries."""

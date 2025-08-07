@@ -40,6 +40,91 @@
 
 ```
 
+## Command-Line Interface Modernization
+
+### Extended Requirements (2025 Q3)
+
+1. **Project commands**
+   • `mus1 project create <path> <name>` – current behaviour.  
+   • `mus1 project add-videos <project_path> <video_list.txt>` – index videos into an *existing* project.
+
+2. **Scanner progress bar**  
+   • `--progress` flag streams a `tqdm` bar to stderr; enabled by default when interactive.
+
+3. **Pluggable scanners**  
+   • Additional scanning methods (e.g. pulling drive indexes from a NAS) will live in `plugins/` and expose a Typer sub-app that registers itself under `mus1 scan`.  This keeps core lean while allowing lab-specific discovery modules.
+
+4. **Environment & Distribution**  
+   • Official install will move to **UV** (`pipx install uv; uv venv; uv pip install mus1`) generating an isolated environment per application.  
+   • A *portable* build (`mus1-win64.zip`, `mus1-mac.dmg`) will be produced via PyInstaller for machines without Python.
+
+5. **Compute-backend plugins**  
+   • Cluster / NAS integration appears as `ClusterBackendPlugin` inside `plugins/compute/`.  Capabilities: submit job, monitor, sync results via Qsync.
+
+
+MUS1 ships with an *argparse*-based CLI (`Mus1_Refactor/cli.py`).  To scale
+with the growing number of commands and to offer a richer UX the CLI will be
+migrated to **Typer** (built on Click).
+
+Key design decisions:
+
+1. **Single top-level command**  – installed as the console-script `mus1` via
+   `pyproject.toml`.
+2. **Command groups mirror core managers**  – e.g. `mus1 project …`,
+   `mus1 scan …`, `mus1 video …`, so that the CLI surface tracks the
+   responsibility boundaries defined in this document.
+3. **Automatic help, prompts & colors**  – Typer provides rich `--help`, prompt
+   questions (for missing parameters), validation and error colours out of the
+   box, improving lab usability.
+4. **Context injection of core managers**  – an app-wide Typer `Context.obj`
+   will hold a singleton `StateManager` / `PluginManager` / `DataManager`
+   bundle so sub-commands can reuse them without global imports.
+5. **Re-use in scripts**  – because Typer is function-oriented (`@app.command`),
+   each CLI entry point doubles as an importable Python function, enabling
+   notebooks and automation pipelines.
+6. **Future plug-ins**  – plugin modules will be able to register CLI commands
+   by calling `mus1_cli_app.add_typer(plugin_app, name="my-plugin")`, keeping
+   extensibility aligned with the plugin architecture.
+
+Implementation steps are tracked in *ROADMAP.md*.
+
+---
+
+## Video Discovery & Unassigned-Video Workflow (NEW)
+
+The new ingestion path separates *finding* videos from *assigning* them.
+
+Core changes
+-------------
+DataManager
+• **discover_video_files(...)** – generator yielding `(path, hash, start_time)` with optional progress callback.  
+• **deduplicate_video_list(...)** – removes duplicate hashes.
+
+ProjectState (metadata.py)
+```
+unassigned_videos: Dict[str, VideoMetadata] = {}
+```
+Key = `sample_hash` – value is existing `VideoMetadata`.
+
+ProjectManager
+• **register_unlinked_videos(iterable)** – populates `unassigned_videos` and persists.  
+• **link_unassigned_video(hash, experiment_id)** – moves entry into `experiment_videos` and updates corresponding `ExperimentMetadata.file_ids`.
+
+CLI mapping
+------------
+```
+mus1 scan videos …                -> DataManager.discover_video_files
+mus1 scan dedup                   -> DataManager.deduplicate_video_list
+mus1 project add-videos <proj> -  -> ProjectManager.register_unlinked_videos
+```
+The last command reads JSON-lines from stdin (`-`) or a file.
+
+Shared Logging
+--------------
+`LoggingEventBus.configure_default_file_handler(project_root)` ensures both GUI and CLI write to the same rotating log inside each project directory.
+
+---
+
 ## UI Integration
 
 ### Observer Pattern
@@ -325,6 +410,33 @@ MUS1 is designed to serve as a central hub for organizing and preprocessing dive
 - **Consistency:** Using the same MUS1 plugins for feature extraction for both training and inference ensures consistency and reproducibility.
 
 This document serves as a comprehensive reference for developers to understand the architecture and implementation details of MUS1.
+
+## Multi-Machine Collaboration & Remote Compute Plan (NEW)
+
+1. **Shared Network Project Directory** – store the MUS1 project folder on an SMB or NFS share that every workstation can mount (e.g., `/mnt/mus1`, `Z:\MyProj`). `ProjectManager.save_project` will implement a small `.mus1-lock` advisory file so concurrent writes are safe.
+2. **Reproducible Environments with UV** – on macOS, Ubuntu, and WSL run:
+   ```bash
+   pipx install uv
+   git clone <your-repo>
+   cd mus1 && uv venv .venv && source .venv/bin/activate
+   uv pip install -r requirements.txt
+   uv pip install -e .
+   ```
+   This guarantees the same Python (≥3.10) and exposes the `mus1` CLI everywhere.
+3. **Cross-Platform Typer CLI** – existing commands in `cli_ty.py` (`mus1 scan …`, `mus1 project …`) already work on all OSes; no changes required.
+4. **SSH Backend Plugin (Phase-1)** – add `ClusterBackendPlugin` inside `plugins/compute/` with capabilities:
+   * `submit_job(cmd, project_path)` – `ssh user@host 'python -m mus1 …'`
+   * `monitor_job(job_id)`
+   * `sync_results(job_id)` – `rsync` back result folders.
+   Heavy kp-MoSeq fits can thus be off-loaded to the Ubuntu workstation while metadata stays consistent.
+5. **Optional SQLite → Postgres Migration (Phase-2/3)** – if file-locking proves limiting, swap JSON persistence for SQLite in the share, and later move to Postgres hosted on the workstation with DSN configured in `mus1.toml`.
+6. **Daily Lab Workflow** –
+   1. Mount the share on each machine.
+   2. Pull latest code from GitHub on whichever box will run the job.
+   3. Activate the UV environment.
+   4. Run the GUI or CLI locally, or `mus1 remote submit … --host ubuntu-server` to off-load compute.
+
+_This phased roadmap enables immediate cross-machine collaboration, leverages the existing CLI, and scales toward a database-backed multi-user setup without blocking current work._
 
 End of file
 
