@@ -19,6 +19,12 @@ try:
 except ImportError:
      PluginManager = Any # Fallback for type checker
 
+# Import scanner modules
+try:
+     from .scanners.video_discovery import get_scanner
+except ImportError:
+     get_scanner = Any # Fallback for type checker
+
 # Custom Exception for Frame Rate Resolution
 class FrameRateResolutionError(Exception):
     """Custom exception raised when frame rate resolution fails."""
@@ -161,9 +167,9 @@ class DataManager:
              logger.debug(f"Using likelihood threshold from batch {batch_id}: {current_batch.likelihood_threshold}")
              return current_batch.likelihood_threshold
 
-        # Fallback to project default if filtering is enabled
-        if ps.project_metadata and ps.project_metadata.likelihood_filter_enabled:
-             threshold = ps.project_metadata.default_likelihood_threshold
+        # Fallback to project default if filtering is enabled (stored on ProjectState)
+        if getattr(ps, "likelihood_filter_enabled", False):
+             threshold = getattr(ps, "default_likelihood_threshold", None)
              logger.debug(f"Using project default likelihood threshold: {threshold}")
              return threshold
         elif ps.settings.get("likelihood_filter_enabled", False): # Check settings if metadata missing
@@ -270,41 +276,9 @@ class DataManager:
     # ------------------------------------------------------------------
     @staticmethod
     def compute_sample_hash(file_path: Path, chunk_size: int = 4 * 1024 * 1024) -> str:
-        """Compute a quick BLAKE2b hash from three sampled chunks.
-
-        This mirrors the previous helper in ProjectManager but lives here so that
-        hashing logic is reusable across core components without making
-        ProjectManager heavier.
-
-        Args:
-            file_path: Path to the file to hash.
-            chunk_size: Size (bytes) of each chunk to sample from start/middle/end.
-
-        Returns:
-            32-character hex digest string.
-        """
-        if not file_path.exists():
-            raise FileNotFoundError(f"File not found for hashing: {file_path}")
-
-        file_size = file_path.stat().st_size
-        h = hashlib.blake2b(digest_size=16)
-
-        with open(file_path, "rb") as f:
-            # First chunk
-            h.update(f.read(min(chunk_size, file_size)))
-
-            # Middle chunk
-            if file_size > chunk_size * 2:
-                middle_pos = file_size // 2
-                f.seek(max(0, middle_pos - chunk_size // 2))
-                h.update(f.read(chunk_size))
-
-            # Last chunk
-            if file_size > chunk_size:
-                f.seek(max(0, file_size - chunk_size))
-                h.update(f.read(chunk_size))
-
-        return h.hexdigest()
+        # Delegate to shared utility to avoid duplication
+        from .utils.file_hash import compute_sample_hash as _compute
+        return _compute(file_path, chunk_size)
 
     # ------------------------------------------------------------------
     # Video discovery & deduplication helpers
@@ -334,80 +308,6 @@ class DataManager:
             # Silently fall back – logging would be noisy during large scans
             pass
         return datetime.fromtimestamp(video_path.stat().st_mtime)
-
-    def discover_video_files(
-        self,
-        roots: Iterable[str | Path],
-        *,
-        extensions: Iterable[str] | None = None,
-        recursive: bool = True,
-        excludes: Iterable[str] | None = None,
-        progress_cb: Callable[[int, int], None] | None = None,
-    ) -> Iterator[Tuple[Path, str]]:
-        """Yield ``(path, sample_hash)`` for every video found under *roots*.
-
-        This is deliberately lightweight: no hashing duplicates, no start-time
-        extraction – those are handled by :py:meth:`deduplicate_video_list`.
-        """
-        DEFAULT_EXTS = {".mp4", ".mkv", ".avi", ".mov", ".mpg", ".mpeg"}
-        ext_set = {e.lower() if e.startswith(".") else f".{e.lower()}" for e in (extensions or DEFAULT_EXTS)}
-        exclude_subs = set(excludes or [])
-
-        # Collect first so we know *total* for the progress callback
-        all_files: list[Path] = []
-        for root in roots:
-            root_path = Path(root).expanduser().resolve()
-            if not root_path.is_dir():
-                continue
-            walker = root_path.rglob("*") if recursive else root_path.glob("*")
-            for p in walker:
-                try:
-                    if p.is_dir():
-                        continue
-                    if any(sub in str(p) for sub in exclude_subs):
-                        continue
-                    if p.suffix.lower() in ext_set and p.is_file():
-                        all_files.append(p)
-                except OSError:
-                    continue
-        total = len(all_files)
-        done = 0
-        for p in all_files:
-            try:
-                sample_hash = self.compute_sample_hash(p)
-                yield (p, sample_hash)
-            finally:
-                done += 1
-                if progress_cb:
-                    progress_cb(done, total)
-
-    def deduplicate_video_list(
-        self,
-        paths_with_hashes: Iterable[Tuple[Path, str]],
-        *,
-        progress_cb: Callable[[int, int], None] | None = None,
-    ) -> Iterator[Tuple[Path, str, datetime]]:
-        """Remove duplicate hashes and attach ``start_time``.
-
-        Accepts an *iterator* of ``(Path, hash)`` – typically from
-        :py:meth:`discover_video_files` – and yields only the first occurrence
-        of each unique hash as ``(Path, hash, start_time)``.
-        """
-        unique: dict[str, Path] = {}
-        paths = list(paths_with_hashes)  # Materialise so we can know total
-        total = len(paths)
-        done = 0
-        for path, hsh in paths:
-            if hsh in unique:
-                # Already seen, skip
-                pass
-            else:
-                unique[hsh] = path
-                start_time = self._extract_start_time(path)
-                yield (path, hsh, start_time)
-            done += 1
-            if progress_cb:
-                progress_cb(done, total)
 
     def import_subject_metadata_from_excel(self, excel_path: Path):
         """Import subject metadata from an Excel file and update the project state with SubjectMetadata entries."""
@@ -465,5 +365,39 @@ class DataManager:
             # - summary statistics (min/max/mean values)
             # - cached preview data (first/last few rows)
         }
+
+    def deduplicate_video_list(
+        self,
+        paths_with_hashes: Iterable[Tuple[Path, str]],
+        *,
+        progress_cb: Callable[[int, int], None] | None = None,
+    ) -> Iterator[Tuple[Path, str, datetime]]:
+        unique: dict[str, Path] = {}
+        paths = list(paths_with_hashes)  # Materialise so we can know total
+        total = len(paths)
+        done = 0
+        for path, hsh in paths:
+            if hsh in unique:
+                # Already seen, skip
+                pass
+            else:
+                unique[hsh] = path
+                start_time = self._extract_start_time(path)
+                yield (path, hsh, start_time)
+            done += 1
+            if progress_cb:
+                progress_cb(done, total)
+
+    def discover_video_files(
+        self,
+        roots: Iterable[str | Path],
+        *,
+        extensions: Iterable[str] | None = None,
+        recursive: bool = True,
+        excludes: Iterable[str] | None = None,
+        progress_cb: Callable[[int, int], None] | None = None,
+    ) -> Iterator[Tuple[Path, str]]:
+        scanner = get_scanner()
+        return scanner.iter_videos(roots, extensions=extensions, recursive=recursive, excludes=excludes, progress_cb=progress_cb)
 
     

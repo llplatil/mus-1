@@ -15,6 +15,9 @@
     *   Updates `ExperimentMetadata.analysis_results` and `processing_stage`.
     *   Saves the project state and notifies observers.
 - **(New)** Includes `run_project_level_plugin_action` to execute plugin capabilities operating at the project level (e.g., importers), often coordinating with handler plugins via the `DataManager`.
+- **(Updated)** Default projects directory is `~/MUS1/projects` unless overridden by `--base-dir` or `MUS1_PROJECTS_DIR`.
+- **(Updated)** Video ingestion: `register_unlinked_videos` populates `unassigned_videos` keyed by `sample_hash`; `link_unassigned_video` moves entries into `experiment_videos` using the same key.
+- **(Updated)** Core no longer references UI widgets directly; UI passes settings via `apply_general_settings(sort_mode, frame_rate_enabled, frame_rate)`.
 
 ### StateManager
 - Maintains the in-memory `ProjectState` (single source of truth for project data, including metadata for subjects, experiments, etc.).
@@ -31,6 +34,8 @@
 - **(Revised)** Handles generic data I/O operations (reading/writing common formats like CSV, YAML).
 - **(Revised)** Resolves global settings (e.g., frame rate, likelihood threshold) from `StateManager` when requested by plugins or handlers.
 - **(New)** Provides a `call_handler_method` function. Analysis plugins use this method to request specific data formats (e.g., DLC tracking data). `DataManager` uses `PluginManager` to find the appropriate Handler plugin (e.g., `DeepLabCutHandler`) and invokes a dedicated public helper method on that handler (e.g., `get_tracking_dataframe`) to perform the actual loading, parsing, and pre-processing (like filtering).
+- **(Updated)** File hashing is centralized in `mus1/core/utils/file_hash.py` and used by scanners and core logic.
+- **(Updated)** Likelihood defaults are resolved from `ProjectState` fields (`likelihood_filter_enabled`, `default_likelihood_threshold`).
 - Returns data in standardized formats (e.g., Pandas DataFrame) for plugins to consume, usually via the handler's helper method.
 - Does not contain logic specific to third-party formats (delegated to Handler Plugins via `call_handler_method`).
 
@@ -42,7 +47,18 @@
 
 ## Command-Line Interface Modernization
 
-### Extended Requirements (2025 Q3)
+MUS1 provides a modern CLI built with Typer, accessible via the `mus1` command (defined as a console-script in pyproject.toml). The CLI is structured in mus1/cli_ty.py and connected via mus1/__main__.py calling the run() function.
+
+Key design decisions:
+
+1. **Single top-level command** – installed as the console-script `mus1` via `pyproject.toml`.
+2. **Command groups mirror core managers** – e.g. `mus1 project …`, `mus1 scan …`, so that the CLI surface tracks the responsibility boundaries defined in this document.
+3. **Automatic help, prompts & colors** – Typer provides rich `--help`, prompt questions (for missing parameters), validation and error colours out of the box, improving lab usability.
+4. **Context injection of core managers** – an app-wide Typer `Context.obj` will hold a singleton `StateManager` / `PluginManager` / `DataManager` bundle so sub-commands can reuse them without global imports. (Planned)
+5. **Re-use in scripts** – because Typer is function-oriented (`@app.command`), each CLI entry point doubles as an importable Python function, enabling notebooks and automation pipelines.
+6. **Future plug-ins** – plugin modules will be able to register CLI commands by calling `mus1_cli_app.add_typer(plugin_app, name="my-plugin")`, keeping extensibility aligned with the plugin architecture. (Planned)
+
+### Extended Requirements 
 
 1. **Project commands**
    • `mus1 project create <path> <name>` – current behaviour.  
@@ -50,6 +66,7 @@
 
 2. **Scanner progress bar**  
    • `--progress` flag streams a `tqdm` bar to stderr; enabled by default when interactive.
+   • **(Updated)** On macOS, if no roots are provided, default scan roots are used (`~/Movies`, `~/Videos`, `/Volumes`).
 
 3. **Pluggable scanners**  
    • Additional scanning methods (e.g. pulling drive indexes from a NAS) will live in `plugins/` and expose a Typer sub-app that registers itself under `mus1 scan`.  This keeps core lean while allowing lab-specific discovery modules.
@@ -97,8 +114,10 @@ The new ingestion path separates *finding* videos from *assigning* them.
 Core changes
 -------------
 DataManager
-• **discover_video_files(...)** – generator yielding `(path, hash, start_time)` with optional progress callback.  
-• **deduplicate_video_list(...)** – removes duplicate hashes.
+• **discover_video_files(...)** – generator yielding `(path, hash)` with optional progress callback. 
+• **deduplicate_video_list(...)** – removes duplicate hashes, yielding `(path, hash, start_time)`; supports progress callback.
+• **scanners package** – `mus1/core/scanners/` houses `BaseScanner` plus OS-specific subclasses (`MacOSVideoScanner`, `LinuxVideoScanner`, `WindowsVideoScanner`).  `discover_video_files` now delegates to `video_discovery.get_scanner()` ensuring correct behaviour across platforms and skipping macOS iCloud placeholders.  
+• **video_discovery.py** – helper choosing the scanner via `platform.system()`; integrates with future StorageProviders so scan roots can originate from local or shared mounts.
 
 ProjectState (metadata.py)
 ```
@@ -116,6 +135,7 @@ CLI mapping
 mus1 scan videos …                -> DataManager.discover_video_files
 mus1 scan dedup                   -> DataManager.deduplicate_video_list
 mus1 project add-videos <proj> -  -> ProjectManager.register_unlinked_videos
+mus1 project scan-and-add …       -> one-shot scan, dedup, register unassigned
 ```
 The last command reads JSON-lines from stdin (`-`) or a file.
 
@@ -320,6 +340,7 @@ To promote consistency and interoperability between plugins, especially Handlers
     - ✅ Implemented UI validation (`_update_add_button_state`) checking core details and required plugin params.
     - ✅ Updated `handle_add_experiment` to collect nested `plugin_params` and infer initial stage.
 - ✅ Added `run_project_level_plugin_action` and refined `update_master_body_parts` in `ProjectManager`.
+- ✅ Standardized default projects directory; macOS default scan roots; unified hash-keying of videos; improved CLI help; added `scan-and-add` command.
 - ✅ Drafted `DlcProjectImporterPlugin` structure using new `ProjectManager` methods.
 - ✅ Outlined plan for integrating Keypoint-MoSeq as a MUS1 plugin.
 - ✅ Drafted `KeypointMoSeqAnalysisPlugin` skeleton structure.

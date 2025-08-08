@@ -102,7 +102,7 @@ class SubjectMetadata(BaseModel):
     are done here at a basic level, while more elaborate checks happen outside.
     """
     id: str
-    experiment_ids: Set[str] = set()
+    experiment_ids: Set[str] = Field(default_factory=set)
 
     sex: Sex = Sex.UNKNOWN
     birth_date: Optional[datetime] = None
@@ -232,10 +232,10 @@ class BatchMetadata(BaseModel):
     name: str = ""  # Added explicit name field separate from ID
     description: str = ""  # Added description field
     selection_criteria: Dict[str, Any]
-    experiment_ids: Set[str] = set()
+    experiment_ids: Set[str] = Field(default_factory=set)
     analysis_type: Optional[str] = None  # Was ExperimentType enum
     date_added: datetime = Field(default_factory=datetime.now)
-    parameters: Dict[str, Any] = {}
+    parameters: Dict[str, Any] = Field(default_factory=dict)
     likelihood_cutoff: float = 0.5
 
     # should be an override field of global threshold if selected and global on:
@@ -271,7 +271,7 @@ class ProjectMetadata(BaseModel):
     Contains global or project-level settings that typically apply
     across all mice/experiments (like DLC configs, bodyparts, etc.).
     """
-    dlc_configs: List[Path] = []
+    dlc_configs: List[Path] = Field(default_factory=list)
     master_body_parts: List[BodyPartMetadata] = Field(default_factory=list)
 
     @validator('master_body_parts', pre=True, each_item=True)

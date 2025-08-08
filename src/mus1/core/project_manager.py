@@ -10,7 +10,6 @@ import inspect
 import platform
 from pydantic.json import pydantic_encoder
 import pandas as pd
-import numpy as np # Add numpy import for likelihood filtering in DLC Handler
 
 from .metadata import ProjectState, ProjectMetadata, Sex, ExperimentMetadata, ArenaImageMetadata, VideoMetadata, SubjectMetadata, BodyPartMetadata, ObjectMetadata, TreatmentMetadata, GenotypeMetadata, PluginMetadata
 from .state_manager import StateManager  # so we can type hint or reference if needed
@@ -51,7 +50,7 @@ class ProjectManager:
         Precedence for the base directory is:
         1. *custom_base* argument (used by CLI `--base-dir` or tests).
         2. Environment variable ``MUS1_PROJECTS_DIR`` if set.
-        3. `<repo>/projects` directory (sibling to `Mus1_Refactor`).
+        3. User home default: ``~/MUS1/projects`` (consistent local location).
 
         The returned directory is created if it does not exist so callers can
         rely on its presence.
@@ -63,11 +62,8 @@ class ProjectManager:
             if env_dir:
                 base_dir = Path(env_dir).expanduser().resolve()
             else:
-                # Default to repo‐local "projects" folder – convenient for dev but
-                # still works when MUS1 is installed site-packages (falls back to
-                # the *current working directory*/projects in that case).
-                script_dir = Path(__file__).parent
-                base_dir = (script_dir.parent.parent / "projects").resolve()
+                # Default to consistent user-local location
+                base_dir = (Path.home() / "MUS1" / "projects").expanduser().resolve()
 
         # Ensure existence
         base_dir.mkdir(parents=True, exist_ok=True)
@@ -398,12 +394,6 @@ class ProjectManager:
     # ---------------------------------------------------------------------
 
     def link_video_to_experiment(self, *, experiment_id: str, video_path: Path, notes: str = "") -> None:
-        """(LEGACY) Directly link *video_path* to an experiment, computing its hash on the fly.
-
-        New ingestion path prefers :pymeth:`register_unlinked_videos` &
-        :pymeth:`link_unassigned_video`, but this remains for backwards
-        compatibility and quick tests until the old CLI is fully removed.
-        """
         """Link an existing local video file to a MUS1 experiment.
 
         The method records essential metadata (path, timestamps, quick hash) in
@@ -432,13 +422,13 @@ class ProjectManager:
         # Collect fast-to-compute fingerprint information
         size_bytes = video_path.stat().st_size
         last_modified = video_path.stat().st_mtime
-        # Use DataManager hashing utility for integrity check
+        # Use DataManager hashing utility for identity
         sample_hash = self.data_manager.compute_sample_hash(video_path)
 
-        # Create a unique key for storage – use absolute path to avoid clashes
-        video_key = str(video_path.resolve())
+        # Use sample_hash as canonical key
+        video_key = sample_hash
 
-        # Avoid duplicate entry if already linked
+        # Avoid duplicate entry if already linked (by canonical key)
         existing_vm = self.state_manager.project_state.experiment_videos.get(video_key)
         if existing_vm:
             # Ensure experiment is listed in its experiment_ids
@@ -719,16 +709,15 @@ class ProjectManager:
     def update_active_body_parts(self, new_active_parts: list[str]) -> None:
         from .metadata import BodyPartMetadata
         state = self.state_manager.project_state
-        if state.project_metadata is not None:
-            active_list = []
-            for bp in new_active_parts:
-                if isinstance(bp, str):
-                    active_list.append(BodyPartMetadata(name=bp))
-                elif hasattr(bp, 'name'):
-                    active_list.append(bp)
-            state.project_metadata.active_body_parts = active_list
-        else:
-            state.settings["body_parts"] = new_active_parts
+        if state.project_metadata is None:
+            raise RuntimeError("No project_metadata available.")
+        active_list = []
+        for bp in new_active_parts:
+            if isinstance(bp, str):
+                active_list.append(BodyPartMetadata(name=bp))
+            elif hasattr(bp, 'name'):
+                active_list.append(bp)
+        state.project_metadata.active_body_parts = active_list
 
         self.save_project()
         logger.info(f"Active body parts updated to: {new_active_parts}")
@@ -771,33 +760,20 @@ class ProjectManager:
         """
         return self.state_manager.get_theme_preference()
 
-    def handle_apply_general_settings(self):
-        """Apply the general settings."""
-        sort_mode = self.sort_mode_dropdown.currentText()
-        frame_rate_enabled = self.enable_frame_rate_checkbox.isChecked()
-        frame_rate = self.frame_rate_spin.value()
-        
-        # Update the project-specific settings in the current project state
-        if self.state_manager:
-            # Store in project_metadata if it exists
-            if self.state_manager.project_state.project_metadata:
-                self.state_manager.project_state.project_metadata.global_frame_rate = frame_rate
-                self.state_manager.project_state.project_metadata.global_frame_rate_enabled = frame_rate_enabled
-                
-            # Also store in the settings dictionary for backwards compatibility
-            self.state_manager.project_state.settings.update({
-                "global_sort_mode": sort_mode,
-                "global_frame_rate_enabled": frame_rate_enabled,
-                "global_frame_rate": frame_rate
-            })
-            
-            # Save the project to persist these settings
-            self.save_project()
-            
-            # Notify observers to update UI elements
-            self.state_manager.notify_observers()
-                
-        self.navigation_pane.add_log_message("Applied general settings to current project.", "success")
+    def apply_general_settings(self, *, sort_mode: str, frame_rate_enabled: bool, frame_rate: int) -> None:
+        """Apply general settings (called by UI)."""
+        if not self.state_manager:
+            return
+        if self.state_manager.project_state.project_metadata:
+            self.state_manager.project_state.project_metadata.global_frame_rate = frame_rate
+            self.state_manager.project_state.project_metadata.global_frame_rate_enabled = frame_rate_enabled
+        self.state_manager.project_state.settings.update({
+            "global_sort_mode": sort_mode,
+            "global_frame_rate_enabled": frame_rate_enabled,
+            "global_frame_rate": frame_rate,
+        })
+        self.save_project()
+        self.state_manager.notify_observers()
 
     # New methods for Treatments and Genotypes
     def add_treatment(self, new_treatment: str) -> None:
@@ -1025,8 +1001,10 @@ class ProjectManager:
     # ------------------------------------------------------------------
     # Video ingestion helpers (unassigned → assigned workflow)
     # ------------------------------------------------------------------
-    def register_unlinked_videos(self, video_iter: Iterable[tuple[Path, str, datetime]]) -> None:
-        """Add newly discovered videos to *unassigned_videos*."""
+    def register_unlinked_videos(self, video_iter: Iterable[tuple[Path, str, datetime]]) -> int:
+        """Add newly discovered videos to *unassigned_videos*.
+        Returns number of videos newly registered.
+        """
         from .metadata import VideoMetadata  # Avoid circular ref
         state = self.state_manager.project_state
         new_count = 0
@@ -1049,6 +1027,7 @@ class ProjectManager:
             self.save_project()
             self.state_manager.notify_observers()
             self.log_bus.log(f"Registered {new_count} unassigned videos", "info", "ProjectManager")
+        return new_count
 
     def link_unassigned_video(self, sample_hash: str, experiment_id: str) -> None:
         """Move a video from *unassigned_videos* into *experiment_videos* and link to an experiment."""
