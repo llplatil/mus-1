@@ -1292,9 +1292,16 @@ class ExperimentView(BaseView):
         start_dir = str(Path(current_path).parent if current_path and Path(current_path).exists() else Path.home())
 
         path = ""
-        if field_type == 'file':
-            # TODO: Could potentially get specific file filters from plugin?
-            path, _ = QFileDialog.getOpenFileName(self, "Select File", start_dir, "All Files (*)")
+        if field_type.startswith('file'):
+            # Parse optional extensions after ':' in field_type, e.g., 'file:csv|h5|hdf5'
+            filters = "All Files (*)"
+            if ':' in field_type:
+                _, ext_str = field_type.split(':', 1)
+                exts = [e.strip().lstrip('.').lower() for e in ext_str.split('|') if e.strip()]
+                if exts:
+                    patterns = ' '.join([f"*.{e}" for e in exts])
+                    filters = f"Supported Files ({patterns});;All Files (*)"
+            path, _ = QFileDialog.getOpenFileName(self, "Select File", start_dir, filters)
         elif field_type == 'directory':
             path = QFileDialog.getExistingDirectory(self, "Select Directory", start_dir)
 

@@ -3,17 +3,17 @@ from pathlib import Path
 from typing import Iterable
 from .base_scanner import BaseScanner
 from .macos_scanner import MacOSVideoScanner
+from .windows_scanner import WindowsVideoScanner
+from .linux_scanner import LinuxVideoScanner
 
 def get_scanner() -> BaseScanner:
     system = platform.system().lower()
     if system == 'darwin':
         return MacOSVideoScanner()
     elif system == 'windows':
-        # TODO: Implement WindowsVideoScanner
-        return BaseScanner()
+        return WindowsVideoScanner()
     elif system == 'linux':
-        # TODO: Implement LinuxVideoScanner
-        return BaseScanner()
+        return LinuxVideoScanner()
     else:
         return BaseScanner()
 

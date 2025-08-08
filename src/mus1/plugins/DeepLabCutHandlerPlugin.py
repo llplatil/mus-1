@@ -47,9 +47,9 @@ class DeepLabCutHandlerPlugin(BasePlugin):
 
     def get_field_types(self) -> Dict[str, str]:
         return {
-            'tracking_file_path': 'file',
-            'config_file_path': 'file',
-            'likelihood_threshold_override': 'float'
+            'tracking_file_path': 'file:csv|h5|hdf5',
+'config_file_path': 'file:yaml|yml',
+'likelihood_threshold_override': 'float'
         }
 
     def get_field_descriptions(self) -> Dict[str, str]:

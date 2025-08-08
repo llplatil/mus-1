@@ -43,7 +43,7 @@ class SubjectImporterPlugin(BasePlugin):
         return []
 
     def get_field_types(self) -> Dict[str, str]:
-        return {'subjects_csv_path': 'file'}
+        return {'subjects_csv_path': 'file:csv'}
 
     def get_field_descriptions(self) -> Dict[str, str]:
         return {'subjects_csv_path': 'Path to the CSV file containing subject information.'}

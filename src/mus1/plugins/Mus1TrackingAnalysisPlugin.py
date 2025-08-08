@@ -390,18 +390,65 @@ class Mus1TrackingAnalysisPlugin(BasePlugin):
                 else:
                      logger.warning("No zone named 'center' found in arena_zones for OF metrics.")
 
-                # TODO: Implement other OF metrics like entries, thigmotaxis
+                                # Additional OF metrics
+                entries_to_center = 0
+                if "center" in arena_zones:
+                    try:
+                        center_def = arena_zones["center"]
+                        shape = center_def.get("shape", "").lower()
+                        coords = center_def.get("coords", [])
+                        if shape == "circle" and len(coords) == 3:
+                            center_geom = Point(coords[0], coords[1]).buffer(coords[2])
+                        elif shape == "rect" and len(coords) == 4:
+                            center_geom = box(coords[0], coords[1], coords[2], coords[3])
+                        elif shape == "polygon" and len(coords) >= 3:
+                            center_geom = Polygon(coords)
+                        else:
+                            center_geom = None
+                        if center_geom is not None and center_geom.is_valid:
+                            points_df = pd.DataFrame({
+                                'x': processed_x_series,
+                                'y': processed_y_series
+                            }).dropna()
+                            in_center = points_df.apply(lambda r: center_geom.contains(Point(r['x'], r['y'])), axis=1).astype(int)
+                            # Count 0->1 transitions
+                            shifted = in_center.shift(fill_value=0)
+                            entries_to_center = int(((shifted == 0) & (in_center == 1)).sum())
+                    except Exception as e:
+                        logger.warning(f"Failed to compute entries_to_center: {e}")
+
+                # Thigmotaxis/perimeter: time near walls within a margin
+                thigmotaxis_time = 0.0
+                perimeter_time = 0.0
+                try:
+                    width = float(arena_dims["width"]) if arena_dims and "width" in arena_dims else None
+                    height = float(arena_dims["height"]) if arena_dims and "height" in arena_dims else None
+                    if width and height:
+                        margin = 0.1 * min(width, height)  # 10% border
+                        x = pd.to_numeric(processed_x_series, errors='coerce')
+                        y = pd.to_numeric(processed_y_series, errors='coerce')
+                        in_border = (
+                            (x <= margin) | (x >= (width - margin)) |
+                            (y <= margin) | (y >= (height - margin))
+                        )
+                        thigmotaxis_time = float(in_border.sum()) * seconds_per_frame
+                        # perimeter_time can be same as thigmotaxis here (alias for clarity)
+                        perimeter_time = thigmotaxis_time
+                except Exception as e:
+                    logger.warning(f"Failed to compute thigmotaxis/perimeter metrics: {e}")
 
                 capability_output = {
                     "metrics": {
                         "total_distance": total_distance,
                         "average_speed": float(speed_series.mean()) if not speed_series.empty else 0,
                         "time_in_center_seconds": time_in_center,
-                        # Add other metrics here
+                        "entries_to_center": entries_to_center,
+                        "thigmotaxis_time_seconds": thigmotaxis_time,
+                        "perimeter_time_seconds": perimeter_time,
                     },
                     "arena_info": { "dimensions": arena_dims }
                 }
-            # No 'extract_video_frames' for now
+# No 'extract_video_frames' for now
 
             else:
                 raise ValueError(f"Unknown analysis capability requested: {capability}")
@@ -707,225 +754,4 @@ class Mus1TrackingAnalysisPlugin(BasePlugin):
             return (time_novel - time_familiar) / total_time
         else:
             logger.warning("Total interaction time with familiar and novel objects is zero. DI cannot be calculated.")
-            return None # Avoid division by zero
-
-    def get_style_manifest(self) -> Optional[Dict[str, Any]]:
-        """
-        Return a style manifest for plugin-specific style overrides (variables).
-        These variables can be used in mus1.qss.
-        """
-        return None # Keep it simple, rely on global styles
-
-    def calculate_speed(self, df: pd.DataFrame, x_col: tuple, y_col: tuple, frame_rate: int = 60) -> pd.Series:
-        """
-        Calculate speed (distance per unit time) from raw tracking data.
-        Computes the Euclidean distance between consecutive frames and multiplies by the frame_rate.
-        """
-        if x_col not in df.columns or y_col not in df.columns:
-             raise KeyError(f"Columns {x_col} or {y_col} not found in DataFrame.")
-        dx = df[x_col].diff()
-        dy = df[y_col].diff()
-        distance = np.sqrt(dx**2 + dy**2).fillna(0)
-        speed = distance * frame_rate
-        return speed
-
-    def compute_total_distance(self, df: pd.DataFrame, x_col: tuple, y_col: tuple) -> float:
-        """
-        Compute the total distance traveled based on tracking data.
-        """
-        if x_col not in df.columns or y_col not in df.columns:
-             raise KeyError(f"Columns {x_col} or {y_col} not found in DataFrame.")
-        dx = df[x_col].diff()
-        dy = df[y_col].diff()
-        distance = np.sqrt(dx**2 + dy**2)
-        return float(distance.sum(skipna=True))
-
-    def generate_heat_map(self, df: pd.DataFrame, x_col: tuple, y_col: tuple, bins: int = 50):
-        """
-        Generate a heat map of positions from tracking data.
-        Returns a matplotlib figure object displaying the heat map.
-        """
-        if x_col not in df.columns or y_col not in df.columns:
-             raise KeyError(f"Columns {x_col} or {y_col} not found in DataFrame.")
-        x = df[x_col].dropna()
-        y = df[y_col].dropna()
-        if x.empty or y.empty:
-             fig, ax = plt.subplots()
-             ax.set_title("Heat Map (No Data)")
-             ax.set_xlabel(str(x_col))
-             ax.set_ylabel(str(y_col))
-             return fig
-
-        heatmap, xedges, yedges = np.histogram2d(x, y, bins=bins)
-        extent = [xedges[0], xedges[-1], yedges[0], yedges[-1]]
-
-        fig, ax = plt.subplots()
-        cax = ax.imshow(heatmap.T, extent=extent, origin='lower', cmap='hot', aspect='auto')
-        fig.colorbar(cax, label='Frequency')
-        ax.set_title("Heat Map of Positions")
-        ax.set_xlabel(str(x_col))
-        ax.set_ylabel(str(y_col))
-        return fig
-
-    def plot_movement_over_time(self, df: pd.DataFrame, x_col: tuple, y_col: tuple, start: int = 0, end: int = None):
-        """
-        Plot the cumulative movement over time from tracking data.
-        Allows plotting over a subinterval specified by start and end frame indices.
-        Returns a matplotlib figure object of the movement plot.
-        """
-        if x_col not in df.columns or y_col not in df.columns:
-             raise KeyError(f"Columns {x_col} or {y_col} not found in DataFrame.")
-        if end is None or end > len(df):
-            end = len(df)
-        start = max(0, start)
-        end = min(len(df), end)
-        if start >= end:
-             fig, ax = plt.subplots()
-             ax.set_title("Cumulative Movement (No Data in Range)")
-             ax.set_xlabel("Frame")
-             ax.set_ylabel("Cumulative Distance")
-             return fig
-
-        sub_df = df.iloc[start:end]
-        dx = sub_df[x_col].diff().fillna(0)
-        dy = sub_df[y_col].diff().fillna(0)
-        distances = np.sqrt(dx**2 + dy**2)
-        cumulative_distance = distances.cumsum()
-
-        fig, ax = plt.subplots()
-        frames = np.arange(start, end)
-        ax.plot(frames, cumulative_distance)
-        ax.set_title("Cumulative Movement Over Time")
-        ax.set_xlabel("Frame")
-        ax.set_ylabel("Cumulative Distance")
-        return fig
-
-    def _get_bodypart_columns(self, df: pd.DataFrame, body_part_name: Optional[str]) -> Tuple[tuple, tuple]:
-        """Finds the (scorer, bodypart, coord) tuples for x and y of the given body part."""
-        if body_part_name:
-            possible_cols = df.columns[df.columns.get_level_values(1) == body_part_name]
-            if possible_cols.empty:
-                raise ValueError(f"Specified body part '{body_part_name}' not found in DataFrame columns.")
-        else:
-            # Default to first body part found
-            available_bodyparts = df.columns.get_level_values(1).unique()
-            if available_bodyparts.empty or available_bodyparts[0] == 'scorer': # Skip 'scorer' if it's somehow level 1
-                 available_bodyparts = available_bodyparts[1:] if len(available_bodyparts) > 1 else []
-            if not available_bodyparts.any():
-                 raise ValueError("No trackable body parts found in DataFrame columns.")
-            body_part_name = available_bodyparts[0]
-            possible_cols = df.columns[df.columns.get_level_values(1) == body_part_name]
-
-        try:
-            x_col = possible_cols[possible_cols.get_level_values(2) == 'x'][0]
-            y_col = possible_cols[possible_cols.get_level_values(2) == 'y'][0]
-            return x_col, y_col
-        except IndexError:
-            raise ValueError(f"Could not find both 'x' and 'y' coordinates for body part '{body_part_name}'.")
-
-    def _calculate_time_in_zones(self, df: pd.DataFrame, x_col: tuple, y_col: tuple, zones_def: Dict, seconds_per_frame: float, arena_dims: Optional[Dict] = None) -> Dict[str, float]:
-        """Calculates time spent in defined geometric zones using Shapely, parsing new coord format."""
-        time_per_zone = {zone_name: 0.0 for zone_name in zones_def}
-        shapely_zones = {}
-
-        for zone_name, definition in zones_def.items():
-            shape = definition.get("shape", "").lower()
-            coords = definition.get("coords", [])
-            try:
-                if shape == "circle" and len(coords) == 3:
-                    center = Point(coords[0], coords[1])
-                    shapely_zones[zone_name] = center.buffer(coords[2]) # coords = [cx, cy, radius]
-                elif shape == "rect" and len(coords) == 4:
-                    # coords = [x_min, y_min, x_max, y_max]
-                    shapely_zones[zone_name] = box(coords[0], coords[1], coords[2], coords[3])
-                elif shape == "polygon" and len(coords) >= 3:
-                    # coords = [[x1, y1], [x2, y2], ...]
-                    shapely_zones[zone_name] = Polygon(coords)
-                else:
-                    logger.warning(f"Invalid shape ('{shape}') or coords format for zone '{zone_name}'. Skipping.")
-                    continue # Skip this zone
-            except Exception as e:
-                 logger.warning(f"Error creating geometry for zone '{zone_name}': {e}. Skipping.")
-                 continue # Skip this zone
-
-        # Prepare points for faster processing
-        points = [Point(row[x_col], row[y_col]) for index, row in df.iterrows() if not pd.isna(row[x_col]) and not pd.isna(row[y_col])]
-
-        # Iterate through zones and check points
-        for zone_name, zone_geom in shapely_zones.items():
-            if zone_geom is None or not zone_geom.is_valid:
-                logger.warning(f"Invalid geometry for zone '{zone_name}', cannot calculate time.")
-                continue
-            # Use prepared=True for potential speedup on many points
-            # prepared_geom = prep(zone_geom) # Requires pip install shapely[vectorized] or pygeos
-            # frames_in_zone = sum(1 for p in points if prepared_geom.contains(p))
-            frames_in_zone = sum(1 for p in points if zone_geom.contains(p))
-            time_per_zone[zone_name] = frames_in_zone * seconds_per_frame
-
-        return time_per_zone
-
-    def _calculate_time_near_objects(self, df: pd.DataFrame, x_col: tuple, y_col: tuple, object_coords: Dict[str, Tuple[float, float]], proximity_threshold: float, seconds_per_frame: float) -> Dict[str, float]:
-        """Calculates time spent within proximity_threshold of object coordinates."""
-        time_near = {obj_id: 0.0 for obj_id in object_coords}
-        squared_threshold = proximity_threshold ** 2 # Avoid sqrt in loop
-
-        for obj_id, (obj_x, obj_y) in object_coords.items():
-            # Calculate squared distance for each frame efficiently
-            dist_sq = (df[x_col] - obj_x)**2 + (df[y_col] - obj_y)**2
-            # Count frames where distance is within threshold
-            frames_near = dist_sq <= squared_threshold
-            time_near[obj_id] = frames_near.sum() * seconds_per_frame
-
-        return time_near
-
-    def _calculate_hemisphere_time(self, df: pd.DataFrame, x_col: tuple, y_col: tuple, division_def: Dict, seconds_per_frame: float) -> Dict[str, float]:
-        """Calculates time on either side of an explicitly defined line."""
-        # Expecting division_def = {"type": "line", "coords": [[x1, y1], [x2, y2]], "side1_name": "Left", "side2_name": "Right"}
-        if division_def.get("type") != "line" or len(division_def.get("coords", [])) != 2:
-            raise ValueError("Invalid hemisphere_division definition for line type.")
-
-        coords = division_def["coords"]
-        side1_name = division_def.get("side1_name", "side1")
-        side2_name = division_def.get("side2_name", "side2")
-        line_name = division_def.get("line_name", "dividing_line")
-
-        (x1, y1), (x2, y2) = coords[0], coords[1]
-
-        # Calculate line equation parameters: ax + by + c = 0
-        # Normal vector (a, b) is perpendicular to the line direction vector (dx, dy)
-        dx = x2 - x1
-        dy = y2 - y1
-        if abs(dx) < 1e-9 and abs(dy) < 1e-9:
-            raise ValueError("Points defining the hemisphere line are identical.")
-
-        # Use normal vector (dy, -dx) for (a, b)
-        a = dy
-        b = -dx
-        # Calculate c using one point on the line (x1, y1): a*x1 + b*y1 + c = 0 => c = -(a*x1 + b*y1)
-        c = -(a * x1 + b * y1)
-
-        # Evaluate the line equation for all points in the DataFrame
-        # val = a * x + b * y + c
-        line_eval = a * df[x_col] + b * df[y_col] + c
-
-        # Determine which side based on the sign of the evaluation
-        # Use a small tolerance for points exactly on the line
-        tolerance = 1e-9
-        on_line = line_eval.abs() < tolerance
-        in_side1 = line_eval < -tolerance # Points on one side
-        in_side2 = line_eval > tolerance  # Points on the other side
-
-        times = {
-            side1_name: in_side1.sum() * seconds_per_frame,
-            side2_name: in_side2.sum() * seconds_per_frame,
-            line_name: on_line.sum() * seconds_per_frame
-        }
-        return times
-
-    def _calculate_nor_di(self, time_novel: float, time_familiar: float) -> Optional[float]:
-        """Calculates Novel Object Recognition Discrimination Index (DI)."""
-        total_time = time_novel + time_familiar
-        if total_time > 0:
-            return (time_novel - time_familiar) / total_time
-        else:
-            return None # Avoid division by zero if no interaction occurred 
+            return None # Avoid division by zero 

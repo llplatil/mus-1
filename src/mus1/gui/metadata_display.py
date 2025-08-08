@@ -376,6 +376,10 @@ class MetadataGridDisplay(QWidget):
                      sort_key = stage_order.get(raw_stage.lower() if raw_stage else None, 99) # Default to last if unknown
                      table_item = SortableTableWidgetItem(display_value, sort_key)
                      self.table.setItem(row, col, table_item)
+                elif key == "birth_date":
+                     raw_birth = item_data.get("raw_birth_date", None)
+                     table_item = SortableTableWidgetItem(display_value, raw_birth)
+                     self.table.setItem(row, col, table_item)
 
                 elif key == "Recordings":
                      sort_key = int(item_data.get("Recordings", 0))
@@ -418,7 +422,7 @@ class MetadataGridDisplay(QWidget):
                 "sex": subject.sex.value if hasattr(subject.sex, 'value') else str(subject.sex),
                 "genotype": subject.genotype or "N/A",
                 "birth_date": birth_date_str, # Display string
-                # "raw_birth_date": birth_date_obj, # Pass raw date for sorting if needed
+                "raw_birth_date": birth_date_obj, # Pass raw date for sorting
                 "treatment": subject.treatment or "N/A"
             }
             items.append(item)
