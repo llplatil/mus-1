@@ -1,47 +1,40 @@
-# Ignore everything at root
-/*
-!.gitignore
-!src/
-!pyproject.toml
-!README.md
-!docs/
-!LICENSE
-!dev-launch.sh
-#!tests/  # do not include tests in this dev fork
+# -----------------------------------------------
+# MUS1 (dev fork) .gitignore
+# -----------------------------------------------
+# Keep docs/ and src/ under version control.
+# Ignore tests/ and projects/ directories and other
+# local development artefacts.
+# -----------------------------------------------
 
-# Python cache files
+# === Top-level directories to ignore ===
+projects/
+tests/
+**/tests/
+
+# === Python cache & compiled files ===
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
-.Python
+
+# === Build artefacts ===
 build/
-develop-eggs/
 dist/
-downloads/
-eggs/
+develop-eggs/
 .eggs/
-lib/
-lib64/
+*.egg
+*.egg-info/
 parts/
 sdist/
 var/
 wheels/
-*.egg-info/
-.installed.cfg
-*.egg
 
-# Logs
+# === Logs ===
 logs/
 *.log
 mus1.log
 
-# Exclude specific directories
-projects/
-tests/
-**/abstract/
-
-# Qt/PySide specific
+# === Qt/PySide generated files ===
 *.qmlc
 *.jsc
 *.qm
@@ -55,13 +48,13 @@ tests/
 moc_*.cpp
 qrc_*.cpp
 
-# IDE specific files
+# === IDE & tooling files ===
 .idea/
 .vscode/
 *.swp
 *.swo
 
-# Environment
+# === Virtual environments ===
 .env
 .venv
 env/
@@ -70,30 +63,25 @@ ENV/
 env.bak/
 venv.bak/
 
-# OS specific
+# === OS specific ===
 .DS_Store
 Thumbs.db
 
-# Custom MUS1 specific
+# === Custom MUS1 development ===
+# Temporary, cache, or backup directories anywhere in the tree
 **/temp/
 **/cache/
 **/backups/
 
-# ---------------------------------------------------
-# MUS1-specific ignores (development / local helpers)
-# ---------------------------------------------------
-# Local demo or scratch data (not for version control)
-tests/data/
-
-# Large media files (avoid committing recordings in dev fork)
+# Large media
 **/*.mp4
 **/*.mov
 **/*.mkv
 
-# One-off helper scripts or text dumps generated locally
+# One-off helper scripts or text dumps
 src/**/repo_to_text.py
 src/**/repo_dump_*.txt
 src/**/third_party_repo_*.txt
 
-# Any other large reference repos extracted as plain text
+# Reference repos extracted as plain text
 src/**/reference_repos/
