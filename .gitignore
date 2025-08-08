@@ -6,6 +6,7 @@
 !README.md
 !docs/
 !LICENSE
+!dev-launch.sh
 !tests/
 
 # Python cache files

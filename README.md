@@ -37,9 +37,13 @@ The project uses a modular architecture with plugins for data handling (e.g., De
 
 ## Requirements
 
+### System Dependencies
+- **ffmpeg/ffprobe** (video metadata & hashing). Install via Homebrew `brew install ffmpeg` or apt `sudo apt install ffmpeg`.
+
+
 - Python 3.10+
 - **DeepLabCut**: Must be installed separately in its own environment or managed carefully, even if MUS1 plugins exist for integration (required during development). Used externally for keypoint tracking *before* using MUS1. See [DeepLabCut Installation](https://deeplabcut.github.io/DeepLabCut/docs/installation.html).
-- **MUS1 & Keypoint-MoSeq Dependencies**: Handled via `requirements.txt` and separate `keypoint-moseq` installation (see Getting Started), even if MUS1 plugins exist for integration (required during development). This includes libraries like PySide6, Pandas, Numpy, JAX, and Keypoint-MoSeq itself.
+- **MUS1 & Keypoint-MoSeq Dependencies**: Handled via their install docs we just provie imort export plugin
 - **CUDA (Optional)**: For GPU acceleration with Keypoint-MoSeq (JAX), a compatible NVIDIA driver and CUDA toolkit are required.
 
 ## Documentation
