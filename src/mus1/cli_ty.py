@@ -51,7 +51,11 @@ def _iter_json_lines(stream) -> Iterable[dict]:
         line = line.strip()
         if not line:
             continue
-        yield json.loads(line)
+        try:
+            yield json.loads(line)
+        except json.JSONDecodeError:
+            # Skip any non-JSON noise (e.g., logs/progress) that might leak to stdout
+            continue
 
 ###############################################################################
 # scan videos
@@ -145,7 +149,13 @@ def add_videos(
     """Register unassigned videos in *project* from JSON lines produced by scan pipeline."""
     state_manager, _, data_manager, project_manager = _init_managers()
 
-    # (1) load or create project
+    # (1) resolve project path to default projects dir if not absolute/exists
+    if not project_path.is_absolute() and not project_path.exists():
+        default_dir = project_manager.get_projects_directory()
+        candidate = default_dir / project_path
+        project_path = candidate
+
+    # load or create project
     if project_path.exists():
         project_manager.load_project(project_path)
     else:
@@ -155,9 +165,10 @@ def add_videos(
 
     # (2) read list
     stream = sys.stdin if video_list == Path("-") else open(video_list, "r", encoding="utf-8")
+    records = list(_iter_json_lines(stream))
     video_iter = (
-        (Path(d["path"]), d["hash"], Path(d["path"]).stat().st_mtime and data_manager._extract_start_time(Path(d["path"])))
-        for d in _iter_json_lines(stream)
+        (Path(rec["path"]), rec["hash"], data_manager._extract_start_time(Path(rec["path"])))
+        for rec in records
     )
 
     # (3) register
@@ -189,6 +200,52 @@ def list_projects(
         print("Available MUS1 projects:")
         for proj in projects:
             print(f"- {proj.name} ({proj})")
+
+###############################################################################
+# project create
+###############################################################################
+
+
+@project_app.command("create")
+def create_project(
+    name: str = typer.Argument(..., help="Project name (folder name) or absolute path"),
+    location: str = typer.Option("local", help="Where to create the project: local|shared|server (server is placeholder)", show_default=True),
+    base_dir: Optional[Path] = typer.Option(None, help="Override base directory for local projects"),
+    shared_root: Optional[Path] = typer.Option(None, help="Root directory for shared projects (or set MUS1_SHARED_DIR)"),
+):
+    """Create a new MUS1 project locally or on a shared location (server placeholder)."""
+    state_manager, plugin_manager, data_manager, project_manager = _init_managers()
+
+    # Resolve destination path
+    target_path: Path
+    if location.lower() == "local":
+        projects_dir = project_manager.get_projects_directory(base_dir)
+        target_path = projects_dir / name
+    elif location.lower() == "shared":
+        root = shared_root or Path(typer.get_app_dir("mus1_shared_root_fallback"))  # placeholder if env not set
+        env_shared = Path((typer.get_app_dir("mus1_shared_root_env_unused") or "."))  # no-op
+        env_var = typer.get_app_dir("mus1_shared_root_env_unused_again")  # no-op
+        # Prefer env MUS1_SHARED_DIR if set
+        import os
+        env = os.environ.get("MUS1_SHARED_DIR")
+        if env:
+            root = Path(env).expanduser()
+        if not shared_root and not env:
+            raise typer.BadParameter("Provide --shared-root or set MUS1_SHARED_DIR for shared location")
+        target_path = Path(root).expanduser() / name
+    elif location.lower() == "server":
+        print("Server project creation is a placeholder. Create locally and sync via your workflow.")
+        projects_dir = project_manager.get_projects_directory(base_dir)
+        target_path = projects_dir / name
+    else:
+        raise typer.BadParameter("location must be one of: local, shared, server")
+
+    if target_path.exists():
+        print(f"Path already exists: {target_path}")
+        raise typer.Exit(code=1)
+
+    project_manager.create_project(target_path, name)
+    print(f"Created project at: {target_path}")
 
 ###############################################################################
 # Entrypoint
