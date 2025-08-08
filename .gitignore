@@ -7,7 +7,7 @@
 !docs/
 !LICENSE
 !dev-launch.sh
-!tests/
+#!tests/  # do not include tests in this dev fork
 
 # Python cache files
 __pycache__/
@@ -38,6 +38,7 @@ mus1.log
 
 # Exclude specific directories
 projects/
+tests/
 **/abstract/
 
 # Qt/PySide specific
@@ -83,6 +84,11 @@ Thumbs.db
 # ---------------------------------------------------
 # Local demo or scratch data (not for version control)
 tests/data/
+
+# Large media files (avoid committing recordings in dev fork)
+**/*.mp4
+**/*.mov
+**/*.mkv
 
 # One-off helper scripts or text dumps generated locally
 src/**/repo_to_text.py
