@@ -1,6 +1,7 @@
 import logging
 from pathlib import Path
 import pandas as pd
+import numpy as np
 from typing import Optional, Dict, Any, List, Set
 from datetime import datetime
 
@@ -152,8 +153,7 @@ class DeepLabCutHandlerPlugin(BasePlugin):
             # Assuming standard DLC HDF5 structure with key 'df_with_missing'
             # Use direct pandas read or a future DataManager HDF5 helper
             try:
-                # TODO: Consider adding a DataManager.read_hdf helper
-                df = pd.read_hdf(file_path, key='df_with_missing')
+                df = data_manager.read_hdf(file_path, key='df_with_missing')
                 # HDF5 might already have multi-index columns, verify structure
                 if not isinstance(df.columns, pd.MultiIndex) or df.columns.nlevels != 3:
                      logger.warning(f"HDF5 file {file_path} does not have expected 3-level MultiIndex columns. Attempting to continue.")

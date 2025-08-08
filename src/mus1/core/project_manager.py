@@ -351,12 +351,6 @@ class ProjectManager:
         if missing_plugins:
             raise ValueError(f"Unknown associated plugins: {', '.join(missing_plugins)}")
 
-        # TODO: Consider adding plugin-specific validation call here later:
-        # for plugin_name in associated_plugins:
-        #     plugin = self.plugin_manager.get_plugin_by_name(plugin_name)
-        #     if plugin and plugin_name in plugin_params:
-        #         temp_exp_meta_for_validation = ExperimentMetadata(...) # Create partial meta if needed
-        #         plugin.validate_experiment(temp_exp_meta_for_validation, self.state_manager.project_state)
 
 
         # --- Create Metadata ---

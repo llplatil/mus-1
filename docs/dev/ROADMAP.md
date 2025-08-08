@@ -1,3 +1,7 @@
+# MUS1 Development Roadmap (superseded)
+
+Note: See `docs/dev/ROADMAP_DRAFT.md` for the up-to-date roadmap. This file is retained for historical context and will be trimmed or removed later.
+
 # MUS1 Development Roadmap
 
 This document outlines the planned development roadmap for MUS1, defining milestones and feature targets for upcoming versions.

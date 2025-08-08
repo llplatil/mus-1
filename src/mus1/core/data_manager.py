@@ -92,6 +92,50 @@ class DataManager:
             logger.error(f"Error reading CSV file {file_path}: {e}")
             raise IOError(f"Could not read CSV file {file_path}: {e}")
 
+    def read_hdf(self, file_path: Path, key: str = 'df_with_missing', **kwargs) -> pd.DataFrame:
+        """
+        Reads an HDF5 file (HDFStore) and returns a DataFrame.
+
+        Args:
+            file_path: Path to the HDF5 file (.h5/.hdf5)
+            key: Dataset key to read (default 'df_with_missing' for DLC)
+            **kwargs: Passed to pandas.read_hdf
+
+        Raises:
+            IOError/ValueError on read or structure errors
+        """
+        self._validate_file(file_path, [".h5", ".hdf5"], "HDF5 file")
+        try:
+            df = pd.read_hdf(file_path, key=key, **kwargs)
+        except Exception as e:
+            logger.error(f"Error reading HDF5 file {file_path}: {e}")
+            raise IOError(f"Could not read HDF5 file {file_path}: {e}")
+
+        # DLC commonly expects a 3-level MultiIndex (scorer, bodypart, coord)
+        if not isinstance(df.columns, pd.MultiIndex) or df.columns.nlevels < 3:
+            logger.warning(
+                f"HDF5 {file_path} columns are not a 3-level MultiIndex; got nlevels={getattr(df.columns, 'nlevels', 'N/A')}."
+            )
+        return df
+
+    def get_experiment_data_path(self, experiment: Any) -> str:
+        """
+        Return a canonical path for storing experiment outputs under the current project.
+
+        Layout: <project_root>/data/<subject_id>/<experiment_id>/
+        """
+        project_root = getattr(self.state_manager, '_current_project_root', None)
+        if project_root is None and hasattr(self.state_manager, 'get_project_root'):
+            project_root = self.state_manager.get_project_root()
+        if project_root is None:
+            # Fallback: try ProjectManager convention from ProjectManager instance if available
+            project_root = getattr(getattr(self, 'project_manager', None), '_current_project_root', None)
+        if project_root is None:
+            raise RuntimeError("No current project loaded; cannot compute experiment data path.")
+        base = Path(project_root) / 'data' / str(experiment.subject_id) / str(experiment.id)
+        base.mkdir(parents=True, exist_ok=True)
+        return str(base)
+
     # --- NEW Method to Call Handler Helpers ---
     def call_handler_method(self, handler_name: str, method_name: str, **kwargs) -> Any:
          """

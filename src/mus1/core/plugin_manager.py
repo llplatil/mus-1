@@ -83,52 +83,33 @@ class PluginManager:
         return self._supported_types
 
     def get_supported_processing_stages(self) -> List[str]:
-        """Return unique processing stages from all registered plugins."""
-        # TODO: Review relevance
+        """Return the canonical list of processing stages from metadata."""
         if self._supported_stages is None:
-            stages: Set[str] = set()
-            for plugin in self._plugins:
-                stages.update(plugin.get_supported_processing_stages())
-            self._supported_stages = sorted(list(stages))
+            from .metadata import DEFAULT_PROCESSING_STAGES
+            self._supported_stages = list(DEFAULT_PROCESSING_STAGES)
         return self._supported_stages
 
     def get_supported_data_sources(self) -> List[str]:
-        """Return unique data sources from all registered plugins."""
-        # TODO: Review relevance
+        """Deprecated shim; data sources are not aggregated from plugins in current design."""
         if self._supported_sources is None:
-             sources: Set[str] = set()
-             for plugin in self._plugins:
-                 sources.update(plugin.get_supported_data_sources())
-             self._supported_sources = sorted(list(sources))
+            self._supported_sources = []
         return self._supported_sources
 
     def get_supported_arena_sources(self) -> List[str]:
-        """Return unique arena image sources supported by all plugins."""
-         # TODO: Review relevance
+        """Deprecated shim; arena sources are not aggregated from plugins in current design."""
         if self._supported_arena_sources is None:
-            sources: Set[str] = set()
-            for plugin in self._plugins:
-                sources.update(plugin.get_supported_arena_sources())
-            self._supported_arena_sources = sorted(list(sources))
+            self._supported_arena_sources = []
         return self._supported_arena_sources
 
     # --- Compatibility Helpers (moved from StateManager) ---
 
     def get_compatible_processing_stages(self, exp_type: str) -> List[str]:
-        """Return a sorted list of processing stages supported by plugins for a given experiment type."""
-        stages: Set[str] = set()
-        for plugin in self._plugins:
-            if exp_type in plugin.get_supported_experiment_types():
-                stages.update(plugin.get_supported_processing_stages())
-        return sorted(list(stages))
+        """Return canonical processing stages (not filtered by plugins)."""
+        return self.get_supported_processing_stages()
 
     def get_compatible_data_sources(self, exp_type: str, stage: str) -> List[str]:
-        """Return data sources compatible with a given experiment type and processing stage."""
-        sources: Set[str] = set()
-        for plugin in self._plugins:
-            if exp_type in plugin.get_supported_experiment_types() and stage in plugin.get_supported_processing_stages():
-                sources.update(plugin.get_supported_data_sources())
-        return sorted(list(sources))
+        """Deprecated shim; data sources not modeled centrally."""
+        return []
 
     def compile_required_fields(self, plugins: List[BasePlugin]) -> List[str]:
         """Return a sorted list of unique required fields from the provided plugins."""

@@ -56,3 +56,10 @@ No dates, versions, or estimates. Concrete, code-aligned.
 
 ## Notes
 - Keypoint-MoSeq: No analysis plugin exists in repo; a GCP MoSeq2 orchestrator is present but needs a data-path helper. Treat kp-MoSeq analysis as a future plugin task, separate from orchestrator.
+
+## Direction on MoSeq2 orchestration
+- Deprecate the GCP-based orchestrator (kept for reference).
+- Design a server-backed (e.g., Slurm) MoSeq2 orchestration plugin that:
+  - Prepares uniquely identified MKV inputs for MoSeq2 extraction.
+  - Uses canonical experiment output paths (`DataManager.get_experiment_data_path`).
+  - Integrates with future server provider abstractions (local process, SSH, Slurm).

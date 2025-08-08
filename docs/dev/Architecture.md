@@ -1,3 +1,7 @@
+# MUS1 Architecture Overview (superseded)
+
+Note: See `docs/dev/ARCHITECTURE_CURRENT.md` for the current, authoritative architecture description. This file is retained for historical context and will be trimmed or removed later.
+
 # MUS1 Architecture Overview
 
 ## Core Components

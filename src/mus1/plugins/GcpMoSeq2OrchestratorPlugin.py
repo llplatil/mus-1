@@ -9,7 +9,12 @@ import google.oauth2.id_token
 logger = logging.getLogger(__name__)
 
 class GcpMoSeq2OrchestratorPlugin(BasePlugin):
-    """Plugin to manage uploading videos to GCP, triggering MoSeq2, and retrieving results."""
+    """DEPRECATED: This GCP-based orchestrator is retained for reference.
+
+    Planned replacement: a MoSeq2 Slurm/server-backed orchestration plugin that
+    prepares unique MKV inputs and runs extraction/fitting on lab servers with
+    standardized output paths.
+    """
 
     plugin_name = "GCP MoSeq2 Orchestrator"
     plugin_short_description = "Uploads videos, runs MoSeq2 on GCP, downloads results."
