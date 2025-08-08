@@ -1,0 +1,602 @@
+/* ==== BASE STYLES ==== */
+QWidget {
+  font-size: 12px;
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  background-color: $BACKGROUND_COLOR;
+  color: $TEXT_COLOR;
+}
+
+/* Explicitly set transparent background for all labels */
+QLabel {
+  background: transparent;
+}
+
+/* Form labels specifically (used with create_form_label helper) */
+QLabel[formLabel="true"] {
+  background: transparent;
+  padding: 4px 0;
+  margin: 0;
+  min-height: 24px; /* Consistent height for alignment */
+  height: 24px;
+  line-height: 24px;
+  min-width: 65px;
+  text-align: right;
+  margin-right: 8px;
+}
+
+/* Styling for section header labels (e.g., "Core Experiment Details") */
+.mus1-section-label {
+  font-weight: bold;
+  color: $TEXT_COLOR; /* Inherits background from parent QWidget */
+  margin-bottom: 5px;
+  font-size: 14px;
+  background: transparent; /* Ensure transparency */
+}
+
+/* Styling for plugin parameter group headers */
+QLabel.mus1-plugin-param-header {
+    font-weight: bold;
+    margin-top: 5px;
+    padding-top: 5px;
+    border-top: 1px solid $BORDER_COLOR;
+    background: transparent; /* Ensure transparency */
+}
+
+/* Styling for labels marking required fields */
+QLabel[fieldRequired="true"] {
+    color: $PLUGIN_REQUIRED_COLOR;
+    /* font-weight: bold; */ /* Optional: Uncomment if needed */
+    background: transparent; /* Ensure transparency */
+}
+
+/* Main Application Window */
+.mus1-main-window {
+  min-width: 800px;
+  min-height: 600px;
+  background-color: $BACKGROUND_COLOR; /* Already set by QWidget, but explicit for clarity */
+  color: $TEXT_COLOR;
+}
+
+/* ==== BUTTON STYLES ==== */
+.mus1-primary-button {
+  border: none;
+  border-radius: 4px;
+  padding: 4px 12px;
+  background-color: $PRIMARY_BUTTON_BG;
+  color: $PRIMARY_BUTTON_TEXT;
+  margin-top: 0;
+  min-width: 100px;
+  min-height: 24px;
+  height: 24px;
+  text-align: center;
+  line-height: 24px;
+}
+
+.mus1-primary-button:hover {
+  background-color: $PRIMARY_BUTTON_HOVER;
+}
+
+.mus1-primary-button:pressed {
+  background-color: $PRIMARY_BUTTON_PRESSED;
+}
+
+.mus1-secondary-button {
+  border: 1px solid $BORDER_COLOR;
+  border-radius: 4px;
+  padding: 4px 12px;
+  background-color: $SECONDARY_BUTTON_BG;
+  color: $SECONDARY_BUTTON_TEXT;
+  min-width: 100px;
+  min-height: 24px;
+  height: 24px;
+  text-align: center;
+  line-height: 24px;
+}
+
+.mus1-secondary-button:hover {
+  background-color: $SECONDARY_BUTTON_HOVER;
+}
+
+/* ==== INPUT AND FORM ELEMENTS ==== */
+
+/* Group boxes for sections of controls */
+.mus1-input-group {
+  border: 1px solid $BORDER_COLOR;
+  border-radius: 6px;
+  padding: 10px;
+  margin-bottom: 10px;
+  background-color: $WIDGET_BOX_BG;
+  color: $TEXT_COLOR;
+}
+
+/* Subgroups within a main group */
+.mus1-subgroup {
+  border: 1px solid $BORDER_COLOR;
+  border-radius: 4px;
+  padding: 10px;
+  margin: 0;
+  background-color: $WIDGET_BOX_BG;
+  color: $TEXT_COLOR;
+}
+
+/* Make subgroup titles slightly more subtle (if needed - relies on QLabel styling) */
+/* .mus1-subgroup > .mus1-section-label { ... } */ /* Maybe redundant now */
+
+/* Ensure all labels inside input groups have transparent backgrounds (redundant with global QLabel) */
+/* .mus1-input-group QLabel, .mus1-subgroup QLabel { background-color: transparent; } */
+
+/* Text Inputs and Combo Boxes */
+.mus1-text-input, .mus1-combo-box, QLineEdit, QComboBox {
+  border-radius: 4px;
+  padding: 4px 6px;
+  border: 1px solid $BORDER_COLOR;
+  background-color: $INPUT_BG;
+  color: $INPUT_TEXT;
+  min-height: 24px;
+  height: 24px;
+  line-height: 24px;
+  margin: 0;
+  margin-bottom: 0;
+}
+
+/* Spin Boxes (Int and Double) */
+QSpinBox, QDoubleSpinBox {
+  border-radius: 4px;
+  padding: 4px 6px;
+  border: 1px solid $BORDER_COLOR;
+  background-color: $INPUT_BG;
+  color: $INPUT_TEXT;
+  min-height: 24px;
+  height: 24px;
+  margin: 0;
+}
+
+/* Spin Box Buttons */
+QSpinBox::up-button, QDoubleSpinBox::up-button,
+QSpinBox::down-button, QDoubleSpinBox::down-button {
+  width: 16px;
+  border-left: 1px solid $BORDER_COLOR;
+  subcontrol-origin: margin;
+}
+
+/* Check Boxes */
+QCheckBox {
+  min-height: 24px;
+  height: 24px;
+  padding: 0 4px;
+  line-height: 24px;
+  background: transparent;
+  border: none;
+}
+
+QCheckBox::indicator {
+  width: 16px;
+  height: 16px;
+  margin-right: 4px;
+}
+
+QCheckBox:focus {
+  outline: none;
+  background: transparent;
+}
+
+/* Combo Box Dropdown Button */
+QComboBox::drop-down, .mus1-combo-box::drop-down {
+  subcontrol-origin: padding;
+  subcontrol-position: right center;
+  width: 30px;
+  border-left: 1px solid $BORDER_COLOR;
+  border-top-right-radius: 3px;
+  border-bottom-right-radius: 3px;
+}
+
+/* Combo Box Dropdown Arrow */
+QComboBox::down-arrow {
+    subcontrol-origin: padding;
+    subcontrol-position: right center;
+    image: url("Mus1_Refactor/themes/down_arrow.svg");
+    width: 10px;
+    height: 10px;
+    margin-right: 10px;
+}
+
+/* Combo Box Hover/Focus States */
+QComboBox:hover, QComboBox#mus1-combo-box:hover {
+  border-color: $PRIMARY_BUTTON_BG;
+}
+
+QComboBox:focus, QComboBox#mus1-combo-box:focus {
+  border-color: $PRIMARY_BUTTON_BG;
+  outline: none;
+}
+
+/* Combo Box Dropdown List View */
+QComboBox QAbstractItemView, .mus1-combo-box QAbstractItemView {
+  background-color: $INPUT_BG;
+  border: 1px solid $BORDER_COLOR;
+  border-radius: 4px;
+  selection-background-color: $SELECTION_BG;
+  selection-color: $SELECTION_TEXT;
+  padding: 4px;
+}
+
+/* Combo Box Open State */
+QComboBox:on, .mus1-combo-box:on {
+  border: 1px solid $PRIMARY_BUTTON_BG;
+  background-color: $INPUT_BG;
+}
+
+/* Form Layout Rows */
+QHBoxLayout.form-row, .form-row {
+  padding: 0;
+  margin: 0;
+  min-height: 24px;
+}
+
+/* Text Selection Highlighting */
+QLineEdit::selection, QTextEdit::selection, QPlainTextEdit::selection {
+  background-color: $SELECTION_BG;
+  color: $SELECTION_TEXT;
+}
+
+/* Input Labels (Generic - review if still needed or covered by formLabel) */
+.mus1-input-label {
+  color: $TEXT_COLOR;
+  font-weight: normal;
+  background-color: transparent;
+  padding: 2px 0;
+}
+
+/* ==== NOTES WIDGET ==== */
+.mus1-notes-edit {
+  border-radius: 4px;
+  padding: 6px;
+  border: 1px solid $BORDER_COLOR;
+  background-color: $INPUT_BG;
+  color: $INPUT_TEXT;
+  min-height: 120px;
+}
+
+/* Notes container styling */
+.mus1-notes-container {
+  background-color: $WIDGET_BOX_BG;
+  border: 1px solid $BORDER_COLOR;
+  border-radius: 6px;
+  padding: 10px;
+  margin: 5px 0;
+}
+
+/* Notes title styling */
+.mus1-notes-title {
+  font-weight: bold;
+  font-size: 14px;
+  color: $TEXT_COLOR;
+  margin-bottom: 8px;
+}
+
+/* ==== LIST WIDGET STYLING ==== */
+.mus1-list-widget {
+  border: 1px solid $BORDER_COLOR;
+  border-radius: 4px;
+  background-color: $INPUT_BG;
+  color: $INPUT_TEXT;
+  padding: 2px;
+  margin-bottom: 8px;
+  min-height: 120px;  /* Consistent minimum height for all list widgets */
+}
+
+/* Qt-specific pseudo-element syntax */
+QListWidget::item, .mus1-list-widget::item {
+  padding: 4px;
+  border-bottom: 1px solid $BORDER_LIGHT;
+}
+
+QListWidget::item:selected, .mus1-list-widget::item:selected {
+  background-color: $SELECTION_BG;
+  color: $SELECTION_TEXT;
+}
+
+QListWidget::item:hover, .mus1-list-widget::item:hover {
+  background-color: $HOVER_BG;
+}
+
+/* ==== TABLE VIEW STYLING ==== */
+.mus1-table-view, QTableView {
+  border: 1px solid $BORDER_COLOR;
+  background-color: $INPUT_BG;
+  color: $INPUT_TEXT;
+}
+
+/* Table Header */
+QHeaderView::section, .mus1-table-view QHeaderView::section {
+  background-color: $HEADER_BG;
+  color: $HEADER_TEXT;
+  padding: 8px;
+  font-weight: bold;
+}
+
+/* Table Items */
+QTableView::item, .mus1-table-view::item {
+  padding: 4px;
+}
+
+QTableView::item:selected, .mus1-table-view::item:selected {
+  background-color: $SELECTION_BG;
+  color: $SELECTION_TEXT;
+}
+
+/* ==== NAVIGATION ELEMENTS ==== */
+.mus1-nav-pane {
+  background-color: $NAV_BG;
+  border-right: 1px solid $BORDER_COLOR;
+}
+
+.mus1-nav-list-container {
+  padding: 0px;
+  background-color: transparent;
+  margin: 0px;
+}
+
+.mus1-nav-button {
+  border: none;
+  border-radius: 4px;
+  padding: 0 12px;
+  margin: 0;
+  background-color: $NAV_BUTTON_BG;
+  color: $NAV_BUTTON_TEXT;
+  text-align: left;
+}
+
+.mus1-nav-button:hover {
+  background-color: $NAV_BUTTON_HOVER;
+}
+
+.mus1-nav-button:checked {
+  background-color: $NAV_BUTTON_SELECTED;
+}
+
+/* ==== LOG DISPLAY ==== */
+.mus1-log-display {
+  background-color: $LOG_BG;
+  border: 1px solid $BORDER_COLOR;
+  color: $LOG_TEXT;
+  font-size: 12px;
+  padding: 4px;
+  margin: 0;
+}
+
+.mus1-log-container {
+  margin: 0;
+  padding: 0;
+}
+
+.mus1-log-label {
+  color: $LOG_LABEL_COLOR;
+  font-size: 12px;
+  font-weight: bold;
+  margin: 0;
+  padding: 0;
+}
+
+/* ==== PLUGIN ELEMENTS (Containers) ==== */
+.plugin-panel {
+  border: 1px solid $BORDER_COLOR;
+  border-radius: 6px;
+  padding: 12px;
+  margin-top: 10px;
+  background-color: $WIDGET_BOX_BG;
+}
+
+/* ==== SCROLLBARS ==== */
+QScrollArea {
+  background-color: transparent;
+  border: none;
+}
+
+QScrollArea > QWidget > QWidget {
+  background-color: transparent;
+}
+
+QScrollBar:vertical {
+  background-color: $SCROLLBAR_BG;
+  width: 12px;
+  border-radius: 6px;
+}
+
+QScrollBar::handle:vertical {
+  background-color: $SCROLLBAR_HANDLE;
+  min-height: 20px;
+  border-radius: 6px;
+}
+
+QScrollBar::handle:vertical:hover {
+  background-color: $SCROLLBAR_HANDLE_HOVER;
+}
+
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+  height: 0px;
+}
+
+QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
+  background-color: transparent;
+}
+
+/* ==== SPLITTER ==== */
+QSplitter::handle {
+  background-color: $BORDER_COLOR;
+}
+
+/* ==== CONTENT AREAS ==== */
+.mus1-content-area {
+  background-color: $BACKGROUND_COLOR;
+  border-radius: 0;
+  color: $CONTENT_TEXT;
+}
+
+.mus1-page {
+  padding: 12px;
+  background-color: $BACKGROUND_COLOR;
+  border-radius: 6px;
+  margin-bottom: 10px;
+}
+
+/* ==== PROJECT SPECIFIC ELEMENTS ==== */
+.mus1-project-selector {
+  border: 1px solid $BORDER_COLOR;
+  border-radius: 6px;
+  padding: 10px;
+  margin-bottom: 15px;
+  background-color: $WIDGET_BOX_BG;
+}
+
+/* ==== PLUGIN COMPONENT STYLING (Using Dynamic Properties) ==== */
+QWidget[pluginStage="preprocessing"] {
+  background-color: $PLUGIN_PREPROCESSING_BG;
+}
+
+QWidget[pluginStage="analysis"] {
+  background-color: $PLUGIN_ANALYSIS_BG;
+}
+
+QWidget[pluginStage="results"] {
+  background-color: $PLUGIN_RESULTS_BG;
+}
+
+QWidget[pluginImportance="required"] {
+  border-left: 3px solid $PLUGIN_REQUIRED_COLOR;
+}
+
+QWidget[pluginImportance="optional"] {
+  border-left: 3px solid $PLUGIN_OPTIONAL_COLOR;
+}
+
+/* Border styles */
+QWidget[pluginBorder="default"] {
+  border-radius: 4px;
+}
+
+QWidget[pluginBorder="rounded"] {
+  border-radius: 8px;
+}
+
+QWidget[pluginBorder="sharp"] {
+  border-radius: 0;
+}
+
+QWidget[pluginBorder="none"] {
+  border: none;
+}
+
+/* Spacing options */
+QWidget[pluginSpacing="default"] {
+  padding: 8px;
+  margin-bottom: 8px;
+}
+
+QWidget[pluginSpacing="compact"] {
+  padding: 4px;
+  margin-bottom: 4px;
+}
+
+QWidget[pluginSpacing="spacious"] {
+  padding: 12px;
+  margin-bottom: 12px;
+}
+
+/* Combined plugin properties */
+QWidget[pluginStage="preprocessing"][pluginSpacing="default"] {
+  background-color: $PLUGIN_PREPROCESSING_BG;
+}
+
+QWidget[pluginStage="preprocessing"][pluginSpacing="prominent"] {
+  background-color: $PLUGIN_PREPROCESSING_BG;
+  border-left: 3px solid $PLUGIN_COMPONENT_ACCENT;
+}
+
+QWidget[pluginStage="analysis"][pluginSpacing="default"] {
+  background-color: $PLUGIN_ANALYSIS_BG;
+}
+
+QWidget[pluginStage="analysis"][pluginSpacing="prominent"] {
+  background-color: $PLUGIN_ANALYSIS_BG;
+  border-left: 3px solid $PLUGIN_COMPONENT_ACCENT;
+}
+
+QWidget[pluginStage="results"][pluginSpacing="default"] {
+  background-color: $PLUGIN_RESULTS_BG;
+}
+
+QWidget[pluginStage="results"][pluginSpacing="prominent"] {
+  background-color: $PLUGIN_RESULTS_BG;
+  border-left: 3px solid $PLUGIN_COMPONENT_ACCENT;
+}
+
+/* ==== SLIDER STYLING ==== */
+QSlider[mus1-slider="true"] {
+    min-height: 30px;
+    background: transparent;
+}
+
+QSlider[mus1-slider="true"]::groove:horizontal {
+    height: 6px;
+    background: $BORDER_COLOR;
+    border-radius: 3px;
+}
+
+QSlider[mus1-slider="true"]::sub-page:horizontal {
+    background: $PRIMARY_BUTTON_BG;
+    border-radius: 3px;
+}
+
+QSlider[mus1-slider="true"]::handle:horizontal {
+    background: $PRIMARY_BUTTON_BG;
+    width: 16px;
+    height: 16px;
+    margin: -7px 0;  /* adjusted for center alignment with increased height */
+    border-radius: 8px;
+}
+
+QSlider[mus1-slider="true"]::handle:horizontal:hover {
+    background: $PRIMARY_BUTTON_HOVER;
+}
+
+/* Tick marks styling */
+QSlider[mus1-slider="true"]::tick:horizontal {
+    background: $BORDER_COLOR;
+    width: 1px;
+    height: 6px;
+}
+
+/* ==== TAB WIDGET STYLES ==== */
+QTabWidget::pane {
+    border: 1px solid $BORDER_COLOR;
+    top: -1px;  /* Adjust the pane frame to blend with the tabs */
+}
+
+QTabBar::tab {
+    background-color: $SECONDARY_BUTTON_BG;
+    color: $SECONDARY_BUTTON_TEXT;
+    padding: 6px 12px;
+    border: 1px solid $BORDER_COLOR;
+    border-bottom: none;
+    border-top-left-radius: 4px;
+    border-top-right-radius: 4px;
+    margin-right: 2px;
+}
+
+QTabBar::tab:selected {
+    background-color: $PRIMARY_BUTTON_BG;
+    color: $PRIMARY_BUTTON_TEXT;
+}
+
+QTabBar::tab:hover {
+    background-color: $PRIMARY_BUTTON_HOVER;
+}
+
+/* ==== STATUS INDICATORS ==== */
+QLabel[missing="true"] {
+    color: #EB5757; /* red for missing file paths */
+}
+
+/* ==== REQUIRED FIELD LABEL STYLING (Moved near other label styles) ==== */
+/* QLabel[fieldRequired="true"] { ... } */ /* Now defined earlier */
