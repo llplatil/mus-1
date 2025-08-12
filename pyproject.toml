@@ -1,0 +1,38 @@
+[project]
+name = "mus1"
+dynamic = ["version"]
+description = "MUS1 Behavior Analysis Tool"
+requires-python = ">=3.10"
+dependencies = [
+  "PySide6>=6.5.2",
+  "qt-material>=2.14.0",
+  "pydantic>=1.9.0",
+  "pandas>=1.5.0",
+  "numpy>=1.21.0,<=1.26.4",
+  "matplotlib>=3.5.0",
+  "PyYAML>=6.0",
+  "openpyxl>=3.1.0",
+  "shapely>=2.0.7",
+  "google-cloud-storage>=2.0.0,<3.0.0",
+  "requests>=2.20.0,<3.0.0",
+  "typer>=0.12.0",
+  "rich>=13.0.0",
+  "tqdm>=4.66.0",
+]
+
+[project.scripts]
+mus1 = "mus1.cli_ty:run"
+
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.package-dir]
+"" = "src"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["mus1*"]
+
+[tool.setuptools.dynamic]
+version = {attr = "mus1.__version__"}
