@@ -1,0 +1,87 @@
+# -----------------------------------------------
+# MUS1 (dev fork) .gitignore
+# -----------------------------------------------
+# Keep docs/ and src/ under version control.
+# Ignore tests/ and projects/ directories and other
+# local development artefacts.
+# -----------------------------------------------
+
+# === Top-level directories to ignore ===
+projects/
+tests/
+**/tests/
+
+# === Python cache & compiled files ===
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# === Build artefacts ===
+build/
+dist/
+develop-eggs/
+.eggs/
+*.egg
+*.egg-info/
+parts/
+sdist/
+var/
+wheels/
+
+# === Logs ===
+logs/
+*.log
+mus1.log
+
+# === Qt/PySide generated files ===
+*.qmlc
+*.jsc
+*.qm
+.qt_for_python/
+.qmake.stash
+.rcc
+.pui
+*.user
+.qtc_clangd/
+*.moc
+moc_*.cpp
+qrc_*.cpp
+
+# === IDE & tooling files ===
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# === Virtual environments ===
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# === OS specific ===
+.DS_Store
+Thumbs.db
+
+# === Custom MUS1 development ===
+# Temporary, cache, or backup directories anywhere in the tree
+**/temp/
+**/cache/
+**/backups/
+
+# Large media
+**/*.mp4
+**/*.mov
+**/*.mkv
+
+# One-off helper scripts or text dumps
+src/**/repo_to_text.py
+src/**/repo_dump_*.txt
+src/**/third_party_repo_*.txt
+
+# Reference repos extracted as plain text
+src/**/reference_repos/
