@@ -44,6 +44,31 @@ The project uses a modular architecture with plugins for data handling (e.g., De
 - Development Roadmap: `docs/dev/ROADMAP.md`
 - Architecture Documentation: `docs/dev/ARCHITECTURE_CURRENT.md`
 
+## Shared Projects (Networked storage)
+
+MUS1 supports keeping projects on a shared network location so multiple machines can access the same project state.
+
+Setup
+- Choose a local mount path on your machine, mount your network share there, and set the environment variable `MUS1_SHARED_DIR` to that mount path. The directory should contain your MUS1 project folders.
+- The core saves `project_state.json` using a lightweight advisory lock (`.mus1-lock`) to reduce conflicting writes across machines.
+
+CLI
+```bash
+# List projects from shared storage
+mus1 project list --shared
+
+# Create a project on shared storage
+mus1 project create my_proj --location shared
+```
+
+GUI
+- Project Selection dialog: choose “Shared” to list or create projects on the shared location.
+- Project View → Project Settings: use the “Shared” option in the project switcher to switch to projects on shared storage.
+
+Notes
+- `MUS1_SHARED_DIR` must be a locally mounted path; MUS1 does not perform mounting. Use your OS’s mount tools (e.g., SMB/NFS/sshfs) prior to launching MUS1.
+- On save, `.mus1-lock` is created and removed automatically. If you see a stale lock after a crash, it can be deleted safely once no MUS1 instance is writing.
+
 ## Getting Started
 
 We recommend using UV for faster, isolated environments. MUS1 is packaged via `pyproject.toml`.

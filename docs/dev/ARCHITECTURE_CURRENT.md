@@ -6,6 +6,8 @@ This document describes how MUS1 works today based on the code, including gaps a
 
 - ProjectManager (`src/mus1/core/project_manager.py`)
   - Creates/loads/saves projects (`project_state.json`) under `~/MUS1/projects` by default (overridable via `MUS1_PROJECTS_DIR`).
+  - Supports a shared projects root via `get_shared_directory()` resolved from `MUS1_SHARED_DIR` (must be a locally mounted path). Both CLI and GUI can create/list projects under this shared root.
+  - Saves use a lightweight advisory lock file `.mus1-lock` to reduce concurrent write conflicts on shared storage.
   - Discovers plugins by importing classes in `src/mus1/plugins/*.py` that subclass `BasePlugin` and are concrete; registers them with `PluginManager`.
   - Orchestrates analysis via `run_analysis(experiment_id, capability)`:
     - Looks up the experiment and a plugin whose `analysis_capabilities()` includes the capability.

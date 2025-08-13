@@ -4,6 +4,7 @@ This roadmap reflects how the code works today and what is planned next. It avoi
 
 ## What works today (observed in code)
 - Project lifecycle and persistence via `ProjectManager`; default projects live under `~/MUS1/projects` (env override `MUS1_PROJECTS_DIR`).
+- Shared projects directory via `MUS1_SHARED_DIR` with advisory `.mus1-lock` during saves; CLI and GUI can create/list/switch to shared projects.
 - Dynamic plugin discovery and registration from `src/mus1/plugins/*` with `PluginManager` indices by readable formats and capabilities.
 - Analysis orchestration: `ProjectManager.run_analysis(experiment_id, capability)` validates via plugin, calls `analyze_experiment`, stores results, and advances `processing_stage` when appropriate.
 - Data IO helpers in `DataManager`: `read_yaml`, `read_csv`, `read_hdf`; handler invocation through `call_handler_method`.
