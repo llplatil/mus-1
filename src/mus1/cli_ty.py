@@ -211,9 +211,16 @@ def launch_gui():
 @project_app.command("list")
 def list_projects(
     base_dir: Optional[Path] = typer.Option(None, help="Base directory to search for projects (default: standard location)"),
+    shared: bool = typer.Option(False, help="List projects from the shared directory (MUS1_SHARED_DIR)"),
 ):
     """List available MUS1 projects on this machine."""
     _, _, _, project_manager = _init_managers()
+    if shared and not base_dir:
+        try:
+            base_dir = project_manager.get_shared_directory()
+        except Exception as e:
+            print(f"Error resolving shared directory: {e}")
+            base_dir = None
     if base_dir:
         projects = project_manager.list_available_projects(base_dir)
     else:

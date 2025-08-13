@@ -262,6 +262,22 @@ class MainWindow(QMainWindow):
             self.update_window_title() # Update title to 'No Project Loaded'
             # Optionally, show an error dialog
 
+    def load_project_path(self, project_path: Path):
+        """Loads a project directly from a full path, then updates UI."""
+        try:
+            project_name = project_path.name
+            project_state_path = project_path / "project_state.json"
+            is_large_project = project_state_path.exists() and project_state_path.stat().st_size > 5 * 1024 * 1024
+            self.project_manager.load_project(project_path, optimize_for_large_files=is_large_project)
+            self.selected_project_name = project_name
+            self.update_window_title()
+            self.project_view.set_initial_project(project_name)
+            self.refresh_all_views()
+            self.apply_theme()
+            self.log_bus.log(f"Project '{project_name}' loaded successfully from path.", "success", "MainWindow")
+        except Exception as e:
+            self.log_bus.log(f"Error loading project from '{project_path}': {e}", "error", "MainWindow")
+
     def refresh_all_views(self):
         """Refresh data in all views."""
         self.log_bus.log("Refreshing all views...", "info", "MainWindow")
@@ -284,7 +300,14 @@ class MainWindow(QMainWindow):
 
         if dialog.exec() == QDialog.Accepted:
             chosen_project = getattr(dialog, 'selected_project_name', None)
-            if chosen_project:
+            chosen_path = getattr(dialog, 'selected_project_path', None)
+            if chosen_path:
+                try:
+                    self.load_project_path(Path(chosen_path))
+                except Exception:
+                    if chosen_project:
+                        self.load_project(chosen_project)
+            elif chosen_project:
                 self.load_project(chosen_project) # Use the central load method
             else:
                 self.log_bus.log("No project selected from dialog.", "warning", "MainWindow")

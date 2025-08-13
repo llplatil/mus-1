@@ -19,6 +19,7 @@ class ProjectSelectionDialog(QDialog):
         self.setObjectName("projectSelectionDialog")
         self.project_manager = project_manager
         self.selected_project_name = None  # Will be set when a project is selected
+        self.selected_project_path = None  # Full path to selected project (string)
         
         self.setWindowTitle("MUS1 Project Selection")
         self.setMinimumSize(700, 400)
@@ -54,6 +55,14 @@ class ProjectSelectionDialog(QDialog):
         input_group_layout = QVBoxLayout(input_group)
         input_group_layout.setContentsMargins(5, 5, 5, 5)
         input_group_layout.setSpacing(5)
+
+        # Location type (Local/Shared)
+        self.location_type_combo = QComboBox(input_group)
+        self.location_type_combo.setObjectName("locationTypeCombo")
+        self.location_type_combo.setProperty("class", "mus1-combo-box")
+        self.location_type_combo.addItems(["Local", "Shared"])  # Default to Local
+        self.location_type_combo.currentIndexChanged.connect(lambda _: self.refresh_projects_list())
+        input_group_layout.addWidget(self.location_type_combo)
 
         self.new_project_line = QLineEdit(input_group)
         self.new_project_line.setObjectName("newProjectInput")
@@ -108,6 +117,14 @@ class ProjectSelectionDialog(QDialog):
         existing_title.setAlignment(Qt.AlignHCenter)
         right_layout.addWidget(existing_title)
         
+        # Location selector for existing projects
+        self.existing_location_combo = QComboBox(right_frame)
+        self.existing_location_combo.setObjectName("existingLocationCombo")
+        self.existing_location_combo.setProperty("class", "mus1-combo-box")
+        self.existing_location_combo.addItems(["Local", "Shared"])  # Mirrors creation side
+        self.existing_location_combo.currentIndexChanged.connect(self.refresh_projects_list)
+        right_layout.addWidget(self.existing_location_combo)
+
         # Projects list
         self.projects_list = QListWidget(right_frame)
         self.projects_list.setObjectName("projectsList")
@@ -151,9 +168,24 @@ class ProjectSelectionDialog(QDialog):
     def refresh_projects_list(self):
         """Refresh the list of existing projects."""
         self.projects_list.clear()
-        projects = self.project_manager.list_available_projects()
+        try:
+            # Determine source: Local or Shared
+            location_choice = None
+            if hasattr(self, 'existing_location_combo'):
+                location_choice = self.existing_location_combo.currentText().lower()
+
+            if location_choice == "shared":
+                base_dir = self.project_manager.get_shared_directory()
+                projects = self.project_manager.list_available_projects(base_dir)
+            else:
+                projects = self.project_manager.list_available_projects()
+        except Exception as e:
+            print(f"Error listing projects: {e}")
+            projects = []
         for project_path in projects:
             item = QListWidgetItem(project_path.name)
+            # Keep full path for selection handling if needed later
+            item.setData(Qt.UserRole, str(project_path))
             self.projects_list.addItem(item)
     
     def create_new_project(self):
@@ -179,7 +211,12 @@ class ProjectSelectionDialog(QDialog):
         if self.custom_location_check.isChecked() and location:
             base_path = Path(location)
         else:
-            base_path = self.project_manager.get_projects_directory()
+            # Choose Local or Shared base automatically
+            location_choice = self.location_type_combo.currentText().lower()
+            if location_choice == "shared":
+                base_path = self.project_manager.get_shared_directory()
+            else:
+                base_path = self.project_manager.get_projects_directory()
 
         # Create the full project directory path
         project_root = base_path / project_name
@@ -187,6 +224,7 @@ class ProjectSelectionDialog(QDialog):
         try:
             self.project_manager.create_project(project_root, project_name)
             self.selected_project_name = project_name
+            self.selected_project_path = str(project_root)
             self.accept()  # Close dialog with "accept" result
         except Exception as e:
             # Handle errors (e.g., project already exists)
@@ -202,6 +240,10 @@ class ProjectSelectionDialog(QDialog):
             return
         
         self.selected_project_name = current_item.text()
+        # Capture full path from user data if present
+        data_path = current_item.data(Qt.UserRole)
+        if data_path:
+            self.selected_project_path = data_path
         self.accept()  # Close dialog with "accept" result
 
     def resizeEvent(self, event):

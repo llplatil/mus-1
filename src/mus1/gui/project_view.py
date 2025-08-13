@@ -615,9 +615,19 @@ class ProjectView(BaseView):
                  self.navigation_pane.add_log_message("ProjectManager not available.", "error")
                  return
 
-            projects = self.project_manager.list_available_projects()
-            project_names = sorted([p.name for p in projects]) # Sort alphabetically
-            self.switch_project_combo.addItems(project_names)
+            # Determine source dir based on location chooser
+            location_choice = self.switch_location_combo.currentText().lower() if hasattr(self, 'switch_location_combo') else "local"
+            if location_choice == "shared":
+                base_dir = self.project_manager.get_shared_directory()
+                projects = self.project_manager.list_available_projects(base_dir)
+            else:
+                projects = self.project_manager.list_available_projects()
+
+            # Sort and add items with full path in user data
+            projects_sorted = sorted(projects, key=lambda p: p.name.lower())
+            for p in projects_sorted:
+                self.switch_project_combo.addItem(p.name, str(p))
+            project_names = [p.name for p in projects_sorted]
 
             # Try to restore previous selection or select current project
             current_project = self.window().selected_project_name
@@ -643,8 +653,16 @@ class ProjectView(BaseView):
                 return
 
             self.navigation_pane.add_log_message(f"Requesting switch to project: {selected_project}", 'info')
-            # Delegate loading entirely to MainWindow
-            self.window().load_project(selected_project)
+            # Try to use stored full path if present
+            try:
+                path_str = self.switch_project_combo.currentData()
+                if path_str:
+                    from pathlib import Path as _Path
+                    self.window().load_project_path(_Path(path_str))
+                else:
+                    self.window().load_project(selected_project)
+            except Exception:
+                self.window().load_project(selected_project)
             # MainWindow's load_project now handles logging success/failure,
             # title updates, and view refreshes (including calling set_initial_project).
         else:
@@ -737,6 +755,12 @@ class ProjectView(BaseView):
         selector_layout = self.create_form_row()
         switch_label = self.create_form_label("Switch to:")
         
+        # Location chooser for listing projects (Local/Shared)
+        self.switch_location_combo = QComboBox()
+        self.switch_location_combo.setProperty("class", "mus1-combo-box")
+        self.switch_location_combo.addItems(["Local", "Shared"])
+        self.switch_location_combo.currentIndexChanged.connect(self.populate_project_list)
+
         self.switch_project_combo = QComboBox()
         self.switch_project_combo.setProperty("class", "mus1-combo-box")
         self.switch_project_button = QPushButton("Switch")
@@ -744,6 +768,7 @@ class ProjectView(BaseView):
         self.switch_project_button.clicked.connect(self.handle_switch_project)
         
         selector_layout.addWidget(switch_label)
+        selector_layout.addWidget(self.switch_location_combo)
         selector_layout.addWidget(self.switch_project_combo, 1)
         selector_layout.addWidget(self.switch_project_button)
         selection_layout.addLayout(selector_layout)

@@ -4,6 +4,7 @@ from pathlib import Path
 from datetime import datetime
 from typing import Optional, List, Dict, Any, Iterable
 import os
+import time
 import importlib
 import importlib.util
 import inspect
@@ -145,6 +146,28 @@ class ProjectManager:
         # After discovery, sync the metadata into the state manager
         self.state_manager.sync_plugin_metadatas(self.plugin_manager)
 
+    def get_shared_directory(self, custom_root: Path | None = None) -> Path:
+        """Return the directory for shared MUS1 projects.
+
+        Precedence for the base directory is:
+        1. custom_root argument (explicit override from caller/UI)
+        2. Environment variable MUS1_SHARED_DIR
+
+        The returned directory is created if it does not exist.
+        """
+        if custom_root:
+            base_dir = Path(custom_root).expanduser().resolve()
+        else:
+            env_dir = os.environ.get("MUS1_SHARED_DIR")
+            if not env_dir:
+                raise EnvironmentError(
+                    "MUS1_SHARED_DIR is not set. Set it to the mounted shared projects root."
+                )
+            base_dir = Path(env_dir).expanduser().resolve()
+
+        base_dir.mkdir(parents=True, exist_ok=True)
+        return base_dir
+
     def create_project(self, project_root: Path, project_name: str) -> None:
         """
         Creates a new MUS1 project directory, initializes an empty ProjectState
@@ -213,12 +236,45 @@ class ProjectManager:
             return
 
         state_path = self._current_project_root / "project_state.json"
+        lock_path = self._current_project_root / ".mus1-lock"
         data = self.state_manager.project_state.dict()
 
-        with open(state_path, 'w') as f:
-            json.dump(data, f, indent=2, default=pydantic_encoder)
+        start_time = time.time()
+        lock_fd = None
+        try:
+            # Simple advisory lock using a lockfile with O_EXCL semantics
+            while True:
+                try:
+                    lock_fd = os.open(str(lock_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+                    break
+                except FileExistsError:
+                    if (time.time() - start_time) > 10.0:
+                        raise RuntimeError(
+                            f"Could not acquire project save lock at {lock_path} after 10s"
+                        )
+                    time.sleep(0.1)
 
-        logger.info(f"Project saved to {state_path}")
+            # Write PID into lock for debugging
+            with os.fdopen(lock_fd, 'w') as lock_file:
+                lock_file.write(str(os.getpid()))
+
+            with open(state_path, 'w') as f:
+                json.dump(data, f, indent=2, default=pydantic_encoder)
+
+            logger.info(f"Project saved to {state_path}")
+        finally:
+            try:
+                if lock_fd is not None and not lock_file.closed:
+                    # Already closed by context manager; keep safe
+                    pass
+            except Exception:
+                pass
+            try:
+                if lock_path.exists():
+                    os.unlink(lock_path)
+            except Exception:
+                # Best effort cleanup
+                pass
 
     def load_project(self, project_root: Path, optimize_for_large_files: bool = False) -> None:
         """
