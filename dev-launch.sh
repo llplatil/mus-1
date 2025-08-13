@@ -49,7 +49,7 @@ activate_venv() {
 
 editable_install_ok() {
   python - <<'PY'
-import sys, import importlib.util, pathlib
+import sys, importlib.util, pathlib
 try:
     spec = importlib.util.find_spec("mus1")
 except ModuleNotFoundError:
@@ -57,7 +57,9 @@ except ModuleNotFoundError:
 if not spec or not spec.origin:
     sys.exit(1)
 origin_path = pathlib.Path(spec.origin).resolve()
-repo_root = pathlib.Path(__file__).resolve().parent.parent
+# We run this script from the repo root (the script cd's there),
+# so the current working directory is the repository root.
+repo_root = pathlib.Path.cwd()
 if repo_root in origin_path.parents:
     sys.exit(0)  # good – editable install from this checkout
 sys.exit(1)
