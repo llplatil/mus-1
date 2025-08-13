@@ -33,9 +33,14 @@ class Mus1TrackingAnalysisPlugin(BasePlugin):
             name="Mus1TrackingAnalysis",
             date_created=datetime(2024, 7, 26),
             version="1.4",
-            description="Core Mus1 plugin for analysis using standardized tracking data. Loads data on demand. Supports distance, speed, heatmaps, time in zones, object interaction, hemisphere analysis, gap filling, and specific paradigms (NOR, OF).",
+            description="Core Mus1 plugin for analysis using standardized tracking data. Loads data on demand. Supports distance, speed, heatmaps, time in zones, object interaction, hemisphere analysis, gap filling, and specific paradigms (NOR, OF, EZM).",
             author="Lukash Platil / AI Assistant",
-            supported_experiment_types=["NOR", "OpenField"],
+            supported_experiment_types=["NOR", "OpenField", "EZM"],
+            supported_experiment_subtypes={
+                "NOR": ["familiarization", "recognition"],
+                "OpenField": ["habituation", "re-exposure"],
+                # EZM does not have fixed subtypes in this phase; leave empty list or omit
+            },
             readable_data_formats=['standard_tracking_df'],
             analysis_capabilities=[
                 'distance_speed',

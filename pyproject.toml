@@ -22,6 +22,7 @@ dependencies = [
 
 [project.scripts]
 mus1 = "mus1.cli_ty:run"
+mus1-gui = "mus1.main:main"
 
 [build-system]
 requires = ["setuptools>=61", "wheel"]

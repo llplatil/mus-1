@@ -327,6 +327,7 @@ class ProjectManager:
         subject_id: str,
         date_recorded: datetime,
         exp_type: str,
+        exp_subtype: str | None,
         processing_stage: str,
         associated_plugins: List[str], # New: list of plugin names
         plugin_params: Dict[str, Dict[str, Any]] # New: nested dictionary of parameters
@@ -364,6 +365,7 @@ class ProjectManager:
                 processing_stage=processing_stage,
                 associated_plugins=associated_plugins, # Use the provided list
                 plugin_params=plugin_params, # Use the provided nested dictionary
+                experiment_subtype=exp_subtype,
                 # data_source="", # Set default or derive differently if kept
                 # plugin_metadata=[], # This field might be deprecated, use associated_plugins
                 # data_files={}, # Removed field

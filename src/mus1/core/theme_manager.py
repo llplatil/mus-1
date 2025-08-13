@@ -248,6 +248,18 @@ class ThemeManager:
                 if remaining_vars:
                     logger.warning(f"Unsubstituted variables remaining in stylesheet: {set(remaining_vars)}")
 
+                # Rewrite relative asset URLs (e.g., down_arrow.svg) to absolute paths in themes dir
+                themes_dir = self.base_dir / "themes"
+                def _rewrite_url(match):
+                    raw = match.group(1)
+                    # Keep absolute and special schemes as-is
+                    if raw.startswith(("qrc:", "file:", "/", "http:", "https:")):
+                        return f'url("{raw}")'
+                    # Otherwise, treat as an asset in themes dir
+                    abs_path = (themes_dir / raw).resolve()
+                    return f'url("{abs_path}")'
+                stylesheet = re.sub(r'url\("([^")]+)"\)', _rewrite_url, stylesheet)
+
                 # logger.info(f"Processed Stylesheet content sample:\n{stylesheet[:1000]}...") # Commented out
 
                 self.processed_stylesheets[effective_theme] = stylesheet

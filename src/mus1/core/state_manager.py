@@ -38,14 +38,26 @@ class StateManager:
         """
         types_list = plugin_manager.get_supported_experiment_types()
         self._project_state.supported_experiment_types = types_list
+        # Also sync experiment subtypes mapping
+        try:
+            subtypes_map = plugin_manager.get_supported_experiment_subtypes()
+        except AttributeError:
+            subtypes_map = {}
+        self._project_state.supported_experiment_subtypes = subtypes_map
         logger.info(f"Synced supported experiment types: {types_list}")
         self.log_bus.log(f"Synced supported experiment types: {len(types_list)} types", "info", "StateManager")
+        if subtypes_map:
+            self.log_bus.log(f"Synced experiment subtypes for {len(subtypes_map)} types", "info", "StateManager")
 
     def get_supported_experiment_types(self) -> List[str]:
         """
         Return a copy of the current supported_experiment_types from the ProjectState.
         """
         return list(self._project_state.supported_experiment_types)
+
+    def get_supported_experiment_subtypes(self, exp_type: str) -> List[str]:
+        """Return supported subtypes/phases for a given experiment type (from plugins)."""
+        return list(self._project_state.supported_experiment_subtypes.get(exp_type, []))
 
     def get_experiments_list(self) -> List[ExperimentMetadata]:
         """

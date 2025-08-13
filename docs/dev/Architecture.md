@@ -448,7 +448,7 @@ This document serves as a comprehensive reference for developers to understand t
    uv pip install -e .
    ```
    This guarantees the same Python (≥3.10) and exposes the `mus1` CLI everywhere.
-3. **Cross-Platform Typer CLI** – existing commands in `cli_ty.py` (`mus1 scan …`, `mus1 project …`) already work on all OSes; no changes required.
+3. **Cross-Platform Typer CLI** – existing commands in `cli_ty.py` (`mus1 scan …`, `mus1 project …`, `mus1 gui`) already work on all OSes.
 4. **SSH Backend Plugin (Phase-1)** – add `ClusterBackendPlugin` inside `plugins/compute/` with capabilities:
    * `submit_job(cmd, project_path)` – `ssh user@host 'python -m mus1 …'`
    * `monitor_job(job_id)`
@@ -459,7 +459,7 @@ This document serves as a comprehensive reference for developers to understand t
    1. Mount the share on each machine.
    2. Pull latest code from GitHub on whichever box will run the job.
    3. Activate the UV environment.
-   4. Run the GUI or CLI locally, or `mus1 remote submit … --host ubuntu-server` to off-load compute.
+   4. Run the GUI (`mus1 gui`) or CLI locally, or `mus1 remote submit … --host ubuntu-server` to off-load compute.
 
 _This phased roadmap enables immediate cross-machine collaboration, leverages the existing CLI, and scales toward a database-backed multi-user setup without blocking current work._
 

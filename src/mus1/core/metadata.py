@@ -63,6 +63,8 @@ class PluginMetadata:
     description: str
     author: str
     supported_experiment_types: Optional[List[str]] = None
+    # Optional mapping: experiment type -> list of supported subtypes/phases
+    supported_experiment_subtypes: Optional[Dict[str, List[str]]] = None
     supported_processing_stages: Optional[List[str]] = None
     supported_data_sources: Optional[List[str]] = None
     readable_data_formats: List[str] = Field(default_factory=list)
@@ -75,14 +77,7 @@ class Sex(str, Enum):
     UNKNOWN = "Unknown"
 
 
-class NORSessions(Enum):
-    FAMILIARIZATION = "familiarization"
-    RECOGNITION = "recognition"
-
-
-class OFSessions(str, Enum):
-    HABITUATION = "habituation"
-    REEXPOSURE = "re-exposure"
+# Paradigm-specific session phases should be provided by plugins, not centrally.
 
 
 class TrackingData(BaseModel):
@@ -183,6 +178,8 @@ class ExperimentMetadata(BaseModel):
     processing_stage: str = "planned" # Default stage
     data_source: str = ""
     associated_plugins: List[str] = Field(default_factory=list)
+    # Optional subtype/phase for the experiment (e.g., NOR: familiarization/recognition)
+    experiment_subtype: Optional[str] = None
     
     # Relationships
     batch_ids: Set[str] = Field(default_factory=set)
@@ -416,6 +413,8 @@ class ProjectState(BaseModel):
     default_likelihood_threshold: float = Field(default=0.5)
 
     supported_experiment_types: List[str] = Field(default_factory=list)
+    # Aggregated from plugins: {experiment_type: [subtypes...]}
+    supported_experiment_subtypes: Dict[str, List[str]] = Field(default_factory=dict)
 
     # Store plugin metadata objects at runtime
     registered_plugin_metadatas: List[PluginMetadata] = Field(default_factory=list)

@@ -82,6 +82,20 @@ class PluginManager:
             self._supported_types = sorted(list(types))
         return self._supported_types
 
+    def get_supported_experiment_subtypes(self) -> Dict[str, List[str]]:
+        """Aggregate experiment subtypes from plugin metadata as {type: [subtypes...]}"""
+        mapping: Dict[str, Set[str]] = {}
+        for plugin in self._plugins:
+            meta = plugin.plugin_self_metadata()
+            sub_map = getattr(meta, 'supported_experiment_subtypes', None) or {}
+            for exp_type, subtypes in sub_map.items():
+                if exp_type not in mapping:
+                    mapping[exp_type] = set()
+                for st in (subtypes or []):
+                    mapping[exp_type].add(st)
+        # Convert to sorted lists
+        return {k: sorted(list(v)) for k, v in mapping.items()}
+
     def get_supported_processing_stages(self) -> List[str]:
         """Return the canonical list of processing stages from metadata."""
         if self._supported_stages is None:

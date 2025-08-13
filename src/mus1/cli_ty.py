@@ -192,6 +192,18 @@ def add_videos(
         print("Auto-assignment is a placeholder for now.")
 
 ###############################################################################
+# gui (launch the MUS1 GUI)
+###############################################################################
+
+
+@app.command("gui", help="Launch the MUS1 GUI application")
+def launch_gui():
+    """Start the PySide6 GUI (same as running mus1-gui)."""
+    # Import lazily to avoid Qt import cost for CLI-only usage
+    from .main import main as gui_main
+    gui_main()
+
+###############################################################################
 # project list
 ###############################################################################
 

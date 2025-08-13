@@ -156,8 +156,17 @@ class ExperimentView(BaseView):
         self.experiment_type_combo.addItem("Select Type...", None)
         type_row.addWidget(type_label)
         type_row.addWidget(self.experiment_type_combo)
-        self.experiment_type_combo.currentIndexChanged.connect(self._discover_plugins)
-        self.experiment_type_combo.currentIndexChanged.connect(self._update_add_button_state)
+        self.experiment_type_combo.currentIndexChanged.connect(self._on_experiment_type_changed)
+        # Experiment Subtype (optional, driven by plugins)
+        subtype_row = self.create_form_row(details_layout)
+        subtype_label = self.create_form_label("Subtype:")
+        self.experiment_subtype_combo = QComboBox()
+        self.experiment_subtype_combo.setObjectName("experimentSubtypeCombo")
+        self.experiment_subtype_combo.setProperty("class", "mus1-combo-box")
+        self.experiment_subtype_combo.setEnabled(False)
+        subtype_row.addWidget(subtype_label)
+        subtype_row.addWidget(self.experiment_subtype_combo)
+        self.experiment_subtype_combo.currentIndexChanged.connect(self._update_add_button_state)
 
         # Date Recorded
         date_row = self.create_form_row(details_layout)
@@ -453,6 +462,13 @@ class ExperimentView(BaseView):
         elif page_title == "Create Batch":
              self.setup_batch_creation() # Re-initialize batch creation UI/data
 
+    def _on_experiment_type_changed(self):
+        """Handle changes to experiment type: refresh subtypes and plugins."""
+        try:
+            self._discover_plugins()
+        finally:
+            self._update_add_button_state()
+
     def clear_plugin_selection(self):
         """Removes all dynamically generated plugin checkboxes and info labels."""
         # This method is likely obsolete as plugins are now shown in ListWidgets
@@ -594,6 +610,7 @@ class ExperimentView(BaseView):
                 subject_id=subject_id,
                 date_recorded=date_recorded,
                 exp_type=exp_type,
+                exp_subtype=self.experiment_subtype_combo.currentData() if hasattr(self, 'experiment_subtype_combo') else None,
                 processing_stage=processing_stage,
                 associated_plugins=associated_plugin_names,
                 plugin_params=plugin_params_data
@@ -644,14 +661,17 @@ class ExperimentView(BaseView):
             # Button will be disabled by _update_add_button_state triggered by combo/list changes
 
             logger.info(f"Experiment '{experiment_id}' added successfully.")
-            self.show_info_message("Success", f"Experiment '{experiment_id}' added.")
+            if hasattr(self, 'navigation_pane'):
+                self.navigation_pane.add_log_message(f"Experiment '{experiment_id}' added.", "success")
 
         except ValueError as e:
             logger.error(f"Error adding experiment: {e}", exc_info=True)
-            self.show_error_message("Error", f"Failed to add experiment:\n{e}")
+            if hasattr(self, 'navigation_pane'):
+                self.navigation_pane.add_log_message(f"Failed to add experiment: {e}", "error")
         except Exception as e:
             logger.error(f"Unexpected error adding experiment: {e}", exc_info=True)
-            self.show_error_message("Error", f"An unexpected error occurred:\n{e}")
+            if hasattr(self, 'navigation_pane'):
+                self.navigation_pane.add_log_message(f"Unexpected error adding experiment: {e}", "error")
 
     def refresh_experiment_list_display(self):
         if not self.state_manager:
@@ -938,6 +958,21 @@ class ExperimentView(BaseView):
             return # No type selected, nothing to discover
 
         # logger.debug(f"Discovering plugins for experiment type: {selected_type}") # Commented out
+
+        # Update subtype list based on selected type
+        try:
+            subtypes = self.state_manager.get_supported_experiment_subtypes(selected_type)
+        except Exception:
+            subtypes = []
+        self.experiment_subtype_combo.clear()
+        if subtypes:
+            self.experiment_subtype_combo.setEnabled(True)
+            self.experiment_subtype_combo.addItem("Select Subtype...", None)
+            for st in subtypes:
+                self.experiment_subtype_combo.addItem(st, st)
+        else:
+            self.experiment_subtype_combo.setEnabled(False)
+            self.experiment_subtype_combo.addItem("(none)", None)
 
         # Fetch plugin groups from core (PluginManager owns selection logic)
         importer_plugins = self.plugin_manager.get_importer_plugins()

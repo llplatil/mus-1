@@ -194,7 +194,7 @@ QComboBox::drop-down, .mus1-combo-box::drop-down {
 QComboBox::down-arrow {
     subcontrol-origin: padding;
     subcontrol-position: right center;
-    image: url("Mus1_Refactor/themes/down_arrow.svg");
+    image: url("down_arrow.svg");
     width: 10px;
     height: 10px;
     margin-right: 10px;
