@@ -85,3 +85,5 @@ src/**/third_party_repo_*.txt
 
 # Reference repos extracted as plain text
 src/**/reference_repos/
+:USERPROFILEDownloadsmus1_srv_tmp.pub
+list.jsonl
