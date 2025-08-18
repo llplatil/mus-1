@@ -1,7 +1,7 @@
 import logging
 from pathlib import Path
 import pandas as pd
-from typing import Optional, Union, Dict, Any, List
+from typing import Optional, Union, Dict, Any, List, TYPE_CHECKING
 import yaml
 import numpy as np
 import matplotlib.pyplot as plt
@@ -13,11 +13,9 @@ import json
 from datetime import datetime
 from typing import Callable, Iterable, Iterator, Tuple
 
-# Import PluginManager type hint
-try:
-     from .plugin_manager import PluginManager
-except ImportError:
-     PluginManager = Any # Fallback for type checker
+# Import for type checking only to avoid runtime dependency cycles
+if TYPE_CHECKING:
+    from .plugin_manager import PluginManager
 
 # Import scanner modules
 try:
@@ -33,7 +31,7 @@ class FrameRateResolutionError(Exception):
 logger = logging.getLogger("mus1.core.data_manager")
 
 class DataManager:
-    def __init__(self, state_manager: Any, plugin_manager: PluginManager):
+    def __init__(self, state_manager: Any, plugin_manager: 'PluginManager'):
         self.state_manager = state_manager
         self.plugin_manager = plugin_manager # Store plugin manager instance
         # Keep threshold resolution logic here for now, plugins can call it
@@ -443,5 +441,105 @@ class DataManager:
     ) -> Iterator[Tuple[Path, str]]:
         scanner = get_scanner()
         return scanner.iter_videos(roots, extensions=extensions, recursive=recursive, excludes=excludes, progress_cb=progress_cb)
+
+    def stage_files_to_shared(
+        self,
+        src_with_hashes: Iterable[Tuple[Path, str]],
+        *,
+        shared_root: Path,
+        dest_base: Path,
+        overwrite: bool = False,
+        progress_cb: Callable[[int, int], None] | None = None,
+    ) -> Iterator[Tuple[Path, str, datetime]]:
+        """Copy files into shared storage and yield tuples suitable for registration.
+
+        For each (source_path, hash):
+          - If already under shared_root, keep as-is
+          - Else copy to dest_base/<filename>
+          - Verify hash after copy
+          - Yield (dest_path, hash, start_time)
+        """
+        from .utils.file_hash import compute_sample_hash as _compute
+        import shutil
+
+        items = list(src_with_hashes)
+        total = len(items)
+        done = 0
+        sr_resolved = shared_root.expanduser().resolve()
+        dest_base = dest_base.expanduser().resolve()
+        dest_base.mkdir(parents=True, exist_ok=True)
+
+        for src, hsh in items:
+            try:
+                src_res = Path(src).expanduser().resolve()
+            except Exception:
+                done += 1
+                if progress_cb:
+                    progress_cb(done, total)
+                continue
+
+            # Determine destination
+            try:
+                if str(src_res).startswith(str(sr_resolved)):
+                    dest = src_res
+                else:
+                    dest = dest_base / src_res.name
+            except Exception:
+                done += 1
+                if progress_cb:
+                    progress_cb(done, total)
+                continue
+
+            # If destination exists and overwrite is False, verify hash and reuse
+            if dest.exists() and not overwrite:
+                try:
+                    if _compute(dest) == hsh:
+                        yield (dest, hsh, self._extract_start_time(dest))
+                        done += 1
+                        if progress_cb:
+                            progress_cb(done, total)
+                        continue
+                except Exception:
+                    pass
+
+            # Perform copy if needed
+            if not dest.exists() or overwrite:
+                try:
+                    dest.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(src_res, dest)
+                except Exception:
+                    done += 1
+                    if progress_cb:
+                        progress_cb(done, total)
+                    continue
+
+            # Verify hash post-copy
+            try:
+                if _compute(dest) != hsh:
+                    # Hash mismatch: skip and remove partial if created
+                    try:
+                        if dest.exists() and not str(src_res).startswith(str(sr_resolved)):
+                            dest.unlink(missing_ok=True)
+                    except Exception:
+                        pass
+                    done += 1
+                    if progress_cb:
+                        progress_cb(done, total)
+                    continue
+            except Exception:
+                done += 1
+                if progress_cb:
+                    progress_cb(done, total)
+                continue
+
+            # Success: yield for registration
+            try:
+                st = self._extract_start_time(dest)
+            except Exception:
+                st = datetime.fromtimestamp(max(dest.stat().st_mtime, dest.stat().st_ctime))
+            yield (dest, hsh, st)
+            done += 1
+            if progress_cb:
+                progress_cb(done, total)
 
     

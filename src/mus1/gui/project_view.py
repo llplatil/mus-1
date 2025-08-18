@@ -1,7 +1,7 @@
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, QLineEdit,
     QComboBox, QPushButton, QListWidget, QLabel, QFileDialog, QTextEdit,
-    QCheckBox, QSpinBox, QDoubleSpinBox, QSlider, QMessageBox
+    QCheckBox, QSpinBox, QDoubleSpinBox, QSlider, QMessageBox, QListWidgetItem, QProgressBar
 )
 from pathlib import Path
 from .base_view import BaseView
@@ -10,6 +10,7 @@ from ..core import ObjectMetadata, BodyPartMetadata, PluginManager
 from ..core.data_manager import FrameRateResolutionError
 from ..plugins.base_plugin import BasePlugin
 from typing import Dict, Any
+from ..core.remote_scanner import collect_from_targets
 
 
 class NotesBox(QGroupBox):
@@ -80,6 +81,13 @@ class ProjectView(BaseView):
         self.setup_import_project_page()
         self.setup_project_settings_page()
         self.setup_general_settings_page()
+        self.setup_scan_ingest_page()
+        self.setup_workers_page()
+        self.setup_targets_page()
+        # Add navigation buttons for newly added pages to keep nav and pages aligned
+        self.add_navigation_button("Scan & Ingest")
+        self.add_navigation_button("Workers")
+        self.add_navigation_button("Targets")
         self.change_page(0)
 
     def format_item(self, item):
@@ -795,6 +803,37 @@ class ProjectView(BaseView):
         layout.addWidget(rename_group)
         
         # Project notes - placed last as requested
+        # Shared storage group
+        shared_group, shared_layout_container = self.create_form_section("Shared Storage", layout)
+        shared_layout = self.create_form_row(shared_layout_container)
+
+        self.shared_root_line = QLineEdit()
+        self.shared_root_line.setProperty("class", "mus1-text-input")
+        browse_shared_btn = QPushButton("Browse…")
+        browse_shared_btn.setProperty("class", "mus1-secondary-button")
+        browse_shared_btn.clicked.connect(self._browse_shared_root)
+
+        set_shared_btn = QPushButton("Set Shared Root")
+        set_shared_btn.setProperty("class", "mus1-primary-button")
+        set_shared_btn.clicked.connect(self.handle_set_shared_root)
+
+        move_to_shared_btn = QPushButton("Move Project to Shared")
+        move_to_shared_btn.setProperty("class", "mus1-primary-button")
+        move_to_shared_btn.clicked.connect(self.handle_move_project_to_shared)
+
+        shared_layout.addWidget(self.create_form_label("Shared Root:"))
+        shared_layout.addWidget(self.shared_root_line, 1)
+        shared_layout.addWidget(browse_shared_btn)
+        shared_layout.addWidget(set_shared_btn)
+        shared_layout.addWidget(move_to_shared_btn)
+
+        # Pre-fill from state if available
+        try:
+            if self.state_manager and self.state_manager.project_state.shared_root:
+                self.shared_root_line.setText(str(self.state_manager.project_state.shared_root))
+        except Exception:
+            pass
+
         self.project_notes_box = NotesBox(
             title="Project Notes",
             placeholder_text="Enter project notes, details, and important information here..."
@@ -837,6 +876,48 @@ class ProjectView(BaseView):
             # print(error_msg) # Keep commented
             self.navigation_pane.add_log_message(error_msg, 'error')
 
+    def _browse_shared_root(self):
+        try:
+            directory = QFileDialog.getExistingDirectory(self, "Select Shared Root", str(Path.home()))
+            if directory:
+                self.shared_root_line.setText(directory)
+        except Exception as e:
+            self.navigation_pane.add_log_message(f"Error selecting shared root: {e}", "error")
+
+    def handle_set_shared_root(self):
+        try:
+            path_text = self.shared_root_line.text().strip()
+            if not path_text:
+                QMessageBox.warning(self, "Shared Root", "Please select or enter a shared root path.")
+                return
+            sr = Path(path_text).expanduser()
+            if not sr.exists():
+                # Offer to create
+                create = QMessageBox.question(self, "Create Directory", f"Create directory?\n{sr}")
+                if create == QMessageBox.StandardButton.Yes:
+                    sr.mkdir(parents=True, exist_ok=True)
+                else:
+                    return
+            state = self.window().project_manager.state_manager.project_state
+            state.shared_root = sr
+            self.window().project_manager.save_project()
+            self.navigation_pane.add_log_message(f"Shared root set to {sr}", "success")
+        except Exception as e:
+            self.navigation_pane.add_log_message(f"Failed to set shared root: {e}", "error")
+
+    def handle_move_project_to_shared(self):
+        try:
+            pm = self.window().project_manager
+            state = pm.state_manager.project_state
+            sr = state.shared_root
+            if not sr:
+                QMessageBox.warning(self, "Shared Root", "Set a shared root first.")
+                return
+            new_path = pm.move_project_to_directory(Path(sr))
+            self.navigation_pane.add_log_message(f"Project moved to {new_path}", "success")
+        except Exception as e:
+            self.navigation_pane.add_log_message(f"Failed to move project: {e}", "error")
+
     def update_theme(self, theme):
         """Update theme for this view and propagate any view-specific changes."""
         super().update_theme(theme)
@@ -851,6 +932,437 @@ class ProjectView(BaseView):
         self.update_frame_rate_from_state()
         self.update_sort_mode_from_state()
         self.update_theme_dropdown_from_state()
+        # Refresh new admin lists
+        try:
+            self.refresh_workers_list()
+        except Exception:
+            pass
+        try:
+            self.refresh_targets_admin_list()
+            self.refresh_targets_list()
+        except Exception:
+            pass
+
+    def setup_scan_ingest_page(self):
+        """Setup a page to scan configured targets and ingest videos into the project."""
+        self.scan_ingest_page = QWidget()
+        layout = QVBoxLayout(self.scan_ingest_page)
+        layout.setSpacing(self.SECTION_SPACING)
+
+        # Targets selection
+        targets_group, tg_layout = self.create_form_section("Scan Targets", layout)
+        row = self.create_form_row(tg_layout)
+        row.addWidget(self.create_form_label("Select targets:"))
+        self.targets_list = QListWidget()
+        self.targets_list.setProperty("class", "mus1-list-widget")
+        self.targets_list.setSelectionMode(QListWidget.MultiSelection)
+        row.addWidget(self.targets_list, 1)
+
+        # Options
+        opt_group, opt_layout = self.create_form_section("Options", layout)
+        opt_row1 = self.create_form_row(opt_layout)
+        self.extensions_line = QLineEdit()
+        self.extensions_line.setProperty("class", "mus1-text-input")
+        self.extensions_line.setPlaceholderText("Extensions (e.g., .mp4 .avi .mov)")
+        opt_row1.addWidget(self.create_form_label("Extensions:"))
+        opt_row1.addWidget(self.extensions_line, 1)
+
+        opt_row2 = self.create_form_row(opt_layout)
+        self.exclude_line = QLineEdit()
+        self.exclude_line.setProperty("class", "mus1-text-input")
+        self.exclude_line.setPlaceholderText("Exclude dirs substrings (comma-separated)")
+        opt_row2.addWidget(self.create_form_label("Excludes:"))
+        opt_row2.addWidget(self.exclude_line, 1)
+
+        opt_row3 = self.create_form_row(opt_layout)
+        self.non_recursive_check = QCheckBox("Non-recursive")
+        opt_row3.addWidget(self.non_recursive_check)
+
+        # Actions and progress
+        action_row = self.create_button_row(layout)
+        self.scan_button = QPushButton("Scan Selected Targets")
+        self.scan_button.setProperty("class", "mus1-primary-button")
+        self.scan_button.clicked.connect(self.handle_scan_targets)
+        action_row.addWidget(self.scan_button)
+
+        self.scan_progress = QProgressBar()
+        self.scan_progress.setRange(0, 100)
+        self.scan_progress.setValue(0)
+        layout.addWidget(self.scan_progress)
+
+        # Summary and staging
+        self.scan_summary_label = QLabel("")
+        layout.addWidget(self.scan_summary_label)
+
+        stage_group, stage_layout = self.create_form_section("Stage Off-Shared", layout)
+        stage_row = self.create_form_row(stage_layout)
+        self.stage_subdir_line = QLineEdit()
+        self.stage_subdir_line.setProperty("class", "mus1-text-input")
+        self.stage_subdir_line.setPlaceholderText("Destination subdir under shared root (e.g., recordings/raw)")
+        self.stage_button = QPushButton("Stage Off-Shared to Subdir")
+        self.stage_button.setProperty("class", "mus1-primary-button")
+        self.stage_button.clicked.connect(self.handle_stage_off_shared)
+        stage_row.addWidget(self.create_form_label("Subdir:"))
+        stage_row.addWidget(self.stage_subdir_line, 1)
+        stage_row.addWidget(self.stage_button)
+
+        add_row = self.create_button_row(layout)
+        self.add_shared_button = QPushButton("Add Unique Under Shared")
+        self.add_shared_button.setProperty("class", "mus1-primary-button")
+        self.add_shared_button.clicked.connect(self.handle_add_under_shared)
+        add_row.addWidget(self.add_shared_button)
+
+        layout.addStretch(1)
+        self.add_page(self.scan_ingest_page, "Scan & Ingest")
+
+        # Data holders
+        self._dedup_results = []  # list of tuples (Path, hash, start_time)
+        self._off_shared = []     # list of (Path, hash)
+        self._in_shared = []      # list of (Path, hash, start_time)
+
+        # Populate targets list initially
+        self.refresh_targets_list()
+
+    def refresh_targets_list(self):
+        if not hasattr(self, 'targets_list'):
+            return
+        self.targets_list.clear()
+        try:
+            targets = list(self.state_manager.project_state.scan_targets or [])
+        except Exception:
+            targets = []
+        for t in targets:
+            item = QListWidgetItem(f"{t.name}  ({t.kind})")
+            item.setData(Qt.UserRole, t.name)
+            item.setCheckState(Qt.Unchecked)
+            self.targets_list.addItem(item)
+
+    def handle_scan_targets(self):
+        try:
+            sr = self.state_manager.project_state.shared_root
+            selected_names = []
+            for i in range(self.targets_list.count()):
+                it = self.targets_list.item(i)
+                if it.checkState() == Qt.Checked:
+                    selected_names.append(it.data(Qt.UserRole))
+            if not selected_names:
+                QMessageBox.warning(self, "Scan", "Select at least one target to scan.")
+                return
+
+            # Build filters
+            exts_text = self.extensions_line.text().strip()
+            extensions = [e.strip() for e in exts_text.split() if e.strip()] if exts_text else None
+            excl_text = self.exclude_line.text().strip()
+            excludes = [e.strip() for e in excl_text.split(',') if e.strip()] if excl_text else None
+            non_recursive = self.non_recursive_check.isChecked()
+
+            # Resolve targets
+            all_targets = list(self.state_manager.project_state.scan_targets or [])
+            targets = [t for t in all_targets if t.name in set(selected_names)]
+            if not targets:
+                QMessageBox.warning(self, "Scan", "No matching targets found.")
+                return
+
+            # Progress callback to update bar approximately
+            self.scan_progress.setValue(0)
+            def _cb(done: int, total: int):
+                if total > 0:
+                    val = max(0, min(100, int(done * 100 / total)))
+                    self.scan_progress.setValue(val)
+
+            # Collect and dedup
+            items = collect_from_targets(self.state_manager, self.data_manager, targets, extensions=extensions, exclude_dirs=excludes, non_recursive=non_recursive)
+            dedup = list(self.data_manager.deduplicate_video_list(items, progress_cb=_cb))
+
+            # Partition by shared root
+            self._dedup_results = dedup
+            self._in_shared = []
+            self._off_shared = []
+            for p, h, ts in dedup:
+                try:
+                    if sr and str(Path(p).resolve()).startswith(str(Path(sr).resolve())):
+                        self._in_shared.append((p, h, ts))
+                    else:
+                        self._off_shared.append((p, h))
+                except Exception:
+                    self._off_shared.append((p, h))
+
+            total = len(items)
+            unique = len(dedup)
+            off_shared = len(self._off_shared)
+            self.scan_summary_label.setText(f"Scanned files: {total} | Unique: {unique} | Off-shared: {off_shared}")
+        except Exception as e:
+            self.navigation_pane.add_log_message(f"Scan failed: {e}", "error")
+
+    def handle_add_under_shared(self):
+        try:
+            if not self._in_shared:
+                QMessageBox.information(self, "Add", "No items under shared root to add.")
+                return
+            added = self.project_manager.register_unlinked_videos(iter(self._in_shared))
+            QMessageBox.information(self, "Add", f"Added {added} videos under shared root.")
+        except Exception as e:
+            self.navigation_pane.add_log_message(f"Add under shared failed: {e}", "error")
+
+    def handle_stage_off_shared(self):
+        try:
+            if not self._off_shared:
+                QMessageBox.information(self, "Stage", "No off-shared items to stage.")
+                return
+            sr = self.state_manager.project_state.shared_root
+            if not sr:
+                QMessageBox.warning(self, "Stage", "Set shared root first in Project Settings.")
+                return
+            subdir = self.stage_subdir_line.text().strip()
+            if not subdir:
+                QMessageBox.warning(self, "Stage", "Enter a destination subdirectory under shared root.")
+                return
+            dest_base = Path(sr) / subdir
+
+            # Convert to tuples for staging (Path, hash)
+            src_with_hashes = list(self._off_shared)
+
+            # Simple progress update
+            self.scan_progress.setValue(0)
+            def _cb(done: int, total: int):
+                if total > 0:
+                    self.scan_progress.setValue(max(0, min(100, int(done * 100 / total))))
+
+            staged_iter = self.data_manager.stage_files_to_shared(
+                src_with_hashes,
+                shared_root=Path(sr),
+                dest_base=dest_base,
+                overwrite=False,
+                progress_cb=_cb,
+            )
+            added = self.project_manager.register_unlinked_videos(staged_iter)
+            QMessageBox.information(self, "Stage", f"Staged and added {added} videos.")
+        except Exception as e:
+            self.navigation_pane.add_log_message(f"Stage failed: {e}", "error")
+
+    def setup_workers_page(self):
+        """Setup Workers management page (typed workers CRUD)."""
+        self.workers_page = QWidget()
+        layout = QVBoxLayout(self.workers_page)
+        layout.setSpacing(self.SECTION_SPACING)
+
+        # List existing workers
+        list_group, list_layout = self.create_form_section("Workers", layout)
+        row = self.create_form_row(list_layout)
+        self.workers_list = QListWidget()
+        self.workers_list.setProperty("class", "mus1-list-widget")
+        row.addWidget(self.workers_list, 1)
+
+        # Add form
+        form_group, form_layout = self.create_form_section("Add Worker", layout)
+        r1 = self.create_form_row(form_layout)
+        self.worker_name_edit = QLineEdit()
+        self.worker_name_edit.setProperty("class", "mus1-text-input")
+        self.worker_ssh_alias_edit = QLineEdit()
+        self.worker_ssh_alias_edit.setProperty("class", "mus1-text-input")
+        self.worker_role_edit = QLineEdit()
+        self.worker_role_edit.setProperty("class", "mus1-text-input")
+        self.worker_provider_combo = QComboBox()
+        self.worker_provider_combo.setProperty("class", "mus1-combo-box")
+        self.worker_provider_combo.addItems(["ssh", "wsl"])
+        r1.addWidget(self.create_form_label("Name:"))
+        r1.addWidget(self.worker_name_edit)
+        r1.addWidget(self.create_form_label("SSH Alias:"))
+        r1.addWidget(self.worker_ssh_alias_edit)
+        r2 = self.create_form_row(form_layout)
+        r2.addWidget(self.create_form_label("Role:"))
+        r2.addWidget(self.worker_role_edit)
+        r2.addWidget(self.create_form_label("Provider:"))
+        r2.addWidget(self.worker_provider_combo)
+
+        btn_row = self.create_button_row(layout)
+        add_btn = QPushButton("Add Worker")
+        add_btn.setProperty("class", "mus1-primary-button")
+        add_btn.clicked.connect(self.handle_add_worker)
+        rem_btn = QPushButton("Remove Selected Worker")
+        rem_btn.setProperty("class", "mus1-secondary-button")
+        rem_btn.clicked.connect(self.handle_remove_worker)
+        btn_row.addWidget(add_btn)
+        btn_row.addWidget(rem_btn)
+
+        layout.addStretch(1)
+        self.add_page(self.workers_page, "Workers")
+
+        self.refresh_workers_list()
+
+    def refresh_workers_list(self):
+        if not hasattr(self, 'workers_list'):
+            return
+        self.workers_list.clear()
+        try:
+            workers = list(self.state_manager.project_state.workers or [])
+        except Exception:
+            workers = []
+        for w in workers:
+            item = QListWidgetItem(f"{w.name}  alias={w.ssh_alias}  role={w.role or ''}  provider={w.provider}")
+            item.setData(Qt.UserRole, w.name)
+            self.workers_list.addItem(item)
+
+    def handle_add_worker(self):
+        try:
+            name = self.worker_name_edit.text().strip()
+            alias = self.worker_ssh_alias_edit.text().strip()
+            role = self.worker_role_edit.text().strip() or None
+            provider = self.worker_provider_combo.currentText().strip()
+            if not name or not alias:
+                QMessageBox.warning(self, "Workers", "Name and SSH alias are required.")
+                return
+            ws = self.state_manager.project_state.workers
+            if any(w.name == name for w in ws):
+                QMessageBox.warning(self, "Workers", f"Worker '{name}' already exists.")
+                return
+            from ..core.metadata import WorkerEntry
+            ws.append(WorkerEntry(name=name, ssh_alias=alias, role=role, provider=provider))
+            self.window().project_manager.save_project()
+            self.refresh_workers_list()
+            self.navigation_pane.add_log_message(f"Added worker {name}", "success")
+        except Exception as e:
+            self.navigation_pane.add_log_message(f"Add worker failed: {e}", "error")
+
+    def handle_remove_worker(self):
+        try:
+            item = self.workers_list.currentItem()
+            if not item:
+                QMessageBox.information(self, "Workers", "Select a worker to remove.")
+                return
+            name = item.data(Qt.UserRole)
+            ws = self.state_manager.project_state.workers
+            before = len(ws)
+            ws = [w for w in ws if w.name != name]
+            self.state_manager.project_state.workers = ws
+            if len(ws) == before:
+                QMessageBox.information(self, "Workers", f"No worker named '{name}' found.")
+                return
+            self.window().project_manager.save_project()
+            self.refresh_workers_list()
+            self.navigation_pane.add_log_message(f"Removed worker {name}", "success")
+        except Exception as e:
+            self.navigation_pane.add_log_message(f"Remove worker failed: {e}", "error")
+
+    def setup_targets_page(self):
+        """Setup Targets management page (typed scan targets CRUD)."""
+        self.targets_page = QWidget()
+        layout = QVBoxLayout(self.targets_page)
+        layout.setSpacing(self.SECTION_SPACING)
+
+        list_group, list_layout = self.create_form_section("Scan Targets", layout)
+        row = self.create_form_row(list_layout)
+        self.targets_admin_list = QListWidget()
+        self.targets_admin_list.setProperty("class", "mus1-list-widget")
+        row.addWidget(self.targets_admin_list, 1)
+
+        form_group, form_layout = self.create_form_section("Add Target", layout)
+        r1 = self.create_form_row(form_layout)
+        self.target_name_edit = QLineEdit()
+        self.target_name_edit.setProperty("class", "mus1-text-input")
+        self.target_kind_combo = QComboBox()
+        self.target_kind_combo.setProperty("class", "mus1-combo-box")
+        self.target_kind_combo.addItems(["local", "ssh", "wsl"])
+        self.target_ssh_alias_edit = QLineEdit()
+        self.target_ssh_alias_edit.setProperty("class", "mus1-text-input")
+        r1.addWidget(self.create_form_label("Name:"))
+        r1.addWidget(self.target_name_edit)
+        r1.addWidget(self.create_form_label("Kind:"))
+        r1.addWidget(self.target_kind_combo)
+        r2 = self.create_form_row(form_layout)
+        r2.addWidget(self.create_form_label("SSH Alias:"))
+        r2.addWidget(self.target_ssh_alias_edit)
+        r3 = self.create_form_row(form_layout)
+        self.target_roots_edit = QLineEdit()
+        self.target_roots_edit.setProperty("class", "mus1-text-input")
+        self.target_roots_edit.setPlaceholderText("Roots (use ';' to separate multiple paths)")
+        r3.addWidget(self.create_form_label("Roots:"))
+        r3.addWidget(self.target_roots_edit, 1)
+
+        btn_row = self.create_button_row(layout)
+        add_btn = QPushButton("Add Target")
+        add_btn.setProperty("class", "mus1-primary-button")
+        add_btn.clicked.connect(self.handle_add_target)
+        rem_btn = QPushButton("Remove Selected Target")
+        rem_btn.setProperty("class", "mus1-secondary-button")
+        rem_btn.clicked.connect(self.handle_remove_target)
+        btn_row.addWidget(add_btn)
+        btn_row.addWidget(rem_btn)
+
+        layout.addStretch(1)
+        self.add_page(self.targets_page, "Targets")
+
+        self.refresh_targets_admin_list()
+
+    def refresh_targets_admin_list(self):
+        if not hasattr(self, 'targets_admin_list'):
+            return
+        self.targets_admin_list.clear()
+        try:
+            targets = list(self.state_manager.project_state.scan_targets or [])
+        except Exception:
+            targets = []
+        for t in targets:
+            roots_str = ", ".join(str(r) for r in t.roots)
+            alias = t.ssh_alias or ''
+            item = QListWidgetItem(f"{t.name}  kind={t.kind}  alias={alias}  roots=[{roots_str}]")
+            item.setData(Qt.UserRole, t.name)
+            self.targets_admin_list.addItem(item)
+
+    def handle_add_target(self):
+        try:
+            name = self.target_name_edit.text().strip()
+            kind = self.target_kind_combo.currentText().strip()
+            ssh_alias = self.target_ssh_alias_edit.text().strip() or None
+            roots_raw = self.target_roots_edit.text().strip()
+            if not name or not kind:
+                QMessageBox.warning(self, "Targets", "Name and kind are required.")
+                return
+            if kind in ("ssh", "wsl") and not ssh_alias:
+                QMessageBox.warning(self, "Targets", "SSH alias is required for ssh/wsl targets.")
+                return
+            roots: list[Path] = []
+            if roots_raw:
+                for part in roots_raw.split(';'):
+                    p = part.strip()
+                    if p:
+                        roots.append(Path(p).expanduser())
+            if not roots:
+                QMessageBox.warning(self, "Targets", "At least one root path is required.")
+                return
+            ts = self.state_manager.project_state.scan_targets
+            if any(t.name == name for t in ts):
+                QMessageBox.warning(self, "Targets", f"Target '{name}' already exists.")
+                return
+            from ..core.metadata import ScanTarget
+            ts.append(ScanTarget(name=name, kind=kind, roots=roots, ssh_alias=ssh_alias))
+            self.window().project_manager.save_project()
+            self.refresh_targets_admin_list()
+            self.refresh_targets_list()
+            self.navigation_pane.add_log_message(f"Added target {name}", "success")
+        except Exception as e:
+            self.navigation_pane.add_log_message(f"Add target failed: {e}", "error")
+
+    def handle_remove_target(self):
+        try:
+            item = self.targets_admin_list.currentItem()
+            if not item:
+                QMessageBox.information(self, "Targets", "Select a target to remove.")
+                return
+            name = item.data(Qt.UserRole)
+            ts = self.state_manager.project_state.scan_targets
+            before = len(ts)
+            ts = [t for t in ts if t.name != name]
+            self.state_manager.project_state.scan_targets = ts
+            if len(ts) == before:
+                QMessageBox.information(self, "Targets", f"No target named '{name}' found.")
+                return
+            self.window().project_manager.save_project()
+            self.refresh_targets_admin_list()
+            self.refresh_targets_list()
+            self.navigation_pane.add_log_message(f"Removed target {name}", "success")
+        except Exception as e:
+            self.navigation_pane.add_log_message(f"Remove target failed: {e}", "error")
 
 
         

@@ -24,6 +24,12 @@ from .core.plugin_manager import PluginManager
 from .core.data_manager import DataManager
 from .core.project_manager import ProjectManager
 from .core.logging_bus import LoggingEventBus
+import os
+import subprocess
+import yaml
+from .core.remote_scanner import collect_from_targets
+from .core.metadata import WorkerEntry, ScanTarget
+from .core.job_provider import run_on_worker
 
 _ctx = {"help_option_names": ["-h", "--help", "-help"]}
 app = typer.Typer(add_completion=False, rich_markup_mode="rich", context_settings=_ctx)
@@ -33,8 +39,15 @@ scan_app = typer.Typer(
 )
 project_app = typer.Typer(help="Project-level operations", context_settings=_ctx)
 
+setup_app = typer.Typer(help="One-time local setup helpers (per-user)", context_settings=_ctx)
+workers_app = typer.Typer(help="Manage project worker entries (non-secret)", context_settings=_ctx)
+targets_app = typer.Typer(help="Manage scan targets (local/ssh/wsl)", context_settings=_ctx)
+
 app.add_typer(scan_app, name="scan")
 app.add_typer(project_app, name="project")
+app.add_typer(setup_app, name="setup")
+app.add_typer(workers_app, name="workers")
+app.add_typer(targets_app, name="targets")
 
 ###############################################################################
 # Shared helpers
@@ -253,14 +266,17 @@ def create_project(
         projects_dir = project_manager.get_projects_directory(base_dir)
         target_path = projects_dir / name
     elif location.lower() == "shared":
-        import os
         env = os.environ.get("MUS1_SHARED_DIR")
         if env:
             root = Path(env).expanduser()
         elif shared_root:
             root = shared_root.expanduser()
         else:
-            raise typer.BadParameter("Provide --shared-root or set MUS1_SHARED_DIR for shared location")
+            # Try user config fallback via ProjectManager
+            try:
+                root = project_manager.get_shared_directory()
+            except Exception:
+                raise typer.BadParameter("Provide --shared-root, set MUS1_SHARED_DIR, or run 'mus1 setup shared' first")
         target_path = root / name
     elif location.lower() == "server":
         print("Server project creation is a placeholder. Create locally and sync via your workflow.")
@@ -275,6 +291,50 @@ def create_project(
 
     project_manager.create_project(target_path, name)
     print(f"Created project at: {target_path}")
+
+@project_app.command("set-shared-root", help="Set or update the project's shared storage root path.")
+def project_set_shared_root(
+    project_path: Path = typer.Argument(..., help="Path to MUS1 project"),
+    shared_root: Path = typer.Argument(..., help="Directory considered the authoritative shared storage root"),
+):
+    """Configure the project to use a shared root. Only files under this root are auto-eligible for registration."""
+    state_manager, _, _, project_manager = _init_managers()
+    if not project_path.exists():
+        raise typer.BadParameter(f"Project not found: {project_path}")
+    project_manager.load_project(project_path)
+    sr = shared_root.expanduser().resolve()
+    if not sr.exists() or not sr.is_dir():
+        raise typer.BadParameter(f"Shared root does not exist or is not a directory: {sr}")
+    state_manager.project_state.shared_root = sr
+    project_manager.save_project()
+    print(f"Set shared root to: {sr}")
+
+
+@project_app.command("move-to-shared", help="Move the current project directory under the shared root (preserves folder name).")
+def project_move_to_shared(
+    project_path: Path = typer.Argument(..., help="Path to MUS1 project"),
+    shared_root: Optional[Path] = typer.Option(None, "--shared-root", help="Override shared root; otherwise use state or MUS1_SHARED_DIR/setup"),
+):
+    """Relocate the project into the shared root so it is accessible across the lab network."""
+    state_manager, _, _, project_manager = _init_managers()
+    if not project_path.exists():
+        raise typer.BadParameter(f"Project not found: {project_path}")
+    project_manager.load_project(project_path)
+
+    # Resolve shared root precedence: explicit arg -> state -> ProjectManager.get_shared_directory
+    target_root: Path
+    if shared_root:
+        target_root = shared_root.expanduser().resolve()
+    elif state_manager.project_state.shared_root:
+        target_root = Path(state_manager.project_state.shared_root).expanduser().resolve()
+    else:
+        target_root = project_manager.get_shared_directory()
+
+    if not target_root.exists():
+        target_root.mkdir(parents=True, exist_ok=True)
+
+    new_path = project_manager.move_project_to_directory(target_root)
+    print(f"Project moved to: {new_path}")
 
 @project_app.command("scan-and-add", help="Scan roots (or defaults on macOS), dedup, and add unassigned videos to project.")
 def project_scan_and_add(
@@ -322,5 +382,356 @@ def project_scan_and_add(
     print(f"Added {added} unassigned videos to {project_path}. Total unassigned: {len(state_manager.project_state.unassigned_videos)}")
 
 
+@project_app.command("stage-to-shared", help="Copy files listed in JSONL into the project's shared root, verify hash, then register unassigned videos.")
+def project_stage_to_shared(
+    project_path: Path = typer.Argument(..., help="Path to MUS1 project"),
+    video_list: Path = typer.Argument(..., metavar="LIST|-", help="JSON-lines list (from scan/dedup) or '-' for stdin"),
+    dest_subdir: str = typer.Argument(..., help="Destination subdirectory under shared root (e.g., 'recordings/raw')"),
+    overwrite: bool = typer.Option(False, help="Overwrite existing destination file if present"),
+    progress: bool = typer.Option(True, help="Show progress bar"),
+):
+    """Stage off-shared files into shared storage and register them.
+
+    This command assumes it is run on a machine that can access both the source paths
+    and the project's shared root as local filesystem paths.
+    """
+    state_manager, _, data_manager, project_manager = _init_managers()
+    if not project_path.exists():
+        raise typer.BadParameter(f"Project not found: {project_path}")
+    project_manager.load_project(project_path)
+
+    sr = state_manager.project_state.shared_root
+    if not sr:
+        try:
+            sr = project_manager.get_shared_directory()
+        except Exception as e:
+            raise typer.BadParameter(f"Shared root not configured for project and not resolvable: {e}")
+    shared_root = Path(sr).expanduser().resolve()
+    if not shared_root.exists():
+        shared_root.mkdir(parents=True, exist_ok=True)
+
+    dest_base = (shared_root / dest_subdir).expanduser().resolve()
+    dest_base.mkdir(parents=True, exist_ok=True)
+
+    # Read records
+    stream = sys.stdin if video_list == Path("-") else open(video_list, "r", encoding="utf-8")
+    records = list(_iter_json_lines(stream))
+
+    # Build input list
+    src_with_hashes: list[tuple[Path, str]] = []
+    for rec in records:
+        try:
+            p = Path(rec.get("path", "")).expanduser()
+            h = str(rec.get("hash"))
+            if h and p.exists():
+                src_with_hashes.append((p, h))
+        except Exception:
+            continue
+
+    pbar = tqdm(total=len(src_with_hashes), desc="Staging", unit="file", disable=(not progress) or (not sys.stderr.isatty()))
+    def _cb(done: int, total: int):
+        # keep tqdm in sync without over-updating
+        pbar.update(done - pbar.n)
+
+    staged_iter = data_manager.stage_files_to_shared(
+        src_with_hashes,
+        shared_root=shared_root,
+        dest_base=dest_base,
+        overwrite=overwrite,
+        progress_cb=_cb if progress else None,
+    )
+
+    added = project_manager.register_unlinked_videos(staged_iter)
+    pbar.close()
+    print(f"Staged and added {added} videos. Unassigned total: {len(state_manager.project_state.unassigned_videos)}")
+
+
 def run():
     app()
+
+###############################################################################
+# setup shared (per-user config)
+###############################################################################
+
+
+@setup_app.command("shared", help="Configure your per-user shared projects root (no secrets).")
+def setup_shared(
+    path: Optional[Path] = typer.Option(None, "--path", "-p", help="Writable shared root directory"),
+    create: bool = typer.Option(False, help="Create the directory if it does not exist"),
+):
+    """Persist a per-user config pointing to your shared projects directory.
+
+    This is stored in your OS user config dir and used when MUS1_SHARED_DIR is not set.
+    """
+    # Determine target path
+    if path is None:
+        path = Path(typer.prompt("Enter shared root path (must be writable)"))
+    path = path.expanduser().resolve()
+
+    # Create if requested
+    if not path.exists():
+        if create:
+            path.mkdir(parents=True, exist_ok=True)
+        else:
+            raise typer.BadParameter(f"Path does not exist: {path}. Re-run with --create to make it.")
+
+    # Validate write access
+    test_file = path / ".mus1-write-test"
+    try:
+        with open(test_file, "w", encoding="utf-8") as f:
+            f.write("ok")
+        test_file.unlink(missing_ok=True)
+    except Exception as e:
+        raise typer.BadParameter(f"Path is not writable: {path} ({e})")
+
+    # Compute per-OS user config dir
+    config_dir: Path
+    if sys.platform == "darwin":
+        config_dir = Path.home() / "Library/Application Support/mus1"
+    elif os.name == "nt":
+        appdata = os.environ.get("APPDATA") or str(Path.home() / "AppData/Roaming")
+        config_dir = Path(appdata) / "mus1"
+    else:
+        xdg = os.environ.get("XDG_CONFIG_HOME") or str(Path.home() / ".config")
+        config_dir = Path(xdg) / "mus1"
+    config_dir.mkdir(parents=True, exist_ok=True)
+
+    config_path = config_dir / "config.yaml"
+    data = {"shared_root": str(path)}
+    with open(config_path, "w", encoding="utf-8") as f:
+        yaml.safe_dump(data, f)
+
+    print(f"Saved shared root to {config_path}\nShared projects will default to: {path}")
+
+###############################################################################
+# workers management (typed in ProjectState.workers)
+###############################################################################
+
+
+def _load_project_for_workers(project_path: Path) -> tuple[StateManager, ProjectManager]:
+    state_manager, _, _, project_manager = _init_managers()
+    if not project_path.exists():
+        raise typer.BadParameter(f"Project not found: {project_path}")
+    project_manager.load_project(project_path)
+    return state_manager, project_manager
+
+
+@workers_app.command("list", help="List worker entries for a project")
+def workers_list(project_path: Path = typer.Argument(..., help="Path to MUS1 project")):
+    state_manager, _pm = _load_project_for_workers(project_path)
+    workers = state_manager.project_state.workers or []
+    if not workers:
+        print("No workers configured.")
+        return
+    print("Workers:")
+    for w in workers:
+        role = w.role or ""
+        print(f"- {w.name}  alias={w.ssh_alias}  role={role}  provider={w.provider}")
+
+
+@workers_app.command("add", help="Add a worker entry (non-secret). Auth uses your ~/.ssh/config alias.")
+def workers_add(
+    project_path: Path = typer.Argument(..., help="Path to MUS1 project"),
+    name: str = typer.Option(..., "--name", help="Display name for the worker"),
+    ssh_alias: str = typer.Option(..., "--ssh-alias", help="Host alias from ~/.ssh/config"),
+    role: Optional[str] = typer.Option(None, help="Optional role tag (e.g., compute, storage)"),
+    provider: str = typer.Option("ssh", help="Provider for executing commands: ssh|wsl|local|ssh-wsl", show_default=True),
+    test: bool = typer.Option(False, help="Test SSH connectivity to the alias (BatchMode)")
+):
+    state_manager, project_manager = _load_project_for_workers(project_path)
+    workers = state_manager.project_state.workers
+    if any(w.name == name for w in workers):
+        raise typer.BadParameter(f"Worker with name '{name}' already exists")
+
+    we = WorkerEntry(name=name, ssh_alias=ssh_alias, role=role, provider=provider)  # type: ignore[arg-type]
+    workers.append(we)
+
+    if test:
+        try:
+            result = subprocess.run([
+                "ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", ssh_alias, "true"
+            ], capture_output=True, text=True)
+            if result.returncode == 0:
+                print(f"SSH test OK for '{ssh_alias}'")
+            else:
+                print(f"SSH test FAILED for '{ssh_alias}': {result.stderr.strip()}")
+        except Exception as e:
+            print(f"SSH test error: {e}")
+
+    project_manager.save_project()
+    print(f"Added worker '{name}' (alias={ssh_alias}).")
+
+
+@workers_app.command("remove", help="Remove a worker entry by name")
+def workers_remove(
+    project_path: Path = typer.Argument(..., help="Path to MUS1 project"),
+    name: str = typer.Argument(..., help="Worker name to remove"),
+):
+    state_manager, project_manager = _load_project_for_workers(project_path)
+    workers = state_manager.project_state.workers
+    before = len(workers)
+    workers = [w for w in workers if w.name != name]
+    state_manager.project_state.workers = workers
+    if len(workers) == before:
+        print(f"No worker named '{name}' found.")
+        return
+    project_manager.save_project()
+    print(f"Removed worker '{name}'.")
+
+
+@workers_app.command("run", help="Run a command on a worker via its provider (ssh|wsl)")
+def workers_run(
+    project_path: Path = typer.Argument(..., help="Path to MUS1 project"),
+    name: str = typer.Option(..., "--name", "-n", help="Worker name to use"),
+    command: List[str] = typer.Argument(..., metavar="COMMAND...", help="Command (and args) to execute remotely. Use '--' to separate from options."),
+    cwd: Optional[Path] = typer.Option(None, "--cwd", help="Remote working directory"),
+    env: Optional[List[str]] = typer.Option(None, "--env", help="Environment variables as KEY=VALUE; repeat for multiple"),
+    timeout: Optional[int] = typer.Option(None, "--timeout", help="Timeout in seconds"),
+    tty: bool = typer.Option(False, "--tty", help="Allocate a TTY (ssh -tt)"),
+):
+    state_manager, _pm = _load_project_for_workers(project_path)
+    workers = state_manager.project_state.workers or []
+    try:
+        worker = next(w for w in workers if w.name == name)
+    except StopIteration:
+        raise typer.BadParameter(f"No worker named '{name}' found")
+
+    env_map: Optional[dict] = None
+    if env:
+        env_map = {}
+        for item in env:
+            if "=" not in item:
+                raise typer.BadParameter(f"Invalid env spec '{item}', expected KEY=VALUE")
+            k, v = item.split("=", 1)
+            env_map[k] = v
+
+    try:
+        result = run_on_worker(
+            worker,
+            command,
+            cwd=cwd,
+            env=env_map,
+            timeout=timeout,
+            allocate_tty=tty,
+            stream_output=True,
+            log_prefix=f"worker:{worker.name}",
+        )
+    except Exception as e:
+        print(f"Error executing on worker '{name}': {e}")
+        raise typer.Exit(code=1)
+
+    raise typer.Exit(code=result.return_code)
+
+###############################################################################
+# targets management (typed in ProjectState.scan_targets)
+###############################################################################
+
+
+def _load_project_for_targets(project_path: Path) -> tuple[StateManager, ProjectManager]:
+    state_manager, _, _, project_manager = _init_managers()
+    if not project_path.exists():
+        raise typer.BadParameter(f"Project not found: {project_path}")
+    project_manager.load_project(project_path)
+    return state_manager, project_manager
+
+
+@targets_app.command("list", help="List scan targets for a project")
+def targets_list(project_path: Path = typer.Argument(..., help="Path to MUS1 project")):
+    state_manager, _pm = _load_project_for_targets(project_path)
+    targets = state_manager.project_state.scan_targets or []
+    if not targets:
+        print("No scan targets configured.")
+        return
+    print("Scan targets:")
+    for t in targets:
+        roots = ", ".join(str(r) for r in t.roots)
+        alias = t.ssh_alias or ""
+        print(f"- {t.name}  kind={t.kind}  alias={alias}  roots=[{roots}]")
+
+
+@targets_app.command("add", help="Add a scan target (local/ssh/wsl)")
+def targets_add(
+    project_path: Path = typer.Argument(..., help="Path to MUS1 project"),
+    name: str = typer.Option(..., "--name", help="Target name"),
+    kind: str = typer.Option(..., "--kind", help="local|ssh|wsl"),
+    roots: List[Path] = typer.Option(..., "--root", help="Root(s) to scan; repeat for multiple"),
+    ssh_alias: Optional[str] = typer.Option(None, "--ssh-alias", help="SSH alias for ssh/wsl targets"),
+):
+    state_manager, project_manager = _load_project_for_targets(project_path)
+    targets = state_manager.project_state.scan_targets
+    if any(t.name == name for t in targets):
+        raise typer.BadParameter(f"Target with name '{name}' already exists")
+    kind_l = kind.lower()
+    if kind_l not in ("local", "ssh", "wsl"):
+        raise typer.BadParameter("--kind must be one of: local, ssh, wsl")
+    if kind_l in ("ssh", "wsl") and not ssh_alias:
+        raise typer.BadParameter("--ssh-alias is required for ssh/wsl targets")
+    t = ScanTarget(name=name, kind=kind_l, roots=[Path(r).expanduser() for r in roots], ssh_alias=ssh_alias)  # type: ignore[arg-type]
+    targets.append(t)
+    project_manager.save_project()
+    print(f"Added target '{name}' ({kind_l}).")
+
+
+@targets_app.command("remove", help="Remove a scan target by name")
+def targets_remove(
+    project_path: Path = typer.Argument(..., help="Path to MUS1 project"),
+    name: str = typer.Argument(..., help="Target name to remove"),
+):
+    state_manager, project_manager = _load_project_for_targets(project_path)
+    targets = state_manager.project_state.scan_targets
+    before = len(targets)
+    targets = [t for t in targets if t.name != name]
+    state_manager.project_state.scan_targets = targets
+    if len(targets) == before:
+        print(f"No target named '{name}' found.")
+        return
+    project_manager.save_project()
+    print(f"Removed target '{name}'.")
+
+###############################################################################
+# project scan-from-targets
+###############################################################################
+
+
+@project_app.command("scan-from-targets", help="Scan configured targets, dedup, and add unassigned videos to project. Filters to shared_root if set.")
+def project_scan_from_targets(
+    project_path: Path = typer.Argument(..., help="Path to MUS1 project"),
+    target_names: Optional[List[str]] = typer.Option(None, "--target", help="Restrict to specific targets by name"),
+    extensions: Optional[List[str]] = typer.Option(None, "--ext", help="Allowed extensions (.mp4 .avi …)"),
+    exclude_dirs: Optional[List[str]] = typer.Option(None, "--exclude-dirs", help="Sub-strings for directories to skip"),
+    non_recursive: bool = typer.Option(False, "--non-recursive", help="Disable recursive traversal"),
+    progress: bool = typer.Option(True, help="Show progress bars"),
+):
+    state_manager, _, data_manager, project_manager = _init_managers()
+    if not project_path.exists():
+        raise typer.BadParameter(f"Project not found: {project_path}")
+    project_manager.load_project(project_path)
+
+    targets = list(state_manager.project_state.scan_targets or [])
+    if target_names:
+        targets = [t for t in targets if t.name in set(target_names)]
+    if not targets:
+        print("No matching scan targets configured.")
+        raise typer.Exit(code=1)
+
+    all_items = collect_from_targets(state_manager, data_manager, targets, extensions=extensions, exclude_dirs=exclude_dirs, non_recursive=non_recursive)
+
+    # Dedup and optionally filter to shared_root
+    sr = state_manager.project_state.shared_root
+    dedup_gen = data_manager.deduplicate_video_list(all_items)
+
+    def _filter_to_shared(iterator):
+        for p, h, ts in iterator:
+            if sr is not None:
+                try:
+                    rp = Path(p).resolve()
+                    if not str(rp).startswith(str(Path(sr).resolve())):
+                        continue
+                except Exception:
+                    continue
+            yield (p, h, ts)
+
+    final_iter = _filter_to_shared(dedup_gen)
+
+    added = project_manager.register_unlinked_videos(final_iter)
+    print(f"Added {added} unassigned videos to {project_path}. Total unassigned: {len(state_manager.project_state.unassigned_videos)}")

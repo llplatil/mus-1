@@ -4,6 +4,7 @@ from pathlib import Path
 from datetime import datetime
 from typing import Optional, List, Dict, Any, Iterable
 import os
+import shutil
 import time
 import importlib
 import importlib.util
@@ -11,6 +12,7 @@ import inspect
 import platform
 from pydantic.json import pydantic_encoder
 import pandas as pd
+import yaml
 
 from .metadata import ProjectState, ProjectMetadata, Sex, ExperimentMetadata, ArenaImageMetadata, VideoMetadata, SubjectMetadata, BodyPartMetadata, ObjectMetadata, TreatmentMetadata, GenotypeMetadata, PluginMetadata
 from .state_manager import StateManager  # so we can type hint or reference if needed
@@ -152,6 +154,7 @@ class ProjectManager:
         Precedence for the base directory is:
         1. custom_root argument (explicit override from caller/UI)
         2. Environment variable MUS1_SHARED_DIR
+        3. Per-user config file in OS config dir (config.yaml with key 'shared_root')
 
         The returned directory is created if it does not exist.
         """
@@ -159,11 +162,32 @@ class ProjectManager:
             base_dir = Path(custom_root).expanduser().resolve()
         else:
             env_dir = os.environ.get("MUS1_SHARED_DIR")
-            if not env_dir:
-                raise EnvironmentError(
-                    "MUS1_SHARED_DIR is not set. Set it to the mounted shared projects root."
-                )
-            base_dir = Path(env_dir).expanduser().resolve()
+            if env_dir:
+                base_dir = Path(env_dir).expanduser().resolve()
+            else:
+                # Fallback to per-user config
+                if platform.system() == "Darwin":
+                    config_dir = Path.home() / "Library/Application Support/mus1"
+                elif os.name == "nt":
+                    appdata = os.environ.get("APPDATA") or str(Path.home() / "AppData/Roaming")
+                    config_dir = Path(appdata) / "mus1"
+                else:
+                    xdg = os.environ.get("XDG_CONFIG_HOME") or str(Path.home() / ".config")
+                    config_dir = Path(xdg) / "mus1"
+                yaml_path = config_dir / "config.yaml"
+                shared_root = None
+                if yaml_path.exists():
+                    try:
+                        with open(yaml_path, "r", encoding="utf-8") as f:
+                            data = yaml.safe_load(f) or {}
+                            sr = data.get("shared_root")
+                            if sr:
+                                shared_root = Path(str(sr)).expanduser()
+                    except Exception:
+                        shared_root = None
+                if not shared_root:
+                    raise EnvironmentError("Shared root not configured. Set MUS1_SHARED_DIR or run 'mus1 setup shared'.")
+                base_dir = Path(shared_root).expanduser().resolve()
 
         base_dir.mkdir(parents=True, exist_ok=True)
         return base_dir
@@ -656,6 +680,29 @@ class ProjectManager:
         if self.state_manager.project_state and self.state_manager.project_state.project_metadata:
             self.state_manager.project_state.project_metadata.project_name = new_name
         self.save_project()
+
+    def move_project_to_directory(self, new_parent_dir: Path) -> Path:
+        """Move the current project directory under *new_parent_dir* preserving its folder name.
+
+        Returns the new absolute project path.
+        """
+        if not self._current_project_root:
+            raise ValueError("No current project loaded")
+        new_parent_dir = Path(new_parent_dir).expanduser().resolve()
+        if not new_parent_dir.exists():
+            new_parent_dir.mkdir(parents=True, exist_ok=True)
+        old_root = self._current_project_root
+        new_root = new_parent_dir / old_root.name
+        if new_root.exists():
+            raise FileExistsError(f"Destination already exists: {new_root}")
+        # Use shutil.move to support cross-filesystem moves
+        shutil.move(str(old_root), str(new_root))
+        self._current_project_root = new_root
+        # Persist and notify
+        self.save_project()
+        self.state_manager.notify_observers()
+        self.log_bus.log(f"Moved project to {new_root}", "info", "ProjectManager")
+        return new_root
 
     def add_tracked_object(self, new_object: str) -> None:
         from .metadata import ObjectMetadata

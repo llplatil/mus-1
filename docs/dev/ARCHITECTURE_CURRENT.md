@@ -18,6 +18,7 @@ This document describes how MUS1 works today based on the code, including gaps a
     - `register_unlinked_videos(paths_with_hashes)` populates `ProjectState.unassigned_videos` keyed by `sample_hash`.
     - `link_unassigned_video(hash, experiment_id)` moves a video to `experiment_videos` and updates `ExperimentMetadata.file_ids`.
     - `link_video_to_experiment(experiment_id, video_path, notes)` adds metadata about a file directly to an experiment using `DataManager.compute_sample_hash`.
+    - `move_project_to_directory(new_parent_dir)` relocates an entire project folder (e.g., local → shared).
 
 - PluginManager (`src/mus1/core/plugin_manager.py`)
   - Holds registered plugin instances.
@@ -30,11 +31,13 @@ This document describes how MUS1 works today based on the code, including gaps a
   - Handler invocation: `call_handler_method(handler_name, method_name, **kwargs)` and automatic `data_manager` injection when required.
   - Experiment output paths: `get_experiment_data_path(experiment)` for plugins to persist outputs under `<project>/data/<subject>/<experiment>/`.
   - Video discovery: delegates to scanners via `get_scanner().iter_videos(...)`. macOS has a specialized scanner that skips iCloud placeholders; other OSes use the base scanner for now.
+  - Staging: `stage_files_to_shared(src_with_hashes, shared_root, dest_base, overwrite, progress_cb)` copies files into shared storage, verifies content-hash, and yields tuples for registration.
 
 - Metadata models (`src/mus1/core/metadata.py`)
   - Pydantic models for Subjects, Experiments, Batches, Videos, ProjectState.
   - Central stage enum exists; `ExperimentMetadata.processing_stage` is stored as a string with default "planned".
   - `ProjectState` holds videos under both `unassigned_videos` and `experiment_videos`, keyed by `sample_hash`.
+  - Typed fields for multi-machine workflows: `shared_root: Optional[Path]`, `workers: List[WorkerEntry]`, `scan_targets: List[ScanTarget]`.
 
 ## Plugins in repo
 
@@ -57,11 +60,20 @@ This document describes how MUS1 works today based on the code, including gaps a
 - `ExperimentView` dynamically builds forms from plugins’ `required_fields`/`optional_fields` using `get_field_types()` and `get_field_descriptions()`.
 - File dialogs use generic filters; allowing plugin-provided filters is a useful enhancement.
 - Metadata display grids implement sort-key aware sorting for experiments; subject grid can adopt the same pattern.
+- `ProjectView` includes:
+  - Project Settings: set `shared_root` and "Move Project to Shared" (uses `ProjectManager.move_project_to_directory`).
+  - Scan & Ingest: select targets, scan, view totals/unique/off-shared, add unique under shared, or stage off-shared into a subdirectory under `shared_root`.
+  - Workers tab: CRUD for `ProjectState.workers`.
+  - Targets tab: CRUD for `ProjectState.scan_targets`.
 
 ## Scanners
 
 - macOS scanner: filters out iCloud placeholders and zero-sized files; uses `compute_sample_hash` per file.
-- Windows/Linux: use the base scanner; OS-specific improvements are planned.
+- Windows/Linux: specialized scanners are present with conservative exclusions; parity improvements remain planned.
+- Remote scanning aggregator (`src/mus1/core/remote_scanner.py`):
+  - Local: calls `DataManager.discover_video_files`.
+  - SSH: runs remote `mus1 scan videos` via `ssh` and parses JSONL.
+  - WSL: runs `wsl.exe -e mus1 scan videos` on Windows hosts over SSH.
 
 ## Known gaps/bugs (truthful)
 
@@ -69,3 +81,5 @@ This document describes how MUS1 works today based on the code, including gaps a
 - DeepLabCut handler likelihood filtering depends on `numpy`; ensure import stays present to prevent runtime errors.
 - Server-backed MoSeq2 orchestration is planned; current GCP-based orchestrator is deprecated.
 - `Mus1TrackingAnalysisPlugin` has duplicated private helpers; consolidate to reduce confusion.
+- Remote scans require MUS1 installed on remote PATH (or inside WSL); document and validate during setup.
+- GUI scan summary is basic; per-target progress and error surfacing are planned.

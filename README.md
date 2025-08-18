@@ -43,6 +43,7 @@ The project uses a modular architecture with plugins for data handling (e.g., De
 ## Documentation
 - Development Roadmap: `docs/dev/ROADMAP.md`
 - Architecture Documentation: `docs/dev/ARCHITECTURE_CURRENT.md`
+- Architecture Summary: `docs/dev/Architecture.md`
 
 ## Shared Projects (Networked storage)
 
@@ -59,6 +60,21 @@ mus1 project list --shared
 
 # Create a project on shared storage
 mus1 project create my_proj --location shared
+
+# Configure per-user shared root (no secrets)
+mus1 setup shared --path /mnt/mus1 --create
+
+# Set project shared root and move an existing project under it
+mus1 project set-shared-root /path/to/project /mnt/mus1
+mus1 project move-to-shared /path/to/project
+
+# Define scan targets and aggregate scans
+mus1 targets add /path/to/project --name lab-mac --kind local --root ~/Videos --root /Volumes
+mus1 targets add /path/to/project --name copper --kind ssh --ssh-alias copperlab-server --root /data/recordings
+mus1 project scan-from-targets /path/to/project --target lab-mac --target copper
+
+# Stage off-shared files into shared_root/subdir with hash verification and register
+mus1 project stage-to-shared /path/to/project /tmp/all.unique.jsonl recordings/raw
 ```
 
 GUI
@@ -68,6 +84,10 @@ GUI
 Notes
 - `MUS1_SHARED_DIR` must be a locally mounted path; MUS1 does not perform mounting. Use your OS’s mount tools (e.g., SMB/NFS/sshfs) prior to launching MUS1.
 - On save, `.mus1-lock` is created and removed automatically. If you see a stale lock after a crash, it can be deleted safely once no MUS1 instance is writing.
+- Remote scans require MUS1 to be installed on the remote host's PATH (or inside WSL for Windows). Test SSH connectivity via:
+  ```bash
+  mus1 workers add /path/to/project --name copper --ssh-alias copperlab-server --test
+  ```
 
 ## Getting Started
 
@@ -93,14 +113,15 @@ We recommend using UV for faster, isolated environments. MUS1 is packaged via `p
 5. Run MUS1:
    ```bash
    mus1 --help
-   # or
-   python -m mus1.main
    ```
 
-### Alternative: pip/Conda
+### Fast dev launcher
+Use `dev-launch.sh` to create/update a venv only when `pyproject.toml` changes and run MUS1 immediately:
 ```bash
-pip install -e .
+./dev-launch.sh --help
+./dev-launch.sh gui
 ```
+It ensures an editable install from this checkout and forwards all args to `mus1`.
 
 ## Future Goals
 - Enhanced visualization for kinematic and Keypoint-MoSeq results within MUS1.

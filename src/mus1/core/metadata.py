@@ -6,7 +6,7 @@ from typing import Protocol
 from datetime import datetime
 
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Any
+from typing import Dict, List, Optional, Set, Any, Literal
 from enum import Enum
 from pydantic import BaseModel, Field, validator, root_validator
 from collections import defaultdict
@@ -369,6 +369,25 @@ class VideoMetadata(BaseModel):
     sample_hash: Optional[str] = None  # Fast hash of sampled chunks for integrity verification
 
 
+class WorkerEntry(BaseModel):
+    """Typed worker entry stored in ProjectState.
+
+    provider identifies how jobs/commands are executed on the worker host.
+    """
+    name: str
+    ssh_alias: str
+    role: Optional[str] = None  # e.g., "compute", "storage"
+    provider: Literal["ssh", "wsl", "local", "ssh-wsl"] = "ssh"
+
+
+class ScanTarget(BaseModel):
+    """Named scan target that MUS1 can traverse when building video lists."""
+    name: str
+    kind: Literal["local", "ssh", "wsl"]
+    roots: List[Path]
+    ssh_alias: Optional[str] = None  # required for ssh/wsl
+
+
 class ExternalConfigMetadata(BaseModel):
     """
     A placeholder for referencing external config/calibration files, etc.
@@ -407,6 +426,14 @@ class ProjectState(BaseModel):
     external_configs: Dict[str, ExternalConfigMetadata] = Field(default_factory=dict)
 
     project_metadata: Optional[ProjectMetadata] = None
+
+    # Shared storage root for the project; only files under this root are eligible
+    # for registration without staging.
+    shared_root: Optional[Path] = None
+
+    # Known workers and scan targets (typed, preferred over ad-hoc settings)
+    workers: List[WorkerEntry] = Field(default_factory=list)
+    scan_targets: List[ScanTarget] = Field(default_factory=list)
 
     # New fields for controlling a global default threshold and whether to enforce it:
     likelihood_filter_enabled: bool = Field(default=False)
