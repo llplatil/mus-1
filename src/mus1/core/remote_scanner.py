@@ -4,6 +4,7 @@ import json
 import subprocess
 from pathlib import Path
 from typing import Iterable, Iterator, List, Tuple, Optional
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from .data_manager import DataManager
 from .state_manager import StateManager
@@ -127,6 +128,48 @@ def collect_from_targets(
                 non_recursive=non_recursive,
             )
         )
+    return all_items
+
+
+def collect_from_targets_parallel(
+    state_manager: StateManager,
+    data_manager: DataManager,
+    targets: Iterable[ScanTarget],
+    *,
+    extensions: Optional[List[str]] = None,
+    exclude_dirs: Optional[List[str]] = None,
+    non_recursive: bool = False,
+    max_workers: int = 4,
+) -> List[Tuple[Path, str]]:
+    """Parallel version of collect_from_targets using threads.
+
+    Each target is collected independently; failures are isolated and logged to stderr.
+    """
+    all_items: List[Tuple[Path, str]] = []
+    targets_list = list(targets)
+    if not targets_list:
+        return all_items
+
+    def _task(t: ScanTarget) -> List[Tuple[Path, str]]:
+        return collect_from_target(
+            state_manager,
+            data_manager,
+            t,
+            extensions=extensions,
+            exclude_dirs=exclude_dirs,
+            non_recursive=non_recursive,
+        )
+
+    with ThreadPoolExecutor(max_workers=max_workers) as exe:
+        future_map = {exe.submit(_task, t): t for t in targets_list}
+        for fut in as_completed(future_map):
+            t = future_map[fut]
+            try:
+                items = fut.result()
+                all_items.extend(items)
+            except Exception as e:
+                # Best-effort propagate information without stopping the entire run
+                print(f"Warning: scan failed for target '{t.name}': {e}")
     return all_items
 
 

@@ -30,7 +30,7 @@ import builtins
 import os
 import subprocess
 import yaml
-from .core.remote_scanner import collect_from_targets
+from .core.remote_scanner import collect_from_targets, collect_from_targets_parallel
 from .core.metadata import WorkerEntry, ScanTarget
 from .core.job_provider import run_on_worker
 
@@ -494,6 +494,8 @@ def project_ingest(
     emit_in_shared: Optional[Path] = typer.Option(None, "--emit-in-shared", help="Write JSONL of items already under shared root"),
     emit_off_shared: Optional[Path] = typer.Option(None, "--emit-off-shared", help="Write JSONL of items not under shared root"),
     progress: bool = typer.Option(True, help="Show progress bars"),
+    parallel: bool = typer.Option(False, "--parallel", help="Scan multiple roots in parallel (per-target/threaded)"),
+    max_workers: int = typer.Option(4, "--max-workers", help="Parallel workers for --parallel"),
 ):
     """Single-command ingest: scan→dedup→split, then preview or stage+register off-shared.
 
@@ -520,15 +522,38 @@ def project_ingest(
     def scan_cb(done: int, total: int):
         pbar.total = total
         pbar.update(done - pbar.n)
-    videos = list(
-        data_manager.discover_video_files(
-            effective_roots,
-            extensions=extensions,
-            recursive=not non_recursive,
-            excludes=exclude_dirs,
-            progress_cb=scan_cb,
+    if parallel and len(effective_roots) > 1:
+        # Per-root parallelism using threads, reusing discover_video_files inside tasks
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        def _scan(root: Path):
+            return list(
+                data_manager.discover_video_files(
+                    [root],
+                    extensions=extensions,
+                    recursive=not non_recursive,
+                    excludes=exclude_dirs,
+                    progress_cb=None,
+                )
+            )
+        videos: list[tuple[Path, str]] = []
+        with ThreadPoolExecutor(max_workers=max_workers) as exe:
+            futs = {exe.submit(_scan, r): r for r in effective_roots}
+            for fut in as_completed(futs):
+                try:
+                    videos.extend(fut.result())
+                except Exception:
+                    pass
+        # no central scan progress when running per-root threads
+    else:
+        videos = list(
+            data_manager.discover_video_files(
+                effective_roots,
+                extensions=extensions,
+                recursive=not non_recursive,
+                excludes=exclude_dirs,
+                progress_cb=scan_cb,
+            )
         )
-    )
     pbar.close()
 
     dedup_pbar = tqdm(total=len(videos), desc="Deduping", unit="file", disable=(not progress) or (not sys.stderr.isatty()))
@@ -830,6 +855,8 @@ def project_scan_from_targets(
     exclude_dirs: Optional[List[str]] = typer.Option(None, "--exclude-dirs", help="Sub-strings for directories to skip"),
     non_recursive: bool = typer.Option(False, "--non-recursive", help="Disable recursive traversal"),
     progress: bool = typer.Option(True, help="Show progress bars"),
+    parallel: bool = typer.Option(False, "--parallel", help="Scan targets in parallel"),
+    max_workers: int = typer.Option(4, "--max-workers", help="Parallel workers for --parallel"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Preview results without registering videos"),
     emit_in_shared: Optional[Path] = typer.Option(None, "--emit-in-shared", help="Write JSONL of items already under shared root"),
     emit_off_shared: Optional[Path] = typer.Option(None, "--emit-off-shared", help="Write JSONL of items not under shared root"),
@@ -848,7 +875,18 @@ def project_scan_from_targets(
         print("No matching scan targets configured.")
         raise typer.Exit(code=1)
 
-    all_items = collect_from_targets(state_manager, data_manager, targets, extensions=extensions, exclude_dirs=exclude_dirs, non_recursive=non_recursive)
+    if parallel:
+        all_items = collect_from_targets_parallel(
+            state_manager,
+            data_manager,
+            targets,
+            extensions=extensions,
+            exclude_dirs=exclude_dirs,
+            non_recursive=non_recursive,
+            max_workers=max_workers,
+        )
+    else:
+        all_items = collect_from_targets(state_manager, data_manager, targets, extensions=extensions, exclude_dirs=exclude_dirs, non_recursive=non_recursive)
 
     # Deduplicate and split relative to shared_root (if configured)
     dedup_gen = data_manager.deduplicate_video_list(all_items)
