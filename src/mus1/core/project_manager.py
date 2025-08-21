@@ -1109,6 +1109,7 @@ class ProjectManager:
         new_count = 0
         host = os.uname().nodename if hasattr(os, "uname") else platform.node()
         seen_at = datetime.now()
+        updated_any = False
         for path, hsh, start_time in video_iter:
             try:
                 # If known in unassigned or experiment videos, update last_seen_locations only
@@ -1129,6 +1130,7 @@ class ProjectManager:
                     )
                     state.unassigned_videos[hsh] = vm
                     new_count += 1
+                    updated_any = True
 
                 # update last_seen_locations for both new and existing
                 try:
@@ -1137,11 +1139,12 @@ class ProjectManager:
                         "host": host,
                         "seen_at": seen_at.isoformat(),
                     })
+                    updated_any = True
                 except Exception:
                     pass
             except Exception as exc:
                 logger.warning(f"Failed to register/update video {path}: {exc}")
-        if new_count:
+        if new_count or updated_any:
             self.save_project()
             self.state_manager.notify_observers()
             self.log_bus.log(f"Registered {new_count} unassigned videos", "info", "ProjectManager")

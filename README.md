@@ -108,11 +108,22 @@ mus1 project stage-to-shared /path/to/project ~/off.jsonl recordings/raw
 mus1 project ingest /path/to/project [roots...] \
   --preview \
   --emit-in-shared ~/in.jsonl \
-  --emit-off-shared ~/off.jsonl
+  --emit-off-shared ~/off.jsonl \
+  --parallel --max-workers 4
 
 # Apply: registers in-shared, stages off-shared to dest-subdir, and registers
 mus1 project ingest /path/to/project [roots...] \
-  --dest-subdir recordings/raw
+  --dest-subdir recordings/raw \
+  --parallel --max-workers 4
+```
+
+Cleanup redundant copies
+```bash
+# Preview redundant off-shared copies and planned actions
+mus1 project cleanup-copies /path/to/project --policy delete --scope non-shared --dry-run
+
+# Archive copies to a specified directory
+mus1 project cleanup-copies /path/to/project --policy archive --scope all --archive-dir /data/archive --dry-run false
 ```
 
 ## Shared Projects (Networked storage)

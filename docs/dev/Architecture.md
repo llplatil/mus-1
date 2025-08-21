@@ -69,6 +69,8 @@ Key design decisions:
    • `mus1 project add-videos <project_path> <video_list.txt>` – index videos into an *existing* project.
    • `mus1 project scan-from-targets <project_path> [--target ...]` – scan configured targets, dedup, and add items already under `shared_root`.
    • `mus1 project ingest <project_path> [roots...]` – one-shot scan→dedup→split by shared→preview or stage+register off-shared.
+   • Parallelism: `--parallel --max-workers` for both `scan-from-targets` and `ingest`.
+   • Auto-host staging in `ingest`: when `shared_root` isn’t writable on current host, emit off-shared JSONL for host staging.
 
 2. **Scanner progress bar**  
    • `--progress` flag streams a `tqdm` bar to stderr; enabled by default when interactive.

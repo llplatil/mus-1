@@ -1,67 +1,3 @@
-@project_app.command("cleanup-copies", help="Identify and optionally remove or archive redundant off-shared copies by policy.")
-def project_cleanup_copies(
-    project_path: Path = typer.Argument(..., help="Path to MUS1 project"),
-    policy: str = typer.Option("keep", "--policy", help="delete|keep|archive", show_default=True),
-    scope: str = typer.Option("non-shared", "--scope", help="non-shared|all", show_default=True),
-    dry_run: bool = typer.Option(True, "--dry-run", help="Preview actions only"),
-    archive_dir: Optional[Path] = typer.Option(None, "--archive-dir", help="Destination for archived files when policy=archive"),
-):
-    state_manager, _, data_manager, project_manager = _init_managers()
-    if not project_path.exists():
-        raise typer.BadParameter(f"Project not found: {project_path}")
-    project_manager.load_project(project_path)
-    LoggingEventBus.get_instance().configure_default_file_handler(project_path)
-
-    sr = state_manager.project_state.shared_root
-    sr_path = Path(sr).expanduser().resolve() if sr else None
-    videos = state_manager.project_state.unassigned_videos | state_manager.project_state.experiment_videos
-    total = 0
-    actions: list[str] = []
-    for hsh, vm in videos.items():
-        # collect locations outside shared (or all if scope=all)
-        locations = vm.last_seen_locations or []
-        off_shared_paths: list[Path] = []
-        for loc in locations:
-            p = Path(loc.get("path", ""))
-            try:
-                rp = p.expanduser().resolve()
-            except Exception:
-                rp = p
-            if scope == "all" or (sr_path and not str(rp).startswith(str(sr_path))):
-                off_shared_paths.append(rp)
-        # Skip if nothing to act on
-        if not off_shared_paths:
-            continue
-        total += len(off_shared_paths)
-        for p in off_shared_paths:
-            if policy == "keep":
-                actions.append(f"KEEP {p}")
-            elif policy == "delete":
-                actions.append(f"DELETE {p}")
-                if not dry_run:
-                    try:
-                        p.unlink(missing_ok=True)
-                    except Exception:
-                        pass
-            elif policy == "archive":
-                if not archive_dir:
-                    actions.append(f"ARCHIVE (missing --archive-dir) {p}")
-                else:
-                    dest = archive_dir.expanduser().resolve() / p.name
-                    actions.append(f"ARCHIVE {p} -> {dest}")
-                    if not dry_run:
-                        try:
-                            dest.parent.mkdir(parents=True, exist_ok=True)
-                            import shutil
-                            shutil.move(str(p), str(dest))
-                        except Exception:
-                            pass
-            else:
-                actions.append(f"UNKNOWN_POLICY {p}")
-
-    builtins.print(f"Cleanup candidates: {total} off-shared copies (policy={policy}, scope={scope}, dry_run={dry_run}).")
-    for a in actions:
-        builtins.print(a)
 """Typer-based MUS1 command-line interface (experimental).
 
 Provides:
@@ -338,6 +274,70 @@ def list_projects(
         print("Available MUS1 projects:")
         for proj in projects:
             print(f"- {proj.name} ({proj})")
+
+
+@project_app.command("cleanup-copies", help="Identify and optionally remove or archive redundant off-shared copies by policy.")
+def project_cleanup_copies(
+    project_path: Path = typer.Argument(..., help="Path to MUS1 project"),
+    policy: str = typer.Option("keep", "--policy", help="delete|keep|archive", show_default=True),
+    scope: str = typer.Option("non-shared", "--scope", help="non-shared|all", show_default=True),
+    dry_run: bool = typer.Option(True, "--dry-run", help="Preview actions only"),
+    archive_dir: Optional[Path] = typer.Option(None, "--archive-dir", help="Destination for archived files when policy=archive"),
+):
+    state_manager, _, data_manager, project_manager = _init_managers()
+    if not project_path.exists():
+        raise typer.BadParameter(f"Project not found: {project_path}")
+    project_manager.load_project(project_path)
+    LoggingEventBus.get_instance().configure_default_file_handler(project_path)
+
+    sr = state_manager.project_state.shared_root
+    sr_path = Path(sr).expanduser().resolve() if sr else None
+    videos = state_manager.project_state.unassigned_videos | state_manager.project_state.experiment_videos
+    total = 0
+    actions: list[str] = []
+    for hsh, vm in videos.items():
+        locations = vm.last_seen_locations or []
+        off_shared_paths: list[Path] = []
+        for loc in locations:
+            p = Path(loc.get("path", ""))
+            try:
+                rp = p.expanduser().resolve()
+            except Exception:
+                rp = p
+            if scope == "all" or (sr_path and not str(rp).startswith(str(sr_path))):
+                off_shared_paths.append(rp)
+        if not off_shared_paths:
+            continue
+        total += len(off_shared_paths)
+        for p in off_shared_paths:
+            if policy == "keep":
+                actions.append(f"KEEP {p}")
+            elif policy == "delete":
+                actions.append(f"DELETE {p}")
+                if not dry_run:
+                    try:
+                        p.unlink(missing_ok=True)
+                    except Exception:
+                        pass
+            elif policy == "archive":
+                if not archive_dir:
+                    actions.append(f"ARCHIVE (missing --archive-dir) {p}")
+                else:
+                    dest = archive_dir.expanduser().resolve() / p.name
+                    actions.append(f"ARCHIVE {p} -> {dest}")
+                    if not dry_run:
+                        try:
+                            dest.parent.mkdir(parents=True, exist_ok=True)
+                            import shutil
+                            shutil.move(str(p), str(dest))
+                        except Exception:
+                            pass
+            else:
+                actions.append(f"UNKNOWN_POLICY {p}")
+
+    builtins.print(f"Cleanup candidates: {total} off-shared copies (policy={policy}, scope={scope}, dry_run={dry_run}).")
+    for a in actions:
+        builtins.print(a)
 
 ###############################################################################
 # project create

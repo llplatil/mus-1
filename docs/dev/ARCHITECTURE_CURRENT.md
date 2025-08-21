@@ -92,3 +92,5 @@ This document describes how MUS1 works today based on the code, including gaps a
 - Project scanning from targets: `--dry-run`, `--emit-in-shared FILE`, and `--emit-off-shared FILE` enable safe preview and export of lists for later staging.
 - New: `project ingest` for single-command scan→dedup→split→preview or stage+register.
 - Group helps: `mus1 project-help`, `mus1 scan-help`.
+ - Parallel scanning: `scan-from-targets` and `ingest` support `--parallel --max-workers`.
+ - Auto-host ingest: if `shared_root` isn’t writable on this machine, ingest emits off-shared list for host staging.
