@@ -69,6 +69,16 @@ def _root_callback(
     # If no subcommand provided, fall through to Typer's default behaviour
     # (we don't force exit here to preserve existing UX).
 
+
+@app.command("project-help", help="Show full help for the 'project' command group")
+def project_help():
+    builtins.print(project_app.get_help(ctx=typer.Context(project_app)))
+
+
+@app.command("scan-help", help="Show full help for the 'scan' command group")
+def scan_help():
+    builtins.print(scan_app.get_help(ctx=typer.Context(scan_app)))
+
 ###############################################################################
 # Shared helpers
 ###############################################################################

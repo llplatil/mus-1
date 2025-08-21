@@ -90,3 +90,5 @@ This document describes how MUS1 works today based on the code, including gaps a
 - Root: `mus1 --version` prints the installed MUS1 version.
 - Targets: `targets list` uses plain printing to avoid markup issues with paths.
 - Project scanning from targets: `--dry-run`, `--emit-in-shared FILE`, and `--emit-off-shared FILE` enable safe preview and export of lists for later staging.
+- New: `project ingest` for single-command scan→dedup→split→preview or stage+register.
+- Group helps: `mus1 project-help`, `mus1 scan-help`.

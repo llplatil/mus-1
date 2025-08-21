@@ -68,6 +68,7 @@ Key design decisions:
    • `mus1 project create <path> <name>` – current behaviour.  
    • `mus1 project add-videos <project_path> <video_list.txt>` – index videos into an *existing* project.
    • `mus1 project scan-from-targets <project_path> [--target ...]` – scan configured targets, dedup, and add items already under `shared_root`.
+   • `mus1 project ingest <project_path> [roots...]` – one-shot scan→dedup→split by shared→preview or stage+register off-shared.
 
 2. **Scanner progress bar**  
    • `--progress` flag streams a `tqdm` bar to stderr; enabled by default when interactive.
@@ -76,6 +77,7 @@ Key design decisions:
 3. **CLI conveniences and scanners**  
    • Root app supports `--version` to print the installed MUS1 version.  
    • Additional scanning methods (e.g. pulling drive indexes from a NAS) will live in `plugins/` and expose a Typer sub-app that registers itself under `mus1 scan`.  This keeps core lean while allowing lab-specific discovery modules.
+   • Top-level helpers: `mus1 project-help`, `mus1 scan-help` print group help.
 
 4. **Environment & Distribution**  
    • Official install will move to **UV** (`pipx install uv; uv venv; uv pip install mus1`) generating an isolated environment per application.  

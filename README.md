@@ -45,6 +45,76 @@ The project uses a modular architecture with plugins for data handling (e.g., De
 - Architecture Documentation: `docs/dev/ARCHITECTURE_CURRENT.md`
 - Architecture Summary: `docs/dev/Architecture.md`
 
+## CLI Quick Reference
+
+Basics
+```bash
+mus1 --version          # print version
+mus1 -h                 # top-level help
+mus1 project -h         # project sub-commands
+mus1 scan -h            # scanner sub-commands
+mus1 project-help       # show full help for project group
+mus1 scan-help          # show full help for scan group
+```
+
+Projects & shared storage
+```bash
+# List local or shared projects
+mus1 project list                    
+mus1 project list --shared
+
+# Create a project (local or shared)
+mus1 project create my_proj                          
+mus1 project create my_shared --location shared      
+
+# Configure per-user shared root (no secrets)
+mus1 setup shared --path /mnt/mus1 --create
+
+# Bind a project to the shared root and/or move it under that root
+mus1 project set-shared-root /path/to/project /mnt/mus1
+mus1 project move-to-shared /path/to/project
+```
+
+Targets and workers
+```bash
+# Targets represent scan roots per-machine (local/ssh/wsl)
+mus1 targets list   /path/to/project
+mus1 targets add    /path/to/project --name this-machine --kind local --root ~/Videos --root /media/T7
+mus1 targets remove /path/to/project <name>
+
+# Workers represent remote execution endpoints (optional)
+mus1 workers list   /path/to/project
+mus1 workers add    /path/to/project --name ubuntu --ssh-alias lab-ubuntu --test
+mus1 workers run    /path/to/project --name ubuntu -- echo hello
+```
+
+Scanning and ingest
+```bash
+# Scan arbitrary roots and get JSONL (stdout), then dedup
+mus1 scan videos <roots...> | mus1 scan dedup
+
+# Aggregate scans from configured targets, dedup, and register items under shared
+# (preview only; do not register; write JSONL lists for review)
+mus1 project scan-from-targets /path/to/project \
+  --dry-run \
+  --emit-in-shared ~/in.jsonl \
+  --emit-off-shared ~/off.jsonl
+
+# Stage off-shared files (from JSONL) into shared_root/<subdir> and register
+mus1 project stage-to-shared /path/to/project ~/off.jsonl recordings/raw
+
+# One-shot ingest: scan → dedup → split by shared → preview or stage+register
+# Preview: prints counts and optionally writes JSONL files
+mus1 project ingest /path/to/project [roots...] \
+  --preview \
+  --emit-in-shared ~/in.jsonl \
+  --emit-off-shared ~/off.jsonl
+
+# Apply: registers in-shared, stages off-shared to dest-subdir, and registers
+mus1 project ingest /path/to/project [roots...] \
+  --dest-subdir recordings/raw
+```
+
 ## Shared Projects (Networked storage)
 
 MUS1 supports keeping projects on a shared network location so multiple machines can access the same project state.
