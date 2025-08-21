@@ -367,6 +367,8 @@ class VideoMetadata(BaseModel):
     size_bytes: int = 0  # File size in bytes (quick integrity check)
     last_modified: float = 0.0  # POSIX mtime (seconds since epoch)
     sample_hash: Optional[str] = None  # Fast hash of sampled chunks for integrity verification
+    # Track where this hash has been seen across machines
+    last_seen_locations: List[Dict[str, Any]] = Field(default_factory=list)
 
 
 class WorkerEntry(BaseModel):

@@ -1,3 +1,67 @@
+@project_app.command("cleanup-copies", help="Identify and optionally remove or archive redundant off-shared copies by policy.")
+def project_cleanup_copies(
+    project_path: Path = typer.Argument(..., help="Path to MUS1 project"),
+    policy: str = typer.Option("keep", "--policy", help="delete|keep|archive", show_default=True),
+    scope: str = typer.Option("non-shared", "--scope", help="non-shared|all", show_default=True),
+    dry_run: bool = typer.Option(True, "--dry-run", help="Preview actions only"),
+    archive_dir: Optional[Path] = typer.Option(None, "--archive-dir", help="Destination for archived files when policy=archive"),
+):
+    state_manager, _, data_manager, project_manager = _init_managers()
+    if not project_path.exists():
+        raise typer.BadParameter(f"Project not found: {project_path}")
+    project_manager.load_project(project_path)
+    LoggingEventBus.get_instance().configure_default_file_handler(project_path)
+
+    sr = state_manager.project_state.shared_root
+    sr_path = Path(sr).expanduser().resolve() if sr else None
+    videos = state_manager.project_state.unassigned_videos | state_manager.project_state.experiment_videos
+    total = 0
+    actions: list[str] = []
+    for hsh, vm in videos.items():
+        # collect locations outside shared (or all if scope=all)
+        locations = vm.last_seen_locations or []
+        off_shared_paths: list[Path] = []
+        for loc in locations:
+            p = Path(loc.get("path", ""))
+            try:
+                rp = p.expanduser().resolve()
+            except Exception:
+                rp = p
+            if scope == "all" or (sr_path and not str(rp).startswith(str(sr_path))):
+                off_shared_paths.append(rp)
+        # Skip if nothing to act on
+        if not off_shared_paths:
+            continue
+        total += len(off_shared_paths)
+        for p in off_shared_paths:
+            if policy == "keep":
+                actions.append(f"KEEP {p}")
+            elif policy == "delete":
+                actions.append(f"DELETE {p}")
+                if not dry_run:
+                    try:
+                        p.unlink(missing_ok=True)
+                    except Exception:
+                        pass
+            elif policy == "archive":
+                if not archive_dir:
+                    actions.append(f"ARCHIVE (missing --archive-dir) {p}")
+                else:
+                    dest = archive_dir.expanduser().resolve() / p.name
+                    actions.append(f"ARCHIVE {p} -> {dest}")
+                    if not dry_run:
+                        try:
+                            dest.parent.mkdir(parents=True, exist_ok=True)
+                            import shutil
+                            shutil.move(str(p), str(dest))
+                        except Exception:
+                            pass
+            else:
+                actions.append(f"UNKNOWN_POLICY {p}")
+
+    builtins.print(f"Cleanup candidates: {total} off-shared copies (policy={policy}, scope={scope}, dry_run={dry_run}).")
+    for a in actions:
+        builtins.print(a)
 """Typer-based MUS1 command-line interface (experimental).
 
 Provides:
@@ -575,6 +639,17 @@ def project_ingest(
         )
         raise typer.Exit(code=0)
 
+    # Auto-host decision: if shared_root is not writable here, emit off-shared list and exit unless preview already handled
+    def _is_writable(p: Path) -> bool:
+        try:
+            p.mkdir(parents=True, exist_ok=True)
+            test = p / ".mus1-write-test"
+            test.write_text("ok", encoding="utf-8")
+            test.unlink(missing_ok=True)
+            return True
+        except Exception:
+            return False
+
     # Register in-shared
     added_in = project_manager.register_unlinked_videos(iter(in_shared))
 
@@ -586,6 +661,15 @@ def project_ingest(
         except Exception as e:
             raise typer.BadParameter(f"Shared root not configured for project and not resolvable: {e}")
     shared_root = Path(sr).expanduser().resolve()
+    if not _is_writable(shared_root):
+        # Not host: emit off-shared list if not already requested and exit with guidance
+        if not emit_off_shared:
+            tmp = (Path.cwd() / "off_shared.auto.jsonl").resolve()
+            data_manager.emit_jsonl(tmp, off_shared)
+            builtins.print(f"Shared root not writable on this host. Wrote off-shared list to {tmp}. Stage from the host machine.")
+        else:
+            builtins.print(f"Shared root not writable on this host. Use the emitted off-shared list to stage from the host.")
+        raise typer.Exit(code=2)
     dest_base = (shared_root / dest_subdir).expanduser().resolve()
     staged_iter = data_manager.stage_files_to_shared(
         [(p, h) for p, h, _ in off_shared],
@@ -906,6 +990,20 @@ def project_scan_from_targets(
 
     # Register only items already under shared root
     added = project_manager.register_unlinked_videos(iter(in_shared))
-    builtins.print(
-        f"Added {added} unassigned videos to {project_path}. Total unassigned: {len(state_manager.project_state.unassigned_videos)}; Off-shared pending: {len(off_shared)}"
-    )
+    # If not writable here and there are off-shared, emit guidance
+    def _is_writable(p: Path) -> bool:
+        try:
+            p.mkdir(parents=True, exist_ok=True)
+            test = p / ".mus1-write-test"
+            test.write_text("ok", encoding="utf-8")
+            test.unlink(missing_ok=True)
+            return True
+        except Exception:
+            return False
+
+    sr = state_manager.project_state.shared_root
+    writable = _is_writable(Path(sr)) if sr else False
+    if off_shared and not writable:
+        builtins.print(f"Note: {len(off_shared)} items are off-shared and shared_root is not writable here. Use project ingest on the host to stage.")
+
+    builtins.print(f"Added {added} unassigned videos to {project_path}. Total unassigned: {len(state_manager.project_state.unassigned_videos)}; Off-shared pending: {len(off_shared)}")

@@ -1107,21 +1107,40 @@ class ProjectManager:
         from .metadata import VideoMetadata  # Avoid circular ref
         state = self.state_manager.project_state
         new_count = 0
+        host = os.uname().nodename if hasattr(os, "uname") else platform.node()
+        seen_at = datetime.now()
         for path, hsh, start_time in video_iter:
-            if hsh in state.unassigned_videos or hsh in state.experiment_videos:
-                continue
             try:
-                vm = VideoMetadata(
-                    path=path,
-                    date=start_time,
-                    sample_hash=hsh,
-                    size_bytes=path.stat().st_size,
-                    last_modified=path.stat().st_mtime,
-                )
-                state.unassigned_videos[hsh] = vm
-                new_count += 1
+                # If known in unassigned or experiment videos, update last_seen_locations only
+                vm: Optional[VideoMetadata] = None
+                if hsh in state.unassigned_videos:
+                    vm = state.unassigned_videos[hsh]
+                elif hsh in state.experiment_videos:
+                    vm = state.experiment_videos[hsh]
+
+                if vm is None:
+                    vm = VideoMetadata(
+                        path=path,
+                        date=start_time,
+                        sample_hash=hsh,
+                        size_bytes=path.stat().st_size,
+                        last_modified=path.stat().st_mtime,
+                        last_seen_locations=[],
+                    )
+                    state.unassigned_videos[hsh] = vm
+                    new_count += 1
+
+                # update last_seen_locations for both new and existing
+                try:
+                    vm.last_seen_locations.append({
+                        "path": str(Path(path).expanduser().resolve()),
+                        "host": host,
+                        "seen_at": seen_at.isoformat(),
+                    })
+                except Exception:
+                    pass
             except Exception as exc:
-                logger.warning(f"Failed to register video {path}: {exc}")
+                logger.warning(f"Failed to register/update video {path}: {exc}")
         if new_count:
             self.save_project()
             self.state_manager.notify_observers()
