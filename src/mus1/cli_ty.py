@@ -472,6 +472,99 @@ def project_stage_to_shared(
     print(f"Staged and added {added} videos. Unassigned total: {len(state_manager.project_state.unassigned_videos)}")
 
 
+@project_app.command("ingest", help="Scan roots, dedup, split by shared, and either preview or stage+register off-shared items.")
+def project_ingest(
+    project_path: Path = typer.Argument(..., help="Path to MUS1 project"),
+    roots: List[Path] = typer.Argument(None, help="Directories or drive roots to scan"),
+    dest_subdir: str = typer.Option("recordings/raw", "--dest-subdir", help="Destination under shared root for staging off-shared"),
+    extensions: Optional[List[str]] = typer.Option(None, "--ext", help="Allowed extensions (.mp4 .avi …)"),
+    exclude_dirs: Optional[List[str]] = typer.Option(None, "--exclude-dirs", help="Sub-strings for directories to skip"),
+    non_recursive: bool = typer.Option(False, "--non-recursive", help="Disable recursive traversal"),
+    preview: bool = typer.Option(False, "--preview", help="Preview only (no registration/staging)"),
+    emit_in_shared: Optional[Path] = typer.Option(None, "--emit-in-shared", help="Write JSONL of items already under shared root"),
+    emit_off_shared: Optional[Path] = typer.Option(None, "--emit-off-shared", help="Write JSONL of items not under shared root"),
+    progress: bool = typer.Option(True, help="Show progress bars"),
+):
+    """Single-command ingest: scan→dedup→split, then preview or stage+register off-shared.
+
+    If --preview is set, writes optional JSONLs and exits without changes.
+    Otherwise, registers in-shared and stages off-shared into shared_root/dest_subdir, then registers them.
+    """
+    state_manager, _, data_manager, project_manager = _init_managers()
+    if not project_path.exists():
+        raise typer.BadParameter(f"Project not found: {project_path}")
+    LoggingEventBus.get_instance().configure_default_file_handler(project_path)
+    project_manager.load_project(project_path)
+
+    # Resolve roots defaults per-OS if not provided
+    try:
+        from .core.scanners.video_discovery import default_roots_if_missing
+        effective_roots = default_roots_if_missing(roots)
+    except Exception:
+        effective_roots = roots or []
+    if not effective_roots:
+        raise typer.BadParameter("No scan roots provided and no defaults available for this OS. Please specify directories.")
+
+    # Scan and dedup
+    pbar = tqdm(desc="Scanning", unit="file", disable=(not progress) or (not sys.stderr.isatty()))
+    def scan_cb(done: int, total: int):
+        pbar.total = total
+        pbar.update(done - pbar.n)
+    videos = list(
+        data_manager.discover_video_files(
+            effective_roots,
+            extensions=extensions,
+            recursive=not non_recursive,
+            excludes=exclude_dirs,
+            progress_cb=scan_cb,
+        )
+    )
+    pbar.close()
+
+    dedup_pbar = tqdm(total=len(videos), desc="Deduping", unit="file", disable=(not progress) or (not sys.stderr.isatty()))
+    def dedup_cb(done: int, total: int):
+        dedup_pbar.update(1)
+    dedup_gen = data_manager.deduplicate_video_list([(p, h) for p, h in videos], progress_cb=dedup_cb)
+    in_shared, off_shared = project_manager.split_by_shared_root(dedup_gen)
+    dedup_pbar.close()
+
+    # Emit JSONLs if requested
+    if emit_in_shared:
+        data_manager.emit_jsonl(emit_in_shared, in_shared)
+    if emit_off_shared:
+        data_manager.emit_jsonl(emit_off_shared, off_shared)
+
+    if preview:
+        builtins.print(
+            f"Preview: {len(in_shared)} items under shared, {len(off_shared)} items off-shared. Project: {project_path}"
+        )
+        raise typer.Exit(code=0)
+
+    # Register in-shared
+    added_in = project_manager.register_unlinked_videos(iter(in_shared))
+
+    # Stage off-shared into shared root
+    sr = state_manager.project_state.shared_root
+    if not sr:
+        try:
+            sr = project_manager.get_shared_directory()
+        except Exception as e:
+            raise typer.BadParameter(f"Shared root not configured for project and not resolvable: {e}")
+    shared_root = Path(sr).expanduser().resolve()
+    dest_base = (shared_root / dest_subdir).expanduser().resolve()
+    staged_iter = data_manager.stage_files_to_shared(
+        [(p, h) for p, h, _ in off_shared],
+        shared_root=shared_root,
+        dest_base=dest_base,
+        overwrite=False,
+        progress_cb=None if not progress else (lambda done, total: None),
+    )
+    added_off = project_manager.register_unlinked_videos(staged_iter)
+
+    builtins.print(
+        f"Ingest complete. Added {added_in} under-shared and {added_off} staged videos. Total unassigned: {len(state_manager.project_state.unassigned_videos)}"
+    )
+
 def run():
     app()
 
@@ -748,40 +841,14 @@ def project_scan_from_targets(
     all_items = collect_from_targets(state_manager, data_manager, targets, extensions=extensions, exclude_dirs=exclude_dirs, non_recursive=non_recursive)
 
     # Deduplicate and split relative to shared_root (if configured)
-    sr = state_manager.project_state.shared_root
     dedup_gen = data_manager.deduplicate_video_list(all_items)
-
-    in_shared: list[tuple[Path, str, datetime]] = []
-    off_shared: list[tuple[Path, str, datetime]] = []
-
-    sr_path = Path(sr).resolve() if sr else None
-    for p, h, ts in dedup_gen:
-        try:
-            rp = Path(p).resolve()
-            if sr_path and str(rp).startswith(str(sr_path)):
-                in_shared.append((rp, h, ts))
-            else:
-                off_shared.append((rp, h, ts))
-        except Exception:
-            off_shared.append((Path(p), h, ts))
+    in_shared, off_shared = project_manager.split_by_shared_root(dedup_gen)
 
     # Optionally emit JSONL lists for review
-    def _emit_jsonl(path: Optional[Path], items: list[tuple[Path, str, datetime]]) -> None:
-        if not path:
-            return
-        path = path.expanduser()
-        try:
-            path.parent.mkdir(parents=True, exist_ok=True)
-        except Exception:
-            pass
-        with open(path, "w", encoding="utf-8") as f:
-            import json as _json
-            for pth, hsh, ts in items:
-                rec = {"path": str(pth), "hash": hsh, "start_time": getattr(ts, "isoformat", lambda: str(ts))()}
-                f.write(_json.dumps(rec) + "\n")
-
-    _emit_jsonl(emit_in_shared, in_shared)
-    _emit_jsonl(emit_off_shared, off_shared)
+    if emit_in_shared:
+        data_manager.emit_jsonl(emit_in_shared, in_shared)
+    if emit_off_shared:
+        data_manager.emit_jsonl(emit_off_shared, off_shared)
 
     if dry_run:
         builtins.print(

@@ -542,4 +542,26 @@ class DataManager:
             if progress_cb:
                 progress_cb(done, total)
 
+    # ------------------------------------------------------------------
+    # JSONL helpers (for CLI/GUI pipelines)
+    # ------------------------------------------------------------------
+    def emit_jsonl(self, out_path: Path, items: Iterable[Tuple[Path, str, datetime]]) -> None:
+        """Write (path, hash, start_time) tuples to JSONL at out_path.
+
+        Each line: {"path": str(path), "hash": hash, "start_time": ISO-8601}
+        """
+        out_path = out_path.expanduser()
+        try:
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            pass
+        with open(out_path, "w", encoding="utf-8") as f:
+            for p, h, ts in items:
+                rec = {
+                    "path": str(p),
+                    "hash": h,
+                    "start_time": ts.isoformat() if hasattr(ts, "isoformat") else str(ts),
+                }
+                f.write(json.dumps(rec) + "\n")
+
     

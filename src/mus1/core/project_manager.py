@@ -1128,6 +1128,33 @@ class ProjectManager:
             self.log_bus.log(f"Registered {new_count} unassigned videos", "info", "ProjectManager")
         return new_count
 
+    # ------------------------------------------------------------------
+    # Ingestion helpers used by CLI/GUI
+    # ------------------------------------------------------------------
+    def split_by_shared_root(
+        self,
+        items: Iterable[tuple[Path, str, datetime]],
+    ) -> tuple[list[tuple[Path, str, datetime]], list[tuple[Path, str, datetime]]]:
+        """Split items into (in_shared, off_shared) based on project.shared_root.
+
+        Returns:
+            (in_shared, off_shared): lists of tuples suitable for registration/staging
+        """
+        sr = self.state_manager.project_state.shared_root
+        sr_path = Path(sr).expanduser().resolve() if sr else None
+        in_shared: list[tuple[Path, str, datetime]] = []
+        off_shared: list[tuple[Path, str, datetime]] = []
+        for p, h, ts in items:
+            try:
+                rp = Path(p).expanduser().resolve()
+                if sr_path and str(rp).startswith(str(sr_path)):
+                    in_shared.append((rp, h, ts))
+                else:
+                    off_shared.append((rp, h, ts))
+            except Exception:
+                off_shared.append((Path(p), h, ts))
+        return in_shared, off_shared
+
     def link_unassigned_video(self, sample_hash: str, experiment_id: str) -> None:
         """Move a video from *unassigned_videos* into *experiment_videos* and link to an experiment."""
         state = self.state_manager.project_state
