@@ -67,12 +67,14 @@ Key design decisions:
 1. **Project commands**
    • `mus1 project create <path> <name>` – current behaviour.  
    • `mus1 project add-videos <project_path> <video_list.txt>` – index videos into an *existing* project.
+   • `mus1 project scan-from-targets <project_path> [--target ...]` – scan configured targets, dedup, and add items already under `shared_root`.
 
 2. **Scanner progress bar**  
    • `--progress` flag streams a `tqdm` bar to stderr; enabled by default when interactive.
    • **(Updated)** On macOS, if no roots are provided, default scan roots are used (`~/Movies`, `~/Videos`, `/Volumes`).
 
-3. **Pluggable scanners**  
+3. **CLI conveniences and scanners**  
+   • Root app supports `--version` to print the installed MUS1 version.  
    • Additional scanning methods (e.g. pulling drive indexes from a NAS) will live in `plugins/` and expose a Typer sub-app that registers itself under `mus1 scan`.  This keeps core lean while allowing lab-specific discovery modules.
 
 4. **Environment & Distribution**  
@@ -145,7 +147,13 @@ The last command reads JSON-lines from stdin (`-`) or a file.
 
 Shared Logging
 --------------
-`LoggingEventBus.configure_default_file_handler(project_root)` ensures both GUI and CLI write to the same rotating log inside each project directory.
+`LoggingEventBus.configure_default_file_handler(project_root)` ensures both GUI and CLI write to the same rotating log inside each project directory. Project-aware CLI commands initialize this handler early so logs are captured from the start.
+
+Scan from Targets – Preview/Emit
+--------------------------------
+`mus1 project scan-from-targets` supports a preview path:
+- `--dry-run`: do not register; print counts of items already under shared vs off-shared
+- `--emit-in-shared FILE`, `--emit-off-shared FILE`: write JSONL lists for review or later staging
 
 ---
 

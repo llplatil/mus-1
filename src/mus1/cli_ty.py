@@ -14,6 +14,7 @@ import json
 import sys
 from pathlib import Path
 from typing import List, Optional, Iterable
+from datetime import datetime
 
 import typer
 from rich import print  # pretty help & errors
@@ -24,6 +25,8 @@ from .core.plugin_manager import PluginManager
 from .core.data_manager import DataManager
 from .core.project_manager import ProjectManager
 from .core.logging_bus import LoggingEventBus
+from . import __version__ as MUS1_VERSION
+import builtins
 import os
 import subprocess
 import yaml
@@ -48,6 +51,23 @@ app.add_typer(project_app, name="project")
 app.add_typer(setup_app, name="setup")
 app.add_typer(workers_app, name="workers")
 app.add_typer(targets_app, name="targets")
+
+@app.callback(invoke_without_command=True)
+def _root_callback(
+    ctx: typer.Context,
+    version: bool = typer.Option(
+        False,
+        "--version",
+        "-V",
+        help="Show version and exit",
+        is_eager=True,
+    )
+):
+    if version:
+        builtins.print(MUS1_VERSION)
+        raise typer.Exit()
+    # If no subcommand provided, fall through to Typer's default behaviour
+    # (we don't force exit here to preserve existing UX).
 
 ###############################################################################
 # Shared helpers
@@ -301,6 +321,8 @@ def project_set_shared_root(
     state_manager, _, _, project_manager = _init_managers()
     if not project_path.exists():
         raise typer.BadParameter(f"Project not found: {project_path}")
+    # Configure project-scoped rotating log before further operations
+    LoggingEventBus.get_instance().configure_default_file_handler(project_path)
     project_manager.load_project(project_path)
     sr = shared_root.expanduser().resolve()
     if not sr.exists() or not sr.is_dir():
@@ -320,6 +342,8 @@ def project_move_to_shared(
     if not project_path.exists():
         raise typer.BadParameter(f"Project not found: {project_path}")
     project_manager.load_project(project_path)
+    # Ensure project-scoped rotating log so CLI doesn’t warn about missing FileHandler
+    LoggingEventBus.get_instance().configure_default_file_handler(project_path)
 
     # Resolve shared root precedence: explicit arg -> state -> ProjectManager.get_shared_directory
     target_root: Path
@@ -350,6 +374,8 @@ def project_scan_and_add(
 
     if not project_path.exists():
         raise typer.BadParameter(f"Project not found: {project_path}")
+    # Configure project-scoped rotating log before further operations
+    LoggingEventBus.get_instance().configure_default_file_handler(project_path)
     project_manager.load_project(project_path)
 
     # If no roots were given, compute sensible defaults per OS
@@ -640,13 +666,13 @@ def targets_list(project_path: Path = typer.Argument(..., help="Path to MUS1 pro
     state_manager, _pm = _load_project_for_targets(project_path)
     targets = state_manager.project_state.scan_targets or []
     if not targets:
-        print("No scan targets configured.")
+        builtins.print("No scan targets configured.")
         return
-    print("Scan targets:")
+    builtins.print("Scan targets:")
     for t in targets:
         roots = ", ".join(str(r) for r in t.roots)
         alias = t.ssh_alias or ""
-        print(f"- {t.name}  kind={t.kind}  alias={alias}  roots=[{roots}]")
+        builtins.print(f"- {t.name}  kind={t.kind}  alias={alias}  roots=[{roots}]")
 
 
 @targets_app.command("add", help="Add a scan target (local/ssh/wsl)")
@@ -701,10 +727,15 @@ def project_scan_from_targets(
     exclude_dirs: Optional[List[str]] = typer.Option(None, "--exclude-dirs", help="Sub-strings for directories to skip"),
     non_recursive: bool = typer.Option(False, "--non-recursive", help="Disable recursive traversal"),
     progress: bool = typer.Option(True, help="Show progress bars"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Preview results without registering videos"),
+    emit_in_shared: Optional[Path] = typer.Option(None, "--emit-in-shared", help="Write JSONL of items already under shared root"),
+    emit_off_shared: Optional[Path] = typer.Option(None, "--emit-off-shared", help="Write JSONL of items not under shared root"),
 ):
     state_manager, _, data_manager, project_manager = _init_managers()
     if not project_path.exists():
         raise typer.BadParameter(f"Project not found: {project_path}")
+    # Configure project-scoped rotating log before further operations
+    LoggingEventBus.get_instance().configure_default_file_handler(project_path)
     project_manager.load_project(project_path)
 
     targets = list(state_manager.project_state.scan_targets or [])
@@ -716,22 +747,50 @@ def project_scan_from_targets(
 
     all_items = collect_from_targets(state_manager, data_manager, targets, extensions=extensions, exclude_dirs=exclude_dirs, non_recursive=non_recursive)
 
-    # Dedup and optionally filter to shared_root
+    # Deduplicate and split relative to shared_root (if configured)
     sr = state_manager.project_state.shared_root
     dedup_gen = data_manager.deduplicate_video_list(all_items)
 
-    def _filter_to_shared(iterator):
-        for p, h, ts in iterator:
-            if sr is not None:
-                try:
-                    rp = Path(p).resolve()
-                    if not str(rp).startswith(str(Path(sr).resolve())):
-                        continue
-                except Exception:
-                    continue
-            yield (p, h, ts)
+    in_shared: list[tuple[Path, str, datetime]] = []
+    off_shared: list[tuple[Path, str, datetime]] = []
 
-    final_iter = _filter_to_shared(dedup_gen)
+    sr_path = Path(sr).resolve() if sr else None
+    for p, h, ts in dedup_gen:
+        try:
+            rp = Path(p).resolve()
+            if sr_path and str(rp).startswith(str(sr_path)):
+                in_shared.append((rp, h, ts))
+            else:
+                off_shared.append((rp, h, ts))
+        except Exception:
+            off_shared.append((Path(p), h, ts))
 
-    added = project_manager.register_unlinked_videos(final_iter)
-    print(f"Added {added} unassigned videos to {project_path}. Total unassigned: {len(state_manager.project_state.unassigned_videos)}")
+    # Optionally emit JSONL lists for review
+    def _emit_jsonl(path: Optional[Path], items: list[tuple[Path, str, datetime]]) -> None:
+        if not path:
+            return
+        path = path.expanduser()
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            pass
+        with open(path, "w", encoding="utf-8") as f:
+            import json as _json
+            for pth, hsh, ts in items:
+                rec = {"path": str(pth), "hash": hsh, "start_time": getattr(ts, "isoformat", lambda: str(ts))()}
+                f.write(_json.dumps(rec) + "\n")
+
+    _emit_jsonl(emit_in_shared, in_shared)
+    _emit_jsonl(emit_off_shared, off_shared)
+
+    if dry_run:
+        builtins.print(
+            f"Dry run: {len(in_shared)} items under shared, {len(off_shared)} items off-shared. Project: {project_path}"
+        )
+        raise typer.Exit(code=0)
+
+    # Register only items already under shared root
+    added = project_manager.register_unlinked_videos(iter(in_shared))
+    builtins.print(
+        f"Added {added} unassigned videos to {project_path}. Total unassigned: {len(state_manager.project_state.unassigned_videos)}; Off-shared pending: {len(off_shared)}"
+    )

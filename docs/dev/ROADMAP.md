@@ -10,6 +10,7 @@ This roadmap reflects how the code works today and what is planned next. It avoi
 - Data IO helpers in `DataManager`: `read_yaml`, `read_csv`, `read_hdf`; handler invocation through `call_handler_method`.
 - Video discovery and ingestion: pluggable scanners (`macOS` specialized, base for others), `discover_video_files`, `deduplicate_video_list`, and unassigned→assigned workflow using `sample_hash` keys.
 - Typer CLI (`mus1`) with commands: `scan videos`, `scan dedup`, `project add-videos`, `project list`, `project create`, `project scan-and-add`.
+ - Typer CLI (`mus1`) with commands: `scan videos`, `scan dedup`, `project add-videos`, `project list`, `project create`, `project scan-and-add`, and `project scan-from-targets` (now with `--dry-run` and `--emit-*`). Root supports `--version`.
 - UI: `ExperimentView` builds parameter forms from plugin metadata, separates Importer/Analysis/Exporter lists, supports bulk add, and links videos through the unassigned workflow.
 - Plugins:
   - `DeepLabCutHandlerPlugin` (handler): extract body parts, validate/ack tracking sources, load DataFrame via helper with optional likelihood thresholding.
@@ -72,6 +73,7 @@ Incremental plan (each step independently shippable)
   - SSH: runs remote `mus1 scan videos` via `ssh alias ...` and streams JSONL.
   - WSL: runs `wsl.exe -e mus1 scan videos` when invoked on Windows or via SSH to a Windows host with WSL.
   - Merges and dedups via `DataManager.deduplicate_video_list`; filters to `shared_root`.
+  - Preview mode with `--dry-run` and JSONL emission (`--emit-in-shared`, `--emit-off-shared`) for safe review prior to registering or staging.
 
 4) GUI surfaces [dev]
 - Project Settings: set `shared_root`.

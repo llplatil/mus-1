@@ -32,6 +32,7 @@ This document describes how MUS1 works today based on the code, including gaps a
   - Experiment output paths: `get_experiment_data_path(experiment)` for plugins to persist outputs under `<project>/data/<subject>/<experiment>/`.
   - Video discovery: delegates to scanners via `get_scanner().iter_videos(...)`. macOS has a specialized scanner that skips iCloud placeholders; other OSes use the base scanner for now.
   - Staging: `stage_files_to_shared(src_with_hashes, shared_root, dest_base, overwrite, progress_cb)` copies files into shared storage, verifies content-hash, and yields tuples for registration.
+  - Cross-target scanning: `project scan-from-targets` aggregates local/SSH/WSL targets, deduplicates, and can run in preview mode and emit JSONL lists without registering.
 
 - Metadata models (`src/mus1/core/metadata.py`)
   - Pydantic models for Subjects, Experiments, Batches, Videos, ProjectState.
@@ -83,3 +84,9 @@ This document describes how MUS1 works today based on the code, including gaps a
 - `Mus1TrackingAnalysisPlugin` has duplicated private helpers; consolidate to reduce confusion.
 - Remote scans require MUS1 installed on remote PATH (or inside WSL); document and validate during setup.
 - GUI scan summary is basic; per-target progress and error surfacing are planned.
+ - Project-aware CLI commands initialize project logging early; remaining legacy commands may still print a missing FileHandler warning until consolidated.
+
+## Recent CLI additions (0.1.1)
+- Root: `mus1 --version` prints the installed MUS1 version.
+- Targets: `targets list` uses plain printing to avoid markup issues with paths.
+- Project scanning from targets: `--dry-run`, `--emit-in-shared FILE`, and `--emit-off-shared FILE` enable safe preview and export of lists for later staging.
