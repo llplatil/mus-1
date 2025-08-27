@@ -367,8 +367,14 @@ class VideoMetadata(BaseModel):
     size_bytes: int = 0  # File size in bytes (quick integrity check)
     last_modified: float = 0.0  # POSIX mtime (seconds since epoch)
     sample_hash: Optional[str] = None  # Fast hash of sampled chunks for integrity verification
+    full_hash: Optional[str] = None  # Full-file cryptographic hash (e.g., BLAKE2b-256)
+    original_recorded_time: Optional[datetime] = None  # Original creation/recorded timestamp if available
     # Track where this hash has been seen across machines
     last_seen_locations: List[Dict[str, Any]] = Field(default_factory=list)
+
+    # Processing stages log for this media file
+    # Each entry: {"stage": str, "by": str, "plugin": str, "at": iso str, "notes": str}
+    processing_stages: List[Dict[str, Any]] = Field(default_factory=list)
 
 
 class WorkerEntry(BaseModel):

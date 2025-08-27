@@ -326,7 +326,12 @@ class DataManager:
     # Video discovery & deduplication helpers
     # ------------------------------------------------------------------
     def _extract_start_time(self, video_path: Path) -> datetime:
-        """Return creation time from video metadata (ffprobe) or fallback to mtime."""
+        """Return container-recorded time (DateUTC/creation_time) or fallback to mtime.
+
+        Tries multiple common tag keys exposed by ffprobe for MP4/MKV:
+        - creation_time (QuickTime/MP4)
+        - date, DATE, date_utc, DATE_UTC (Matroska/others)
+        """
         try:
             result = subprocess.run(
                 [
@@ -342,14 +347,33 @@ class DataManager:
                 text=True,
                 check=True,
             )
-            data = json.loads(result.stdout)
-            creation_time_str = data.get("format", {}).get("tags", {}).get("creation_time")
-            if creation_time_str:
-                return datetime.fromisoformat(creation_time_str.rstrip("Z"))
+            data = json.loads(result.stdout) if result.stdout else {}
+            tags = (data.get("format", {}) or {}).get("tags", {}) or {}
+            # Try a few common keys
+            for key in ("creation_time", "DATE_UTC", "date_utc", "DATE", "date"):
+                val = tags.get(key)
+                if not val:
+                    continue
+                # Normalize: strip trailing Z and attempt parse
+                try:
+                    val_norm = val.strip()
+                    val_norm = val_norm.rstrip("Z")
+                    return datetime.fromisoformat(val_norm)
+                except Exception:
+                    # Some mkv tools emit 'UTC 2023-01-01 12:00:00'
+                    if val_norm.upper().startswith("UTC "):
+                        try:
+                            return datetime.fromisoformat(val_norm[4:])
+                        except Exception:
+                            pass
+            # As a minor fallback, try start_time-realtime but avoid expensive ops
         except Exception:
-            # Silently fall back – logging would be noisy during large scans
             pass
         return datetime.fromtimestamp(video_path.stat().st_mtime)
+
+    def compute_full_hash(self, file_path: Path, chunk_size: int = 8 * 1024 * 1024, algorithm: str = "blake2b", digest_size: int = 32) -> str:
+        from .utils.file_hash import compute_full_hash as _compute_full
+        return _compute_full(file_path, chunk_size=chunk_size, algorithm=algorithm, digest_size=digest_size)
 
     def import_subject_metadata_from_excel(self, excel_path: Path):
         """Import subject metadata from an Excel file and update the project state with SubjectMetadata entries."""

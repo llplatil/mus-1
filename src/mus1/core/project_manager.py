@@ -1126,11 +1126,20 @@ class ProjectManager:
                         sample_hash=hsh,
                         size_bytes=path.stat().st_size,
                         last_modified=path.stat().st_mtime,
+                        original_recorded_time=start_time,
                         last_seen_locations=[],
                     )
                     state.unassigned_videos[hsh] = vm
                     new_count += 1
                     updated_any = True
+                else:
+                    # Update original_recorded_time if not set
+                    if not getattr(vm, "original_recorded_time", None):
+                        try:
+                            vm.original_recorded_time = start_time
+                            updated_any = True
+                        except Exception:
+                            pass
 
                 # update last_seen_locations for both new and existing
                 try:
@@ -1149,6 +1158,74 @@ class ProjectManager:
             self.state_manager.notify_observers()
             self.log_bus.log(f"Registered {new_count} unassigned videos", "info", "ProjectManager")
         return new_count
+
+    def index_media_folder(self, *, compute_full_hash: bool = False, dry_run: bool = False) -> dict:
+        """Organize media files into per-item folders with metadata.json.
+
+        Scans the project's media directory for loose video files (directly under media/),
+        creates a subfolder per file, moves the file into it (unless dry_run), and writes
+        a metadata.json alongside containing core identity fields.
+
+        Returns a summary dict with counts.
+        """
+        if not self._current_project_root:
+            raise ValueError("No current project loaded")
+        media_dir = self._current_project_root / "media"
+        media_dir.mkdir(exist_ok=True)
+
+        # Recognized video extensions similar to BaseScanner
+        exts = {".mp4", ".mkv", ".avi", ".mov", ".mpg", ".mpeg", ".m4v"}
+        created = 0
+        skipped = 0
+        errored = 0
+        items: list[Path] = []
+        for entry in media_dir.iterdir():
+            if entry.is_file() and entry.suffix.lower() in exts:
+                items.append(entry)
+
+        for file_path in items:
+            try:
+                folder_name = file_path.stem
+                target_dir = media_dir / folder_name
+                if target_dir.exists() and any((target_dir / "metadata.json").exists(),):
+                    skipped += 1
+                    continue
+                # Prepare metadata
+                size_bytes = file_path.stat().st_size
+                last_modified = file_path.stat().st_mtime
+                # Use existing helpers
+                from .data_manager import DataManager
+                dm = DataManager(self.state_manager, self.plugin_manager)
+                start_time = dm._extract_start_time(file_path)  # pylint: disable=protected-access
+                sample_hash = dm.compute_sample_hash(file_path)
+                full_hash_val = None
+                if compute_full_hash:
+                    full_hash_val = dm.compute_full_hash(file_path)
+
+                meta = {
+                    "path": str(file_path.name),
+                    "size_bytes": size_bytes,
+                    "last_modified": last_modified,
+                    "sample_hash": sample_hash,
+                    "full_hash": full_hash_val,
+                    "original_recorded_time": start_time.isoformat(),
+                    "processing_stages": [],
+                }
+
+                if not dry_run:
+                    target_dir.mkdir(parents=True, exist_ok=True)
+                    new_path = target_dir / file_path.name
+                    # Move file into folder
+                    shutil.move(str(file_path), str(new_path))
+                    # Write metadata.json
+                    with open(target_dir / "metadata.json", "w", encoding="utf-8") as f:
+                        json.dump(meta, f, indent=2)
+                created += 1
+            except Exception as e:
+                errored += 1
+                logger.error(f"Failed to index media file {file_path}: {e}", exc_info=True)
+
+        return {"created": created, "skipped": skipped, "errored": errored, "scanned": len(items)}
 
     # ------------------------------------------------------------------
     # Ingestion helpers used by CLI/GUI

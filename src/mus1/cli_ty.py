@@ -482,6 +482,18 @@ def project_scan_and_add(
     print(f"Added {added} unassigned videos to {project_path}. Total unassigned: {len(state_manager.project_state.unassigned_videos)}")
 
 
+@project_app.command("media-index", help="Organize loose media files into per-file folders with metadata.json under the project's media directory.")
+def project_media_index(
+    project_path: Path = typer.Argument(..., help="Existing MUS1 project directory"),
+    full_hash: bool = typer.Option(False, help="Compute full-file hash for each media file (slower)"),
+    dry_run: bool = typer.Option(False, help="Don't move/write, just report what would happen"),
+):
+    state_manager, plugin_manager, data_manager, project_manager = _init_managers()
+    project_manager.load_project(project_path)
+    summary = project_manager.index_media_folder(compute_full_hash=full_hash, dry_run=dry_run)
+    builtins.print(f"Indexed media. Scanned={summary['scanned']} Created={summary['created']} Skipped={summary['skipped']} Errors={summary['errored']}")
+
+
 @project_app.command("stage-to-shared", help="Copy files listed in JSONL into the project's shared root, verify hash, then register unassigned videos.")
 def project_stage_to_shared(
     project_path: Path = typer.Argument(..., help="Path to MUS1 project"),

@@ -5,7 +5,8 @@ from .subject_view import SubjectView
 from .experiment_view import ExperimentView
 from .project_selection_dialog import ProjectSelectionDialog
 from ..core.logging_bus import LoggingEventBus
-from ..core import ThemeManager, PluginManager
+from ..core.plugin_manager import PluginManager
+from ..core.theme_manager import ThemeManager
 import logging
 import sys
 from pathlib import Path

@@ -66,9 +66,9 @@ from .core import (
     StateManager,
     DataManager,
     ProjectManager,
-    ThemeManager,
     PluginManager
 )
+from .core.theme_manager import ThemeManager
 from .core.logging_bus import LoggingEventBus
 
 # Import the project selection dialog
