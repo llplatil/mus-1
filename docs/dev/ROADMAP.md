@@ -9,25 +9,24 @@ This roadmap reflects how the code works today and what is planned next. It avoi
 - Analysis orchestration: `ProjectManager.run_analysis(experiment_id, capability)` validates via plugin, calls `analyze_experiment`, stores results, and advances `processing_stage` when appropriate.
 - Data IO helpers in `DataManager`: `read_yaml`, `read_csv`, `read_hdf`; handler invocation through `call_handler_method`.
 - Video discovery and ingestion: pluggable scanners (`macOS` specialized, base for others), `discover_video_files`, `deduplicate_video_list`, and unassigned→assigned workflow using `sample_hash` keys.
-- Typer CLI (`mus1`) with commands: `scan videos`, `scan dedup`, `project add-videos`, `project list`, `project create`, `project scan-and-add`.
-- Typer CLI (`mus1`) with commands: `scan videos`, `scan dedup`, `project add-videos`, `project list`, `project create`, `project scan-and-add`, and `project scan-from-targets` (now with `--dry-run` and `--emit-*`). Root supports `--version`. New: `project ingest` (preview or stage+register). Group helps: `project-help`, `scan-help`. Parallel options: `--parallel --max-workers`.
+- Typer CLI (`mus1`) with commands: `scan videos`, `scan dedup`, `project list`, `project create`, `project scan-and-move`, `project media-index`, `project media-assign`, `project assembly-scan-by-experiments`, `project import-third-party-folder`, and `project scan-from-targets` (preview emit options). Root supports `--version`.
 - UI: `ExperimentView` builds parameter forms from plugin metadata, separates Importer/Analysis/Exporter lists, supports bulk add, and links videos through the unassigned workflow.
 - Plugins:
   - `DeepLabCutHandlerPlugin` (handler): extract body parts, validate/ack tracking sources, load DataFrame via helper with optional likelihood thresholding.
   - `Mus1TrackingAnalysisPlugin` (analysis): kinematics, heatmap, zones/objects, NOR index, partial OF metrics; loads tracking data via handler/DataManager.
-  - `SubjectImporterPlugin` (project-level import).
+  - `CustomProjectAssembly_Skeleton` (package): CSV parsing + QA utils + optional subject importer used by assembly-driven scan.
   - `GcpMoSeq2OrchestratorPlugin` marked deprecated (kept for reference only).
 
 ## Known gaps and quirks (truthful)
 - Handler uses likelihood filtering but relies on `numpy`; this is imported in the handler, but ensure it remains imported to avoid runtime NameError in future edits.
 - `PluginManager` still exposes legacy “supported_*” shims; keep canonical stage list from metadata and avoid introducing new legacy surfaces.
-- `DataManager.get_experiment_data_path` is present; call sites should rely on it (or a central helper) rather than recomputing output paths.
+- `DataManager.get_experiment_data_path` is present; call sites should rely on it (or a central helper) rather than recomputing output paths. DataManager is now project-aware via `set_project_root` invoked by ProjectManager on create/load. [DONE]
 - Windows/Linux scanners currently use the base scanner; OS-specific exclusions and removable drive handling are not implemented.
 - `Mus1TrackingAnalysisPlugin` contains duplicated internal method names in places and mixes frame/series APIs; safe but should be tidied for clarity.
 
 ## Highest-priority next steps
 1) Tighten correctness and remove misleading surfaces
-- Remove/retire broken or misleading `PluginManager` aggregators. Keep: canonical stages via metadata and capability/format indices.
+- Retire remaining legacy `supported_*` aggregator surfaces in UI; rely on canonical metadata and capability/format indices (helpers exist in `PluginManager`).
 - Ensure all docs and UI refer to realistic capabilities; keep MoSeq2 as future server-backed plan, not current capability.
 
 2) Strengthen IO and handler ergonomics

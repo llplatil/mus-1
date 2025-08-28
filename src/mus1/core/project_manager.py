@@ -7,11 +7,11 @@ import os
 import shutil
 import time
 import importlib
-import importlib.util
+ 
 import inspect
 import platform
 from pydantic.json import pydantic_encoder
-import pandas as pd
+ 
 import yaml
 
 from .metadata import ProjectState, ProjectMetadata, Sex, ExperimentMetadata, ArenaImageMetadata, VideoMetadata, SubjectMetadata, BodyPartMetadata, ObjectMetadata, TreatmentMetadata, GenotypeMetadata, PluginMetadata
@@ -79,7 +79,7 @@ class ProjectManager:
         # Add any other sync operations needed
 
     def _discover_and_register_plugins(self):
-        """Discover and register all available plugins dynamically by importing them as modules."""
+        """Discover and register all available plugins dynamically by importing modules and packages under plugins."""
         
         try:
             # Get the parent package of the current module (e.g., 'Mus1_Refactor' from 'Mus1_Refactor.core')
@@ -103,41 +103,71 @@ class ProjectManager:
              logger.error(f"Could not determine plugins package path or name: {e}. Plugin discovery might fail.", exc_info=True)
              return
 
-        # Iterate over files in the plugins directory (using the first path if multiple exist)
+        # Iterate over items in the plugins directory (using the first path if multiple exist)
         plugin_dir_path = plugins_package_paths[0]
-        for filename in os.listdir(plugin_dir_path):
-            # Ensure it's a python file, not __init__ or the base class itself
-            if filename.endswith(".py") and filename not in ["base_plugin.py", "__init__.py"]:
-                module_name_short = filename[:-3] # e.g., DlcProjectImporterPlugin
-                full_module_name = f"{plugins_module_name}.{module_name_short}" # e.g., Mus1_Refactor.plugins.DlcProjectImporterPlugin
-                
+        entries = []
+        try:
+            entries = list(os.scandir(plugin_dir_path))
+        except Exception:
+            entries = []
+        for entry in entries:
+            # Module file
+            if entry.is_file() and entry.name.endswith(".py") and entry.name not in ["base_plugin.py", "__init__.py"]:
+                module_name_short = entry.name[:-3]
+                full_module_name = f"{plugins_module_name}.{module_name_short}"
                 try:
                     logger.debug(f"Attempting to import plugin module: {full_module_name}")
-                    # Import the module using its full dotted path
                     module = importlib.import_module(full_module_name)
-                    
-                    # Inspect the loaded module for BasePlugin subclasses
                     for name, obj in inspect.getmembers(module, inspect.isclass):
-                        # Check if it's a class defined in *this specific module* (not imported into it)
-                        # and if it's a subclass of BasePlugin (but not BasePlugin itself)
                         if inspect.getmodule(obj) == module and issubclass(obj, BasePlugin) and obj is not BasePlugin:
-                            # Skip abstract plugin classes
                             if inspect.isabstract(obj):
                                 logger.info(f"Skipping abstract plugin class {name} (incomplete implementation).")
                                 continue
                             try:
-                                plugin_instance = obj() # Instantiate the plugin
+                                plugin_instance = obj()
                                 self.plugin_manager.register_plugin(plugin_instance)
-                                # register_plugin method already logs success
                             except Exception as init_err:
                                 logger.error(f"Failed to instantiate plugin class {name} from {full_module_name}: {init_err}", exc_info=True)
-
-                except ImportError as import_err:
-                    # Log import errors for specific plugin modules but continue to others
-                    logger.error(f"Failed to import plugin module {full_module_name}: {import_err}", exc_info=False) # Keep log cleaner
                 except Exception as e:
-                     # Catch other potential errors during module processing
-                     logger.error(f"An unexpected error occurred while processing plugin module {full_module_name}: {e}", exc_info=True)
+                    logger.error(f"Failed to import plugin module {full_module_name}: {e}", exc_info=False)
+
+            # Package directory
+            elif entry.is_dir() and (Path(entry.path) / "__init__.py").exists():
+                pkg_name = entry.name
+                full_pkg_name = f"{plugins_module_name}.{pkg_name}"
+                try:
+                    logger.debug(f"Attempting to import plugin package: {full_pkg_name}")
+                    pkg = importlib.import_module(full_pkg_name)
+                    # Import submodules to surface classes
+                    try:
+                        import pkgutil
+                        for finder, modname, ispkg in pkgutil.walk_packages(pkg.__path__, prefix=f"{full_pkg_name}."):
+                            try:
+                                submod = importlib.import_module(modname)
+                                for name, obj in inspect.getmembers(submod, inspect.isclass):
+                                    if inspect.getmodule(obj) == submod and issubclass(obj, BasePlugin) and obj is not BasePlugin:
+                                        if inspect.isabstract(obj):
+                                            continue
+                                        try:
+                                            plugin_instance = obj()
+                                            self.plugin_manager.register_plugin(plugin_instance)
+                                        except Exception as init_err:
+                                            logger.error(f"Failed to instantiate plugin class {name} from {modname}: {init_err}", exc_info=True)
+                            except Exception:
+                                continue
+                    except Exception:
+                        pass
+                    # Also scan package __init__
+                    for name, obj in inspect.getmembers(pkg, inspect.isclass):
+                        if inspect.getmodule(obj) == pkg and issubclass(obj, BasePlugin) and obj is not BasePlugin:
+                            if not inspect.isabstract(obj):
+                                try:
+                                    plugin_instance = obj()
+                                    self.plugin_manager.register_plugin(plugin_instance)
+                                except Exception as init_err:
+                                    logger.error(f"Failed to instantiate plugin class {name} from {full_pkg_name}: {init_err}", exc_info=True)
+                except Exception as e:
+                    logger.error(f"Failed to import plugin package {full_pkg_name}: {e}", exc_info=False)
 
         # Log summary after attempting all plugins
         registered_plugins = self.plugin_manager.get_all_plugins()
@@ -243,6 +273,11 @@ class ProjectManager:
         new_state = ProjectState(project_metadata=new_metadata)
         self.state_manager._project_state = new_state
         self._current_project_root = project_root
+        # Keep DataManager aware of active project root for output paths
+        try:
+            self.data_manager.set_project_root(project_root)
+        except Exception:
+            pass
 
         # 5) Immediately save the fresh project_state.json
         self.save_project()
@@ -282,8 +317,11 @@ class ProjectManager:
             with os.fdopen(lock_fd, 'w') as lock_file:
                 lock_file.write(str(os.getpid()))
 
-            with open(state_path, 'w') as f:
+            # Atomic write via temp file then rename
+            tmp_path = state_path.with_suffix('.tmp')
+            with open(tmp_path, 'w') as f:
                 json.dump(data, f, indent=2, default=pydantic_encoder)
+            os.replace(tmp_path, state_path)
 
             logger.info(f"Project saved to {state_path}")
         finally:
@@ -333,6 +371,11 @@ class ProjectManager:
         # Replace state_manager's project_state to ensure isolation
         self.state_manager._project_state = loaded_state
         self._current_project_root = project_root
+        # Update DataManager project root
+        try:
+            self.data_manager.set_project_root(project_root)
+        except Exception:
+            pass
         logger.info("Project loaded and ready in memory.")
 
         # Sync plugins into the loaded state
@@ -464,6 +507,47 @@ class ProjectManager:
         # Persist change
         self.save_project()
         self.state_manager.notify_observers()
+    def create_experiment_from_recording(
+        self,
+        *,
+        recording_path: Path,
+        subject_id: str,
+        experiment_type: str,
+        experiment_subtype: str | None = None,
+    ) -> str:
+        """Create an experiment auto-named from recording folder and link the recording.
+
+        Returns the new experiment_id.
+        """
+        rec_dir = Path(recording_path).parent
+        exp_id = rec_dir.name
+        # Derive date from recording metadata if available, else from file mtime
+        try:
+            md = self.data_manager.read_recording_metadata(rec_dir)
+            from datetime import datetime as _dt
+            rt = ((md.get("times") or {}).get("recorded_time")) if md else None
+            if rt:
+                date_recorded = _dt.fromisoformat(str(rt))
+            else:
+                date_recorded = _dt.fromtimestamp(max(recording_path.stat().st_mtime, recording_path.stat().st_ctime))
+        except Exception:
+            from datetime import datetime as _dt
+            date_recorded = _dt.fromtimestamp(max(recording_path.stat().st_mtime, recording_path.stat().st_ctime))
+
+        self.add_experiment(
+            experiment_id=exp_id,
+            subject_id=subject_id,
+            date_recorded=date_recorded,
+            exp_type=experiment_type,
+            exp_subtype=experiment_subtype,
+            processing_stage="recorded",
+            associated_plugins=[],
+            plugin_params={},
+        )
+
+        # Link video to experiment
+        self.link_video_to_experiment(experiment_id=exp_id, video_path=recording_path)
+        return exp_id
 
     # ---------------------------------------------------------------------
     # Video Linking Utilities
@@ -677,6 +761,10 @@ class ProjectManager:
             raise ValueError("A project with this name already exists")
         os.rename(self._current_project_root, new_path)
         self._current_project_root = new_path
+        try:
+            self.data_manager.set_project_root(new_path)
+        except Exception:
+            pass
         if self.state_manager.project_state and self.state_manager.project_state.project_metadata:
             self.state_manager.project_state.project_metadata.project_name = new_name
         self.save_project()
@@ -698,6 +786,10 @@ class ProjectManager:
         # Use shutil.move to support cross-filesystem moves
         shutil.move(str(old_root), str(new_root))
         self._current_project_root = new_root
+        try:
+            self.data_manager.set_project_root(new_root)
+        except Exception:
+            pass
         # Persist and notify
         self.save_project()
         self.state_manager.notify_observers()
@@ -1120,9 +1212,28 @@ class ProjectManager:
                     vm = state.experiment_videos[hsh]
 
                 if vm is None:
+                    # Read per-recording metadata.json if present
+                    rec_dir = Path(path).parent
+                    md: dict[str, Any] = {}
+                    try:
+                        md = self.data_manager.read_recording_metadata(rec_dir)
+                    except Exception:
+                        md = {}
+                    # Populate from metadata if available
+                    recorded_time = start_time
+                    if md:
+                        try:
+                            times = md.get("times") or {}
+                            rt = times.get("recorded_time")
+                            if rt:
+                                from datetime import datetime as _dt
+                                recorded_time = _dt.fromisoformat(str(rt))
+                        except Exception:
+                            recorded_time = start_time
+                    # Create video metadata entry
                     vm = VideoMetadata(
                         path=path,
-                        date=start_time,
+                        date=recorded_time,
                         sample_hash=hsh,
                         size_bytes=path.stat().st_size,
                         last_modified=path.stat().st_mtime,
@@ -1200,24 +1311,177 @@ class ProjectManager:
             "ProjectManager",
         )
 
+    # ------------------------------------------------------------------
+    # App-level APIs (GUI/services) for master library and MoSeq import
+    # ------------------------------------------------------------------
+    def build_master_library(
+        self,
+        *,
+        project_path: Path,
+        dest_subdir: str = "recordings/master",
+        copy_exts: list[str] | None = None,
+        move_exts: list[str] | None = None,
+        filename_pattern: str = "{base}_{date:%Y%m%d}_{hash8}{ext}",
+        dry_run: bool = False,
+    ) -> Dict[str, Any]:
+        """Create a flat master media library under the project's shared root.
+
+        - Sources: known videos (unassigned + experiment_videos)
+        - Policy: copy for copy_exts, move for move_exts
+        - Naming: filename_pattern supports {subject},{experiment},{date:%Y%m%d},{hash8},{base},{ext}
+        - Registers staged/moved videos as unassigned
+        """
+        from datetime import datetime as _dt
+
+        # Ensure project and shared root
+        self.load_project(project_path)
+        sr = self.state_manager.project_state.shared_root or self.get_shared_directory()
+        shared_root = Path(sr).expanduser().resolve()
+        dest_base = (shared_root / dest_subdir).expanduser().resolve()
+
+        ps = self.state_manager.project_state
+        dm = self.data_manager
+
+        # Materialize known videos with hashes and dates
+        items: list[tuple[Path, str, _dt]] = []
+        def _ensure(vm) -> tuple[Path, str, _dt] | None:
+            try:
+                p = Path(vm.path)
+                if not p.exists():
+                    return None
+                h = vm.sample_hash or dm.compute_sample_hash(p)
+                dt = getattr(vm, "date", None) or dm._extract_start_time(p)
+                return (p, str(h), dt)
+            except Exception:
+                return None
+
+        for vm in ps.unassigned_videos.values():
+            t = _ensure(vm)
+            if t:
+                items.append(t)
+        for vm in ps.experiment_videos.values():
+            t = _ensure(vm)
+            if t:
+                items.append(t)
+
+        if not items:
+            return {"status": "success", "copied": 0, "moved": 0, "message": "No known videos"}
+
+        # Build lookup for naming
+        hash_to_vm = {h: vm for h, vm in ((vm.sample_hash, vm) for vm in list(ps.unassigned_videos.values()) + list(ps.experiment_videos.values())) if h}
+        exp_by_id = ps.experiments
+
+        def _namer(src_path: Path) -> str:
+            # Deprecated: no-op; file will be placed under per-recording folder keeping original filename
+            return Path(src_path).name
+
+        copy_exts = [e.lower() for e in (copy_exts or [".mp4"])]
+        move_exts = [e.lower() for e in (move_exts or [".mkv"])]
+        allow = set(copy_exts + move_exts)
+        src_copy: list[tuple[Path, str]] = []
+        src_move: list[tuple[Path, str]] = []
+        for p, h, _ in items:
+            if p.suffix.lower() not in allow:
+                continue
+            if p.suffix.lower() in move_exts:
+                src_move.append((p, h))
+            else:
+                src_copy.append((p, h))
+
+        if dry_run:
+            return {"status": "success", "planned_copy": len(src_copy), "planned_move": len(src_move), "destination": str(dest_base)}
+
+        added_total = 0
+        if src_copy:
+            gen_copy = dm.stage_files_to_shared(src_copy, shared_root=shared_root, dest_base=dest_base, overwrite=False, progress_cb=None, delete_source_on_success=False, namer=_namer)
+            added_total += self.register_unlinked_videos(gen_copy)
+        if src_move:
+            gen_move = dm.stage_files_to_shared(src_move, shared_root=shared_root, dest_base=dest_base, overwrite=False, progress_cb=None, delete_source_on_success=True, namer=_namer)
+            added_total += self.register_unlinked_videos(gen_move)
+        return {"status": "success", "registered": added_total, "destination": str(dest_base)}
+
+    def import_moseq_media(
+        self,
+        *,
+        project_path: Path,
+        moseq_root: Path,
+        dest_subdir: str = "recordings/master",
+        require_proc: bool = True,
+        filename_pattern: str = "{base}_{date:%Y%m%d}_{hash8}{ext}",
+        dry_run: bool = False,
+    ) -> Dict[str, Any]:
+        """Import MoSeq .mkv sessions from moseq_root into a flat master library (move)."""
+        from datetime import datetime as _dt
+
+        self.load_project(project_path)
+        sr = self.state_manager.project_state.shared_root or self.get_shared_directory()
+        shared_root = Path(sr).expanduser().resolve()
+        dest_base = (shared_root / dest_subdir).expanduser().resolve()
+
+        dm = self.data_manager
+        mr = Path(moseq_root).expanduser().resolve()
+        if not mr.exists():
+            return {"status": "failed", "error": f"MoSeq root not found: {mr}"}
+
+        mkv_paths: list[Path] = []
+        for p in mr.glob("**/*.mkv"):
+            if not p.is_file():
+                continue
+            if require_proc and not (p.parent / "proc" / "results_00.mp4").exists():
+                continue
+            mkv_paths.append(p)
+
+        if not mkv_paths:
+            return {"status": "success", "moved": 0, "message": "No matching MoSeq .mkv files found"}
+
+        if dry_run:
+            return {"status": "success", "planned": len(mkv_paths), "destination": str(dest_base)}
+
+        def _namer(src_path: Path) -> str:
+            base = src_path.stem
+            ext = src_path.suffix
+            try:
+                h = dm.compute_sample_hash(src_path)
+                hash8 = h[:8]
+            except Exception:
+                hash8 = ""
+            try:
+                st = dm._extract_start_time(src_path)
+            except Exception:
+                st = _dt.fromtimestamp(src_path.stat().st_mtime)
+            try:
+                name = filename_pattern.format(base=base, ext=ext, date=st, hash8=hash8, subject="", experiment="")
+            except Exception:
+                name = f"{base}_{hash8}{ext}" if hash8 else f"{base}{ext}"
+            if not name.endswith(ext):
+                name = f"{name}{ext}"
+            return Path(name).name
+
+        src_move = []
+        for p in mkv_paths:
+            try:
+                src_move.append((p, dm.compute_sample_hash(p)))
+            except Exception:
+                continue
+
+        gen_move = dm.stage_files_to_shared(src_move, shared_root=shared_root, dest_base=dest_base, overwrite=False, progress_cb=None, delete_source_on_success=True, namer=_namer)
+        added = self.register_unlinked_videos(gen_move)
+        return {"status": "success", "moved": added, "destination": str(dest_base)}
+
     def run_project_level_plugin_action(self, plugin_name: str, capability_name: str, parameters: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Executes a plugin capability that operates at the project level (e.g., importers),
-        not tied to a specific experiment. It looks for a method like 'run_import'
-        on the plugin instance.
-
-        Args:
-            plugin_name: The name of the plugin to run.
-            capability_name: The specific capability identifier (used for logging/finding).
-            parameters: A dictionary of parameters required by the plugin's action method.
-
-        Returns:
-            A dictionary containing the results or error information.
+        Execute a project-level action on a plugin (e.g., importers/utilities).
+        Convention: the plugin exposes a callable method named 'run_import(params, project_manager)'.
         """
-        self.log_bus.log(f"Attempting project-level action: Plugin='{plugin_name}', Capability='{capability_name}'", "info", "ProjectManager")
-        logger.info(f"Attempting project-level action: Plugin='{plugin_name}', Capability='{capability_name}' with params: {parameters}")
+        self.log_bus.log(
+            f"Attempting project-level action: Plugin='{plugin_name}', Capability='{capability_name}'",
+            "info",
+            "ProjectManager",
+        )
+        logger.info(
+            f"Attempting project-level action: Plugin='{plugin_name}', Capability='{capability_name}' with params: {parameters}"
+        )
 
-        # --- Find Plugin ---
         plugin = self.plugin_manager.get_plugin_by_name(plugin_name)
         if not plugin:
             msg = f"Plugin '{plugin_name}' not found."
@@ -1225,48 +1489,199 @@ class ProjectManager:
             logger.error(msg)
             return {"status": "failed", "error": msg}
 
-        # --- Check Capability (Optional but good practice) ---
-        if capability_name not in plugin.analysis_capabilities():
-             msg = f"Plugin '{plugin_name}' does not report capability '{capability_name}'."
-             # Log as warning because the primary check is for the execution method
-             logger.warning(msg)
-             # Don't fail here, as the capability list might be for experiment analysis primarily
+        # Optional: warn if capability is not advertised
+        try:
+            if capability_name not in (plugin.analysis_capabilities() or []):
+                logger.warning(
+                    f"Plugin '{plugin_name}' does not report capability '{capability_name}'. Proceeding with action call."
+                )
+        except Exception:
+            pass
 
-        # --- Find and Execute Action Method (Convention: 'run_import') ---
-        # Based on DlcProjectImporterPlugin, we expect a 'run_import' method
-        # We could make this more generic later if needed (e.g., 'run_<capability_name>')
-        action_method_name = "run_import" # Convention based on the importer plugin
-        if hasattr(plugin, action_method_name) and callable(getattr(plugin, action_method_name)):
-            action_method = getattr(plugin, action_method_name)
-            try:
-                logger.debug(f"Executing '{action_method_name}' on plugin '{plugin_name}'...")
-                # Call the method, passing the parameters and the ProjectManager instance
-                result = action_method(params=parameters, project_manager=self)
-
-                if not isinstance(result, dict):
-                     logger.error(f"Plugin action method '{action_method_name}' returned non-dict type: {type(result)}")
-                     raise RuntimeError("Plugin action method returned invalid result format.")
-
-                status = result.get("status", "failed") # Default to failed if status missing
-                if status == "success":
-                    self.log_bus.log(f"Project-level action '{capability_name}' completed successfully.", "success", "ProjectManager")
-                    logger.info(f"Project-level action '{capability_name}' completed successfully.")
-                else:
-                    err_msg = result.get('error', 'Unknown error during plugin action.')
-                    self.log_bus.log(f"Project-level action failed: {err_msg}", "error", "ProjectManager")
-                    logger.error(f"Project-level action '{capability_name}' failed: {err_msg}")
-
-                return result # Return the dictionary from the plugin
-
-            except Exception as e:
-                msg = f"Error executing action '{action_method_name}' on plugin '{plugin_name}': {e}"
-                self.log_bus.log(f"Action failed: {msg}", "error", "ProjectManager")
-                logger.error(msg, exc_info=True)
-                return {"status": "failed", "error": msg}
-        else:
-            msg = f"Plugin '{plugin_name}' does not have the required action method '{action_method_name}' for capability '{capability_name}'."
+        action_method_name = "run_import"
+        if not hasattr(plugin, action_method_name) or not callable(getattr(plugin, action_method_name)):
+            msg = (
+                f"Plugin '{plugin_name}' does not have the required action method '{action_method_name}' for capability '{capability_name}'."
+            )
             self.log_bus.log(f"Action failed: {msg}", "error", "ProjectManager")
             logger.error(msg)
             return {"status": "failed", "error": msg}
+
+        try:
+            result = getattr(plugin, action_method_name)(params=parameters, project_manager=self)
+            if not isinstance(result, dict):
+                raise RuntimeError("Plugin action method returned invalid result format (expected dict).")
+            if result.get("status") == "success":
+                self.log_bus.log(
+                    f"Project-level action '{capability_name}' completed successfully.",
+                    "success",
+                    "ProjectManager",
+                )
+                logger.info(f"Project-level action '{capability_name}' completed successfully.")
+            else:
+                err_msg = result.get("error", "Unknown error during plugin action.")
+                self.log_bus.log(f"Project-level action failed: {err_msg}", "error", "ProjectManager")
+                logger.error(f"Project-level action '{capability_name}' failed: {err_msg}")
+            return result
+        except Exception as e:
+            msg = f"Error executing action '{action_method_name}' on plugin '{plugin_name}': {e}"
+            self.log_bus.log(f"Action failed: {msg}", "error", "ProjectManager")
+            logger.error(msg, exc_info=True)
+            return {"status": "failed", "error": msg}
+
+    # ------------------------------------------------------------------
+    # Maintenance: Fix master filenames to true recording times
+    # ------------------------------------------------------------------
+    def fix_master_recording_times(
+        self,
+        *,
+        project_path: Path,
+        dest_subdir: str = "recordings/master",
+        dry_run: bool = False,
+    ) -> Dict[str, Any]:
+        """Rename files under the master library to reflect true recording time and update project state.
+
+        - Computes true recording time via DataManager._extract_start_time (ffprobe-based) per file
+        - Ensures filename contains the correct YYYYMMDD_HHMM token before the hash8
+        - Preserves trailing hash8; replaces/sets it to sample-hash if mismatched/missing
+        - Updates VideoMetadata.date and path in project state for both unassigned and experiment videos
+        - For experiments with exactly one linked video, updates ExperimentMetadata.date_recorded to the true time
+        """
+        import re
+        from datetime import datetime as _dt
+
+        self.load_project(project_path)
+        sr = self.state_manager.project_state.shared_root or self.get_shared_directory()
+        shared_root = Path(sr).expanduser().resolve()
+        master_dir = (shared_root / dest_subdir).expanduser().resolve()
+        if not master_dir.exists():
+            return {"status": "failed", "error": f"Master directory not found: {master_dir}"}
+
+        exts = {".mp4", ".mkv", ".avi", ".mov", ".mpg", ".mpeg"}
+        files: list[Path] = []
+        for p in master_dir.rglob("*"):
+            if p.is_file() and p.suffix.lower() in exts:
+                files.append(p)
+
+        dm = self.data_manager
+        ps = self.state_manager.project_state
+
+        # Build reverse index by hash for quick lookup
+        hash_to_vm: dict[str, Any] = {}
+        for d in (ps.unassigned_videos, ps.experiment_videos):
+            for h, vm in d.items():
+                if h:
+                    hash_to_vm[h] = vm
+
+        def _target_name(src: Path, true_dt: _dt, hash8: str) -> str:
+            base = src.stem
+            ext = src.suffix
+            # Replace the last date token 20YYYYMMDD(_HHMM)? with true token; else insert before hash8 or at end
+            ts_token = true_dt.strftime("%Y%m%d_%H%M")
+            # Ensure trailing _hash8 exists and matches
+            m_hash = re.search(r"([0-9a-f]{8})$", base)
+            if m_hash:
+                base_wo_hash = base[: m_hash.start()].rstrip("_")
+                current_h8 = m_hash.group(1)
+            else:
+                base_wo_hash = base
+                current_h8 = None
+
+            # Replace or insert date token
+            # Find last date-like token
+            m_dt_iter = list(re.finditer(r"20\d{6}(?:_\d{4})?", base_wo_hash))
+            if m_dt_iter:
+                last = m_dt_iter[-1]
+                new_base = base_wo_hash[: last.start()] + ts_token + base_wo_hash[last.end():]
+                new_base = re.sub(r"__+", "_", new_base.strip("_"))
+            else:
+                # Insert before trailing hash or at end
+                new_base = base_wo_hash
+                if new_base and not new_base.endswith("_"):
+                    new_base += "_"
+                new_base += ts_token
+
+            # Ensure hash8 at end
+            final_h8 = hash8.lower()
+            if current_h8 and current_h8.lower() == final_h8:
+                new_name = f"{new_base}_{current_h8}{ext}"
+            else:
+                new_name = f"{new_base}_{final_h8}{ext}"
+            return new_name
+
+        renamed = 0
+        updated_vm = 0
+        updated_exp = 0
+
+        for src in files:
+            try:
+                h = dm.compute_sample_hash(src)
+                h8 = h[:8]
+                true_dt = dm._extract_start_time(src)
+                # Compute target name
+                target = src.with_name(_target_name(src, true_dt, h8))
+                if target != src:
+                    if not dry_run:
+                        # Disambiguate if exists with different content
+                        candidate = target
+                        n = 1
+                        while candidate.exists() and candidate != src:
+                            # If candidate matches same hash, reuse
+                            try:
+                                if dm.compute_sample_hash(candidate) == h:
+                                    break
+                            except Exception:
+                                pass
+                            candidate = target.with_stem(f"{target.stem}_{n}")
+                            n += 1
+                        if candidate != src and candidate != target and candidate.suffix != target.suffix:
+                            candidate = target  # Fallback
+                        if candidate != src:
+                            src.rename(candidate)
+                            dst = candidate
+                        else:
+                            dst = src
+                    else:
+                        dst = target
+                    renamed += 1
+                else:
+                    dst = src
+
+                # Update VM in state
+                vm = hash_to_vm.get(h)
+                if vm is not None:
+                    try:
+                        if getattr(vm, "path", None) != dst:
+                            vm.path = Path(dst).resolve()
+                            updated_vm += 1
+                        # Always set true recording time
+                        vm.date = true_dt
+                        # Update experiments with exactly one video
+                        if getattr(vm, "experiment_ids", None):
+                            exp_ids = list(vm.experiment_ids)
+                            if len(exp_ids) == 1:
+                                exp_id = exp_ids[0]
+                                if exp_id in ps.experiments:
+                                    ps.experiments[exp_id].date_recorded = true_dt
+                                    updated_exp += 1
+                    except Exception:
+                        pass
+            except Exception as e:
+                logger.debug(f"Skipping file during fix_master_recording_times: {src} ({e})")
+                continue
+
+        if not dry_run:
+            self.save_project()
+            self.state_manager.notify_observers()
+
+        return {
+            "status": "success",
+            "scanned": len(files),
+            "renamed": renamed,
+            "updated_recordings": updated_vm,
+            "updated_experiments": updated_exp,
+            "master_dir": str(master_dir),
+            "dry_run": dry_run,
+        }
 
     

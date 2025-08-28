@@ -1004,12 +1004,13 @@ class ExperimentView(BaseView):
     def _get_selected_plugins(self) -> List['BasePlugin']: # Forward reference if BasePlugin not imported yet
         """Helper to get the plugin objects currently selected in the UI lists."""
         selected_plugins = []
-        # Data Handler (single selection)
-        selected_handler_item = self.data_handler_plugin_list.currentItem()
-        if selected_handler_item:
-            plugin = selected_handler_item.data(Qt.ItemDataRole.UserRole)
-            if plugin:
-                selected_plugins.append(plugin)
+        # Importers/Data Handlers (respect multi-selection)
+        for i in range(self.data_handler_plugin_list.count()):
+            item = self.data_handler_plugin_list.item(i)
+            if item.isSelected():
+                plugin = item.data(Qt.ItemDataRole.UserRole)
+                if plugin and plugin not in selected_plugins:
+                    selected_plugins.append(plugin)
 
         # Analysis Plugins (multi-selection)
         for i in range(self.analysis_plugin_list.count()):

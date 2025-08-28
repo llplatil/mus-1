@@ -6,7 +6,6 @@ from .base_plugin import BasePlugin
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from PIL import Image
 from io import BytesIO
 from typing import Optional, Dict, Any, List, Tuple
 import logging

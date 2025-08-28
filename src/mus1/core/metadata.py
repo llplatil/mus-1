@@ -369,6 +369,15 @@ class VideoMetadata(BaseModel):
     sample_hash: Optional[str] = None  # Fast hash of sampled chunks for integrity verification
     # Track where this hash has been seen across machines
     last_seen_locations: List[Dict[str, Any]] = Field(default_factory=list)
+    # Full-file identity (computed once unless the file changes)
+    full_hash: Optional[str] = None
+    # Best-known recording time and provenance for that timestamp
+    recorded_time: Optional[datetime] = None
+    recorded_time_source: Optional[str] = None  # e.g., "csv", "mtime", "container", "manual"
+    # Processing/audit trail for this media (ordered events)
+    processing_history: List[Dict[str, Any]] = Field(default_factory=list)
+    # Membership flag for lab-wide master media index
+    is_master_member: bool = False
 
 
 class WorkerEntry(BaseModel):

@@ -41,6 +41,7 @@ Note: See `docs/dev/ARCHITECTURE_CURRENT.md` for the current, authoritative arch
 - **(Updated)** File hashing is centralized in `mus1/core/utils/file_hash.py` and used by scanners and core logic.
 - **(Updated)** Likelihood defaults are resolved from `ProjectState` fields (`likelihood_filter_enabled`, `default_likelihood_threshold`).
 - Returns data in standardized formats (e.g., Pandas DataFrame) for plugins to consume, usually via the handler's helper method.
+- **(New)** Is project-aware for output paths via `set_project_root` (called by `ProjectManager` on create/load) and `get_experiment_data_path`.
 - Does not contain logic specific to third-party formats (delegated to Handler Plugins via `call_handler_method`).
 
 ## Component Architecture
@@ -117,17 +118,22 @@ Implementation steps are tracked in *ROADMAP.md*.
 
 ---
 
-## Video Discovery & Unassigned-Video Workflow (NEW)
+## Video Discovery & Media Workflow (Updated)
 
-The new ingestion path separates *finding* videos from *assigning* them.
+The ingestion path separates discovery from assignment and standardizes media organization under per-recording folders.
 
 Core changes
 -------------
 DataManager
 • **discover_video_files(...)** – generator yielding `(path, hash)` with optional progress callback. 
 • **deduplicate_video_list(...)** – removes duplicate hashes, yielding `(path, hash, start_time)`; supports progress callback.
-• **scanners package** – `mus1/core/scanners/` houses `BaseScanner` plus OS-specific subclasses (`MacOSVideoScanner`, `LinuxVideoScanner`, `WindowsVideoScanner`).  `discover_video_files` now delegates to `video_discovery.get_scanner()` ensuring correct behaviour across platforms and skipping macOS iCloud placeholders.  
-• **video_discovery.py** – helper choosing the scanner via `platform.system()`; integrates with future StorageProviders so scan roots can originate from local or shared mounts.
+• **scanners package** – `mus1/core/scanners/` houses `BaseScanner` plus OS-specific subclasses (macOS, Linux, Windows).
+• **Staging to per-recording folders** – `stage_files_to_shared` creates `project/media/subject-YYYYMMDD-hash8/`, retains original filename, and writes `metadata.json`:
+  - `file`: `path`, `filename`, `size_bytes`, `last_modified`, `sample_hash`, optional `full_hash`
+  - `times`: `recorded_time`, `recorded_time_source` (csv|mtime|container|manual)
+  - `provenance`: `source`, `notes`
+  - `processing_history`, `experiment_links`, `derived_files`, `is_master_member`
+• **Recorded time policy** – prefer CSV; else mtime; use container only with `--verify-time` when differing.
 
 ProjectState (metadata.py)
 ```
@@ -138,16 +144,18 @@ Key = `sample_hash` – value is existing `VideoMetadata`.
 ProjectManager
 • **register_unlinked_videos(iterable)** – populates `unassigned_videos` and persists.  
 • **link_unassigned_video(hash, experiment_id)** – moves entry into `experiment_videos` and updates corresponding `ExperimentMetadata.file_ids`.
+• **create_experiment_from_recording(...)** – auto-names from recording folder and links media.
 
-CLI mapping
-------------
+CLI mapping (Updated)
 ```
-mus1 scan videos …                -> DataManager.discover_video_files
-mus1 scan dedup                   -> DataManager.deduplicate_video_list
-mus1 project add-videos <proj> -  -> ProjectManager.register_unlinked_videos
-mus1 project scan-and-add …       -> one-shot scan, dedup, register unassigned
+mus1 scan videos …                        -> DataManager.discover_video_files
+mus1 scan dedup                           -> DataManager.deduplicate_video_list
+mus1 project scan-and-move …              -> scan, dedup, stage into media per-recording folders, register
+mus1 project media-index …                -> index loose files under media and register
+mus1 project media-assign …               -> interactive assignment + optional create+link experiment
+mus1 project assembly-scan-by-experiments -> CSV-guided subject scan via assembly plugin, stage into media
+mus1 project import-third-party-folder    -> copy/move third-party media into project/media with provenance
 ```
-The last command reads JSON-lines from stdin (`-`) or a file.
 
 Shared Logging
 --------------

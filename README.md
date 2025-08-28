@@ -22,6 +22,7 @@ The project uses a modular architecture with plugins for data handling (e.g., De
 - **Batch Processing**: Group experiments for efficient management (analysis planned).
 - **Observer Pattern**: UI components update automatically based on project state changes.
 - **Theme System**: Light/dark themes with OS detection.
+- **Per-recording Media Folders (New)**: Each recording lives in its own folder under `project/media/subject-YYYYMMDD-hash8/` with a `metadata.json` tracking hashes, times, provenance, and processing history.
 
 ## Intended Workflow
 
@@ -89,6 +90,48 @@ mus1 workers run    /path/to/project --name ubuntu -- echo hello
 ```
 
 Scanning and ingest
+# Media indexing and assignment (New)
+```bash
+# Scan roots → move files into project/media/subject-YYYYMMDD-hash8/ and register unassigned
+mus1 project scan-and-move /path/to/project [roots...] --verify-time
+
+# Index loose files already dropped into project/media (create folders + metadata; register)
+mus1 project media-index /path/to/project --provenance scan_and_move
+
+# Iterate unassigned media → set subject and experiment type; optional create+link experiment
+mus1 project media-assign /path/to/project \
+  --prompt-on-time-mismatch \
+  --set-provenance manual_assignment
+
+# CSV-guided assembly scan: extract subjects from CSVs, scan roots (or plugin config hints), stage into media
+mus1 project assembly-scan-by-experiments /path/to/project CSV1 [CSV2 ...] \
+  --roots /Volumes/Data ~/Videos \
+  --verify-time \
+  --provenance assembly_guided_import
+
+# Import third-party processed folder (copy by default or move) into media with provenance
+mus1 project import-third-party-folder /path/to/project /path/to/source \
+  --copy \
+  --verify-time \
+  --provenance third_party_import
+```
+
+# Master media list (New)
+```bash
+# Accept current project's media as the lab master list (stored at ~/MUS1/projects/master_media_index.json)
+mus1 master-accept-current /path/to/project
+
+# Add unique items from another project's media to the master list
+mus1 master-add-unique /path/to/other_project
+```
+
+# Credentials (New)
+```bash
+mus1 credentials-set <ssh_alias> --user myuser --identity-file ~/.ssh/id_ed25519
+mus1 credentials-list
+mus1 credentials-remove <ssh_alias>
+```
+
 ```bash
 # Scan arbitrary roots and get JSONL (stdout), then dedup
 mus1 scan videos <roots...> | mus1 scan dedup
@@ -169,6 +212,18 @@ Notes
   ```bash
   mus1 workers add /path/to/project --name copper --ssh-alias copperlab-server --test
   ```
+
+## New Media Organization and Metadata (Dev)
+
+- Each recording is placed under `project/media/subject-YYYYMMDD-hash8/` and retains the original filename.
+- A `metadata.json` is created per recording with fields:
+  - `file`: `path`, `filename`, `size_bytes`, `last_modified`, `sample_hash` (fast) and optional `full_hash` (on-demand)
+  - `times`: `recorded_time` and `recorded_time_source` (csv|mtime|container|manual)
+  - `provenance`: `source` label and freeform `notes`
+  - `processing_history`: array of stage events
+  - `experiment_links`, `derived_files`, `is_master_member`
+- `--verify-time` performs a container probe and prefers it only when it differs from mtime.
+- Pattern-based master naming is deprecated; folder-based layout is enforced.
 
 ## Getting Started
 

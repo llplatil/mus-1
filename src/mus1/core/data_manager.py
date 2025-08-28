@@ -3,25 +3,20 @@ from pathlib import Path
 import pandas as pd
 from typing import Optional, Union, Dict, Any, List, TYPE_CHECKING
 import yaml
-import numpy as np
-import matplotlib.pyplot as plt
-from PIL import Image
-from io import BytesIO
 import hashlib  # For fast file hashing
 import subprocess
 import json
+import os
 from datetime import datetime
 from typing import Callable, Iterable, Iterator, Tuple
+import re
 
 # Import for type checking only to avoid runtime dependency cycles
 if TYPE_CHECKING:
     from .plugin_manager import PluginManager
 
-# Import scanner modules
-try:
-     from .scanners.video_discovery import get_scanner
-except ImportError:
-     get_scanner = Any # Fallback for type checker
+# Import scanner modules (no legacy fallbacks in dev)
+from .scanners.video_discovery import get_scanner
 
 # Custom Exception for Frame Rate Resolution
 class FrameRateResolutionError(Exception):
@@ -36,6 +31,14 @@ class DataManager:
         self.plugin_manager = plugin_manager # Store plugin manager instance
         # Keep threshold resolution logic here for now, plugins can call it
         # self._likelihood_threshold = None # This might be better managed per-call
+        # Cache true recording time by sample hash to avoid repeated ffprobe calls
+        self._recording_time_cache: dict[str, datetime] = {}
+        # Track current project root for consistent output paths
+        self._project_root: Optional[Path] = None
+
+    def set_project_root(self, project_root: Path) -> None:
+        """Set the current project root for this DataManager."""
+        self._project_root = Path(project_root).expanduser().resolve()
 
     # --- Generic File Validation ---
     def _validate_file(self, file_path: Path, expected_extensions: list[str], file_type: str) -> None:
@@ -122,15 +125,9 @@ class DataManager:
 
         Layout: <project_root>/data/<subject_id>/<experiment_id>/
         """
-        project_root = getattr(self.state_manager, '_current_project_root', None)
-        if project_root is None and hasattr(self.state_manager, 'get_project_root'):
-            project_root = self.state_manager.get_project_root()
-        if project_root is None:
-            # Fallback: try ProjectManager convention from ProjectManager instance if available
-            project_root = getattr(getattr(self, 'project_manager', None), '_current_project_root', None)
-        if project_root is None:
+        if self._project_root is None:
             raise RuntimeError("No current project loaded; cannot compute experiment data path.")
-        base = Path(project_root) / 'data' / str(experiment.subject_id) / str(experiment.id)
+        base = Path(self._project_root) / 'data' / str(experiment.subject_id) / str(experiment.id)
         base.mkdir(parents=True, exist_ok=True)
         return str(base)
 
@@ -314,7 +311,7 @@ class DataManager:
         return {"valid": True, "source": arena_source, "path": str(image_path)}
 
     # ------------------------------------------------------------------
-    # Fast file hashing utility (used for video integrity checks)
+    # File hashing utilities (fast sample + full-file) and change detection
     # ------------------------------------------------------------------
     @staticmethod
     def compute_sample_hash(file_path: Path, chunk_size: int = 4 * 1024 * 1024) -> str:
@@ -322,12 +319,65 @@ class DataManager:
         from .utils.file_hash import compute_sample_hash as _compute
         return _compute(file_path, chunk_size)
 
+    @staticmethod
+    def compute_full_hash(file_path: Path, *, algo: str = "blake2b", digest_size: int = 32, chunk_size: int = 8 * 1024 * 1024) -> str:
+        """Compute and return a full-file hash using shared utility."""
+        from .utils.file_hash import compute_full_hash as _compute_full
+        return _compute_full(file_path, algo=algo, digest_size=digest_size, chunk_size=chunk_size)
+
+    @staticmethod
+    def file_identity_signature(file_path: Path) -> tuple[int, float]:
+        from .utils.file_hash import file_identity_signature as _sig
+        return _sig(file_path)
+
+    # ------------------------------------------------------------------
+    # Recording folder naming & sanitizer
+    # ------------------------------------------------------------------
+    @staticmethod
+    def sanitize_component(name: str) -> str:
+        s = name.strip()
+        s = re.sub(r"[\\/:*?\"<>|]+", "-", s)
+        s = re.sub(r"\s+", "_", s)
+        return s or "unknown"
+
+    @staticmethod
+    def recording_folder_name(subject_id: str, recorded_date: datetime, sample_hash: str, hash_len: int = 8) -> str:
+        subj = DataManager.sanitize_component(subject_id)
+        date_str = recorded_date.strftime("%Y%m%d")
+        h8 = (sample_hash or "").lower()[:hash_len]
+        return f"{subj}-{date_str}-{h8}"
+
     # ------------------------------------------------------------------
     # Video discovery & deduplication helpers
     # ------------------------------------------------------------------
     def _extract_start_time(self, video_path: Path) -> datetime:
-        """Return creation time from video metadata (ffprobe) or fallback to mtime."""
+        """Return true recording time from container metadata when available; fallback to mtime.
+
+        This probes multiple common tag locations across containers (QuickTime/MP4, Matroska, generic):
+          - stream[0].tags.creation_time
+          - format.tags.creation_time
+          - format.tags.com.apple.quicktime.creationdate
+          - format.tags.DATE_RECORDED / DATE_LOCAL / DATE
+        """
+        def _parse_dt(val: str) -> datetime | None:
+            s = str(val).strip()
+            try:
+                # Normalize trailing Z to RFC 3339
+                if s.endswith("Z") and "+" not in s:
+                    s = s[:-1] + "+00:00"
+                return datetime.fromisoformat(s)
+            except Exception:
+                pass
+            # Try a few common fallback formats
+            for fmt in ("%Y-%m-%d %H:%M:%S%z", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
+                try:
+                    return datetime.strptime(s, fmt)
+                except Exception:
+                    continue
+            return None
+
         try:
+            # Minimize output to just relevant tag fields
             result = subprocess.run(
                 [
                     "ffprobe",
@@ -335,17 +385,46 @@ class DataManager:
                     "quiet",
                     "-print_format",
                     "json",
-                    "-show_format",
+                    "-select_streams",
+                    "v:0",
+                    "-show_entries",
+                    (
+                        "format_tags=creation_time,com.apple.quicktime.creationdate,DATE_RECORDED,DATE_LOCAL,DATE:"
+                        "stream_tags=creation_time"
+                    ),
                     str(video_path),
                 ],
                 capture_output=True,
                 text=True,
                 check=True,
             )
-            data = json.loads(result.stdout)
-            creation_time_str = data.get("format", {}).get("tags", {}).get("creation_time")
-            if creation_time_str:
-                return datetime.fromisoformat(creation_time_str.rstrip("Z"))
+            data = json.loads(result.stdout or "{}")
+            # Prefer stream tag if present
+            try:
+                streams = data.get("streams") or []
+                if streams:
+                    stags = (streams[0] or {}).get("tags") or {}
+                    v = stags.get("creation_time")
+                    if v:
+                        dt = _parse_dt(v)
+                        if dt:
+                            return dt
+            except Exception:
+                pass
+            # Then check format-level tags
+            tags = (data.get("format") or {}).get("tags") or {}
+            for key in (
+                "creation_time",
+                "com.apple.quicktime.creationdate",
+                "DATE_RECORDED",
+                "DATE_LOCAL",
+                "DATE",
+            ):
+                v = tags.get(key)
+                if v:
+                    dt = _parse_dt(v)
+                    if dt:
+                        return dt
         except Exception:
             # Silently fall back – logging would be noisy during large scans
             pass
@@ -424,7 +503,14 @@ class DataManager:
                 pass
             else:
                 unique[hsh] = path
-                start_time = self._extract_start_time(path)
+                # Resolve and cache true recording time per unique hash
+                start_time = self._recording_time_cache.get(hsh)
+                if start_time is None:
+                    start_time = self._extract_start_time(path)
+                    try:
+                        self._recording_time_cache[hsh] = start_time
+                    except Exception:
+                        pass
                 yield (path, hsh, start_time)
             done += 1
             if progress_cb:
@@ -450,6 +536,9 @@ class DataManager:
         dest_base: Path,
         overwrite: bool = False,
         progress_cb: Callable[[int, int], None] | None = None,
+        delete_source_on_success: bool = False,
+        namer: Callable[[Path], str] | None = None,
+        verify_time: bool = False,
     ) -> Iterator[Tuple[Path, str, datetime]]:
         """Copy files into shared storage and yield tuples suitable for registration.
 
@@ -478,12 +567,67 @@ class DataManager:
                     progress_cb(done, total)
                 continue
 
+            # Decide recording time per policy: default to mtime; optionally verify with container tags
+            try:
+                mtime_dt = datetime.fromtimestamp(src_res.stat().st_mtime)
+            except Exception:
+                mtime_dt = datetime.fromtimestamp(max(src_res.stat().st_mtime, src_res.stat().st_ctime))
+            recorded_time = mtime_dt
+            recorded_time_source = "mtime"
+            if verify_time:
+                try:
+                    st_extracted = self._extract_start_time(src_res)
+                    # If close to mtime, keep mtime; else prefer container
+                    if abs((st_extracted - mtime_dt).total_seconds()) > 60.0:
+                        recorded_time = st_extracted
+                        recorded_time_source = "container"
+                except Exception:
+                    pass
+
             # Determine destination
             try:
                 if str(src_res).startswith(str(sr_resolved)):
-                    dest = src_res
+                    # Already under shared_root. If not already under dest_base, we plan to relocate.
+                    try:
+                        src_under_dest = str(src_res).startswith(str(dest_base))
+                    except Exception:
+                        src_under_dest = False
+                    if src_under_dest:
+                        dest = src_res
+                    else:
+                        # Create per-recording folder using unknown subject placeholder
+                        folder = self.recording_folder_name("unknown", recorded_time, hsh)
+                        dest_dir = dest_base / folder
+                        base_name = namer(src_res) if namer else src_res.name
+                        dest = dest_dir / base_name
                 else:
-                    dest = dest_base / src_res.name
+                    folder = self.recording_folder_name("unknown", recorded_time, hsh)
+                    dest_dir = dest_base / folder
+                    base_name = namer(src_res) if namer else src_res.name
+                    dest = dest_dir / base_name
+                # If a different file already exists with same name but different hash, disambiguate
+                if dest.exists() and not overwrite:
+                    try:
+                        from .utils.file_hash import compute_sample_hash as _compute
+                        if _compute(dest) != hsh:
+                            stem = dest.stem
+                            suffix = dest.suffix
+                            counter = 1
+                            while True:
+                                candidate = dest_base / f"{stem}_{counter}{suffix}"
+                                if not candidate.exists():
+                                    dest = candidate
+                                    break
+                                # If candidate exists and matches hash, reuse it
+                                try:
+                                    if _compute(candidate) == hsh:
+                                        dest = candidate
+                                        break
+                                except Exception:
+                                    pass
+                                counter += 1
+                    except Exception:
+                        pass
             except Exception:
                 done += 1
                 if progress_cb:
@@ -502,10 +646,52 @@ class DataManager:
                 except Exception:
                     pass
 
-            # Perform copy if needed
+            # Perform data movement
             if not dest.exists() or overwrite:
                 try:
                     dest.parent.mkdir(parents=True, exist_ok=True)
+                    # Fast-path: if we are moving (delete_source_on_success) and both source and destination are on the same device,
+                    # prefer an atomic rename instead of copy to avoid slow, huge file copies.
+                    same_device = False
+                    try:
+                        same_device = (src_res.stat().st_dev == dest_base.stat().st_dev)
+                    except Exception:
+                        same_device = False
+                    if delete_source_on_success and same_device and str(src_res).startswith(str(sr_resolved)):
+                        try:
+                            # If overwrite requested and dest exists, remove it first
+                            if overwrite and dest.exists():
+                                dest.unlink(missing_ok=True)
+                        except Exception:
+                            pass
+                        try:
+                            os.replace(src_res, dest)
+                            # After rename, treat as success and skip copy + post-hash
+                            st = recorded_time
+                            # Write/update recording metadata.json
+                            try:
+                                md = self.build_recording_metadata(
+                                    video_path=dest,
+                                    subject_id="unknown",
+                                    experiment_type="",
+                                    batch_links=[],
+                                    sample_hash=hsh,
+                                    full_hash=None,
+                                    recorded_time=st,
+                                    recorded_time_source=recorded_time_source,
+                                )
+                                self.write_recording_metadata(dest.parent, md)
+                            except Exception:
+                                pass
+                            yield (dest, hsh, st)
+                            done += 1
+                            if progress_cb:
+                                progress_cb(done, total)
+                            continue
+                        except Exception:
+                            # Fallback to copy below if rename failed
+                            pass
+                    # Fallback: copy
                     shutil.copy2(src_res, dest)
                 except Exception:
                     done += 1
@@ -532,9 +718,32 @@ class DataManager:
                     progress_cb(done, total)
                 continue
 
+            # Success: optionally delete source if requested and source is off-shared
+            try:
+                if delete_source_on_success and not str(src_res).startswith(str(sr_resolved)) and src_res.exists():
+                    # Best-effort remove; ignore errors
+                    src_res.unlink(missing_ok=True)
+            except Exception:
+                pass
+
             # Success: yield for registration
             try:
-                st = self._extract_start_time(dest)
+                st = recorded_time
+                # Write/update recording metadata.json
+                try:
+                    md = self.build_recording_metadata(
+                        video_path=dest,
+                        subject_id="unknown",
+                        experiment_type="",
+                        batch_links=[],
+                        sample_hash=hsh,
+                        full_hash=None,
+                        recorded_time=st,
+                        recorded_time_source=recorded_time_source,
+                    )
+                    self.write_recording_metadata(dest.parent, md)
+                except Exception:
+                    pass
             except Exception:
                 st = datetime.fromtimestamp(max(dest.stat().st_mtime, dest.stat().st_ctime))
             yield (dest, hsh, st)
@@ -563,5 +772,82 @@ class DataManager:
                     "start_time": ts.isoformat() if hasattr(ts, "isoformat") else str(ts),
                 }
                 f.write(json.dumps(rec) + "\n")
+
+    # ------------------------------------------------------------------
+    # Recording metadata.json I/O helpers
+    # ------------------------------------------------------------------
+    def read_recording_metadata(self, recording_dir: Path) -> Dict[str, Any]:
+        meta_path = Path(recording_dir) / "metadata.json"
+        if not meta_path.exists():
+            return {}
+        try:
+            with open(meta_path, "r", encoding="utf-8") as f:
+                return json.load(f) or {}
+        except Exception:
+            return {}
+
+    def write_recording_metadata(self, recording_dir: Path, metadata: Dict[str, Any]) -> None:
+        recording_dir = Path(recording_dir)
+        try:
+            recording_dir.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            pass
+        meta_path = recording_dir / "metadata.json"
+        # Ensure stable keys ordering for diffs
+        try:
+            with open(meta_path, "w", encoding="utf-8") as f:
+                json.dump(metadata, f, indent=2, sort_keys=True, default=str)
+        except Exception:
+            # Best-effort; do not raise to avoid breaking pipelines
+            pass
+
+    def build_recording_metadata(
+        self,
+        *,
+        video_path: Path,
+        subject_id: str,
+        experiment_type: str,
+        batch_links: list[str] | None,
+        sample_hash: str,
+        full_hash: str | None,
+        recorded_time: datetime | None,
+        recorded_time_source: str | None,
+    ) -> Dict[str, Any]:
+        st = video_path.stat()
+        meta: Dict[str, Any] = {
+            "subject_id": subject_id,
+            "experiment_type": experiment_type,
+            "batch_links": list(batch_links or []),
+            "provenance": {
+                "source": "unknown",  # e.g., 'third_party_import', 'scan_and_move'
+                "notes": "",
+            },
+            "file": {
+                "path": str(video_path),
+                "filename": video_path.name,
+                "size_bytes": st.st_size,
+                "last_modified": st.st_mtime,
+                "sample_hash": sample_hash,
+                "full_hash": full_hash,
+            },
+            "times": {
+                "recorded_time": recorded_time.isoformat() if recorded_time else None,
+                "recorded_time_source": recorded_time_source,
+            },
+            "processing_history": [],
+            "experiment_links": [],
+            "derived_files": {},
+            "is_master_member": False,
+        }
+        return meta
+
+    def append_processing_event(self, metadata: Dict[str, Any], *, stage: str, tool: str, details: Dict[str, Any] | None = None) -> None:
+        events = metadata.setdefault("processing_history", [])
+        events.append({
+            "stage": stage,
+            "tool": tool,
+            "at": datetime.now().isoformat(),
+            "details": details or {},
+        })
 
     

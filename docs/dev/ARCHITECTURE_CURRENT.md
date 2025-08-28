@@ -4,10 +4,10 @@ This document describes how MUS1 works today based on the code, including gaps a
 
 ## Core modules
 
-- ProjectManager (`src/mus1/core/project_manager.py`)
+ - ProjectManager (`src/mus1/core/project_manager.py`)
   - Creates/loads/saves projects (`project_state.json`) under `~/MUS1/projects` by default (overridable via `MUS1_PROJECTS_DIR`).
   - Supports a shared projects root via `get_shared_directory()` resolved from `MUS1_SHARED_DIR` (must be a locally mounted path). Both CLI and GUI can create/list projects under this shared root.
-  - Saves use a lightweight advisory lock file `.mus1-lock` to reduce concurrent write conflicts on shared storage.
+  - Saves use a lightweight advisory lock file `.mus1-lock` and atomic temp-file rename to reduce concurrent write conflicts on shared storage.
   - Discovers plugins by importing classes in `src/mus1/plugins/*.py` that subclass `BasePlugin` and are concrete; registers them with `PluginManager`.
   - Orchestrates analysis via `run_analysis(experiment_id, capability)`:
     - Looks up the experiment and a plugin whose `analysis_capabilities()` includes the capability.
@@ -25,14 +25,14 @@ This document describes how MUS1 works today based on the code, including gaps a
   - Indexes plugins by `readable_data_formats()` and `analysis_capabilities()` for quick lookup.
   - Provides UI-oriented helpers for importer/analysis/exporter lists. Legacy “supported_*” shims remain but return canonical or empty lists; prefer enums/constants and capability/format indices.
 
-- DataManager (`src/mus1/core/data_manager.py`)
+ - DataManager (`src/mus1/core/data_manager.py`)
   - Generic IO: `read_yaml`, `read_csv`, `read_hdf` (DLC-friendly checks/warnings).
   - Settings helpers: `resolve_likelihood_threshold`, `resolve_frame_rate`.
   - Handler invocation: `call_handler_method(handler_name, method_name, **kwargs)` and automatic `data_manager` injection when required.
-  - Experiment output paths: `get_experiment_data_path(experiment)` for plugins to persist outputs under `<project>/data/<subject>/<experiment>/`.
-  - Video discovery: delegates to scanners via `get_scanner().iter_videos(...)`. macOS has a specialized scanner that skips iCloud placeholders; other OSes use the base scanner for now.
-  - Staging: `stage_files_to_shared(src_with_hashes, shared_root, dest_base, overwrite, progress_cb)` copies files into shared storage, verifies content-hash, and yields tuples for registration.
-  - Cross-target scanning: `project scan-from-targets` aggregates local/SSH/WSL targets, deduplicates, and can run in preview mode and emit JSONL lists without registering.
+  - Experiment output paths: `get_experiment_data_path(experiment)` for plugins to persist outputs under `<project>/data/<subject>/<experiment>/`. DataManager is made project-aware via `set_project_root` called by `ProjectManager` on create/load.
+  - Video discovery: delegates to scanners via `get_scanner().iter_videos(...)`.
+  - Staging: `stage_files_to_shared(src_with_hashes, ...)` now creates per-recording folders under `project/media/subject-YYYYMMDD-hash8/`, writes `metadata.json` (hashes, recorded_time with source, provenance, history), and yields tuples for registration. `--verify-time` prefers container metadata only when it differs from mtime.
+  - Cross-target scanning: `project scan-from-targets` aggregates local/SSH/WSL targets, deduplicates, and can preview/emit JSONL.
 
 - Metadata models (`src/mus1/core/metadata.py`)
   - Pydantic models for Subjects, Experiments, Batches, Videos, ProjectState.
@@ -50,7 +50,7 @@ This document describes how MUS1 works today based on the code, including gaps a
   - Capabilities: distance/speed, heatmap, movement plot, time in zones, time near objects, hemisphere analysis, NOR index, OF metrics (partial).
   - Loads tracking data via `DataManager.call_handler_method('DeepLabCutHandler', 'get_tracking_dataframe', ...)` and resolves frame rate/likelihood from `DataManager`.
 
-- SubjectImporterPlugin (project-level)
+- CustomProjectAssembly_Skeleton (package): CSV parsing, QA helpers, optional subject importer; also exposes scan hints consumed by assembly CLI.
   - Imports subject CSV and creates `SubjectMetadata` entries via `ProjectManager`.
 
 - GcpMoSeq2OrchestratorPlugin (deprecated)

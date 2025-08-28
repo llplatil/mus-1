@@ -13,8 +13,6 @@ class PluginManager:
         self._plugins_by_capability: Dict[str, List[BasePlugin]] = {}
         self._supported_types: Optional[List[str]] = None
         self._supported_stages: Optional[List[str]] = None
-        self._supported_sources: Optional[List[str]] = None
-        self._supported_arena_sources: Optional[List[str]] = None
 
     def _clear_caches(self):
         """Clear caches when plugins are registered/unregistered."""
@@ -22,8 +20,6 @@ class PluginManager:
         self._plugins_by_capability = {}
         self._supported_types = None
         self._supported_stages = None
-        self._supported_sources = None
-        self._supported_arena_sources = None
 
     def register_plugin(self, plugin: BasePlugin) -> None:
         """Register a plugin instance."""
@@ -103,35 +99,6 @@ class PluginManager:
             self._supported_stages = list(DEFAULT_PROCESSING_STAGES)
         return self._supported_stages
 
-    def get_supported_data_sources(self) -> List[str]:
-        """Deprecated shim; data sources are not aggregated from plugins in current design."""
-        if self._supported_sources is None:
-            self._supported_sources = []
-        return self._supported_sources
-
-    def get_supported_arena_sources(self) -> List[str]:
-        """Deprecated shim; arena sources are not aggregated from plugins in current design."""
-        if self._supported_arena_sources is None:
-            self._supported_arena_sources = []
-        return self._supported_arena_sources
-
-    # --- Compatibility Helpers (moved from StateManager) ---
-
-    def get_compatible_processing_stages(self, exp_type: str) -> List[str]:
-        """Return canonical processing stages (not filtered by plugins)."""
-        return self.get_supported_processing_stages()
-
-    def get_compatible_data_sources(self, exp_type: str, stage: str) -> List[str]:
-        """Deprecated shim; data sources not modeled centrally."""
-        return []
-
-    def compile_required_fields(self, plugins: List[BasePlugin]) -> List[str]:
-        """Return a sorted list of unique required fields from the provided plugins."""
-        fields: Set[str] = set()
-        for plugin in plugins:
-            fields.update(plugin.required_fields())
-        return sorted(list(fields))
-
     # --- Utility Methods ---
 
     def get_all_plugin_metadata(self) -> List[PluginMetadata]:
@@ -140,7 +107,6 @@ class PluginManager:
 
     def get_sorted_plugins(self, sort_mode: str = None) -> List[BasePlugin]:
         """Return a sorted list of plugins based on the specified sort mode."""
-        # TODO: Update sort_mode options if needed
         plugins = self.get_all_plugins()
         if sort_mode == "Date Added":
             return sorted(plugins, key=lambda p: p.plugin_self_metadata().date_created)
@@ -177,11 +143,7 @@ class PluginManager:
         )
 
     def get_importer_plugins(self) -> List[BasePlugin]:
-        """Return importer-like plugins for the UI's 'Data Handler/Importer' list.
-
-        Combines plugins explicitly marked as plugin_type 'importer' with those that
-        expose the 'load_tracking_data' capability. De-duplicates by plugin name.
-        """
+        """Return importer-like plugins for the UI's 'Data Handler/Importer' list."""
         explicit_importers = self.get_plugins_by_plugin_type("importer")
         handlers = self.get_data_handler_plugins()
         combined = self._unique_by_name(explicit_importers + handlers)
@@ -192,11 +154,7 @@ class PluginManager:
         return self.get_plugins_by_plugin_type("exporter")
 
     def get_analysis_plugins_for_type(self, experiment_type: str) -> List[BasePlugin]:
-        """Return analysis plugins that support the given experiment type.
-
-        Excludes explicit 'importer' and 'exporter' plugin types and requires at
-        least one capability other than 'load_tracking_data'.
-        """
+        """Return analysis plugins that support the given experiment type."""
         result: list[BasePlugin] = []
         for plugin in self._plugins:
             meta = plugin.plugin_self_metadata()
@@ -211,21 +169,3 @@ class PluginManager:
             if experiment_type in supported_types:
                 result.append(plugin)
         return sorted(result, key=lambda p: p.plugin_self_metadata().name.lower())
-
-    # --- Methods supporting old UI flow (Potentially remove later) ---
-
-    def get_plugins_by_criteria(self, exp_type: str, stage: str, source: str) -> List[BasePlugin]:
-        """DEPRECATED? Return plugins supporting the given criteria combination."""
-        logger.warning("get_plugins_by_criteria may be deprecated. Use format/capability filtering.")
-        return [plugin for plugin in self.get_all_plugins()
-                if (exp_type in plugin.get_supported_experiment_types() and
-                    stage in plugin.get_supported_processing_stages() and
-                    source in plugin.get_supported_data_sources())]
-
-    # --- Removed Methods ---
-    # def validate_experiment(...) - Moved to ProjectManager/calling code
-    # def analyze_experiment(...) - Moved to ProjectManager/calling code
-    # def get_all_plugin_styles(...) - Styling handled by ThemeManager+QSS
-    # def get_all_plugin_styling_preferences(...) - Styling handled by ThemeManager+QSS
-    # def get_plugin_styling_classes(...) - Styling handled by ThemeManager+QSS
-    # def register_plugin_styles_with_theme_manager(...) - Styling handled by ThemeManager+QSS

@@ -93,9 +93,6 @@ class BasePlugin(ABC):
         """
         return []
 
-    # --- Methods related to UI Generation (Kept for now) ---
-    # These might be needed by ExperimentView to build the parameter form
-
     def get_field_types(self) -> Dict[str, str]:
         """
         Return a dictionary mapping field names (from required/optional) to their data types
@@ -110,32 +107,3 @@ class BasePlugin(ABC):
         Provides context/help text for users in the UI. Default is empty dict.
         """
         return {}
-
-    # --- Methods supporting old UI flow (Potentially remove later) ---
-
-    def get_supported_experiment_types(self) -> List[str]:
-        """Return experiment types this plugin supports."""
-        # TODO: Review if this is still the primary way to filter, or if capabilities/formats are better
-        meta = self.plugin_self_metadata()
-        return getattr(meta, 'supported_experiment_types', []) or []
-
-    # --- Simplified Styling Method ---
-
-    def get_style_manifest(self) -> Optional[Dict[str, Any]]:
-        """Return a style manifest for plugin-specific style overrides (variables).
-
-        By default, no style overrides are provided. Plugins should only override
-        this if they need truly unique variables or CSS rules not covered by the
-        global theme and standard properties (like fieldRequired).
-            {
-                'base': { '$MY_PLUGIN_UNIQUE_COLOR': '#ABCDEF', ... }
-            }
-        """
-        return None
-
-    # --- Removed Methods ---
-    # @staticmethod extract_bodyparts_from_dlc_csv(...) - Moved to DeepLabCutPlugin
-    # def plugin_custom_style(...) - Replaced by simplified get_style_manifest & QSS properties
-    # def get_styling_preferences(...) - Removed, handled by ThemeManager+QSS
-    # def get_field_styling(...) - Removed, handled by ExperimentView+QSS properties
-    # def _get_field_processing_stage(...) - Removed, related to old styling
