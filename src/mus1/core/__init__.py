@@ -14,12 +14,6 @@ from .metadata import (
     BodyPartMetadata
 )
 
-from .state_manager import StateManager
-from .data_manager import DataManager
-from .project_manager import ProjectManager
-from .theme_manager import ThemeManager
-from .plugin_manager import PluginManager
-
 __all__ = [
     "init_metadata",
     "SubjectMetadata",
@@ -29,10 +23,4 @@ __all__ = [
     "ProjectMetadata",
     "ObjectMetadata",
     "BodyPartMetadata",
-
-    "StateManager",
-    "DataManager",
-    "ProjectManager",
-    "ThemeManager",
-    "PluginManager"
 ] 

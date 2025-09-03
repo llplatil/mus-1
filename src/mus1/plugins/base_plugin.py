@@ -107,3 +107,32 @@ class BasePlugin(ABC):
         Provides context/help text for users in the UI. Default is empty dict.
         """
         return {}
+
+    # -------------------------------
+    # Project-level action contracts
+    # -------------------------------
+    def supported_project_actions(self) -> List[str]:
+        """
+        Optional: Return a list of project-level action identifiers this plugin supports
+        (e.g., 'subjects_from_csv_folder', 'link_media_by_csv').
+
+        CLI/GUI can query these to present available actions to users.
+        Default: no project-level actions.
+        """
+        return []
+
+    def run_action(self, action: str, params: Dict[str, Any], project_manager: Any) -> Dict[str, Any]:
+        """
+        Optional: Execute a project-level action by name.
+
+        Args:
+            action: Action identifier, one of supported_project_actions().
+            params: Arbitrary parameters passed from caller/CLI.
+            project_manager: Access to core project APIs.
+
+        Returns:
+            Dict containing at least 'status': 'success'|'failed'.
+
+        Implement in concrete plugins that expose project-level actions.
+        """
+        raise NotImplementedError("Plugin does not implement project-level actions")

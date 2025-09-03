@@ -13,7 +13,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
-from typing import List, Optional, Iterable
+from typing import List, Optional, Iterable, Any
 from datetime import datetime
 
 import typer
@@ -35,6 +35,8 @@ from .core.metadata import WorkerEntry, ScanTarget
 from .core.job_provider import run_on_worker
 from .core.credentials import load_credentials, set_credential, remove_credential
 from .core.master_media import load_master_index, save_master_index, add_or_update_master_item
+import re
+import importlib.metadata as importlib_metadata
 
 _ctx = {"help_option_names": ["-h", "--help", "-help"]}
 app = typer.Typer(add_completion=False, rich_markup_mode="rich", context_settings=_ctx)
@@ -53,6 +55,10 @@ app.add_typer(project_app, name="project")
 app.add_typer(setup_app, name="setup")
 app.add_typer(workers_app, name="workers")
 app.add_typer(targets_app, name="targets")
+plugins_app = typer.Typer(help="Manage external MUS1 plugins (installed via pip entry points)", context_settings=_ctx)
+app.add_typer(plugins_app, name="plugins")
+assembly_app = typer.Typer(help="Project assembly via installed plugins (entry points).", context_settings=_ctx)
+project_app.add_typer(assembly_app, name="assembly")
 
 @app.callback(invoke_without_command=True)
 def _root_callback(
@@ -63,23 +69,41 @@ def _root_callback(
         "-V",
         help="Show version and exit",
         is_eager=True,
-    )
+    ),
+    json_out: bool = typer.Option(False, "--json", help="Emit machine-readable JSON where applicable"),
+    quiet: bool = typer.Option(False, "--quiet", "-q", help="Reduce output (implies no progress bars)"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Increase output verbosity"),
 ):
     if version:
         builtins.print(MUS1_VERSION)
         raise typer.Exit()
+    # Initialize and cache managers once at root
+    _get_managers(ctx)
+    # Store global output preferences
+    if getattr(ctx, "obj", None) is None:
+        ctx.obj = {}
+    ctx.obj["output"] = {
+        "json": bool(json_out),
+        "quiet": bool(quiet),
+        "verbose": bool(verbose),
+    }
     # If no subcommand provided, fall through to Typer's default behaviour
     # (we don't force exit here to preserve existing UX).
 
 
 @app.command("project-help", help="Show full help for the 'project' command group")
 def project_help():
-    builtins.print(project_app.get_help(ctx=typer.Context(project_app)))
+    # Typer wrapper doesn't expose get_help; use underlying Click command
+    from typer.main import get_command
+    cmd = get_command(project_app)
+    builtins.print(cmd.get_help(ctx=typer.Context(cmd)))
 
 
 @app.command("scan-help", help="Show full help for the 'scan' command group")
 def scan_help():
-    builtins.print(scan_app.get_help(ctx=typer.Context(scan_app)))
+    from typer.main import get_command
+    cmd = get_command(scan_app)
+    builtins.print(cmd.get_help(ctx=typer.Context(cmd)))
 
 ###############################################################################
 # Shared helpers
@@ -92,6 +116,67 @@ def _init_managers() -> tuple[StateManager, PluginManager, DataManager, ProjectM
     data_manager = DataManager(state_manager, plugin_manager)
     project_manager = ProjectManager(state_manager, plugin_manager, data_manager)
     return state_manager, plugin_manager, data_manager, project_manager
+
+def _get_managers(ctx: typer.Context) -> tuple[StateManager, PluginManager, DataManager, ProjectManager]:
+    if getattr(ctx, "obj", None) is None:
+        ctx.obj = {}
+    if "managers" not in ctx.obj:
+        ctx.obj["managers"] = _init_managers()
+    return ctx.obj["managers"]
+
+def _out_prefs(ctx: typer.Context) -> dict:
+    return (getattr(ctx, "obj", None) or {}).get("output", {})
+###############################################################################
+# plugins manage
+###############################################################################
+
+@plugins_app.command("list", help="List installed MUS1 plugins discovered via entry points")
+def plugins_list(ctx: typer.Context):
+    try:
+        eps = importlib_metadata.entry_points()
+        candidates = eps.select(group="mus1.plugins") if hasattr(eps, "select") else eps.get("mus1.plugins", [])
+        names = sorted([ep.name for ep in candidates])
+        if not names:
+            typer.echo("No external plugins installed.")
+        else:
+            typer.echo("Installed plugins:")
+            for n in names:
+                typer.echo(f"- {n}")
+    except Exception as e:
+        typer.secho(f"Failed to enumerate plugins: {e}", fg="red", err=True)
+
+@plugins_app.command("install", help="Install a plugin package via pip and refresh discovery")
+def plugins_install(
+    package: str = typer.Argument(..., help="PyPI package spec, e.g., mus1-assembly-skeleton"),
+    editable: bool = typer.Option(False, "--editable", "-e", help="Install in editable mode from local path"),
+):
+    # Non-interactive pip install
+    try:
+        cmd = [sys.executable, "-m", "pip", "install"]
+        if editable:
+            cmd.append("-e")
+        cmd.append(package)
+        subprocess.run(cmd, check=True)
+        typer.echo(f"Installed: {package}")
+    except subprocess.CalledProcessError as e:
+        typer.secho(f"pip install failed: {e}", fg="red", err=True)
+        raise typer.Exit(code=1)
+
+@plugins_app.command("uninstall", help="Uninstall a plugin package via pip")
+def plugins_uninstall(
+    package: str = typer.Argument(..., help="Package name to uninstall, e.g., mus1-assembly-skeleton"),
+    yes: bool = typer.Option(True, "--yes", "-y", help="Assume yes for pip uninstall"),
+):
+    try:
+        cmd = [sys.executable, "-m", "pip", "uninstall", package]
+        if yes:
+            cmd.append("-y")
+        subprocess.run(cmd, check=True)
+        typer.echo(f"Uninstalled: {package}")
+    except subprocess.CalledProcessError as e:
+        typer.secho(f"pip uninstall failed: {e}", fg="red", err=True)
+        raise typer.Exit(code=1)
+
 
 
 def _iter_json_lines(stream) -> Iterable[dict]:
@@ -138,8 +223,8 @@ def scan_videos(
         recursive=not non_recursive,
         excludes=exclude_dirs,
     )
-
-    pbar = tqdm(desc="Scanning", unit="file", disable=(not progress) or (not sys.stderr.isatty()))
+    out_prefs = _out_prefs(typer.get_current_context())
+    pbar = tqdm(desc="Scanning", unit="file", disable=(not progress) or (not sys.stderr.isatty()) or out_prefs.get("quiet", False))
 
     if output:
         with open(output, "a") as f:
@@ -150,7 +235,7 @@ def scan_videos(
     else:
         for path, hsh in items_gen:
             out = {"path": str(path), "hash": hsh}
-            print(json.dumps(out))
+            typer.echo(json.dumps(out))
             pbar.update(1)
     pbar.close()
 
@@ -173,13 +258,17 @@ def scan_dedup(
     records = list(_iter_json_lines(source_stream))
     tuples: List[tuple[Path, str]] = [(Path(rec["path"]), rec["hash"]) for rec in records]
 
-    pbar = tqdm(total=len(tuples), desc="Dedup", unit="file", disable=not sys.stderr.isatty())
+    out_prefs = _out_prefs(typer.get_current_context())
+    pbar = tqdm(total=len(tuples), desc="Dedup", unit="file", disable=(not sys.stderr.isatty()) or out_prefs.get("quiet", False))
     def _cb(done: int, total: int):
         pbar.update(1)
 
     for path, hsh, start_time in data_manager.deduplicate_video_list(tuples, progress_cb=_cb):
         out = {"path": str(path), "hash": hsh, "start_time": start_time.isoformat()}
-        print(json.dumps(out))
+        if out_prefs.get("json"):
+            typer.echo(json.dumps(out))
+        else:
+            typer.echo(json.dumps(out))
     pbar.close()
 
 ###############################################################################
@@ -241,12 +330,134 @@ def add_videos(
 ###############################################################################
 
 
-@app.command("gui", help="Launch the MUS1 GUI application")
-def launch_gui():
-    """Start the PySide6 GUI (same as running mus1-gui)."""
-    # Import lazily to avoid Qt import cost for CLI-only usage
-    from .main import main as gui_main
-    gui_main()
+# Note: GUI is launched exclusively via the 'mus1-gui' entry point
+
+###############################################################################
+# project assembly (generic plugin-driven)
+###############################################################################
+
+
+@assembly_app.command("list", help="List plugins that expose project-level assembly actions")
+def assembly_list(ctx: typer.Context):
+    _, plugin_manager, _dm, _pm = _get_managers(ctx)
+    plugins = plugin_manager.get_plugins_with_project_actions()
+    out_prefs = (ctx.obj or {}).get("output", {})
+    if out_prefs.get("json"):
+        names = [p.plugin_self_metadata().name for p in plugins]
+        typer.echo(json.dumps({"plugins": names}))
+        return
+    if not plugins:
+        typer.echo("No assembly-capable plugins installed.")
+        return
+    typer.echo("Assembly-capable plugins:")
+    for p in plugins:
+        typer.echo(f"- {p.plugin_self_metadata().name}")
+
+
+@assembly_app.command("list-actions", help="List project-level actions for an assembly plugin")
+def assembly_list_actions(
+    plugin: str = typer.Argument(..., help="Plugin name"),
+):
+    ctx = typer.get_current_context()
+    _, plugin_manager, _dm, _pm = _get_managers(ctx)
+    actions = plugin_manager.get_project_actions_for_plugin(plugin)
+    out_prefs = (ctx.obj or {}).get("output", {})
+    if out_prefs.get("json"):
+        typer.echo(json.dumps({"plugin": plugin, "actions": actions}))
+        return
+    if not actions:
+        typer.secho(f"No actions exposed by '{plugin}' or plugin not found.", fg="red", err=True)
+        raise typer.Exit(code=1)
+    typer.echo(f"Actions for {plugin}:")
+    for a in actions:
+        typer.echo(f"- {a}")
+
+
+@assembly_app.command("run", help="Run a project-level assembly action with optional params.")
+def assembly_run(
+    project_path: Path = typer.Argument(..., help="Path to MUS1 project"),
+    plugin: str = typer.Option(None, "--plugin", "-p", help="Assembly plugin name"),
+    action: str = typer.Option(None, "--action", "-a", help="Action name to run"),
+    params_file: Optional[Path] = typer.Option(None, "--params-file", "-f", help="YAML dict of params"),
+    param: Optional[List[str]] = typer.Option(None, "--param", help="KEY=VALUE pairs; repeat for multiple"),
+):
+    ctx = typer.get_current_context()
+    state_manager, plugin_manager, _dm, project_manager = _get_managers(ctx)
+    out_prefs = (ctx.obj or {}).get("output", {})
+    if not project_path.exists():
+        raise typer.BadParameter(f"Project not found: {project_path}")
+    LoggingEventBus.get_instance().configure_default_file_handler(project_path)
+    project_manager.load_project(project_path)
+
+    # Resolve candidate plugins
+    candidates = plugin_manager.get_plugins_with_project_actions()
+    names = [p.plugin_self_metadata().name for p in candidates]
+    if not names:
+        typer.secho("No assembly-capable plugins installed.", fg="red", err=True)
+        raise typer.Exit(code=1)
+
+    if not plugin:
+        if len(names) == 1:
+            plugin = names[0]
+        else:
+            if out_prefs.get("json"):
+                typer.echo(json.dumps({"error": "multiple_plugins", "plugins": names}))
+                raise typer.Exit(code=2)
+            typer.echo("Multiple assembly plugins installed. Select one:")
+            for idx, n in enumerate(names, 1):
+                typer.echo(f"{idx}) {n}")
+            try:
+                choice = int(typer.prompt("Enter choice number"))
+                plugin = names[choice - 1]
+            except Exception:
+                raise typer.BadParameter("Invalid selection")
+
+    # Resolve action if missing (prompt)
+    if not action:
+        actions = plugin_manager.get_project_actions_for_plugin(plugin)
+        if not actions:
+            raise typer.BadParameter(f"Plugin '{plugin}' exposes no actions")
+        if out_prefs.get("json"):
+            typer.echo(json.dumps({"plugin": plugin, "actions": actions}))
+            raise typer.Exit(code=2)
+        typer.echo(f"Actions for {plugin}:")
+        for idx, a in enumerate(actions, 1):
+            typer.echo(f"{idx}) {a}")
+        try:
+            choice = int(typer.prompt("Enter action number"))
+            action = actions[choice - 1]
+        except Exception:
+            raise typer.BadParameter("Invalid selection")
+
+    # Build params
+    params: dict[str, Any] = {"project_path": str(project_path)}
+    if params_file:
+        pf = params_file.expanduser().resolve()
+        if not pf.exists():
+            raise typer.BadParameter(f"Params file not found: {pf}")
+        with open(pf, "r", encoding="utf-8") as f:
+            loaded = yaml.safe_load(f) or {}
+            if isinstance(loaded, dict):
+                params.update(loaded)
+    if param:
+        for item in param:
+            if "=" not in item:
+                raise typer.BadParameter(f"Invalid --param '{item}', expected KEY=VALUE")
+            k, v = item.split("=", 1)
+            params[k] = v
+
+    result = project_manager.run_project_level_plugin_action(plugin, action, params)
+    if result.get("status") != "success":
+        msg = result.get("error", "Assembly action failed")
+        if out_prefs.get("json"):
+            typer.echo(json.dumps({"status": "failed", "error": msg}))
+        else:
+            typer.secho(msg, fg="red", err=True)
+        raise typer.Exit(code=1)
+    if out_prefs.get("json"):
+        typer.echo(json.dumps(result))
+    else:
+        typer.echo(yaml.safe_dump(result, sort_keys=False))
 
 ###############################################################################
 # project list
@@ -259,7 +470,7 @@ def list_projects(
     shared: bool = typer.Option(False, help="List projects from the shared directory (MUS1_SHARED_DIR)"),
 ):
     """List available MUS1 projects on this machine."""
-    _, _, _, project_manager = _init_managers()
+    _, _, _, project_manager = _get_managers(typer.get_current_context())
     if shared and not base_dir:
         try:
             base_dir = project_manager.get_shared_directory()
@@ -270,64 +481,19 @@ def list_projects(
         projects = project_manager.list_available_projects(base_dir)
     else:
         projects = project_manager.list_available_projects()
-    if not projects:
-        print("No MUS1 projects found.")
-    else:
-        print("Available MUS1 projects:")
-        for proj in projects:
-            print(f"- {proj.name} ({proj})")
-
-
-@project_app.command("resolve-subjects", help="Suggest 3-digit subject IDs from master library and interactively add them.")
-def project_resolve_subjects(
-    project_path: Path = typer.Argument(..., help="Path to MUS1 project"),
-    library_path: Optional[Path] = typer.Option(None, "--library-path", help="Override path for master library (defaults to <shared_root>/recordings/master)"),
-):
-    state_manager, _, _, project_manager = _init_managers()
-    LoggingEventBus.get_instance().configure_default_file_handler(project_path)
-    project_manager.load_project(project_path)
-
-    # Resolve library path: default to shared_root/recordings/master
-    if library_path is None:
-        try:
-            sr = project_manager.state_manager.project_state.shared_root or project_manager.get_shared_directory()
-        except Exception as e:
-            print(f"Shared root not configured: {e}. Run 'mus1 project set-shared-root' first.")
-            raise typer.Exit(code=1)
-        library_path = (Path(sr).expanduser().resolve() / "recordings" / "master").resolve()
-
-    if not library_path.exists():
-        print(f"Library path not found: {library_path}")
-        raise typer.Exit(code=1)
-
-    result = project_manager.run_project_level_plugin_action(
-        "CustomMetadataResolver",
-        "suggest_subjects",
-        {
-            "action": "suggest_subjects",
-            "project_path": str(project_path),
-            "library_path": str(library_path),
-        },
-    )
-
-    if result.get("status") != "success":
-        print(result.get("error", "Failed to resolve subjects"))
-        raise typer.Exit(code=1)
-
-    suggestions = result.get("suggestions", []) or []
-    if not suggestions:
-        print("No new subject IDs suggested from master library.")
+    out_prefs = _out_prefs(typer.get_current_context())
+    if out_prefs.get("json"):
+        typer.echo(json.dumps({"projects": [str(p) for p in projects]}))
         return
+    if not projects:
+        typer.echo("No MUS1 projects found.")
+        return
+    typer.echo("Available MUS1 projects:")
+    for proj in projects:
+        typer.echo(f"- {proj.name} ({proj})")
 
-    added = 0
-    skipped = 0
-    for sid in suggestions:
-        if typer.confirm(f"Add subject {sid}?", default=False):
-            project_manager.add_subject(subject_id=sid)
-            added += 1
-        else:
-            skipped += 1
-    print(f"Added: {added}, Skipped: {skipped}")
+
+ 
 
 
 @project_app.command("assign-subject", help="Create a minimal experiment and link a recording to a subject.")
@@ -349,7 +515,7 @@ def project_assign_subject(
         project_manager.add_subject(subject_id=subject_id)
 
     result = project_manager.run_project_level_plugin_action(
-        "CustomMetadataResolver",
+        "CopperlabAssembly",
         "assign_subject_to_recording",
         {
             "action": "assign_subject_to_recording",
@@ -380,7 +546,7 @@ def project_assign_subject_sex(
     project_manager.load_project(project_path)
 
     result = project_manager.run_project_level_plugin_action(
-        "CustomMetadataResolver",
+        "CopperlabAssembly",
         "assign_subject_sex",
         {
             "action": "assign_subject_sex",
@@ -397,75 +563,7 @@ def project_assign_subject_sex(
     print(f"Updated {subject_id} sex to {result.get('sex')}")
 
 
-@project_app.command("assign-subjects-from-master", help="Propose subject assignments for recordings in master by filename and interactively accept.")
-def project_assign_subjects_from_master(
-    project_path: Path = typer.Argument(..., help="Path to MUS1 project"),
-    library_path: Optional[Path] = typer.Option(None, "--library-path", help="Override path for master library (defaults to <shared_root>/recordings/master)"),
-    create_subject: bool = typer.Option(False, "--create-subject", help="Create subject on accept if missing"),
-):
-    _, _, _, project_manager = _init_managers()
-    LoggingEventBus.get_instance().configure_default_file_handler(project_path)
-    project_manager.load_project(project_path)
 
-    # Resolve library path default
-    if library_path is None:
-        try:
-            sr = project_manager.state_manager.project_state.shared_root or project_manager.get_shared_directory()
-        except Exception as e:
-            print(f"Shared root not configured: {e}. Run 'mus1 project set-shared-root' first.")
-            raise typer.Exit(code=1)
-        library_path = (Path(sr).expanduser().resolve() / "recordings" / "master").resolve()
-    if not library_path.exists():
-        print(f"Library path not found: {library_path}")
-        raise typer.Exit(code=1)
-
-    result = project_manager.run_project_level_plugin_action(
-        "CustomMetadataResolver",
-        "propose_subject_assignments_from_master",
-        {
-            "action": "propose_subject_assignments_from_master",
-            "project_path": str(project_path),
-            "library_path": str(library_path),
-        },
-    )
-    if result.get("status") != "success":
-        print(result.get("error", "Failed to generate subject assignment proposals"))
-        raise typer.Exit(code=1)
-
-    proposals = result.get("proposals", []) or []
-    if not proposals:
-        print("No subject assignment proposals found.")
-        return
-
-    accepted = 0
-    skipped = 0
-    for p in proposals:
-        rec = p.get("recording_path")
-        sid = p.get("subject_id")
-        if not rec or not sid:
-            continue
-        if typer.confirm(f"Assign subject {sid} to recording {rec}?", default=False):
-            if sid not in project_manager.state_manager.project_state.subjects and create_subject:
-                project_manager.add_subject(subject_id=sid)
-            result2 = project_manager.run_project_level_plugin_action(
-                "CustomMetadataResolver",
-                "assign_subject_to_recording",
-                {
-                    "action": "assign_subject_to_recording",
-                    "project_path": str(project_path),
-                    "subject_id": sid,
-                    "recording_path": str(rec),
-                    "experiment_id": None,
-                    "exp_type": "Unknown",
-                },
-            )
-            if result2.get("status") == "success":
-                accepted += 1
-            else:
-                print(f"Failed to assign {sid} to {rec}: {result2.get('error')}")
-        else:
-            skipped += 1
-    print(f"Assignments accepted: {accepted}, Skipped: {skipped}")
 
 
 @project_app.command("assign-subject-sex-by-master-filename-metadata", help="Propose subject sex from master filenames and interactively accept.")
@@ -489,7 +587,7 @@ def project_assign_subject_sex_by_master(
         raise typer.Exit(code=1)
 
     result = project_manager.run_project_level_plugin_action(
-        "CustomMetadataResolver",
+        "CopperlabAssembly",
         "propose_subject_sex_from_master",
         {
             "action": "propose_subject_sex_from_master",
@@ -515,7 +613,7 @@ def project_assign_subject_sex_by_master(
             continue
         if typer.confirm(f"Set subject {sid} sex to {sex}?", default=False):
             res2 = project_manager.run_project_level_plugin_action(
-                "CustomMetadataResolver",
+                "CopperlabAssembly",
                 "assign_subject_sex",
                 {
                     "action": "assign_subject_sex",
@@ -833,127 +931,80 @@ def project_ingest(
     parallel: bool = typer.Option(False, "--parallel", help="Scan multiple roots in parallel (per-target/threaded)"),
     max_workers: int = typer.Option(4, "--max-workers", help="Parallel workers for --parallel"),
 ):
-    """Single-command ingest: scan→dedup→split, then preview or stage+register off-shared.
-
-    If --preview is set, writes optional JSONLs and exits without changes.
-    Otherwise, registers in-shared and stages off-shared into shared_root/dest_subdir, then registers them.
-    """
-    state_manager, _, data_manager, project_manager = _init_managers()
+    """Single-command ingest: scan→dedup→split, then preview or stage+register off-shared."""
+    state_manager, _, _data_manager, project_manager = _init_managers()
     if not project_path.exists():
         raise typer.BadParameter(f"Project not found: {project_path}")
     LoggingEventBus.get_instance().configure_default_file_handler(project_path)
-    project_manager.load_project(project_path)
 
-    # Resolve roots defaults per-OS if not provided
-    try:
-        from .core.scanners.video_discovery import default_roots_if_missing
-        effective_roots = default_roots_if_missing(roots)
-    except Exception:
-        effective_roots = roots or []
-    if not effective_roots:
-        raise typer.BadParameter("No scan roots provided and no defaults available for this OS. Please specify directories.")
-
-    # Scan and dedup
-    pbar = tqdm(desc="Scanning", unit="file", disable=(not progress) or (not sys.stderr.isatty()))
+    scan_pbar = tqdm(desc="Scanning", unit="file", disable=(not progress) or (not sys.stderr.isatty()))
     def scan_cb(done: int, total: int):
-        pbar.total = total
-        pbar.update(done - pbar.n)
-    if parallel and len(effective_roots) > 1:
-        # Per-root parallelism using threads, reusing discover_video_files inside tasks
-        from concurrent.futures import ThreadPoolExecutor, as_completed
-        def _scan(root: Path):
-            return list(
-                data_manager.discover_video_files(
-                    [root],
-                    extensions=extensions,
-                    recursive=not non_recursive,
-                    excludes=exclude_dirs,
-                    progress_cb=None,
-                )
-            )
-        videos: list[tuple[Path, str]] = []
-        with ThreadPoolExecutor(max_workers=max_workers) as exe:
-            futs = {exe.submit(_scan, r): r for r in effective_roots}
-            for fut in as_completed(futs):
-                try:
-                    videos.extend(fut.result())
-                except Exception:
-                    pass
-        # no central scan progress when running per-root threads
-    else:
-        videos = list(
-            data_manager.discover_video_files(
-                effective_roots,
-                extensions=extensions,
-                recursive=not non_recursive,
-                excludes=exclude_dirs,
-                progress_cb=scan_cb,
-            )
-        )
-    pbar.close()
+        try:
+            scan_pbar.total = total
+            scan_pbar.update(done - scan_pbar.n)
+        except Exception:
+            pass
 
-    dedup_pbar = tqdm(total=len(videos), desc="Deduping", unit="file", disable=(not progress) or (not sys.stderr.isatty()))
+    dedup_pbar = tqdm(desc="Deduping", unit="file", disable=(not progress) or (not sys.stderr.isatty()))
     def dedup_cb(done: int, total: int):
-        dedup_pbar.update(1)
-    dedup_gen = data_manager.deduplicate_video_list([(p, h) for p, h in videos], progress_cb=dedup_cb)
-    in_shared, off_shared = project_manager.split_by_shared_root(dedup_gen)
-    dedup_pbar.close()
+        try:
+            dedup_pbar.update(1)
+        except Exception:
+            pass
 
-    # Emit JSONLs if requested
-    if emit_in_shared:
-        data_manager.emit_jsonl(emit_in_shared, in_shared)
-    if emit_off_shared:
-        data_manager.emit_jsonl(emit_off_shared, off_shared)
+    stage_pbar = tqdm(desc="Staging", unit="file", disable=(not progress) or (not sys.stderr.isatty()))
+    def stage_cb(done: int, total: int):
+        try:
+            stage_pbar.update(1)
+        except Exception:
+            pass
 
-    if preview:
+    result = project_manager.ingest(
+        project_path=project_path,
+        roots=roots or None,
+        dest_subdir=dest_subdir,
+        extensions=extensions,
+        exclude_dirs=exclude_dirs,
+        non_recursive=non_recursive,
+        preview=preview,
+        emit_in_shared=emit_in_shared,
+        emit_off_shared=emit_off_shared,
+        parallel=parallel,
+        max_workers=max_workers,
+        scan_progress_cb=scan_cb,
+        dedup_progress_cb=dedup_cb,
+        stage_progress_cb=stage_cb if progress else None,
+    )
+    scan_pbar.close(); dedup_pbar.close(); stage_pbar.close()
+
+    if result.get("status") != "success":
+        print(result.get("error", "Ingest failed"))
+        raise typer.Exit(code=1)
+
+    if result.get("preview"):
         builtins.print(
-            f"Preview: {len(in_shared)} items under shared, {len(off_shared)} items off-shared. Project: {project_path}"
+            f"Preview: {result.get('in_shared_count', 0)} items under shared, {result.get('off_shared_count', 0)} items off-shared. Project: {project_path}"
         )
         raise typer.Exit(code=0)
 
-    # Auto-host decision: if shared_root is not writable here, emit off-shared list and exit unless preview already handled
-    def _is_writable(p: Path) -> bool:
-        try:
-            p.mkdir(parents=True, exist_ok=True)
-            test = p / ".mus1-write-test"
-            test.write_text("ok", encoding="utf-8")
-            test.unlink(missing_ok=True)
-            return True
-        except Exception:
-            return False
-
-    # Register in-shared
-    added_in = project_manager.register_unlinked_videos(iter(in_shared))
-
-    # Stage off-shared into shared root
-    sr = state_manager.project_state.shared_root
-    if not sr:
-        try:
-            sr = project_manager.get_shared_directory()
-        except Exception as e:
-            raise typer.BadParameter(f"Shared root not configured for project and not resolvable: {e}")
-    shared_root = Path(sr).expanduser().resolve()
-    if not _is_writable(shared_root):
-        # Not host: emit off-shared list if not already requested and exit with guidance
+    if result.get("not_writable"):
+        # If we weren't writable, try to help by emitting a default list if user didn't request it
         if not emit_off_shared:
-            tmp = (Path.cwd() / "off_shared.auto.jsonl").resolve()
-            data_manager.emit_jsonl(tmp, off_shared)
-            builtins.print(f"Shared root not writable on this host. Wrote off-shared list to {tmp}. Stage from the host machine.")
+            try:
+                tmp = (Path.cwd() / "off_shared.auto.jsonl").resolve()
+                # We cannot easily get the actual list here without changing core return; advise the user instead
+                builtins.print(f"Shared root not writable on this host. Use --emit-off-shared to write the list, then stage from the host.")
+            except Exception:
+                pass
         else:
-            builtins.print(f"Shared root not writable on this host. Use the emitted off-shared list to stage from the host.")
+            builtins.print("Shared root not writable on this host. Use the emitted off-shared list to stage from the host.")
         raise typer.Exit(code=2)
-    dest_base = (shared_root / dest_subdir).expanduser().resolve()
-    staged_iter = data_manager.stage_files_to_shared(
-        [(p, h) for p, h, _ in off_shared],
-        shared_root=shared_root,
-        dest_base=dest_base,
-        overwrite=False,
-        progress_cb=None if not progress else (lambda done, total: None),
-    )
-    added_off = project_manager.register_unlinked_videos(staged_iter)
 
+    added_in = int(result.get("in_shared_registered", 0))
+    added_off = int(result.get("off_shared_staged_registered", 0))
+    total_unassigned = int(result.get("total_unassigned", 0))
     builtins.print(
-        f"Ingest complete. Added {added_in} under-shared and {added_off} staged videos. Total unassigned: {len(state_manager.project_state.unassigned_videos)}"
+        f"Ingest complete. Added {added_in} under-shared and {added_off} staged videos. Total unassigned: {total_unassigned}"
     )
 
 
@@ -1113,131 +1164,87 @@ def project_build_master_library(
         typer.echo("Note: --pattern is deprecated and ignored; folder-based naming is enforced.")
 
 
-@project_app.command("import-moseq-media", help="Move MoSeq2 .mkv recordings into master using per-recording folders (pattern deprecated).")
-def project_import_moseq_media(
+@project_app.command("import-supported-3rdparty", help="Run an installed importer plugin for third-party or external media ingestion.")
+def project_import_supported_3rdparty(
     project_path: Path = typer.Argument(..., help="Path to MUS1 project"),
-    moseq_root: Path = typer.Argument(..., help="Path to MoSeq media root (e.g., /path/to/moseq_media)"),
-    dest_subdir: str = typer.Option("recordings/master", "--dest-subdir", help="Destination under shared root for the master library"),
-    require_proc: bool = typer.Option(True, "--require-proc/--no-require-proc", help="Only include sessions that have proc/results_00.mp4"),
-    pattern: str = typer.Option("{base}_{date:%Y%m%d}_{hash8}{ext}", "--pattern", help="[DEPRECATED] Ignored; folder-based naming is enforced."),
-    dry_run: bool = typer.Option(False, "--dry-run", help="Preview without moving or registering"),
-    progress: bool = typer.Option(True, help="Show progress bars"),
-    provenance: str = typer.Option("third_party_import", "--provenance", help="Provenance label to store in metadata"),
+    plugin: Optional[str] = typer.Option(None, "--plugin", "-p", help="Importer plugin name (default: only importer if exactly one installed)"),
+    params_file: Optional[Path] = typer.Option(None, "--params-file", "-f", help="YAML file of parameters to pass to the importer"),
+    param: Optional[List[str]] = typer.Option(None, "--param", help="Additional KEY=VALUE pairs; repeat for multiple"),
+    list_plugins: bool = typer.Option(False, "--list", help="List available importer plugins and exit"),
 ):
-    from datetime import datetime as _dt
-    state_manager, plugin_manager, data_manager, project_manager = _init_managers()
-
+    state_manager, plugin_manager, _dm, project_manager = _init_managers()
     if not project_path.exists():
         raise typer.BadParameter(f"Project not found: {project_path}")
     LoggingEventBus.get_instance().configure_default_file_handler(project_path)
     project_manager.load_project(project_path)
 
-    # Resolve shared root
-    sr = state_manager.project_state.shared_root
-    if not sr:
+    # Resolve importer plugins
+    importers = plugin_manager.get_importer_plugins()
+    names = [p.plugin_self_metadata().name for p in importers]
+    if list_plugins:
+        if not names:
+            builtins.print("No importer plugins are installed.")
+        else:
+            builtins.print("Importer plugins:")
+            for n in names:
+                builtins.print(f"- {n}")
+        raise typer.Exit(code=0)
+
+    if not plugin:
+        if len(names) == 1:
+            plugin = names[0]
+        else:
+            builtins.print("Multiple importer plugins are installed. Use --plugin to select one:")
+            for n in names:
+                builtins.print(f"- {n}")
+            raise typer.Exit(code=2)
+
+    # Validate plugin exists
+    target = plugin_manager.get_plugin_by_name(plugin)
+    if not target:
+        builtins.print(f"Importer plugin not found: {plugin}")
+        raise typer.Exit(code=2)
+
+    # Build parameters: YAML file first, then CLI --param overrides
+    params: dict[str, Any] = {}
+    if params_file:
+        pf = params_file.expanduser().resolve()
+        if not pf.exists():
+            raise typer.BadParameter(f"Params file not found: {pf}")
         try:
-            sr = project_manager.get_shared_directory()
+            with open(pf, "r", encoding="utf-8") as f:
+                loaded = yaml.safe_load(f) or {}
+                if isinstance(loaded, dict):
+                    params.update(loaded)
         except Exception as e:
-            raise typer.BadParameter(f"Shared root not configured for project and not resolvable: {e}")
-    shared_root = Path(sr).expanduser().resolve()
-    dest_base = (shared_root / dest_subdir).expanduser().resolve()
+            raise typer.BadParameter(f"Failed to read params file: {e}")
 
-    mr = Path(moseq_root).expanduser().resolve()
-    if not mr.exists():
-        raise typer.BadParameter(f"MoSeq root not found: {mr}")
+    if param:
+        for item in param:
+            if "=" not in item:
+                raise typer.BadParameter(f"Invalid --param '{item}', expected KEY=VALUE")
+            k, v = item.split("=", 1)
+            params[k] = v
 
-    # Find mkv sessions: expect layout like <mr>/<session>/<session>.mkv with optional proc/results_00.mp4
-    mkv_paths: list[Path] = []
-    for p in mr.glob("**/*.mkv"):
-        if p.is_file():
-            if require_proc:
-                proc = p.parent / "proc" / "results_00.mp4"
-                if not proc.exists():
-                    continue
-            mkv_paths.append(p)
+    # Always include project_path for run_import
+    params.setdefault("project_path", str(project_path))
 
-    if not mkv_paths:
-        print("No matching MoSeq .mkv files found.")
-        raise typer.Exit(code=0)
-
-    # Build items with hashes
-    items: list[tuple[Path, str, _dt]] = []
-    for p in mkv_paths:
-        try:
-            h = data_manager.compute_sample_hash(p)
-            # Derive date from parent dir if looks like *_YYYYMMDD_*
-            date_val: _dt | None = None
-            try:
-                s = p.parent.name
-                import re
-                m = re.search(r"(20\d{6})", s)
-                if m:
-                    yyyy = int(m.group(1)[0:4])
-                    mm = int(m.group(1)[4:6])
-                    dd = int(m.group(1)[6:8])
-                    from datetime import datetime as _d
-                    date_val = _d(yyyy, mm, dd)
-            except Exception:
-                date_val = None
-            if not date_val:
-                date_val = data_manager._extract_start_time(p)
-            items.append((p, h, date_val))
-        except Exception:
-            continue
-
-    print(f"Planning MoSeq import to: {dest_base}")
-    print(f"Move count: {len(items)} files")
-    if dry_run:
-        raise typer.Exit(code=0)
-
-    # Namer preserving base and appending date/hash
-    def _namer(src_path: Path) -> str:
-        base = src_path.stem
-        ext = src_path.suffix
-        try:
-            h = data_manager.compute_sample_hash(src_path)
-            hash8 = h[:8]
-        except Exception:
-            hash8 = ""
-        # try to reuse precomputed date from items via simple cache
-        try:
-            # This is best-effort; the destination naming is independent of exact date if unavailable
-            st = data_manager._extract_start_time(src_path)
-        except Exception:
-            from datetime import datetime as _d
-            st = _d.fromtimestamp(src_path.stat().st_mtime)
-        try:
-            name = pattern.format(base=base, ext=ext, date=st, hash8=hash8, subject="", experiment="")
-        except Exception:
-            name = f"{base}_{hash8}{ext}" if hash8 else f"{base}{ext}"
-        if not name.endswith(ext):
-            name = f"{name}{ext}"
-        return Path(name).name
-
-    # Execute stage (move)
-    src_move = [(p, h) for (p, h, _) in items]
-    pbar_total = len(src_move)
-    pbar = tqdm(total=pbar_total, desc="Importing MoSeq", disable=(not progress) or (not sys.stderr.isatty()))
-    def _tick(done: int, total: int):
-        pbar.update(1)
-    gen_move = data_manager.stage_files_to_shared(src_move, shared_root=shared_root, dest_base=dest_base, overwrite=False, progress_cb=_tick, delete_source_on_success=True, namer=_namer)
-    added = project_manager.register_unlinked_videos(gen_move)
-    pbar.close()
-
-    # Update provenance on new items
-    try:
-        for vm in list(state_manager.project_state.unassigned_videos.values()):
-            p = Path(vm.path)
-            if str(p).startswith(str(dest_base)):
-                md = data_manager.read_recording_metadata(p.parent)
-                if md:
-                    md.setdefault("provenance", {})["source"] = provenance
-                    data_manager.write_recording_metadata(p.parent, md)
-    except Exception:
-        pass
-
-    print(f"MoSeq import complete. Moved and registered: {added}. Unassigned total: {len(state_manager.project_state.unassigned_videos)}")
-
+    # Generic project-level action call → run_import on the plugin
+    result = project_manager.run_project_level_plugin_action(
+        plugin,
+        "import",
+        params,
+    )
+    if result.get("status") != "success":
+        builtins.print(result.get("error", "Import failed."))
+        raise typer.Exit(code=1)
+    # Minimal standard summary if present
+    dest = result.get("destination")
+    moved = result.get("moved") or result.get("registered") or result.get("added") or 0
+    if dest:
+        builtins.print(f"Import complete via '{plugin}'. Items: {moved}. Destination: {dest}")
+    else:
+        builtins.print(f"Import complete via '{plugin}'. Items: {moved}")
 
 @project_app.command("import-third-party-folder", help="Import a third-party processed folder into this project's media with provenance notes.")
 def project_import_third_party_folder(
@@ -1402,6 +1409,61 @@ def setup_shared(
         yaml.safe_dump(data, f)
 
     print(f"Saved shared root to {config_path}\nShared projects will default to: {path}")
+
+@setup_app.command("projects", help="Configure your per-user local projects root (non-shared).")
+def setup_projects(
+    path: Optional[Path] = typer.Option(None, "--path", "-p", help="Writable local projects root directory"),
+    create: bool = typer.Option(False, help="Create the directory if it does not exist"),
+):
+    """Persist a per-user config pointing to your local projects directory.
+
+    Used when MUS1_PROJECTS_DIR is not set.
+    """
+    if path is None:
+        path = Path(typer.prompt("Enter local projects root path (must be writable)"))
+    path = path.expanduser().resolve()
+
+    if not path.exists():
+        if create:
+            path.mkdir(parents=True, exist_ok=True)
+        else:
+            raise typer.BadParameter(f"Path does not exist: {path}. Re-run with --create to make it.")
+
+    # Validate write
+    test_file = path / ".mus1-write-test"
+    try:
+        with open(test_file, "w", encoding="utf-8") as f:
+            f.write("ok")
+        test_file.unlink(missing_ok=True)
+    except Exception as e:
+        raise typer.BadParameter(f"Path is not writable: {path} ({e})")
+
+    # Same config dir scheme as setup_shared
+    if sys.platform == "darwin":
+        config_dir = Path.home() / "Library/Application Support/mus1"
+    elif os.name == "nt":
+        appdata = os.environ.get("APPDATA") or str(Path.home() / "AppData/Roaming")
+        config_dir = Path(appdata) / "mus1"
+    else:
+        xdg = os.environ.get("XDG_CONFIG_HOME") or str(Path.home() / ".config")
+        config_dir = Path(xdg) / "mus1"
+    config_dir.mkdir(parents=True, exist_ok=True)
+
+    # Merge with existing config.yaml if present
+    config_path = config_dir / "config.yaml"
+    data = {}
+    if config_path.exists():
+        try:
+            with open(config_path, "r", encoding="utf-8") as f:
+                loaded = yaml.safe_load(f) or {}
+                if isinstance(loaded, dict):
+                    data.update(loaded)
+        except Exception:
+            pass
+    data["projects_root"] = str(path)
+    with open(config_path, "w", encoding="utf-8") as f:
+        yaml.safe_dump(data, f)
+    print(f"Saved local projects root to {config_path}\nLocal projects will default to: {path}")
 
 ###############################################################################
 # workers management (typed in ProjectState.workers)
@@ -1887,9 +1949,9 @@ def project_assembly_scan_by_experiments(
     project_manager.load_project(project_path)
 
     # Resolve assembly plugin
-    asm = plugin_manager.get_plugin_by_name("CustomProjectAssembly_Skeleton")
+    asm = plugin_manager.get_plugin_by_name("CopperlabAssembly")
     if not asm or not hasattr(asm, "parse_experiments_csv"):
-        raise typer.BadParameter("Assembly plugin not found (CustomProjectAssembly_Skeleton)")
+        raise typer.BadParameter("Assembly plugin not found (CopperlabAssembly)")
 
     # Parse CSVs → subject IDs
     subjects: set[str] = set()
@@ -1960,6 +2022,70 @@ def project_assembly_scan_by_experiments(
 
     print(f"Assembly scan complete. Added {added} items. Unassigned total: {len(state_manager.project_state.unassigned_videos)}")
 
+
+# -----------------------------------------------------------------------------
+# CSV → subjects + experiments (non-interactive)
+# -----------------------------------------------------------------------------
+
+@project_app.command("add-experiments-from-csv", help="Create subjects (if missing) and experiments from CSVs via CopperlabAssembly plugin.")
+def project_add_experiments_from_csv(
+    project_path: Path = typer.Argument(..., help="Existing MUS1 project directory"),
+    experiments_csv: List[Path] = typer.Argument(..., help="One or more experiment CSV files"),
+):
+    state_manager, plugin_manager, _dm, project_manager = _init_managers()
+    if not project_path.exists():
+        raise typer.BadParameter(f"Project not found: {project_path}")
+    LoggingEventBus.get_instance().configure_default_file_handler(project_path)
+    project_manager.load_project(project_path)
+
+    params = {
+        "action": "add_experiments_from_csv",
+        "project_path": str(project_path),
+        "csv_files": [str(Path(p).expanduser().resolve()) for p in experiments_csv],
+    }
+    result = project_manager.run_project_level_plugin_action(
+        "CopperlabAssembly",
+        "add_experiments_from_csv",
+        params,
+    )
+    if result.get("status") != "success":
+        builtins.print(result.get("error", "Failed to add experiments from CSV"))
+        raise typer.Exit(code=1)
+    builtins.print(
+        f"Subjects added: {int(result.get('added_subjects', 0))}. Experiments added: {int(result.get('added_experiments', 0))}. Skipped: {int(result.get('skipped_experiments', 0))}."
+    )
+
+
+@project_app.command("link-media-by-csv", help="Link unassigned media to existing experiments by matching subject id from filename and recording date from metadata against CSV records.")
+def project_link_media_by_csv(
+    project_path: Path = typer.Argument(..., help="Path to MUS1 project"),
+    experiments_csv: List[Path] = typer.Argument(..., help="One or more experiment CSV files"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Preview without linking"),
+):
+    state_manager, plugin_manager, data_manager, project_manager = _init_managers()
+    if not project_path.exists():
+        raise typer.BadParameter(f"Project not found: {project_path}")
+    LoggingEventBus.get_instance().configure_default_file_handler(project_path)
+    project_manager.load_project(project_path)
+
+    # Build (sid, date)->(exp_id, type)
+    params = {
+        "action": "link_media_by_csv",
+        "project_path": str(project_path),
+        "csv_files": [str(Path(p).expanduser().resolve()) for p in experiments_csv],
+    }
+    if dry_run:
+        builtins.print("Dry-run: link_media_by_csv would run via CopperlabAssembly.")
+        raise typer.Exit(code=0)
+    result = project_manager.run_project_level_plugin_action(
+        "CopperlabAssembly",
+        "link_media_by_csv",
+        params,
+    )
+    if result.get("status") != "success":
+        builtins.print(result.get("error", "Failed to link media by CSV"))
+        raise typer.Exit(code=1)
+    builtins.print(f"Linked {int(result.get('linked', 0))} media items. Skipped: {int(result.get('skipped', 0))}.")
 
 # -----------------------------------------------------------------------------
 # master media list management (root-level)

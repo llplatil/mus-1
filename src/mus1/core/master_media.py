@@ -11,7 +11,39 @@ def _projects_root() -> Path:
     if env_dir:
         base_dir = Path(env_dir).expanduser().resolve()
     else:
-        base_dir = (Path.home() / "MUS1" / "projects").expanduser().resolve()
+        # Try per-user config (same as ProjectManager.get_projects_directory())
+        try:
+            import platform
+            import yaml
+            if platform.system() == "Darwin":
+                config_dir = Path.home() / "Library/Application Support/mus1"
+            elif os.name == "nt":
+                appdata = os.environ.get("APPDATA") or str(Path.home() / "AppData/Roaming")
+                config_dir = Path(appdata) / "mus1"
+            else:
+                xdg = os.environ.get("XDG_CONFIG_HOME") or str(Path.home() / ".config")
+                config_dir = Path(xdg) / "mus1"
+            yaml_path = config_dir / "config.yaml"
+            projects_root = None
+            if yaml_path.exists():
+                try:
+                    with open(yaml_path, "r", encoding="utf-8") as f:
+                        data = json.load(f) if yaml_path.suffix == ".json" else None
+                except Exception:
+                    data = None
+                try:
+                    if data is None:
+                        with open(yaml_path, "r", encoding="utf-8") as f2:
+                            import yaml as _yaml
+                            data = _yaml.safe_load(f2) or {}
+                except Exception:
+                    data = {}
+                pr = (data or {}).get("projects_root")
+                if pr:
+                    projects_root = Path(str(pr)).expanduser()
+            base_dir = Path(projects_root).expanduser().resolve() if projects_root else (Path.home() / "MUS1" / "projects").expanduser().resolve()
+        except Exception:
+            base_dir = (Path.home() / "MUS1" / "projects").expanduser().resolve()
     base_dir.mkdir(parents=True, exist_ok=True)
     return base_dir
 

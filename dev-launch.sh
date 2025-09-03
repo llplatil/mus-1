@@ -16,6 +16,9 @@ set -euo pipefail
 ROOT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$ROOT_DIR"
 
+# Disable legacy local plugin scan by default; external packages use entry points
+export MUS1_ENABLE_LOCAL_PLUGIN_SCAN=${MUS1_ENABLE_LOCAL_PLUGIN_SCAN:-0}
+
 VENV_DIR=".venv"
 PYPROJECT_FILE="pyproject.toml"
 HASH_FILE="$VENV_DIR/.pyproject.sha256"

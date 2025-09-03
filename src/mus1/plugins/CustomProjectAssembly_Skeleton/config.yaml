@@ -1,5 +1,0 @@
-scan_hints:
-  roots: []  # e.g., ["/Volumes/Data", "D:/Videos"]
-  exclude_dirs: []  # substrings to skip
-  subject_id_patterns: []  # optional regex patterns for subject IDs
-

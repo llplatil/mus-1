@@ -73,6 +73,10 @@ Thumbs.db
 **/cache/
 **/backups/
 
+# External plugin dev clones and private requirements
+.plugins/
+requirements-plugins.private.txt
+
 # Large media
 **/*.mp4
 **/*.mov

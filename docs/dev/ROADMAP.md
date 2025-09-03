@@ -3,13 +3,13 @@
 This roadmap reflects how the code works today and what is planned next. It avoids dates and versions; items are prioritized by impact and risk.
 
 ## What works today (observed in code)
-- Project lifecycle and persistence via `ProjectManager`; default projects live under `~/MUS1/projects` (env override `MUS1_PROJECTS_DIR`).
-- Shared projects directory via `MUS1_SHARED_DIR` with advisory `.mus1-lock` during saves; CLI and GUI can create/list/switch to shared projects.
-- Dynamic plugin discovery and registration from `src/mus1/plugins/*` with `PluginManager` indices by readable formats and capabilities.
+- Project lifecycle and persistence via `ProjectManager`; local projects root resolves by precedence: explicit arg (where supported) → `MUS1_PROJECTS_DIR` → per-user config `projects_root` → `~/MUS1/projects`.
+- Shared projects directory resolves by precedence: explicit arg → `MUS1_SHARED_DIR` → per-user config `shared_root`; saves use advisory `.mus1-lock` and atomic writes; CLI and GUI can create/list/switch to shared projects.
+- Plugin discovery is entry-point only (`PluginManager.discover_entry_points` for group `mus1.plugins`). In-tree scanning has been removed from defaults.
 - Analysis orchestration: `ProjectManager.run_analysis(experiment_id, capability)` validates via plugin, calls `analyze_experiment`, stores results, and advances `processing_stage` when appropriate.
 - Data IO helpers in `DataManager`: `read_yaml`, `read_csv`, `read_hdf`; handler invocation through `call_handler_method`.
 - Video discovery and ingestion: pluggable scanners (`macOS` specialized, base for others), `discover_video_files`, `deduplicate_video_list`, and unassigned→assigned workflow using `sample_hash` keys.
-- Typer CLI (`mus1`) with commands: `scan videos`, `scan dedup`, `project list`, `project create`, `project scan-and-move`, `project media-index`, `project media-assign`, `project assembly-scan-by-experiments`, `project import-third-party-folder`, and `project scan-from-targets` (preview emit options). Root supports `--version`.
+- Typer CLI (`mus1`) with commands: `scan videos`, `scan dedup`, `project list`, `project create`, `project scan-and-move`, `project media-index`, `project media-assign`, `project assembly` (list/list-actions/run), `project import-third-party-folder`, and `project scan-from-targets` (preview emit options). Root supports `--version`.
 - UI: `ExperimentView` builds parameter forms from plugin metadata, separates Importer/Analysis/Exporter lists, supports bulk add, and links videos through the unassigned workflow.
 - Plugins:
   - `DeepLabCutHandlerPlugin` (handler): extract body parts, validate/ack tracking sources, load DataFrame via helper with optional likelihood thresholding.
@@ -45,6 +45,16 @@ This roadmap reflects how the code works today and what is planned next. It avoi
 - Remove duplicated private helpers in `Mus1TrackingAnalysisPlugin`; consolidate on the series-based implementations.
 
 ## Feature track: Targets/Workers/Shared-root scanning + predictable installs
+## CLI cleanup (dev branch)
+
+- Remove lab-specific commands from CLI that duplicate assembly actions:
+  - Drop `project assembly-scan-by-experiments`, `project add-experiments-from-csv`, `project link-media-by-csv`, `project assign-subject*` variants.
+  - Rely on `project assembly` (list/list-actions/run) for all plugin-driven project operations.
+- Unify output handling across commands:
+  - Honor root `--json`, `--quiet`, `--verbose` in `scan dedup`, `ingest`, `scan-from-targets`, `stage-to-shared`, `cleanup-copies`.
+  - Standardize errors via `typer.BadParameter` (user input) vs `typer.Exit(1)` (operational) and `typer.secho(..., err=True)`.
+- Ensure all commands reuse cached managers (`_get_managers(ctx)`), no direct `_init_managers()` calls.
+- Keep CLI headless (no GUI imports) and purely core/plugin-driven.
 
 Goal: Make MUS1 remember shared storage, known targets/workers, and scan across them (locally and over SSH/WSL) to produce a unique list of videos to add to a shared project. Keep installs predictable on macOS/Linux/WSL and minimize permission friction.
 
@@ -62,6 +72,7 @@ Incremental plan (each step independently shippable)
 
 2) CLI surfaces (typed) [dev]
 - `mus1 project set-shared-root PATH`.
+- `mus1 setup shared --path PATH` writes `shared_root` to per-user config; `mus1 setup projects --path PATH` writes `projects_root`.
 - `mus1 workers list|add|remove|test` backed by `ProjectState.workers` (fix current list/remove bugs).
 - `mus1 targets list|add|remove` backed by `ProjectState.scan_targets`.
 - `mus1 project scan-from-targets PROJECT [--targets ...]` → scan all/selected targets, dedup, register unassigned; filter to `shared_root`.
@@ -127,6 +138,7 @@ Current status (dev branch)
   - `mus1 workers list|add|remove`: manage typed worker entries.
   - `mus1 project scan-from-targets`: scan configured targets, dedup, and register unassigned videos (filtered to `shared_root` if set).
   - `mus1 project stage-to-shared`: copy files into `shared_root/<subdir>`, verify hash, and register.
+  - `mus1 project import-supported-3rdparty`: generic importer runner that selects any installed importer plugin by name and passes YAML/CLI params.
 - GUI: Project view now supports setting `shared_root` and moving the project to shared.
   - New Scan & Ingest page for target selection, scanning, summary, add/stage actions.
   - Workers and Targets tabs for CRUD (aligned with CLI), styled via `mus1.qss`.
@@ -183,5 +195,11 @@ Risks/Notes
 - CLI and GUI share a single ingestion path; scan→dedup→register unassigned works end-to-end across macOS; parity on Win/Linux scanners.
 - Plugins load DLC data through `DataManager.call_handler_method` and return results stored in `ExperimentMetadata.analysis_results` keyed by capability.
 - Docs (this file + Architecture) truthfully describe implemented behavior and list gaps explicitly so users aren’t misled.
+
+## Packaging status for plugins (completed)
+
+- Public: `mus1-assembly-skeleton`, `mus1-plugin-deeplabcut-handler`, `mus1-plugin-dlc-importer`, `mus1-plugin-tracking-analysis`, `mus1-plugin-moseq2-importer` (entry points under `mus1.plugins`).
+- Private: `mus1-assembly-plugin-copperlab` (editable local path pin for dev).
+- Discovery: entry-point only.
 
 

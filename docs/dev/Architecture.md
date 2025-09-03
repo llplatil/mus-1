@@ -19,7 +19,7 @@ Note: See `docs/dev/ARCHITECTURE_CURRENT.md` for the current, authoritative arch
     *   Updates `ExperimentMetadata.analysis_results` and `processing_stage`.
     *   Saves the project state and notifies observers.
 - **(New)** Includes `run_project_level_plugin_action` to execute plugin capabilities operating at the project level (e.g., importers), often coordinating with handler plugins via the `DataManager`.
-- **(Updated)** Default projects directory is `~/MUS1/projects` unless overridden by `--base-dir` or `MUS1_PROJECTS_DIR`.
+- **(Updated)** Local projects root resolves by precedence: explicit arg (where supported) → env `MUS1_PROJECTS_DIR` → per-user config `projects_root` → default `~/MUS1/projects`. Shared projects root resolves by precedence: explicit arg → env `MUS1_SHARED_DIR` → per-user config `shared_root`.
 - **(Updated)** Video ingestion: `register_unlinked_videos` populates `unassigned_videos` keyed by `sample_hash`; `link_unassigned_video` moves entries into `experiment_videos` using the same key.
 - **(Updated)** Core no longer references UI widgets directly; UI passes settings via `apply_general_settings(sort_mode, frame_rate_enabled, frame_rate)`.
 
@@ -30,7 +30,8 @@ Note: See `docs/dev/ARCHITECTURE_CURRENT.md` for the current, authoritative arch
 - **(Revised)** Provides unified sorting logic for various metadata lists with the help of Sort Manager . py 
 
 ### PluginManager
-- **(Revised)** Discovers, registers, and manages tool-based plugins (e.g., `Mus1TrackingAnalysisPlugin`, `DeepLabCutPlugin`).
+- **(Revised)** Discovers, registers, and manages tool-based plugins.
+- **(New)** Discovery is via Python entry points (group `mus1.plugins`) to allow external plugin packages (e.g., lab-specific assemblies) without in-tree coupling. Discovery is entry-point only.
 - **(Revised)** Provides methods to retrieve plugins based on `readable_data_formats`, `analysis_capabilities`, and name. Used by `ProjectManager` for orchestration and by `DataManager` to find appropriate handlers.
 - **(Revised)** Registers simplified plugin style manifests (`get_style_manifest`) with `ThemeManager` to allow plugins to define custom CSS variables.
 
@@ -56,7 +57,7 @@ MUS1 provides a modern CLI built with Typer, accessible via the `mus1` command (
 
 Key design decisions:
 
-1. **Single top-level command** – installed as the console-script `mus1` via `pyproject.toml`.
+1. **Single top-level command** – installed as the console-script `mus1` via `pyproject.toml` (GUI launched via `mus1-gui`).
 2. **Command groups mirror core managers** – e.g. `mus1 project …`, `mus1 scan …`, so that the CLI surface tracks the responsibility boundaries defined in this document.
 3. **Automatic help, prompts & colors** – Typer provides rich `--help`, prompt questions (for missing parameters), validation and error colours out of the box, improving lab usability.
 4. **Context injection of core managers** – an app-wide Typer `Context.obj` will hold a singleton `StateManager` / `PluginManager` / `DataManager` bundle so sub-commands can reuse them without global imports. (Planned)
@@ -79,7 +80,7 @@ Key design decisions:
 
 3. **CLI conveniences and scanners**  
    • Root app supports `--version` to print the installed MUS1 version.  
-   • Additional scanning methods (e.g. pulling drive indexes from a NAS) will live in `plugins/` and expose a Typer sub-app that registers itself under `mus1 scan`.  This keeps core lean while allowing lab-specific discovery modules.
+   • Additional scanning methods are implemented by entry-point plugins (not in-tree modules).
    • Top-level helpers: `mus1 project-help`, `mus1 scan-help` print group help.
 
 4. **Environment & Distribution**  
@@ -116,6 +117,55 @@ Key design decisions:
 
 Implementation steps are tracked in *ROADMAP.md*.
 
+### Assembly commands (new)
+MUS1 exposes a generic, plugin-driven assembly group:
+- `mus1 project assembly list` – list assembly-capable plugins
+- `mus1 project assembly list-actions --plugin <name>` – list plugin actions
+- `mus1 project assembly run --plugin <name> --action <name> [--params-file|-f] [--param KEY=VALUE]`
+
+Example (Copperlab): `subjects_from_csv_folder` parses a folder of CSV files, normalizes 3-digit subject IDs, reconciles sex, birth/death dates, genotype, and treatment, and returns a structured YAML with `subjects` and `conflicts` for review.
+
+## CLI Design Rules (truthful)
+
+1. Single entrypoints
+   - CLI is invoked via `mus1`; GUI is invoked via `mus1-gui`. The CLI does not expose a `gui` subcommand.
+
+2. Thin CLI, heavy core
+   - CLI commands perform argument parsing, minimal validation, and output. All business logic is owned by core managers (`ProjectManager`, `DataManager`, `StateManager`) or external plugins discovered through entry points.
+
+3. Plugin discovery and usage
+   - Plugins are discovered exclusively via Python entry points under the group `mus1.plugins`. No in-tree plugin scanning is used.
+   - The CLI never hard-codes plugin details. Plugin-driven operations use generic surfaces, e.g., `mus1 project assembly run --plugin <name> --action <name>`.
+
+4. Manager lifecycle
+   - Managers are created once per CLI process and cached in Typer’s `ctx.obj` (see `_get_managers`). Subcommands reuse them to prevent repeated initialization and to keep behavior uniform.
+
+5. Output modes and progress
+   - Root flags: `--json`, `--quiet`, `--verbose` apply to all subcommands via `ctx.obj['output']`.
+   - Use `typer.echo`/`typer.secho` for text. Use JSON (machine-readable) only when `--json` is set.
+   - Progress bars (`tqdm`) are disabled when `--quiet` is set or when stdout is non-interactive.
+
+6. Errors and exit codes
+   - Use `typer.BadParameter` for invalid user input (exit code 2 by Typer convention).
+   - Use `typer.secho(..., err=True)` with red color for error messages.
+   - Return exit code 1 for operational failures (e.g., plugin/core error), 2 for configuration/environment issues (e.g., missing shared root), 0 for success.
+
+7. Consistent parameter naming and help
+   - Prefer kebab-case options and clear nouns (e.g., `--dest-subdir`, `--library-path`).
+   - Each command includes concise examples aligned with README and actual behavior.
+
+8. Assembly and import flows
+   - The generic assembly group is the single path for project-level plugin actions. Avoid bespoke CLI commands for a specific lab plugin.
+   - For third-party importers, use `mus1 project import-supported-3rdparty` instead of ad-hoc commands.
+
+9. Idempotence and safe preview
+   - Commands that mutate state support preview or no-op paths where practical (e.g., `--dry-run`, JSON output for review) and are safe to re-run.
+
+10. No GUI coupling
+   - The CLI must not import or initialize GUI components; only import core and plugin APIs.
+
+11. Truthfulness and single source of truth
+   - Documentation reflects current implemented behavior, not intentions. Version numbers are sourced from `pyproject.toml`.
 ---
 
 ## Video Discovery & Media Workflow (Updated)

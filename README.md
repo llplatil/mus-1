@@ -4,8 +4,8 @@ Mus-1 is a Python-based tool with an intuitive UI layer designed to streamline t
 
 ## Overview
 
-MUS1 facilitates a workflow starting from DeepLabCut-generated tracking data, enabling users to:
-1. **Import and Organize:** Manage DeepLabCut tracking files, associated videos, and metadata within structured MUS1 projects. Import body part definitions directly from DLC `config.yaml` files.
+MUS1 facilitates a workflow starting from recordings, csv files and some proccessed tracking data, enabling users to:
+1. **Import and Organize:** Manage tracking files, associated videos, and metadata within structured MUS1 projects. Import body part definitions directly from DLC `config.yaml` files with the DeepLabCutHandlerPlugin.
 2. **Analyze Kinematics:** Perform foundational analyses like distance, speed, and zone occupancy using built-in analysis plugins.
 3. **Manage Experiments:** Organize experiments by subject, type, and batch, tracking processing stages.
 4. **Standardize:** Apply consistent analysis parameters and project settings.
@@ -17,12 +17,12 @@ The project uses a modular architecture with plugins for data handling (e.g., De
 - **Material Design UI**: Clean, modern interface built with PySide6-Qt.
 - **Project Management**: Centralized handling of subjects, experiments, metadata, and analysis results.
 - **DeepLabCut Integration**: Imports body parts from DLC configs and utilizes DLC tracking data (CSV/HDF5).
-- **Plugin Architecture**: Supports data handlers (DLC) and various analysis modules (e.g., kinematics).
+- **Plugin Architecture**: Supports data handlers (DLC), importers, and analysis modules (e.g., kinematics). Plugins are discovered via Python entry points (`mus1.plugins`).
 - **Hierarchical Experiment Setup**: Step-by-step workflow linking data files and analysis parameters.
 - **Batch Processing**: Group experiments for efficient management (analysis planned).
 - **Observer Pattern**: UI components update automatically based on project state changes.
 - **Theme System**: Light/dark themes with OS detection.
-- **Per-recording Media Folders (New)**: Each recording lives in its own folder under `project/media/subject-YYYYMMDD-hash8/` with a `metadata.json` tracking hashes, times, provenance, and processing history.
+- **Per-recording Media Folders (New)**: Each recording lives in its own folder under `project/media/subject-YYYYMMDD-hash8/` with a `metadata.json` tracking `subject_id`, `experiment_type`, hashes, times, provenance, and processing history.
 
 ## Intended Workflow
 
@@ -48,6 +48,29 @@ The project uses a modular architecture with plugins for data handling (e.g., De
 
 ## CLI Quick Reference
 
+# Assembly (generic, plugin-discovered)
+```bash
+# List assembly-capable plugins and their actions, lab specific
+mus1 project assembly list
+mus1 project assembly list-actions CopperlabAssembly
+
+# Run an action with YAML params or KEY=VALUE pairs
+mus1 project assembly run /path/to/project \
+  --plugin CopperlabAssembly \
+  --action subjects_from_csv_folder \
+  --param csv_dir=/path/to/csvs
+```
+
+# Third-party/importer (generic)
+```bash
+# List available importer plugins and run one with parameters
+mus1 project import-supported-3rdparty /path/to/project --list
+mus1 project import-supported-3rdparty /path/to/project \
+  --plugin "MoSeq2 Importer" \
+  --params-file params.yaml \
+  --param key=value --param another=val
+```
+
 Basics
 ```bash
 mus1 --version          # print version
@@ -70,6 +93,9 @@ mus1 project create my_shared --location shared
 
 # Configure per-user shared root (no secrets)
 mus1 setup shared --path /mnt/mus1 --create
+
+# Configure per-user local projects root (non-shared)
+mus1 setup projects --path ~/MUS1/projects --create
 
 # Bind a project to the shared root and/or move it under that root
 mus1 project set-shared-root /path/to/project /mnt/mus1
@@ -103,7 +129,13 @@ mus1 project media-assign /path/to/project \
   --prompt-on-time-mismatch \
   --set-provenance manual_assignment
 
-# CSV-guided assembly scan: extract subjects from CSVs, scan roots (or plugin config hints), stage into media
+# CSV-guided assembly examples
+# 1) Extract subjects from a folder of CSVs (lab plugin), get YAML with subjects and conflicts, LAB SPECIFIC
+mus1 project assembly run /path/to/project \
+  -p CopperlabAssembly -a subjects_from_csv_folder \
+  --param csv_dir=/path/to/csvs
+
+# 2) (Legacy) assembly-scan-by-experiments remains for now but is deprecated in favor of assembly run
 mus1 project assembly-scan-by-experiments /path/to/project CSV1 [CSV2 ...] \
   --roots /Volumes/Data ~/Videos \
   --verify-time \
@@ -118,7 +150,7 @@ mus1 project import-third-party-folder /path/to/project /path/to/source \
 
 # Master media list (New)
 ```bash
-# Accept current project's media as the lab master list (stored at ~/MUS1/projects/master_media_index.json)
+# Accept current project's media as the lab master list (stored at the configured projects root under master_media_index.json)
 mus1 master-accept-current /path/to/project
 
 # Add unique items from another project's media to the master list
@@ -144,7 +176,7 @@ mus1 project scan-from-targets /path/to/project \
   --emit-off-shared ~/off.jsonl
 
 # Stage off-shared files (from JSONL) into shared_root/<subdir> and register
-mus1 project stage-to-shared /path/to/project ~/off.jsonl recordings/raw
+mus1 project stage-to-shared /path/to/project /tmp/all.unique.jsonl recordings/raw
 
 # One-shot ingest: scan → dedup → split by shared → preview or stage+register
 # Preview: prints counts and optionally writes JSONL files
@@ -213,10 +245,38 @@ Notes
   mus1 workers add /path/to/project --name copper --ssh-alias copperlab-server --test
   ```
 
+### Project folders default (local and shared)
+
+- Local projects directory precedence:
+  - `--base-dir` (where supported)
+  - `MUS1_PROJECTS_DIR`
+  - Per-user config file `config.yaml` under the OS config dir containing `projects_root`
+  - Default `~/MUS1/projects`
+
+- Shared projects directory precedence:
+  - Explicit argument to APIs/CLI
+  - `MUS1_SHARED_DIR`
+  - Per-user config file `config.yaml` under the OS config dir containing `shared_root` (set via `mus1 setup shared`)
+
+OS config directory locations:
+- macOS: `~/Library/Application Support/mus1/config.yaml`
+- Windows: `%APPDATA%/mus1/config.yaml`
+- Linux: `$XDG_CONFIG_HOME/mus1/config.yaml` or `~/.config/mus1/config.yaml`
+
+Use:
+```bash
+# Set shared root
+mus1 setup shared --path /Volumes/CuSSD3/mus1-shared --create
+
+# Set default local projects root
+mus1 setup projects --path /Volumes/CuSSD3/mus1-projects --create
+```
+
 ## New Media Organization and Metadata (Dev)
 
 - Each recording is placed under `project/media/subject-YYYYMMDD-hash8/` and retains the original filename.
 - A `metadata.json` is created per recording with fields:
+  - `subject_id`, `experiment_type`
   - `file`: `path`, `filename`, `size_bytes`, `last_modified`, `sample_hash` (fast) and optional `full_hash` (on-demand)
   - `times`: `recorded_time` and `recorded_time_source` (csv|mtime|container|manual)
   - `provenance`: `source` label and freeform `notes`
@@ -259,17 +319,30 @@ Use `dev-launch.sh` to create/update a venv only when `pyproject.toml` changes a
 ```
 It ensures an editable install from this checkout and forwards all args to `mus1`.
 
-## Future Goals
-- Enhanced visualization for kinematic and Keypoint-MoSeq results within MUS1.
-- Batch analysis execution for both kinematics and Keypoint-MoSeq syllables.
-- Statistical comparison tools for syllable usage across groups.
-- Streamlined export of MUS1/kp-MoSeq results.
-- Potential integration with labeling workflows (Long-term).
-- Enhanced visualization for kinematic results within MUS1.
-- Batch analysis execution.
-- Statistical comparison tools.
-- Streamlined export of results.
-- Server-backed MoSeq2 orchestration plugin (planned).
+## Plugin packages (dev installs)
 
+MUS1 discovers plugins via Python entry points (`mus1.plugins`) only. In-tree scanning has been removed from defaults.
 
+- Public (skeleton): install via VCS pin
+```bash
+pip install -r requirements-plugins.public.txt
+```
 
+- Private (Copperlab): clone alongside and install editable via requirements
+```bash
+# one-time clone of the private repo
+gh repo clone llplatil/mus1-assembly-plugin-copperlab .plugins/mus1-assembly-plugin-copperlab
+
+# install the private plugin in editable mode
+pip install -r requirements-plugins.private.txt
+```
+
+Manage plugins via CLI:
+```bash
+mus1 plugins list
+mus1 plugins install mus1-assembly-skeleton
+mus1 plugins uninstall mus1-assembly-skeleton -y
+```
+
+Notes:
+- Keep plugin source repos outside `src/mus1/plugins/`; install them into the venv so MUS1 can discover them via entry points.

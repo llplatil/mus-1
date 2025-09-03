@@ -1,7 +1,8 @@
 import logging
+from typing import Optional, Dict, Any, List, Set
+from importlib import metadata as importlib_metadata
 from ..plugins.base_plugin import BasePlugin
 from .metadata import ExperimentMetadata, ProjectState, PluginMetadata
-from typing import Optional, Dict, Any, List, Set
 
 logger = logging.getLogger("mus1.core.plugin_manager")
 
@@ -22,13 +23,55 @@ class PluginManager:
         self._supported_stages = None
 
     def register_plugin(self, plugin: BasePlugin) -> None:
-        """Register a plugin instance."""
-        if plugin not in self._plugins:
-            self._plugins.append(plugin)
-            self._clear_caches()
-            logger.info(f"Registered plugin: {plugin.plugin_self_metadata().name}")
+        """Register a plugin instance, de-duplicated by plugin metadata name."""
+        try:
+            name = plugin.plugin_self_metadata().name
+        except Exception:
+            name = None
+        if name:
+            if any(p.plugin_self_metadata().name == name for p in self._plugins):
+                logger.debug(f"Plugin already registered by name: {name}")
+                return
         else:
-            logger.warning(f"Plugin {plugin.plugin_self_metadata().name} already registered.")
+            # Fallback to instance identity (shouldn't happen for well-formed plugins)
+            if plugin in self._plugins:
+                logger.debug("Anonymous plugin instance already registered")
+                return
+        self._plugins.append(plugin)
+        self._clear_caches()
+        logger.info(f"Registered plugin: {plugin.plugin_self_metadata().name}")
+
+    # --- Discovery via entry points ---
+    def discover_entry_points(self, group: str = "mus1.plugins") -> int:
+        """Discover and register plugins advertised via Python entry points.
+
+        Returns the number of plugins newly registered.
+        """
+        new_count = 0
+        try:
+            eps = importlib_metadata.entry_points()
+            # PEP 660/685 compatible handling
+            candidates = eps.select(group=group) if hasattr(eps, "select") else eps.get(group, [])
+        except Exception:
+            candidates = []
+
+        for ep in list(candidates):
+            try:
+                obj = ep.load()
+                if isinstance(obj, type) and issubclass(obj, BasePlugin):
+                    instance = obj()
+                    before = len(self._plugins)
+                    self.register_plugin(instance)
+                    if len(self._plugins) > before:
+                        new_count += 1
+                else:
+                    logger.warning(f"Entry point '{ep.name}' did not resolve to a BasePlugin subclass")
+            except Exception as e:
+                logger.error(f"Failed to load plugin from entry point '{getattr(ep, 'name', '?')}': {e}")
+        if new_count:
+            self._clear_caches()
+        logger.info(f"Entry-point discovery complete. New plugins: {new_count}")
+        return new_count
 
     def get_all_plugins(self) -> List[BasePlugin]:
         """Return a list of all registered plugin instances."""
@@ -169,3 +212,30 @@ class PluginManager:
             if experiment_type in supported_types:
                 result.append(plugin)
         return sorted(result, key=lambda p: p.plugin_self_metadata().name.lower())
+
+    # -------------------------------
+    # Project-level action discovery
+    # -------------------------------
+    def get_plugins_with_project_actions(self) -> List[BasePlugin]:
+        """
+        Return plugins that advertise at least one project-level action via
+        BasePlugin.supported_project_actions().
+        """
+        capable: list[BasePlugin] = []
+        for p in self._plugins:
+            try:
+                actions = p.supported_project_actions()
+                if actions:
+                    capable.append(p)
+            except Exception:
+                continue
+        return sorted(capable, key=lambda p: p.plugin_self_metadata().name.lower())
+
+    def get_project_actions_for_plugin(self, plugin_name: str) -> List[str]:
+        plugin = self.get_plugin_by_name(plugin_name)
+        if not plugin:
+            return []
+        try:
+            return list(plugin.supported_project_actions() or [])
+        except Exception:
+            return []

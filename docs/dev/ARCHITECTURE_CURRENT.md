@@ -5,10 +5,10 @@ This document describes how MUS1 works today based on the code, including gaps a
 ## Core modules
 
  - ProjectManager (`src/mus1/core/project_manager.py`)
-  - Creates/loads/saves projects (`project_state.json`) under `~/MUS1/projects` by default (overridable via `MUS1_PROJECTS_DIR`).
-  - Supports a shared projects root via `get_shared_directory()` resolved from `MUS1_SHARED_DIR` (must be a locally mounted path). Both CLI and GUI can create/list projects under this shared root.
+  - Creates/loads/saves projects (`project_state.json`) under a local projects root resolved by precedence: (1) explicit argument (where supported), (2) env `MUS1_PROJECTS_DIR`, (3) per-user config `config.yaml` key `projects_root`, (4) default `~/MUS1/projects`.
+  - Supports a shared projects root via `get_shared_directory()` resolved by precedence: (1) explicit argument, (2) env `MUS1_SHARED_DIR`, (3) per-user config `config.yaml` key `shared_root`. The shared path must be a locally mounted path. Both CLI and GUI can create/list projects under this shared root.
   - Saves use a lightweight advisory lock file `.mus1-lock` and atomic temp-file rename to reduce concurrent write conflicts on shared storage.
-  - Discovers plugins by importing classes in `src/mus1/plugins/*.py` that subclass `BasePlugin` and are concrete; registers them with `PluginManager`.
+  - Discovers plugins via Python entry points using `PluginManager.discover_entry_points()` (group `mus1.plugins`). Discovery is entry-point only; in-tree scanning has been removed from defaults.
   - Orchestrates analysis via `run_analysis(experiment_id, capability)`:
     - Looks up the experiment and a plugin whose `analysis_capabilities()` includes the capability.
     - Calls `plugin.validate_experiment(experiment, project_state)`.
@@ -22,6 +22,7 @@ This document describes how MUS1 works today based on the code, including gaps a
 
 - PluginManager (`src/mus1/core/plugin_manager.py`)
   - Holds registered plugin instances.
+  - Discovers external plugins via Python entry points (`discover_entry_points`), avoiding in-tree coupling by default.
   - Indexes plugins by `readable_data_formats()` and `analysis_capabilities()` for quick lookup.
   - Provides UI-oriented helpers for importer/analysis/exporter lists. Legacy “supported_*” shims remain but return canonical or empty lists; prefer enums/constants and capability/format indices.
 
@@ -40,21 +41,16 @@ This document describes how MUS1 works today based on the code, including gaps a
   - `ProjectState` holds videos under both `unassigned_videos` and `experiment_videos`, keyed by `sample_hash`.
   - Typed fields for multi-machine workflows: `shared_root: Optional[Path]`, `workers: List[WorkerEntry]`, `scan_targets: List[ScanTarget]`.
 
-## Plugins in repo
+## Plugins (external packages)
 
-- DeepLabCutHandlerPlugin (handler)
-  - Capabilities: `extract_bodyparts`, `load_tracking_data`.
-  - Public helper `get_tracking_dataframe(file_path, data_manager, likelihood_threshold)` returns DLC DataFrame from CSV/HDF5 with optional likelihood filtering.
+- Handler: `mus1-plugin-deeplabcut-handler` (public)
+- Importer: `mus1-plugin-dlc-importer` (public)
+- Analysis: `mus1-plugin-tracking-analysis` (public)
+- Importer: `mus1-plugin-moseq2-importer` (public)
+- Assembly (lab-specific): `mus1-assembly-plugin-copperlab` (private, editable for dev)
+- Skeleton: `mus1-assembly-skeleton` (public template)
 
-- Mus1TrackingAnalysisPlugin (analysis)
-  - Capabilities: distance/speed, heatmap, movement plot, time in zones, time near objects, hemisphere analysis, NOR index, OF metrics (partial).
-  - Loads tracking data via `DataManager.call_handler_method('DeepLabCutHandler', 'get_tracking_dataframe', ...)` and resolves frame rate/likelihood from `DataManager`.
-
-- CustomProjectAssembly_Skeleton (package): CSV parsing, QA helpers, optional subject importer; also exposes scan hints consumed by assembly CLI.
-  - Imports subject CSV and creates `SubjectMetadata` entries via `ProjectManager`.
-
-- GcpMoSeq2OrchestratorPlugin (deprecated)
-  - Retained for reference; slated to be replaced by a server-backed orchestration approach.
+Notes: In-tree plugin implementations were removed. Only the interface remains under `src/mus1/plugins/base_plugin.py`. Real plugins are external packages discovered via entry points.
 
 ## UI touchpoints
 
@@ -78,7 +74,7 @@ This document describes how MUS1 works today based on the code, including gaps a
 
 ## Known gaps/bugs (truthful)
 
-- Prefer canonical stage list from metadata and capability/format indices; phase out legacy `PluginManager` shims.
+- Prefer canonical stage list from metadata and capability/format indices; avoid legacy `PluginManager` shims. Entry-point discovery is the single discovery path. The CLI exposes `plugins list|install|uninstall` to manage external plugin packages registered via `mus1.plugins`.
 - DeepLabCut handler likelihood filtering depends on `numpy`; ensure import stays present to prevent runtime errors.
 - Server-backed MoSeq2 orchestration is planned; current GCP-based orchestrator is deprecated.
 - `Mus1TrackingAnalysisPlugin` has duplicated private helpers; consolidate to reduce confusion.
@@ -94,3 +90,11 @@ This document describes how MUS1 works today based on the code, including gaps a
 - Group helps: `mus1 project-help`, `mus1 scan-help`.
  - Parallel scanning: `scan-from-targets` and `ingest` support `--parallel --max-workers`.
  - Auto-host ingest: if `shared_root` isn’t writable on this machine, ingest emits off-shared list for host staging.
+ - Setup helpers: `mus1 setup shared` writes `shared_root` to per-user config; `mus1 setup projects` writes `projects_root` to per-user config (used when `MUS1_PROJECTS_DIR` is not set).
+ - Plugin helpers: `mus1 plugins list`, `mus1 plugins install`, and `mus1 plugins uninstall` manage external plugins discoverable via entry points (`mus1.plugins`).
+ - New: `project assembly` group for plugin-driven project actions:
+   - `project assembly list` – list assembly-capable plugins
+   - `project assembly list-actions --plugin <name>` – list actions for a plugin
+   - `project assembly run --plugin <name> --action <name> [--params-file|-f] [--param KEY=VALUE]` – run an action
+   - Example (Copperlab): `subjects_from_csv_folder` returns `{subjects, conflicts}` with 3-digit ID normalization and reconciliation of sex, birth/death dates, genotype, treatment
+ - GUI launch is via `mus1-gui` only; the CLI no longer exposes a `gui` subcommand.

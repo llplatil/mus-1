@@ -2,7 +2,7 @@ import logging
 import json
 from pathlib import Path
 from datetime import datetime
-from typing import Optional, List, Dict, Any, Iterable
+from typing import Optional, List, Dict, Any, Iterable, Callable
 import os
 import shutil
 import time
@@ -39,8 +39,11 @@ class ProjectManager:
         self.log_bus = LoggingEventBus.get_instance()
         self.log_bus.log("ProjectManager initialized with shared managers", "info", "ProjectManager")
         
-        # Plugins will be registered dynamically by scanning the plugins directory
-        self._discover_and_register_plugins()
+        # Discover external plugins via entry points (preferred in dev/refactor)
+        try:
+            self.plugin_manager.discover_entry_points()
+        except Exception:
+            pass
         
         # Sync core components after init
         self._sync_core_components()
@@ -53,7 +56,8 @@ class ProjectManager:
         Precedence for the base directory is:
         1. *custom_base* argument (used by CLI `--base-dir` or tests).
         2. Environment variable ``MUS1_PROJECTS_DIR`` if set.
-        3. User home default: ``~/MUS1/projects`` (consistent local location).
+        3. Per-user config file (same location as shared) key `projects_root`.
+        4. User home default: ``~/MUS1/projects`` (consistent local location).
 
         The returned directory is created if it does not exist so callers can
         rely on its presence.
@@ -65,8 +69,34 @@ class ProjectManager:
             if env_dir:
                 base_dir = Path(env_dir).expanduser().resolve()
             else:
-                # Default to consistent user-local location
-                base_dir = (Path.home() / "MUS1" / "projects").expanduser().resolve()
+                # Fallback to per-user config (same scheme as get_shared_directory)
+                try:
+                    if platform.system() == "Darwin":
+                        config_dir = Path.home() / "Library/Application Support/mus1"
+                    elif os.name == "nt":
+                        appdata = os.environ.get("APPDATA") or str(Path.home() / "AppData/Roaming")
+                        config_dir = Path(appdata) / "mus1"
+                    else:
+                        xdg = os.environ.get("XDG_CONFIG_HOME") or str(Path.home() / ".config")
+                        config_dir = Path(xdg) / "mus1"
+                    yaml_path = config_dir / "config.yaml"
+                    proj_root = None
+                    if yaml_path.exists():
+                        try:
+                            with open(yaml_path, "r", encoding="utf-8") as f:
+                                data = yaml.safe_load(f) or {}
+                                pr = data.get("projects_root")
+                                if pr:
+                                    proj_root = Path(str(pr)).expanduser()
+                        except Exception:
+                            proj_root = None
+                    if proj_root:
+                        base_dir = Path(proj_root).expanduser().resolve()
+                    else:
+                        # Default to consistent user-local location
+                        base_dir = (Path.home() / "MUS1" / "projects").expanduser().resolve()
+                except Exception:
+                    base_dir = (Path.home() / "MUS1" / "projects").expanduser().resolve()
 
         # Ensure existence
         base_dir.mkdir(parents=True, exist_ok=True)
@@ -1264,6 +1294,146 @@ class ProjectManager:
     # ------------------------------------------------------------------
     # Ingestion helpers used by CLI/GUI
     # ------------------------------------------------------------------
+    def ingest(
+        self,
+        *,
+        project_path: Path,
+        roots: list[Path] | None,
+        dest_subdir: str = "recordings/raw",
+        extensions: list[str] | None = None,
+        exclude_dirs: list[str] | None = None,
+        non_recursive: bool = False,
+        preview: bool = False,
+        emit_in_shared: Path | None = None,
+        emit_off_shared: Path | None = None,
+        parallel: bool = False,
+        max_workers: int = 4,
+        scan_progress_cb: Callable | None = None,
+        dedup_progress_cb: Callable | None = None,
+        stage_progress_cb: Callable | None = None,
+    ) -> Dict[str, Any]:
+        """Scan → dedup → split, optionally stage off-shared into shared_root/dest_subdir, then register.
+
+        Returns a result dict; no printing or CLI side-effects.
+        """
+        # Load project and resolve roots
+        self.load_project(project_path)
+        try:
+            from .scanners.video_discovery import default_roots_if_missing
+            effective_roots = default_roots_if_missing(roots)
+        except Exception:
+            effective_roots = roots or []
+        if not effective_roots:
+            return {"status": "failed", "error": "No scan roots provided and no defaults available for this OS."}
+
+        dm = self.data_manager
+
+        # Scan
+        videos: list[tuple[Path, str]] = []
+        if parallel and len(effective_roots) > 1:
+            from concurrent.futures import ThreadPoolExecutor, as_completed
+            def _scan(root: Path):
+                return list(
+                    dm.discover_video_files(
+                        [root],
+                        extensions=extensions,
+                        recursive=not non_recursive,
+                        excludes=exclude_dirs,
+                        progress_cb=None,
+                    )
+                )
+            with ThreadPoolExecutor(max_workers=max_workers) as exe:
+                futs = {exe.submit(_scan, r): r for r in effective_roots}
+                for fut in as_completed(futs):
+                    try:
+                        videos.extend(fut.result())
+                    except Exception:
+                        continue
+        else:
+            for p, h in dm.discover_video_files(
+                effective_roots,
+                extensions=extensions,
+                recursive=not non_recursive,
+                excludes=exclude_dirs,
+                progress_cb=scan_progress_cb,
+            ):
+                videos.append((p, h))
+
+        # Dedup and split
+        dedup_gen = dm.deduplicate_video_list(videos, progress_cb=dedup_progress_cb)
+        in_shared, off_shared = self.split_by_shared_root(dedup_gen)
+
+        # Optional emit
+        try:
+            if emit_in_shared:
+                dm.emit_jsonl(emit_in_shared, in_shared)
+        except Exception:
+            pass
+        try:
+            if emit_off_shared:
+                dm.emit_jsonl(emit_off_shared, off_shared)
+        except Exception:
+            pass
+
+        if preview:
+            return {
+                "status": "success",
+                "preview": True,
+                "in_shared_count": len(in_shared),
+                "off_shared_count": len(off_shared),
+                "project_path": str(project_path),
+            }
+
+        # Register in-shared
+        added_in = self.register_unlinked_videos(iter(in_shared))
+
+        # Resolve shared root
+        sr = self.state_manager.project_state.shared_root
+        if not sr:
+            try:
+                sr = self.get_shared_directory()
+            except Exception as e:
+                return {"status": "failed", "error": f"Shared root not configured and not resolvable: {e}"}
+        shared_root = Path(sr).expanduser().resolve()
+
+        # Writability test (no side effects)
+        def _is_writable(p: Path) -> bool:
+            try:
+                p.mkdir(parents=True, exist_ok=True)
+                test = p / ".mus1-write-test"
+                test.write_text("ok", encoding="utf-8")
+                test.unlink(missing_ok=True)
+                return True
+            except Exception:
+                return False
+
+        if off_shared and not _is_writable(shared_root):
+            # Caller (CLI/GUI) can decide how to persist the off-shared list
+            return {
+                "status": "success",
+                "in_shared_registered": added_in,
+                "off_shared_pending": len(off_shared),
+                "not_writable": True,
+            }
+
+        # Stage off-shared into shared_root/dest_subdir
+        dest_base = (shared_root / dest_subdir).expanduser().resolve()
+        staged_iter = dm.stage_files_to_shared(
+            [(p, h) for p, h, _ in off_shared],
+            shared_root=shared_root,
+            dest_base=dest_base,
+            overwrite=False,
+            progress_cb=stage_progress_cb,
+        )
+        added_off = self.register_unlinked_videos(staged_iter)
+
+        return {
+            "status": "success",
+            "in_shared_registered": added_in,
+            "off_shared_staged_registered": added_off,
+            "total_unassigned": len(self.state_manager.project_state.unassigned_videos),
+            "not_writable": False,
+        }
     def split_by_shared_root(
         self,
         items: Iterable[tuple[Path, str, datetime]],
@@ -1498,17 +1668,20 @@ class ProjectManager:
         except Exception:
             pass
 
-        action_method_name = "run_import"
-        if not hasattr(plugin, action_method_name) or not callable(getattr(plugin, action_method_name)):
-            msg = (
-                f"Plugin '{plugin_name}' does not have the required action method '{action_method_name}' for capability '{capability_name}'."
-            )
-            self.log_bus.log(f"Action failed: {msg}", "error", "ProjectManager")
-            logger.error(msg)
-            return {"status": "failed", "error": msg}
-
+        # Prefer modern run_action() contract when available; otherwise fall back to run_import(params,...)
         try:
-            result = getattr(plugin, action_method_name)(params=parameters, project_manager=self)
+            if hasattr(plugin, "run_action") and callable(getattr(plugin, "run_action")):
+                result = plugin.run_action(capability_name, parameters, self)
+            else:
+                action_method_name = "run_import"
+                if not hasattr(plugin, action_method_name) or not callable(getattr(plugin, action_method_name)):
+                    msg = (
+                        f"Plugin '{plugin_name}' does not expose project-level action methods for '{capability_name}'."
+                    )
+                    self.log_bus.log(f"Action failed: {msg}", "error", "ProjectManager")
+                    logger.error(msg)
+                    return {"status": "failed", "error": msg}
+                result = getattr(plugin, action_method_name)(params=parameters, project_manager=self)
             if not isinstance(result, dict):
                 raise RuntimeError("Plugin action method returned invalid result format (expected dict).")
             if result.get("status") == "success":
