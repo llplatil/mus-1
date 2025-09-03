@@ -7,12 +7,15 @@ This document describes how MUS1 works today based on the code, including gaps a
  - LabManager (`src/mus1/core/lab_manager.py`)
   - Manages lab-level configuration stored in YAML/JSON files under `~/.mus1/labs/`
   - Stores shared resources: workers (compute), credentials (SSH), scan targets (local/ssh/wsl), master subjects, software installs
+  - **New:** Manages shared storage configuration with automatic drive detection
   - Provides methods to associate/disassociate projects with labs
   - Handles lab metadata, creation, loading, and persistence
+  - **New:** Auto-loads last activated lab and sets shared storage environment variables
 
  - ProjectManager (`src/mus1/core/project_manager.py`)
   - Creates/loads/saves projects (`project_state.json`) under a local projects root resolved by precedence: (1) explicit argument (where supported), (2) env `MUS1_PROJECTS_DIR`, (3) per-user config `config.yaml` key `projects_root`, (4) default `~/MUS1/projects`.
-  - Supports a shared projects root via `get_shared_directory()` resolved by precedence: (1) explicit argument, (2) env `MUS1_SHARED_DIR`, (3) per-user config `config.yaml` key `shared_root`. The shared path must be a locally mounted path. Both CLI and GUI can create/list projects under this shared root.
+  - **New:** Supports lab-based shared storage - when a lab is activated with shared storage configured, projects automatically use the shared storage location
+  - Supports a shared projects root via `get_shared_directory()` resolved by precedence: (1) lab shared storage (if active), (2) explicit argument, (3) env `MUS1_SHARED_DIR`, (4) per-user config `config.yaml` key `shared_root`. The shared path must be a locally mounted path. Both CLI and GUI can create/list projects under this shared root.
   - Saves use a lightweight advisory lock file `.mus1-lock` and atomic temp-file rename to reduce concurrent write conflicts on shared storage.
   - **Lab Integration**: Projects can associate with labs via `associate_with_lab()` method. Once associated, projects inherit lab-level resources (workers, credentials, scan targets) directly without fallbacks.
   - **Simplified Resource Access**: Removed fallback methods; projects now use `get_workers()`, `get_credentials()`, `get_scan_targets()` which require lab association and return lab resources directly.
@@ -94,6 +97,8 @@ Notes: In-tree plugin implementations were removed. Only the interface remains u
 - **Lab Management**: New `mus1 lab` command group for lab-level configuration
   - `lab create --name <name>` – Create a new lab configuration
   - `lab list` – List available lab configurations
+  - `lab activate <lab_id>` – Activate a lab with automatic shared storage detection
+  - `lab configure-storage` – Configure shared storage for the current lab
   - `lab load <lab_id>` – Load a lab for current session
   - `lab associate <project>` – Associate a project with the current lab
   - `lab status` – Show current lab configuration and resources

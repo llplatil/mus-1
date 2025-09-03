@@ -135,6 +135,8 @@ Current status (dev branch - Lab Architecture Complete)
 - **CLI Lab Commands**: Complete lab management command set:
   - `mus1 lab create --name <name>` – Create new lab configuration
   - `mus1 lab list` – List available labs
+  - `mus1 lab activate <lab_id>` – Activate lab with automatic shared storage detection
+  - `mus1 lab configure-storage` – Configure shared storage for the current lab
   - `mus1 lab load <lab_id>` – Load lab for session
   - `mus1 lab associate <project>` – Associate project with lab
   - `mus1 lab status` – Show lab resources and configuration
@@ -146,8 +148,11 @@ Current status (dev branch - Lab Architecture Complete)
 
 **✅ Completed (Lab Architecture)**:
 - Lab-level configuration system with persistent storage
+- Shared storage configuration with automatic drive detection (e.g., CuSSD3)
+- Automatic project storage on shared drives when labs are activated
+- Lab auto-activation and persistence across command sessions
 - Project association with labs for resource inheritance
-- Complete CLI command set for lab management
+- Complete CLI command set for lab management including shared storage
 - Removal of fallback methods and deprecated commands
 - Streamlined codebase with lab-centric design
 

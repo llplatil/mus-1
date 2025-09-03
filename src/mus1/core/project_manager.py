@@ -58,9 +58,10 @@ class ProjectManager:
 
         Precedence for the base directory is:
         1. *custom_base* argument (used by CLI `--base-dir` or tests).
-        2. Environment variable ``MUS1_PROJECTS_DIR`` if set.
-        3. Per-user config file (same location as shared) key `projects_root`.
-        4. User home default: ``~/MUS1/projects`` (consistent local location).
+        2. Shared storage if lab is activated and shared storage is available.
+        3. Environment variable ``MUS1_PROJECTS_DIR`` if set.
+        4. Per-user config file (same location as shared) key `projects_root`.
+        5. User home default: ``~/MUS1/projects`` (consistent local location).
 
         The returned directory is created if it does not exist so callers can
         rely on its presence.
@@ -68,6 +69,23 @@ class ProjectManager:
         if custom_base:
             base_dir = Path(custom_base).expanduser().resolve()
         else:
+            # Check for shared storage from activated lab
+            shared_storage_mount = os.environ.get("MUS1_SHARED_STORAGE_MOUNT")
+            active_lab = os.environ.get("MUS1_ACTIVE_LAB")
+
+            if shared_storage_mount and active_lab and self.lab_manager:
+                try:
+                    shared_projects_root = self.lab_manager.get_shared_projects_root()
+                    if shared_projects_root:
+                        base_dir = shared_projects_root
+                        # Ensure existence
+                        base_dir.mkdir(parents=True, exist_ok=True)
+                        return base_dir
+                except Exception:
+                    # Fall back to local storage if shared storage fails
+                    pass
+
+            # Fall back to original logic
             env_dir = os.environ.get("MUS1_PROJECTS_DIR")
             if env_dir:
                 base_dir = Path(env_dir).expanduser().resolve()

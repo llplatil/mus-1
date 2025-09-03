@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import yaml
+import os
 from pathlib import Path
 from typing import Dict, Any, Optional, List, Set
 from datetime import datetime
@@ -50,6 +51,16 @@ class LabSoftwareInstall(BaseModel):
     description: Optional[str] = Field(None, description="Installation notes")
 
 
+class LabSharedStorage(BaseModel):
+    """Shared storage configuration for lab."""
+    mount_point: Optional[str] = Field(None, description="Expected mount point path (e.g., /Volumes/CuSSD3)")
+    volume_name: Optional[str] = Field(None, description="Volume name for detection (e.g., CuSSD3)")
+    projects_root: str = Field("mus1_projects", description="Directory name for projects on shared storage")
+    media_root: str = Field("mus1_media", description="Directory name for media/data on shared storage")
+    enabled: bool = Field(True, description="Whether shared storage is enabled for this lab")
+    auto_detect: bool = Field(True, description="Attempt automatic detection of shared storage")
+
+
 class LabConfig(BaseModel):
     """Complete lab-level configuration."""
     metadata: LabMetadata
@@ -60,6 +71,7 @@ class LabConfig(BaseModel):
     master_experiment_types: List[str] = Field(default_factory=list, description="Common experiment types")
     software_installs: Dict[str, LabSoftwareInstall] = Field(default_factory=dict, description="3rd party software")
     associated_projects: Set[str] = Field(default_factory=set, description="Paths to associated projects")
+    shared_storage: LabSharedStorage = Field(default_factory=LabSharedStorage, description="Shared storage configuration")
     config_version: str = Field("1.0", description="Configuration schema version")
 
 
@@ -69,10 +81,105 @@ class LabManager:
     def __init__(self):
         self._lab_config: Optional[LabConfig] = None
         self._config_path: Optional[Path] = None
+        self._auto_load_current_lab()
+
+    def get_labs_directory(self, custom_dir: Path | None = None) -> Path:
+        """Return the directory where MUS1 lab configurations are stored.
+
+        Precedence for the base directory is:
+        1. custom_dir argument (used by CLI --config-dir)
+        2. Environment variable MUS1_LABS_DIR if set
+        3. Per-user config file (same location as projects/shared) key 'labs_root'
+        4. User home default: ~/.mus1/labs
+
+        The returned directory is created if it does not exist so callers can
+        rely on its presence.
+        """
+        if custom_dir:
+            base_dir = Path(custom_dir).expanduser().resolve()
+        else:
+            env_dir = os.environ.get("MUS1_LABS_DIR")
+            if env_dir:
+                base_dir = Path(env_dir).expanduser().resolve()
+            else:
+                # Fallback to per-user config (same scheme as projects/shared)
+                try:
+                    import platform
+                    if platform.system() == "Darwin":
+                        config_dir = Path.home() / "Library/Application Support/mus1"
+                    elif os.name == "nt":
+                        appdata = os.environ.get("APPDATA") or str(Path.home() / "AppData/Roaming")
+                        config_dir = Path(appdata) / "mus1"
+                    else:
+                        xdg = os.environ.get("XDG_CONFIG_HOME") or str(Path.home() / ".config")
+                        config_dir = Path(xdg) / "mus1"
+                    yaml_path = config_dir / "config.yaml"
+                    labs_root = None
+                    if yaml_path.exists():
+                        try:
+                            with open(yaml_path, "r", encoding="utf-8") as f:
+                                data = yaml.safe_load(f) or {}
+                                lr = data.get("labs_root")
+                                if lr:
+                                    labs_root = Path(str(lr)).expanduser()
+                        except Exception:
+                            labs_root = None
+                    if labs_root:
+                        base_dir = Path(labs_root).expanduser().resolve()
+                    else:
+                        # Default to consistent user-local location
+                        base_dir = (Path.home() / ".mus1" / "labs").expanduser().resolve()
+                except Exception:
+                    base_dir = (Path.home() / ".mus1" / "labs").expanduser().resolve()
+
+        # Ensure existence
+        base_dir.mkdir(parents=True, exist_ok=True)
+        return base_dir
+
+    def _get_current_lab_file(self) -> Path:
+        """Get the path to the file storing the current lab information."""
+        labs_dir = self.get_labs_directory()
+        return labs_dir / ".current_lab"
+
+    def _auto_load_current_lab(self) -> None:
+        """Automatically load the previously activated lab if it exists."""
+        current_lab_file = self._get_current_lab_file()
+        if current_lab_file.exists():
+            try:
+                with open(current_lab_file, 'r', encoding='utf-8') as f:
+                    current_lab_id = f.read().strip()
+                    if current_lab_id:
+                        # Try to load the lab, but don't fail if it doesn't exist
+                        try:
+                            self.load_lab(current_lab_id)
+                            # If the lab has shared storage enabled, try to activate it
+                            if self._lab_config and self._lab_config.shared_storage.enabled:
+                                mount_point = self.detect_shared_storage_mount()
+                                if mount_point:
+                                    # Set environment variables for shared storage
+                                    os.environ["MUS1_SHARED_STORAGE_MOUNT"] = str(mount_point)
+                                    os.environ["MUS1_ACTIVE_LAB"] = self._lab_config.metadata.name
+                        except (FileNotFoundError, Exception):
+                            # Remove the stale current lab file
+                            current_lab_file.unlink(missing_ok=True)
+            except Exception:
+                # If we can't read the file, remove it
+                current_lab_file.unlink(missing_ok=True)
+
+    def _save_current_lab(self) -> None:
+        """Save the current lab ID to the current lab file."""
+        current_lab_file = self._get_current_lab_file()
+        if self._config_path:
+            lab_id = self._config_path.stem
+            with open(current_lab_file, 'w', encoding='utf-8') as f:
+                f.write(lab_id)
+        else:
+            # Clear the current lab file if no lab is loaded
+            current_lab_file.unlink(missing_ok=True)
 
     @staticmethod
     def _get_default_lab_dir() -> Path:
-        """Get the default directory for lab configurations."""
+        """Get the default directory for lab configurations (deprecated, use get_labs_directory)."""
         if hasattr(Path, 'home'):
             base = Path.home()
         else:
@@ -96,7 +203,7 @@ class LabManager:
             # Generate simple ID from name
             lab_id = name.lower().replace(" ", "_").replace("-", "_")
 
-        config_dir = config_dir or self._get_default_lab_dir()
+        config_dir = config_dir or self.get_labs_directory()
         config_path = config_dir / f"{lab_id}.yaml"
 
         if config_path.exists():
@@ -118,7 +225,7 @@ class LabManager:
 
     def load_lab(self, lab_id_or_path: str, config_dir: Optional[Path] = None) -> LabConfig:
         """Load an existing lab configuration."""
-        config_dir = config_dir or self._get_default_lab_dir()
+        config_dir = config_dir or self.get_labs_directory()
 
         # Try as full path first
         config_path = Path(lab_id_or_path)
@@ -165,7 +272,7 @@ class LabManager:
 
     def list_available_labs(self, config_dir: Optional[Path] = None) -> List[Dict[str, Any]]:
         """List all available lab configurations."""
-        config_dir = config_dir or self._get_default_lab_dir()
+        config_dir = config_dir or self.get_labs_directory()
         labs = []
 
         for config_file in config_dir.glob("*.yaml"):
@@ -368,6 +475,135 @@ class LabManager:
             self.save_lab()
             return True
         return False
+
+    # Shared storage management
+    def set_shared_storage(
+        self,
+        mount_point: Optional[str] = None,
+        volume_name: Optional[str] = None,
+        projects_root: Optional[str] = None,
+        media_root: Optional[str] = None,
+        enabled: Optional[bool] = None,
+        auto_detect: Optional[bool] = None
+    ) -> None:
+        """Configure shared storage for the current lab."""
+        if self._lab_config is None:
+            raise RuntimeError("No lab configuration loaded")
+
+        if mount_point is not None:
+            self._lab_config.shared_storage.mount_point = mount_point
+        if volume_name is not None:
+            self._lab_config.shared_storage.volume_name = volume_name
+        if projects_root is not None:
+            self._lab_config.shared_storage.projects_root = projects_root
+        if media_root is not None:
+            self._lab_config.shared_storage.media_root = media_root
+        if enabled is not None:
+            self._lab_config.shared_storage.enabled = enabled
+        if auto_detect is not None:
+            self._lab_config.shared_storage.auto_detect = auto_detect
+
+        self.save_lab()
+
+    def detect_shared_storage_mount(self) -> Optional[Path]:
+        """Detect if the shared storage is currently mounted."""
+        if self._lab_config is None or not self._lab_config.shared_storage.enabled:
+            return None
+
+        storage = self._lab_config.shared_storage
+
+        # If mount point is specified, check if it exists
+        if storage.mount_point:
+            mount_path = Path(storage.mount_point)
+            if mount_path.exists():
+                return mount_path
+
+        # If volume name is specified, try to find it
+        if storage.volume_name and storage.auto_detect:
+            # On macOS, check /Volumes
+            if os.name == "posix" and platform.system() == "Darwin":
+                volumes_dir = Path("/Volumes")
+                if volumes_dir.exists():
+                    for item in volumes_dir.iterdir():
+                        if item.is_dir() and item.name == storage.volume_name:
+                            return item
+
+            # On Linux, check /mnt and /media
+            elif os.name == "posix":
+                for mount_base in ["/mnt", "/media"]:
+                    mount_dir = Path(mount_base)
+                    if mount_dir.exists():
+                        for item in mount_dir.iterdir():
+                            if item.is_dir() and item.name == storage.volume_name:
+                                return item
+
+            # On Windows, check drive letters
+            elif os.name == "nt":
+                import string
+                for drive_letter in string.ascii_uppercase:
+                    drive_path = Path(f"{drive_letter}:")
+                    if drive_path.exists() and drive_path.name.rstrip(":") == storage.volume_name:
+                        return drive_path
+
+        return None
+
+    def get_shared_projects_root(self) -> Optional[Path]:
+        """Get the projects directory on shared storage if available."""
+        mount_point = self.detect_shared_storage_mount()
+        if mount_point and self._lab_config:
+            return mount_point / self._lab_config.shared_storage.projects_root
+        return None
+
+    def get_shared_media_root(self) -> Optional[Path]:
+        """Get the media directory on shared storage if available."""
+        mount_point = self.detect_shared_storage_mount()
+        if mount_point and self._lab_config:
+            return mount_point / self._lab_config.shared_storage.media_root
+        return None
+
+    def activate_lab(self, check_storage: bool = True) -> bool:
+        """Activate the current lab, optionally checking shared storage.
+
+        Returns True if activation successful, False if shared storage check failed.
+        """
+        if self._lab_config is None:
+            raise RuntimeError("No lab configuration loaded")
+
+        if check_storage and self._lab_config.shared_storage.enabled:
+            mount_point = self.detect_shared_storage_mount()
+            if mount_point is None:
+                return False
+
+            # Set environment variables for shared storage
+            os.environ["MUS1_SHARED_STORAGE_MOUNT"] = str(mount_point)
+            os.environ["MUS1_ACTIVE_LAB"] = self._lab_config.metadata.name
+
+            # Create shared directories if they don't exist
+            projects_root = self.get_shared_projects_root()
+            media_root = self.get_shared_media_root()
+
+            if projects_root:
+                projects_root.mkdir(parents=True, exist_ok=True)
+            if media_root:
+                media_root.mkdir(parents=True, exist_ok=True)
+
+        else:
+            # Clear shared storage env vars if not using shared storage
+            os.environ.pop("MUS1_SHARED_STORAGE_MOUNT", None)
+            os.environ["MUS1_ACTIVE_LAB"] = self._lab_config.metadata.name
+
+        # Save this lab as the current lab
+        self._save_current_lab()
+
+        return True
+
+    def deactivate_lab(self) -> None:
+        """Deactivate the current lab."""
+        os.environ.pop("MUS1_SHARED_STORAGE_MOUNT", None)
+        os.environ.pop("MUS1_ACTIVE_LAB", None)
+        self._lab_config = None
+        self._config_path = None
+        self._get_current_lab_file().unlink(missing_ok=True)
 
     # Property access
     @property

@@ -75,7 +75,7 @@ def _root_callback(
         builtins.print(MUS1_VERSION)
         raise typer.Exit()
     # Initialize and cache managers once at root
-    _get_managers(ctx)
+    _get_managers()
     # Store global output preferences
     if getattr(ctx, "obj", None) is None:
         ctx.obj = {}
@@ -116,12 +116,9 @@ def _init_managers() -> tuple[StateManager, PluginManager, DataManager, ProjectM
     project_manager = ProjectManager(state_manager, plugin_manager, data_manager, lab_manager)
     return state_manager, plugin_manager, data_manager, project_manager
 
-def _get_managers(ctx: typer.Context) -> tuple[StateManager, PluginManager, DataManager, ProjectManager]:
-    if getattr(ctx, "obj", None) is None:
-        ctx.obj = {}
-    if "managers" not in ctx.obj:
-        ctx.obj["managers"] = _init_managers()
-    return ctx.obj["managers"]
+def _get_managers() -> tuple[StateManager, PluginManager, DataManager, ProjectManager]:
+    # Initialize managers directly without requiring context
+    return _init_managers()
 
 def _out_prefs(ctx: typer.Context) -> dict:
     return (getattr(ctx, "obj", None) or {}).get("output", {})
@@ -204,7 +201,7 @@ def scan_videos(
     progress: bool = typer.Option(True, help="Show progress bar (default: true if interactive)"),
 ):
     """Recursively scan *roots* for video files and stream JSON lines (path, hash)."""
-    _, _, data_manager, _ = _get_managers(typer.get_current_context())
+    _, _, data_manager, _ = _get_managers()
     # If no roots were given, compute sensible defaults per OS
     try:
         from .core.scanners.video_discovery import default_roots_if_missing
@@ -251,7 +248,7 @@ def scan_dedup(
     )
 ):
     """Remove duplicate hashes and attach start_time (ISO-8601)."""
-    _, _, data_manager, _ = _get_managers(typer.get_current_context())
+    _, _, data_manager, _ = _get_managers()
 
     source_stream = sys.stdin if input_file in (None, Path("-")) else open(input_file, "r", encoding="utf-8")
     records = list(_iter_json_lines(source_stream))
@@ -282,7 +279,7 @@ def add_videos(
     assign: bool = typer.Option(False, help="Immediately assign videos to experiments based on metadata (placeholder)"),
 ):
     """Register unassigned videos in *project* from JSON lines produced by scan pipeline."""
-    state_manager, _, data_manager, project_manager = _get_managers(typer.get_current_context())
+    state_manager, _, data_manager, project_manager = _get_managers()
 
     # (1) resolve project path to default projects dir if not absolute/exists
     if not project_path.is_absolute() and not project_path.exists():
@@ -469,7 +466,7 @@ def list_projects(
     shared: bool = typer.Option(False, help="List projects from the shared directory (MUS1_SHARED_DIR)"),
 ):
     """List available MUS1 projects on this machine."""
-    _, _, _, project_manager = _get_managers(typer.get_current_context())
+    _, _, _, project_manager = _get_managers()
     if shared and not base_dir:
         try:
             base_dir = project_manager.get_shared_directory()
@@ -499,7 +496,7 @@ def project_associate_lab(
     config_dir: Optional[Path] = typer.Option(None, "--config-dir", help="Directory containing lab configs"),
 ):
     """Associate a MUS1 project with a lab configuration for shared resources."""
-    _, _, _, project_manager = _get_managers(typer.get_current_context())
+    _, _, _, project_manager = _get_managers()
 
     if not project_path.exists():
         print(f"Error: Project not found: {project_path}")
@@ -529,7 +526,7 @@ def project_lab_status(
     project_path: Path = typer.Argument(..., help="Path to MUS1 project"),
 ):
     """Show lab association status and inherited resources for a project."""
-    _, _, _, project_manager = _get_managers(typer.get_current_context())
+    _, _, _, project_manager = _get_managers()
 
     if not project_path.exists():
         print(f"Error: Project not found: {project_path}")
@@ -598,7 +595,7 @@ def project_cleanup_copies(
     dry_run: bool = typer.Option(True, "--dry-run", help="Preview actions only"),
     archive_dir: Optional[Path] = typer.Option(None, "--archive-dir", help="Destination for archived files when policy=archive"),
 ):
-    state_manager, _, data_manager, project_manager = _get_managers(typer.get_current_context())
+    state_manager, _, data_manager, project_manager = _get_managers()
     if not project_path.exists():
         raise typer.BadParameter(f"Project not found: {project_path}")
     project_manager.load_project(project_path)
@@ -666,7 +663,7 @@ def create_project(
     shared_root: Optional[Path] = typer.Option(None, help="Root directory for shared projects (or set MUS1_SHARED_DIR)"),
 ):
     """Create a new MUS1 project locally or on a shared location (server placeholder)."""
-    state_manager, plugin_manager, data_manager, project_manager = _get_managers(typer.get_current_context())
+    state_manager, plugin_manager, data_manager, project_manager = _get_managers()
 
     # Resolve destination path
     target_path: Path
@@ -706,7 +703,7 @@ def project_set_shared_root(
     shared_root: Path = typer.Argument(..., help="Directory considered the authoritative shared storage root"),
 ):
     """Configure the project to use a shared root. Only files under this root are auto-eligible for registration."""
-    state_manager, _, _, project_manager = _get_managers(typer.get_current_context())
+    state_manager, _, _, project_manager = _get_managers()
     if not project_path.exists():
         raise typer.BadParameter(f"Project not found: {project_path}")
     # Configure project-scoped rotating log before further operations
@@ -726,7 +723,7 @@ def project_move_to_shared(
     shared_root: Optional[Path] = typer.Option(None, "--shared-root", help="Override shared root; otherwise use state or MUS1_SHARED_DIR/setup"),
 ):
     """Relocate the project into the shared root so it is accessible across the lab network."""
-    state_manager, _, _, project_manager = _get_managers(typer.get_current_context())
+    state_manager, _, _, project_manager = _get_managers()
     if not project_path.exists():
         raise typer.BadParameter(f"Project not found: {project_path}")
     project_manager.load_project(project_path)
@@ -759,7 +756,7 @@ def project_scan_and_move(
     verify_time: bool = typer.Option(False, "--verify-time", help="Probe container time and prefer it if it differs from mtime"),
 ):
     """Scan roots for videos, dedup, move into media/, and register unassigned."""
-    state_manager, _, data_manager, project_manager = _get_managers(typer.get_current_context())
+    state_manager, _, data_manager, project_manager = _get_managers()
 
     if not project_path.exists():
         raise typer.BadParameter(f"Project not found: {project_path}")
@@ -824,7 +821,7 @@ def project_stage_to_shared(
     This command assumes it is run on a machine that can access both the source paths
     and the project's shared root as local filesystem paths.
     """
-    state_manager, _, data_manager, project_manager = _get_managers(typer.get_current_context())
+    state_manager, _, data_manager, project_manager = _get_managers()
     if not project_path.exists():
         raise typer.BadParameter(f"Project not found: {project_path}")
     project_manager.load_project(project_path)
@@ -892,7 +889,7 @@ def project_ingest(
     target_names: Optional[List[str]] = typer.Option(None, "--target", help="Scan configured targets by name (uses ProjectState.scan_targets)"),
 ):
     """Single-command ingest: scan→dedup→split, then preview or stage+register off-shared."""
-    state_manager, _, _data_manager, project_manager = _get_managers(typer.get_current_context())
+    state_manager, _, _data_manager, project_manager = _get_managers()
     if not project_path.exists():
         raise typer.BadParameter(f"Project not found: {project_path}")
     LoggingEventBus.get_instance().configure_default_file_handler(project_path)
@@ -980,7 +977,7 @@ def project_import_supported_3rdparty(
     param: Optional[List[str]] = typer.Option(None, "--param", help="Additional KEY=VALUE pairs; repeat for multiple"),
     list_plugins: bool = typer.Option(False, "--list", help="List available importer plugins and exit"),
 ):
-    state_manager, plugin_manager, _dm, project_manager = _get_managers(typer.get_current_context())
+    state_manager, plugin_manager, _dm, project_manager = _get_managers()
     if not project_path.exists():
         raise typer.BadParameter(f"Project not found: {project_path}")
     LoggingEventBus.get_instance().configure_default_file_handler(project_path)
@@ -1064,7 +1061,7 @@ def project_import_third_party_folder(
     provenance: str = typer.Option("third_party_import", "--provenance", help="Provenance label to store in metadata"),
     progress: bool = typer.Option(True, help="Show progress bars"),
 ):
-    _state_manager, _plugin_manager, _data_manager, project_manager = _get_managers(typer.get_current_context())
+    _state_manager, _plugin_manager, _data_manager, project_manager = _get_managers()
     if not project_path.exists():
         raise typer.BadParameter(f"Project not found: {project_path}")
     LoggingEventBus.get_instance().configure_default_file_handler(project_path)
@@ -1140,6 +1137,62 @@ def setup_shared(
         yaml.safe_dump(data, f)
 
     print(f"Saved shared root to {config_path}\nShared projects will default to: {path}")
+
+@setup_app.command("labs", help="Configure your per-user labs root directory.")
+def setup_labs(
+    path: Optional[Path] = typer.Option(None, "--path", "-p", help="Writable labs root directory"),
+    create: bool = typer.Option(False, help="Create the directory if it does not exist"),
+):
+    """Persist a per-user config pointing to your labs directory.
+
+    This is stored in your OS user config dir and used when MUS1_LABS_DIR is not set.
+    """
+    # Determine target path
+    if path is None:
+        path = Path(typer.prompt("Enter labs root path (must be writable)"))
+    path = path.expanduser().resolve()
+
+    # Create if requested
+    if not path.exists():
+        if create:
+            path.mkdir(parents=True, exist_ok=True)
+        else:
+            raise typer.BadParameter(f"Path does not exist: {path}. Re-run with --create to make it.")
+
+    # Validate write access
+    test_file = path / ".mus1-write-test"
+    try:
+        with open(test_file, "w", encoding="utf-8") as f:
+            f.write("ok")
+        test_file.unlink(missing_ok=True)
+    except Exception as e:
+        raise typer.BadParameter(f"Path is not writable: {path} ({e})")
+
+    # Compute per-OS user config dir
+    config_dir: Path
+    if sys.platform == "darwin":
+        config_dir = Path.home() / "Library/Application Support/mus1"
+    elif os.name == "nt":
+        appdata = os.environ.get("APPDATA") or str(Path.home() / "AppData/Roaming")
+        config_dir = Path(appdata) / "mus1"
+    else:
+        xdg = os.environ.get("XDG_CONFIG_HOME") or str(Path.home() / ".config")
+        config_dir = Path(xdg) / "mus1"
+    config_dir.mkdir(parents=True, exist_ok=True)
+
+    config_path = config_dir / "config.yaml"
+    data = {}
+    if config_path.exists():
+        try:
+            with open(config_path, "r", encoding="utf-8") as f:
+                data = yaml.safe_load(f) or {}
+        except Exception:
+            data = {}
+    data["labs_root"] = str(path)
+    with open(config_path, "w", encoding="utf-8") as f:
+        yaml.safe_dump(data, f)
+
+    print(f"Saved labs root to {config_path}\nLab configurations will default to: {path}")
 
 @setup_app.command("projects", help="Configure your per-user local projects root (non-shared).")
 def setup_projects(
@@ -1330,6 +1383,29 @@ def lab_status():
     print(f"- Software installs: {len(lab.software_installs)}")
     print(f"- Associated projects: {len(lab.associated_projects)}")
 
+    print("\nShared Storage:")
+    storage = lab.shared_storage
+    print(f"- Enabled: {storage.enabled}")
+    if storage.enabled:
+        print(f"- Mount point: {storage.mount_point or 'Not configured'}")
+        print(f"- Volume name: {storage.volume_name or 'Not configured'}")
+        print(f"- Projects root: {storage.projects_root}")
+        print(f"- Media root: {storage.media_root}")
+        print(f"- Auto-detect: {storage.auto_detect}")
+
+        # Check if storage is currently available
+        mount_point = lab_manager.detect_shared_storage_mount()
+        if mount_point:
+            print(f"- Status: Available at {mount_point}")
+            projects_root = lab_manager.get_shared_projects_root()
+            media_root = lab_manager.get_shared_media_root()
+            if projects_root:
+                print(f"- Projects directory: {projects_root}")
+            if media_root:
+                print(f"- Media directory: {media_root}")
+        else:
+            print("- Status: Not detected/mounted")
+
     if lab.associated_projects:
         print("\nAssociated projects:")
         for project_path in sorted(lab.associated_projects):
@@ -1449,13 +1525,107 @@ def lab_projects():
         raise typer.Exit(code=1)
 
 
+@lab_app.command("activate", help="Activate a lab configuration for current session")
+def lab_activate(
+    lab_id: str = typer.Argument(..., help="Lab ID or path to lab config file"),
+    config_dir: Optional[Path] = typer.Option(None, "--config-dir", help="Directory containing lab configs"),
+    skip_storage_check: bool = typer.Option(False, "--skip-storage-check", help="Skip shared storage mount check"),
+):
+    """Activate a lab configuration for use in subsequent commands.
+
+    This loads the lab and checks for shared storage if configured.
+    If shared storage is required but not found, activation will fail.
+    """
+    lab_manager = _get_lab_manager()
+
+    try:
+        # Load the lab configuration
+        lab_config = lab_manager.load_lab(lab_id, config_dir)
+        print(f"Loaded lab '{lab_config.metadata.name}' ({lab_id})")
+
+        # Attempt to activate the lab
+        if lab_manager.activate_lab(check_storage=not skip_storage_check):
+            print(f"Successfully activated lab '{lab_config.metadata.name}'")
+
+            # Show storage information
+            if lab_config.shared_storage.enabled:
+                mount_point = lab_manager.detect_shared_storage_mount()
+                if mount_point:
+                    print(f"Shared storage detected at: {mount_point}")
+                    projects_root = lab_manager.get_shared_projects_root()
+                    media_root = lab_manager.get_shared_media_root()
+                    if projects_root:
+                        print(f"Projects will be stored in: {projects_root}")
+                    if media_root:
+                        print(f"Media/data will be stored in: {media_root}")
+                else:
+                    print("Warning: Shared storage not detected. Projects will use local storage.")
+            else:
+                print("Lab configured for local storage only.")
+        else:
+            print(f"Error: Could not activate lab '{lab_config.metadata.name}'")
+            print("Shared storage is configured but not currently mounted.")
+            print("Please ensure the shared disk is attached and mounted, then try again.")
+            print("Or use --skip-storage-check to activate without storage validation.")
+            raise typer.Exit(code=1)
+
+    except FileNotFoundError as e:
+        print(f"Error: {e}")
+        raise typer.Exit(code=1)
+    except Exception as e:
+        print(f"Error activating lab: {e}")
+        raise typer.Exit(code=1)
+
+
+@lab_app.command("configure-storage", help="Configure shared storage for the current lab")
+def lab_configure_storage(
+    mount_point: Optional[str] = typer.Option(None, "--mount-point", help="Expected mount point path (e.g., /Volumes/CuSSD3)"),
+    volume_name: Optional[str] = typer.Option(None, "--volume-name", help="Volume name for detection (e.g., CuSSD3)"),
+    projects_root: Optional[str] = typer.Option(None, "--projects-root", help="Directory name for projects on shared storage"),
+    media_root: Optional[str] = typer.Option(None, "--media-root", help="Directory name for media/data on shared storage"),
+    enabled: Optional[bool] = typer.Option(None, "--enabled/--disabled", help="Enable/disable shared storage for this lab"),
+    auto_detect: Optional[bool] = typer.Option(None, "--auto-detect/--no-auto-detect", help="Enable/disable automatic detection"),
+):
+    """Configure shared storage settings for the current lab."""
+    lab_manager = _get_lab_manager()
+
+    if lab_manager.current_lab is None:
+        print("Error: No lab loaded. Use 'mus1 lab load <lab_id>' or 'mus1 lab activate <lab_id>' first.")
+        raise typer.Exit(code=1)
+
+    try:
+        lab_manager.set_shared_storage(
+            mount_point=mount_point,
+            volume_name=volume_name,
+            projects_root=projects_root,
+            media_root=media_root,
+            enabled=enabled,
+            auto_detect=auto_detect
+        )
+        print(f"Updated shared storage configuration for lab '{lab_manager.current_lab.metadata.name}'")
+
+        # Show current configuration
+        storage = lab_manager.current_lab.shared_storage
+        print("\nCurrent shared storage configuration:")
+        print(f"  Enabled: {storage.enabled}")
+        print(f"  Mount point: {storage.mount_point or 'Not set'}")
+        print(f"  Volume name: {storage.volume_name or 'Not set'}")
+        print(f"  Projects root: {storage.projects_root}")
+        print(f"  Media root: {storage.media_root}")
+        print(f"  Auto-detect: {storage.auto_detect}")
+
+    except Exception as e:
+        print(f"Error configuring shared storage: {e}")
+        raise typer.Exit(code=1)
+
+
 ###############################################################################
 # workers management (typed in ProjectState.workers)
 ###############################################################################
 
 
 def _load_project_for_workers(project_path: Path) -> tuple[StateManager, ProjectManager]:
-    state_manager, _, _, project_manager = _get_managers(typer.get_current_context())
+    state_manager, _, _, project_manager = _get_managers()
     if not project_path.exists():
         raise typer.BadParameter(f"Project not found: {project_path}")
     project_manager.load_project(project_path)
@@ -1560,7 +1730,7 @@ def workers_run(
 
 
 def _load_project_for_targets(project_path: Path) -> tuple[StateManager, ProjectManager]:
-    state_manager, _, _, project_manager = _get_managers(typer.get_current_context())
+    state_manager, _, _, project_manager = _get_managers()
     if not project_path.exists():
         raise typer.BadParameter(f"Project not found: {project_path}")
     project_manager.load_project(project_path)
@@ -1610,7 +1780,7 @@ def project_media_index(
     progress: bool = typer.Option(True, help="Show progress"),
     provenance: str = typer.Option("scan_and_move", "--provenance", help="Provenance label to store in metadata"),
 ):
-    state_manager, plugin_manager, data_manager, project_manager = _get_managers(typer.get_current_context())
+    state_manager, plugin_manager, data_manager, project_manager = _get_managers()
 
     if not project_path.exists():
         raise typer.BadParameter(f"Project not found: {project_path}")
@@ -1675,7 +1845,7 @@ def project_media_assign(
     prompt_on_time_mismatch: bool = typer.Option(False, "--prompt-on-time-mismatch", help="If container time differs from mtime and metadata lacks CSV date, prompt user for manual date or UNK"),
     set_provenance: Optional[str] = typer.Option(None, "--set-provenance", help="Override provenance.source in metadata for assigned items"),
 ):
-    state_manager, plugin_manager, data_manager, project_manager = _get_managers(typer.get_current_context())
+    state_manager, plugin_manager, data_manager, project_manager = _get_managers()
     if not project_path.exists():
         raise typer.BadParameter(f"Project not found: {project_path}")
     LoggingEventBus.get_instance().configure_default_file_handler(project_path)

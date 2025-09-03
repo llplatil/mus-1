@@ -5,18 +5,19 @@ Mus-1 is a Python-based tool with an intuitive UI layer designed to streamline t
 ## Overview
 
 MUS1 facilitates a lab-centric workflow starting from recordings, CSV files and processed tracking data, enabling users to:
-1. **Lab Setup:** Create lab configurations with shared compute resources (workers, credentials, scan targets)
-2. **Project Association:** Link projects to labs for automatic resource inheritance
+1. **Lab Setup:** Create lab configurations with shared compute resources (workers, credentials, scan targets) and **shared storage configuration**
+2. **Project Association:** Link projects to labs for automatic resource inheritance and **shared storage usage**
 3. **Import and Organize:** Manage tracking files, associated videos, and metadata within structured MUS1 projects. Import body part definitions directly from DLC `config.yaml` files with the DeepLabCutHandlerPlugin.
 4. **Analyze Kinematics:** Perform foundational analyses like distance, speed, and zone occupancy using built-in analysis plugins.
 5. **Manage Experiments:** Organize experiments by subject, type, and batch, tracking processing stages.
 6. **Standardize:** Apply consistent analysis parameters and lab-wide settings.
 
-The project uses a modular architecture with plugins for data handling (e.g., DeepLabCut outputs) and analysis (e.g., kinematics), all managed at the lab level.
+The project uses a modular architecture with plugins for data handling (e.g., DeepLabCut outputs) and analysis (e.g., kinematics), all managed at the lab level. **New:** MUS1 now supports shared storage configuration, allowing projects to automatically use external drives (like CuSSD3) when a lab is active.
 
 ## Features
 
 - **Lab-Centric Architecture**: Centralized lab configuration with shared compute resources (workers, credentials, scan targets)
+- **Shared Storage Configuration**: Automatic detection and usage of external drives (like CuSSD3) for project storage when labs are active
 - **Material Design UI**: Clean, modern interface built with PySide6-Qt.
 - **Project Management**: Centralized handling of subjects, experiments, metadata, and analysis results with lab association.
 - **DeepLabCut Integration**: Imports body parts from DLC configs and utilizes DLC tracking data (CSV/HDF5).
@@ -30,28 +31,39 @@ The project uses a modular architecture with plugins for data handling (e.g., De
 
 ## Intended Workflow
 
-1.  **Lab Setup**: Create a lab configuration with shared resources
+1.  **Lab Setup**: Create a lab configuration with shared resources and storage
    ```bash
    mus1 lab create --name "My Lab"
    mus1 lab add-worker --name compute-01 --ssh-alias server1
    mus1 lab add-credential --alias server1 --user researcher
    ```
 
-2.  **Project Association**: Create or associate projects with the lab
+2.  **Configure Shared Storage** (Optional): Set up shared storage for the lab
    ```bash
-   mus1 project create my_project
+   # Configure CuSSD3 as shared storage
+   mus1 lab configure-storage --mount-point /Volumes/CuSSD3 --volume-name CuSSD3 --enabled --auto-detect
+   ```
+
+3.  **Activate Lab**: Activate the lab to use its configured resources and storage
+   ```bash
+   mus1 lab activate my_lab
+   ```
+
+4.  **Project Association**: Create or associate projects with the lab (projects will use shared storage if configured)
+   ```bash
+   mus1 project create my_project  # Automatically uses shared storage if lab is active
    mus1 project associate-lab my_project --lab-id my_lab
    ```
 
-3.  **Tracking (External)**: Use **DeepLabCut** (installed separately) to track keypoints from your experimental videos. Generate tracking CSV/HDF5 files.
+5.  **Tracking (External)**: Use **DeepLabCut** (installed separately) to track keypoints from your experimental videos. Generate tracking CSV/HDF5 files.
 
-4.  **Import DLC Config (Optional)**: Use the `DlcProjectImporter` plugin within MUS1 to populate the project's master body part list from your DLC project's `config.yaml`.
+6.  **Import DLC Config (Optional)**: Use the `DlcProjectImporter` plugin within MUS1 to populate the project's master body part list from your DLC project's `config.yaml`.
 
-5.  **Define Experiments in MUS1**: Add subjects and experiments. Use the `DeepLabCutHandler` plugin parameters to link each experiment to its corresponding DLC tracking file (CSV/HDF5).
+7.  **Define Experiments in MUS1**: Add subjects and experiments. Use the `DeepLabCutHandler` plugin parameters to link each experiment to its corresponding DLC tracking file (CSV/HDF5).
 
-6.  **Run Kinematic Analysis (MUS1)**: Use the `Mus1TrackingAnalysis` plugin via the MUS1 interface to calculate metrics like distance, speed, zone time, etc. Results are stored within the experiment's metadata.
+8.  **Run Kinematic Analysis (MUS1)**: Use the `Mus1TrackingAnalysis` plugin via the MUS1 interface to calculate metrics like distance, speed, zone time, etc. Results are stored within the experiment's metadata.
 
-7.  **Future**: MoSeq2/Keypoint-MoSeq orchestration and feature extraction are planned via a dedicated plugin (see Roadmap). The current GCP orchestrator is deprecated in favor of a future server-backed integration.
+9.  **Future**: MoSeq2/Keypoint-MoSeq orchestration and feature extraction are planned via a dedicated plugin (see Roadmap). The current GCP orchestrator is deprecated in favor of a future server-backed integration.
 
 ## Requirements
 
@@ -73,8 +85,11 @@ The project uses a modular architecture with plugins for data handling (e.g., De
 # Create and configure labs
 mus1 lab create --name "My Lab"
 mus1 lab list
-mus1 lab load my_lab
+mus1 lab activate my_lab
 mus1 lab status
+
+# Configure shared storage
+mus1 lab configure-storage --mount-point /Volumes/CuSSD3 --volume-name CuSSD3 --enabled --auto-detect
 
 # Add lab resources
 mus1 lab add-worker --name compute-01 --ssh-alias server1
@@ -121,12 +136,15 @@ mus1 scan -h            # scanner sub-commands
 Projects & shared storage
 ```bash
 # List local or shared projects
-mus1 project list                    
+mus1 project list
 mus1 project list --shared
 
-# Create a project (local or shared)
-mus1 project create my_proj                          
-mus1 project create my_shared --location shared      
+# Create a project (automatically uses shared storage if lab is active)
+mus1 project create my_proj
+
+# Lab-based shared storage configuration
+mus1 lab configure-storage --mount-point /Volumes/CuSSD3 --volume-name CuSSD3 --enabled --auto-detect
+mus1 lab activate my_lab  # Projects created after this will use shared storage
 
 # Configure per-user shared root (no secrets)
 mus1 setup shared --path /mnt/mus1 --create
@@ -238,9 +256,32 @@ mus1 project cleanup-copies /path/to/project --policy delete --scope non-shared 
 mus1 project cleanup-copies /path/to/project --policy archive --scope all --archive-dir /data/archive --dry-run false
 ```
 
-## Shared Projects (Networked storage)
+## Shared Projects & Lab-Based Storage
 
-MUS1 supports keeping projects on a shared network location so multiple machines can access the same project state.
+MUS1 supports two approaches for shared storage: lab-based configuration (recommended) and traditional networked storage.
+
+### **Lab-Based Shared Storage (Recommended)**
+Configure shared storage at the lab level for automatic project storage management:
+
+```bash
+# Configure shared storage for your lab
+mus1 lab configure-storage --mount-point /Volumes/CuSSD3 --volume-name CuSSD3 --enabled --auto-detect
+
+# Activate the lab (automatically detects and uses shared storage)
+mus1 lab activate copperlab
+
+# Create projects (automatically uses shared storage)
+mus1 project create my-experiment  # Stored in /Volumes/CuSSD3/mus1_projects/my-experiment/
+```
+
+**Benefits:**
+- Automatic detection of mounted drives
+- Projects automatically use shared storage when lab is active
+- No manual configuration per project
+- Works across multiple machines in the same lab
+
+### **Traditional Shared Storage**
+For legacy setups or specific requirements:
 
 Setup
 - Choose a local mount path on your machine, mount your network share there, and set the environment variable `MUS1_SHARED_DIR` to that mount path. The directory should contain your MUS1 project folders.

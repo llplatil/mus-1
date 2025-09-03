@@ -15,14 +15,17 @@ Note: See `docs/dev/ARCHITECTURE_CURRENT.md` for the current, authoritative arch
   - Master subjects registry
   - Software installations
   - Associated projects
+- **(New)** Shared Storage Configuration: Automatic detection and configuration of external drives (like CuSSD3)
 - **Project Association**: Links projects to labs for resource inheritance.
 - **Persistence**: Atomic YAML/JSON file operations with metadata tracking.
+- **(New)** Auto-activation: Automatically loads last activated lab and sets shared storage environment variables
 
 ### ProjectManager
 - **(Revised)** Orchestrates project-level operations (adding subjects/experiments, running analyses, renaming projects).
 - **Lab Integration**: Projects associate with labs via `associate_with_lab()` method.
 - **Resource Inheritance**: Projects access lab resources directly via `get_workers()`, `get_credentials()`, `get_scan_targets()`.
 - **Simplified Methods**: Removed fallback logic; requires lab association for resource access.
+- **(New)** Shared Storage Integration: Automatically uses lab's shared storage when creating projects if a lab is activated with shared storage configured.
 - Manages project data persistence by saving/loading the `ProjectState` using JSON serialization (`pydantic_encoder`).
 - Coordinates with `PluginManager` to find appropriate tools (plugins) and `DataManager` to facilitate data loading.
 - Updates application state via `StateManager` after operations.
@@ -34,7 +37,7 @@ Note: See `docs/dev/ARCHITECTURE_CURRENT.md` for the current, authoritative arch
     *   Updates `ExperimentMetadata.analysis_results` and `processing_stage`.
     *   Saves the project state and notifies observers.
 - **(New)** Includes `run_project_level_plugin_action` to execute plugin capabilities operating at the project level (e.g., importers), often coordinating with handler plugins via the `DataManager`.
-- **(Updated)** Local projects root resolves by precedence: explicit arg (where supported) → env `MUS1_PROJECTS_DIR` → per-user config `projects_root` → default `~/MUS1/projects`. Shared projects root resolves by precedence: explicit arg → env `MUS1_SHARED_DIR` → per-user config `shared_root`.
+- **(Updated)** Local projects root resolves by precedence: explicit arg (where supported) → env `MUS1_PROJECTS_DIR` → per-user config `projects_root` → default `~/MUS1/projects`. Shared projects root resolves by precedence: lab shared storage (if active) → explicit arg → env `MUS1_SHARED_DIR` → per-user config `shared_root`.
 - **(Updated)** Video ingestion: `register_unlinked_videos` populates `unassigned_videos` keyed by `sample_hash`; `link_unassigned_video` moves entries into `experiment_videos` using the same key.
 - **(Updated)** Core no longer references UI widgets directly; UI passes settings via `apply_general_settings(sort_mode, frame_rate_enabled, frame_rate)`.
 
@@ -83,6 +86,8 @@ Key design decisions:
 
 1. **Lab Management**
    • `mus1 lab create --name <lab_name>` – Create new lab configuration
+   • `mus1 lab activate <lab_id>` – Activate lab with automatic shared storage detection
+   • `mus1 lab configure-storage` – Configure shared storage for the current lab
    • `mus1 lab load <lab_id>` – Load lab for current session
    • `mus1 lab associate <project_path>` – Associate project with current lab
    • `mus1 lab add-worker --name <name> --ssh-alias <alias>` – Add compute worker to lab
