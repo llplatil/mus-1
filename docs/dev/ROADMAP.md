@@ -9,7 +9,8 @@ This roadmap reflects how the code works today and what is planned next. It avoi
 - Analysis orchestration: `ProjectManager.run_analysis(experiment_id, capability)` validates via plugin, calls `analyze_experiment`, stores results, and advances `processing_stage` when appropriate.
 - Data IO helpers in `DataManager`: `read_yaml`, `read_csv`, `read_hdf`; handler invocation through `call_handler_method`.
 - Video discovery and ingestion: pluggable scanners (`macOS` specialized, base for others), `discover_video_files`, `deduplicate_video_list`, and unassigned→assigned workflow using `sample_hash` keys.
-- Typer CLI (`mus1`) with commands: `scan videos`, `scan dedup`, `project list`, `project create`, `project scan-and-move`, `project media-index`, `project media-assign`, `project assembly` (list/list-actions/run), `project import-third-party-folder`, and `project scan-from-targets` (preview emit options). Root supports `--version`.
+- Typer CLI (`mus1`) with commands: `scan videos`, `scan dedup`, `project list`, `project create`, `project scan-and-move`, `project media-index`, `project media-assign`, `project assembly` (list/list-actions/run), `project import-third-party-folder`. Root supports `--version`.
+  - `project ingest` is the single ingest path and now supports `--target` to scan configured targets; `scan-from-targets` has been removed.
 - UI: `ExperimentView` builds parameter forms from plugin metadata, separates Importer/Analysis/Exporter lists, supports bulk add, and links videos through the unassigned workflow.
 - Plugins:
   - `DeepLabCutHandlerPlugin` (handler): extract body parts, validate/ack tracking sources, load DataFrame via helper with optional likelihood thresholding.
@@ -51,7 +52,7 @@ This roadmap reflects how the code works today and what is planned next. It avoi
   - Drop `project assembly-scan-by-experiments`, `project add-experiments-from-csv`, `project link-media-by-csv`, `project assign-subject*` variants.
   - Rely on `project assembly` (list/list-actions/run) for all plugin-driven project operations.
 - Unify output handling across commands:
-  - Honor root `--json`, `--quiet`, `--verbose` in `scan dedup`, `ingest`, `scan-from-targets`, `stage-to-shared`, `cleanup-copies`.
+  - Honor root `--json`, `--quiet`, `--verbose` in `scan dedup`, `ingest`, `stage-to-shared`, `cleanup-copies`.
   - Standardize errors via `typer.BadParameter` (user input) vs `typer.Exit(1)` (operational) and `typer.secho(..., err=True)`.
 - Ensure all commands reuse cached managers (`_get_managers(ctx)`), no direct `_init_managers()` calls.
 - Keep CLI headless (no GUI imports) and purely core/plugin-driven.
@@ -75,15 +76,14 @@ Incremental plan (each step independently shippable)
 - `mus1 setup shared --path PATH` writes `shared_root` to per-user config; `mus1 setup projects --path PATH` writes `projects_root`.
 - `mus1 workers list|add|remove|test` backed by `ProjectState.workers` (fix current list/remove bugs).
 - `mus1 targets list|add|remove` backed by `ProjectState.scan_targets`.
-- `mus1 project scan-from-targets PROJECT [--targets ...]` → scan all/selected targets, dedup, register unassigned; filter to `shared_root`.
+- `mus1 project ingest PROJECT [--target ...]` → scan local roots or selected targets, dedup, register unassigned; filter to `shared_root`.
 
 3) Remote scanning service [dev]
-- Implement `core/remote_scanner.py` that:
-  - Local: uses `DataManager.discover_video_files`.
-  - SSH: runs remote `mus1 scan videos` via `ssh alias ...` and streams JSONL.
-  - WSL: runs `wsl.exe -e mus1 scan videos` when invoked on Windows or via SSH to a Windows host with WSL.
-  - Merges and dedups via `DataManager.deduplicate_video_list`; filters to `shared_root`.
-  - Preview mode with `--dry-run` and JSONL emission (`--emit-in-shared`, `--emit-off-shared`) for safe review prior to registering or staging.
+- Remote helpers live under `core/scanners/remote.py`:
+  - Local: OS-specific scanners under `core/scanners/`.
+  - SSH/WSL: invoke remote `mus1 scan videos` and stream JSONL.
+  - Dedup via `DataManager.deduplicate_video_list`; filter to `shared_root`.
+  - Preview/emit supported via ingest flags.
 
 4) GUI surfaces [dev]
 - Project Settings: set `shared_root`.
@@ -129,14 +129,15 @@ Follow-up documentation tasks (post immediate work)
   - Verification checklist for a new lab machine (local scan, remote scan, add-videos to shared project).
 
 Current status (dev branch)
-- Typed data model added in `ProjectState`: `shared_root`, `workers`, `scan_targets` along with models `WorkerEntry` and `ScanTarget`.
-- Remote scan aggregator implemented in `core/remote_scanner.py`.
+- Typed data model added in `ProjectState`: `shared_root`, `workers`, `scan_targets`, `host_os`; `WorkerEntry` extended with `os_type` and `supports_wsl`.
+- Remote scan helpers reside in `core/scanners/remote.py`; local scanner selection via `select_local_scanner()`.
 - CLI additions (help texts updated):
   - `mus1 project set-shared-root`: set per-project shared storage root.
   - `mus1 project move-to-shared`: relocate a project under the shared root.
   - `mus1 targets list|add|remove`: manage scan targets (local/ssh/wsl).
   - `mus1 workers list|add|remove`: manage typed worker entries.
-  - `mus1 project scan-from-targets`: scan configured targets, dedup, and register unassigned videos (filtered to `shared_root` if set).
+  - `mus1 project ingest --target`: scan configured targets, dedup, and register unassigned videos (filtered to `shared_root` if set).
+  - `mus1 workers detect-os`: detect and record a worker's OS and WSL capability via SSH.
   - `mus1 project stage-to-shared`: copy files into `shared_root/<subdir>`, verify hash, and register.
   - `mus1 project import-supported-3rdparty`: generic importer runner that selects any installed importer plugin by name and passes YAML/CLI params.
 - GUI: Project view now supports setting `shared_root` and moving the project to shared.
@@ -188,6 +189,8 @@ Risks/Notes
 - Better distribution: portable builds and UV-based reproducible environments.
 
 ## Deprecations and realities
+- Master media CLI (`master-accept-current`, `master-add-unique`) removed. A Master Project concept is in development: a single shared project will act as the authoritative catalog for static entities (subjects, recordings, experiments). Interim: marker helpers in `master_media.py` (`mark_project_as_master`, `is_project_master`).
+
 - GCP MoSeq2 orchestrator is deprecated. Treat as reference only; replacement is a server-backed orchestration plugin when provider abstractions land.
 - No Keypoint-MoSeq analysis plugin exists today; it is a planned analysis plugin that will consume tracking data via the handler/DataManager path.
 

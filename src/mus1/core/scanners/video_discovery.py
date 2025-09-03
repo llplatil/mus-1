@@ -51,3 +51,11 @@ def default_roots_if_missing(roots: Iterable[str | Path] | None) -> list[Path]:
         ]
         return [p for p in candidates if p.exists()]
     return []
+
+
+def select_local_scanner() -> BaseScanner:
+    """Return an OS-appropriate scanner instance (thin wrapper).
+
+    Core code should use this to avoid importing specific OS scanners directly.
+    """
+    return get_scanner()

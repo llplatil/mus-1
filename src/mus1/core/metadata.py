@@ -324,6 +324,7 @@ class ProjectMetadata(BaseModel):
     # Basic metadata about the project
     project_name: str
     date_created: datetime
+    lab_id: Optional[str] = Field(None, description="ID of associated lab configuration")
 
     @validator("project_name")
     def check_project_name(cls, v: str) -> str:
@@ -389,6 +390,8 @@ class WorkerEntry(BaseModel):
     ssh_alias: str
     role: Optional[str] = None  # e.g., "compute", "storage"
     provider: Literal["ssh", "wsl", "local", "ssh-wsl"] = "ssh"
+    os_type: Optional[str] = None  # "darwin"|"linux"|"windows"|"wsl"
+    supports_wsl: bool = False
 
 
 class ScanTarget(BaseModel):
@@ -456,6 +459,9 @@ class ProjectState(BaseModel):
 
     # Store plugin metadata objects at runtime
     registered_plugin_metadatas: List[PluginMetadata] = Field(default_factory=list)
+
+    # Host OS for this project session (set on load/create): "darwin"|"linux"|"windows"|"wsl"
+    host_os: Optional[str] = None
 
 
 class BodyPartMetadata(BaseModel):

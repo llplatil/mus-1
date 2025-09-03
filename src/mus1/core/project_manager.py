@@ -20,21 +20,24 @@ from .plugin_manager import PluginManager
 from ..plugins.base_plugin import BasePlugin
 from .logging_bus import LoggingEventBus
 from .data_manager import DataManager # Assuming DataManager might be used internally later
+from .lab_manager import LabManager
 from pydantic import ValidationError
 
 logger = logging.getLogger("mus1.core.project_manager")
 
 class ProjectManager:
-    def __init__(self, state_manager: StateManager, plugin_manager: PluginManager, data_manager: DataManager):
+    def __init__(self, state_manager: StateManager, plugin_manager: PluginManager, data_manager: DataManager, lab_manager: LabManager | None = None):
         """
         Args:
             state_manager: The main StateManager.
             plugin_manager: The shared PluginManager instance.
             data_manager: The shared DataManager instance.
+            lab_manager: Optional LabManager for lab-level resource inheritance.
         """
         self.state_manager = state_manager
         self.plugin_manager = plugin_manager
         self.data_manager = data_manager
+        self.lab_manager = lab_manager
         self._current_project_root: Path | None = None
         self.log_bus = LoggingEventBus.get_instance()
         self.log_bus.log("ProjectManager initialized with shared managers", "info", "ProjectManager")
@@ -301,6 +304,20 @@ class ProjectManager:
         )
 
         new_state = ProjectState(project_metadata=new_metadata)
+        try:
+            import platform
+            sysname = platform.system().lower()
+            if sysname == "windows":
+                # Best-effort detect WSL when running inside it
+                try:
+                    import os as _os
+                    if "microsoft" in (open("/proc/version","r").read().lower() if Path("/proc/version").exists() else ""):
+                        sysname = "wsl"
+                except Exception:
+                    pass
+            new_state.host_os = sysname
+        except Exception:
+            new_state.host_os = None
         self.state_manager._project_state = new_state
         self._current_project_root = project_root
         # Keep DataManager aware of active project root for output paths
@@ -406,6 +423,19 @@ class ProjectManager:
             self.data_manager.set_project_root(project_root)
         except Exception:
             pass
+        # Update host_os each load
+        try:
+            import platform as _platform
+            sysname = _platform.system().lower()
+            if sysname == "windows":
+                try:
+                    if "microsoft" in (open("/proc/version","r").read().lower() if Path("/proc/version").exists() else ""):
+                        sysname = "wsl"
+                except Exception:
+                    pass
+            self.state_manager.project_state.host_os = sysname
+        except Exception:
+            pass
         logger.info("Project loaded and ready in memory.")
 
         # Sync plugins into the loaded state
@@ -413,6 +443,83 @@ class ProjectManager:
 
         # Notify observers about the project change to refresh UI components
         self.state_manager.notify_observers()
+
+    def associate_with_lab(self, lab_id: str, config_dir: Path | None = None) -> None:
+        """Associate the current project with a lab configuration.
+
+        Args:
+            lab_id: ID of the lab to associate with
+            config_dir: Optional directory containing lab configs
+
+        Raises:
+            RuntimeError: If no project is loaded or lab association fails
+        """
+        if self._current_project_root is None:
+            raise RuntimeError("No project loaded - cannot associate with lab")
+
+        if self.lab_manager is None:
+            raise RuntimeError("No LabManager available for lab association")
+
+        try:
+            # Load the lab configuration
+            lab_config = self.lab_manager.load_lab(lab_id, config_dir)
+
+            # Associate the project with the lab
+            self.lab_manager.associate_project(self._current_project_root)
+
+            # Update project metadata to reference the lab
+            if self.state_manager.project_state.project_metadata:
+                self.state_manager.project_state.project_metadata.lab_id = lab_id
+
+            self.save_project()
+            self.log_bus.log(f"Associated project with lab '{lab_config.metadata.name}'", "success", "ProjectManager")
+
+        except FileNotFoundError:
+            raise RuntimeError(f"Lab configuration '{lab_id}' not found")
+        except Exception as e:
+            self.log_bus.log(f"Failed to associate project with lab '{lab_id}': {e}", "error", "ProjectManager")
+            raise RuntimeError(f"Failed to associate project with lab: {e}")
+
+    def get_workers(self) -> list:
+        """Get workers from the associated lab."""
+        if not self.lab_manager or not self.lab_manager.current_lab:
+            raise RuntimeError("No lab associated with this project")
+        return self.lab_manager.current_lab.workers
+
+    def get_credentials(self) -> dict:
+        """Get credentials from the associated lab."""
+        if not self.lab_manager or not self.lab_manager.current_lab:
+            raise RuntimeError("No lab associated with this project")
+        return self.lab_manager.current_lab.credentials
+
+    def get_scan_targets(self) -> list:
+        """Get scan targets from the associated lab."""
+        if not self.lab_manager or not self.lab_manager.current_lab:
+            raise RuntimeError("No lab associated with this project")
+        return self.lab_manager.current_lab.scan_targets
+
+    def get_master_subjects(self) -> dict:
+        """Get master subjects from the associated lab."""
+        if not self.lab_manager or not self.lab_manager.current_lab:
+            raise RuntimeError("No lab associated with this project")
+        return self.lab_manager.current_lab.master_subjects
+
+    def get_lab_id(self) -> str | None:
+        """Get the lab ID associated with the current project."""
+        if self.state_manager.project_state.project_metadata:
+            return getattr(self.state_manager.project_state.project_metadata, 'lab_id', None)
+        return None
+
+    def is_lab_associated(self) -> bool:
+        """Check if the current project is associated with a lab."""
+        return self.get_lab_id() is not None
+
+    def get_lab_name(self) -> str | None:
+        """Get the lab name associated with the current project."""
+        lab_id = self.get_lab_id()
+        if lab_id and self.lab_manager and self.lab_manager.current_lab:
+            return self.lab_manager.current_lab.metadata.name
+        return None
 
     def add_subject(
         self,
@@ -1311,6 +1418,7 @@ class ProjectManager:
         scan_progress_cb: Callable | None = None,
         dedup_progress_cb: Callable | None = None,
         stage_progress_cb: Callable | None = None,
+        target_names: list[str] | None = None,
     ) -> Dict[str, Any]:
         """Scan → dedup → split, optionally stage off-shared into shared_root/dest_subdir, then register.
 
@@ -1318,46 +1426,48 @@ class ProjectManager:
         """
         # Load project and resolve roots
         self.load_project(project_path)
-        try:
-            from .scanners.video_discovery import default_roots_if_missing
-            effective_roots = default_roots_if_missing(roots)
-        except Exception:
-            effective_roots = roots or []
-        if not effective_roots:
-            return {"status": "failed", "error": "No scan roots provided and no defaults available for this OS."}
-
         dm = self.data_manager
 
-        # Scan
+        # Scan: either via targets or filesystem roots
         videos: list[tuple[Path, str]] = []
-        if parallel and len(effective_roots) > 1:
-            from concurrent.futures import ThreadPoolExecutor, as_completed
-            def _scan(root: Path):
-                return list(
-                    dm.discover_video_files(
-                        [root],
-                        extensions=extensions,
-                        recursive=not non_recursive,
-                        excludes=exclude_dirs,
-                        progress_cb=None,
-                    )
-                )
-            with ThreadPoolExecutor(max_workers=max_workers) as exe:
-                futs = {exe.submit(_scan, r): r for r in effective_roots}
-                for fut in as_completed(futs):
-                    try:
-                        videos.extend(fut.result())
-                    except Exception:
-                        continue
+        if target_names:
+            # Use configured targets from state; support parallel via simple threads
+            targets = list(self.state_manager.project_state.scan_targets or [])
+            targets = [t for t in targets if t.name in set(target_names)] if target_names else targets
+            if not targets:
+                return {"status": "failed", "error": "No matching scan targets configured."}
+            try:
+                # Use scanners.remote helpers
+                from .scanners.remote import collect_from_targets, collect_from_targets_parallel
+                items = collect_from_targets_parallel(self.state_manager, dm, targets, extensions=extensions, exclude_dirs=exclude_dirs, non_recursive=non_recursive, max_workers=max_workers) if parallel else collect_from_targets(self.state_manager, dm, targets, extensions=extensions, exclude_dirs=exclude_dirs, non_recursive=non_recursive)
+                videos.extend(items)
+            except Exception as e:
+                return {"status": "failed", "error": f"Target scan failed: {e}"}
         else:
-            for p, h in dm.discover_video_files(
-                effective_roots,
-                extensions=extensions,
-                recursive=not non_recursive,
-                excludes=exclude_dirs,
-                progress_cb=scan_progress_cb,
-            ):
-                videos.append((p, h))
+            try:
+                from .scanners.video_discovery import default_roots_if_missing, select_local_scanner
+                effective_roots = default_roots_if_missing(roots)
+            except Exception:
+                effective_roots = roots or []
+            if not effective_roots:
+                return {"status": "failed", "error": "No scan roots provided and no defaults available for this OS."}
+
+            if parallel and len(effective_roots) > 1:
+                from concurrent.futures import ThreadPoolExecutor, as_completed
+                scanner = select_local_scanner()
+                def _scan(root: Path):
+                    return list(scanner.iter_videos([root], extensions=extensions or None, recursive=not non_recursive, excludes=exclude_dirs or None, progress_cb=None))
+                with ThreadPoolExecutor(max_workers=max_workers) as exe:
+                    futs = {exe.submit(_scan, r): r for r in effective_roots}
+                    for fut in as_completed(futs):
+                        try:
+                            videos.extend(fut.result())
+                        except Exception:
+                            continue
+            else:
+                scanner = select_local_scanner()
+                for p, h in scanner.iter_videos(effective_roots, extensions=extensions or None, recursive=not non_recursive, excludes=exclude_dirs or None, progress_cb=scan_progress_cb):
+                    videos.append((p, h))
 
         # Dedup and split
         dedup_gen = dm.deduplicate_video_list(videos, progress_cb=dedup_progress_cb)
@@ -1434,6 +1544,85 @@ class ProjectManager:
             "total_unassigned": len(self.state_manager.project_state.unassigned_videos),
             "not_writable": False,
         }
+
+    def import_third_party_folder(
+        self,
+        *,
+        project_path: Path,
+        source_dir: Path,
+        copy: bool = True,
+        recursive: bool = True,
+        verify_time: bool = False,
+        provenance: str = "third_party_import",
+    ) -> Dict[str, Any]:
+        """Import a third-party processed folder into this project's media with provenance notes.
+
+        - Hashes discovered media files under source_dir
+        - Stages them into <project>/media per-recording folders
+        - Registers as unassigned videos
+        - Adds provenance info to per-recording metadata.json
+        """
+        self.load_project(project_path)
+        dm = self.data_manager
+
+        sd = Path(source_dir).expanduser().resolve()
+        if not sd.exists() or not sd.is_dir():
+            return {"status": "failed", "error": f"Source directory not found: {sd}"}
+
+        # Collect media files
+        exts = {".mp4", ".mkv", ".avi", ".mov", ".mpg", ".mpeg"}
+        files: list[Path] = []
+        if recursive:
+            for p in sd.rglob("*"):
+                if p.is_file() and p.suffix.lower() in exts:
+                    files.append(p)
+        else:
+            for p in sd.iterdir():
+                if p.is_file() and p.suffix.lower() in exts:
+                    files.append(p)
+        if not files:
+            return {"status": "success", "added": 0, "message": "No media files found to import."}
+
+        # Hash and stage into media
+        staged: list[tuple[Path, str]] = []
+        for p in files:
+            try:
+                h = dm.compute_sample_hash(p)
+                staged.append((p, h))
+            except Exception:
+                continue
+
+        media_dir = (project_path / "media").expanduser().resolve()
+        media_dir.mkdir(parents=True, exist_ok=True)
+        gen = dm.stage_files_to_shared(
+            staged,
+            shared_root=project_path,  # treat project as shared root to allow existing-under-root logic
+            dest_base=media_dir,
+            overwrite=False,
+            progress_cb=None,
+            delete_source_on_success=not copy,
+            namer=None,
+            verify_time=verify_time,
+        )
+        added = self.register_unlinked_videos(gen)
+
+        # Apply provenance and original path note
+        try:
+            for vm in list(self.state_manager.project_state.unassigned_videos.values()):
+                p = Path(vm.path)
+                if str(p).startswith(str(media_dir)):
+                    md = dm.read_recording_metadata(p.parent)
+                    if md:
+                        prov = md.setdefault("provenance", {})
+                        prov["source"] = provenance
+                        notes = prov.get("notes", "")
+                        if sd.as_posix() not in notes:
+                            prov["notes"] = (notes + f"; imported_from={sd.as_posix()}").strip("; ")
+                        dm.write_recording_metadata(p.parent, md)
+        except Exception:
+            pass
+
+        return {"status": "success", "added": added}
     def split_by_shared_root(
         self,
         items: Iterable[tuple[Path, str, datetime]],

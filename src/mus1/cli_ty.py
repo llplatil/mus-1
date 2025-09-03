@@ -1,12 +1,7 @@
 """Typer-based MUS1 command-line interface (experimental).
 
-Provides:
-    mus1 scan videos …       – walk roots and stream (path, hash) JSON lines
-    mus1 scan dedup …        – deduplicate list / stdin adding start_time
-    mus1 project add-videos  – register unassigned videos into a project
-
 This CLI intentionally has *no* additional business logic – it delegates to
-DataManager and ProjectManager so GUI and CLI share one code path.
+core managers so GUI and CLI share one code path.
 """
 from __future__ import annotations
 
@@ -30,11 +25,11 @@ import builtins
 import os
 import subprocess
 import yaml
-from .core.remote_scanner import collect_from_targets, collect_from_targets_parallel
 from .core.metadata import WorkerEntry, ScanTarget
 from .core.job_provider import run_on_worker
 from .core.credentials import load_credentials, set_credential, remove_credential
 from .core.master_media import load_master_index, save_master_index, add_or_update_master_item
+from .core.lab_manager import LabManager, LabConfig
 import re
 import importlib.metadata as importlib_metadata
 
@@ -49,12 +44,14 @@ project_app = typer.Typer(help="Project-level operations", context_settings=_ctx
 setup_app = typer.Typer(help="One-time local setup helpers (per-user)", context_settings=_ctx)
 workers_app = typer.Typer(help="Manage project worker entries (non-secret)", context_settings=_ctx)
 targets_app = typer.Typer(help="Manage scan targets (local/ssh/wsl)", context_settings=_ctx)
+lab_app = typer.Typer(help="Lab-level configuration and shared resources", context_settings=_ctx)
 
 app.add_typer(scan_app, name="scan")
 app.add_typer(project_app, name="project")
 app.add_typer(setup_app, name="setup")
 app.add_typer(workers_app, name="workers")
 app.add_typer(targets_app, name="targets")
+app.add_typer(lab_app, name="lab")
 plugins_app = typer.Typer(help="Manage external MUS1 plugins (installed via pip entry points)", context_settings=_ctx)
 app.add_typer(plugins_app, name="plugins")
 assembly_app = typer.Typer(help="Project assembly via installed plugins (entry points).", context_settings=_ctx)
@@ -111,10 +108,12 @@ def scan_help():
 
 
 def _init_managers() -> tuple[StateManager, PluginManager, DataManager, ProjectManager]:
+    from .core.lab_manager import LabManager
     state_manager = StateManager()
     plugin_manager = PluginManager()
     data_manager = DataManager(state_manager, plugin_manager)
-    project_manager = ProjectManager(state_manager, plugin_manager, data_manager)
+    lab_manager = LabManager()
+    project_manager = ProjectManager(state_manager, plugin_manager, data_manager, lab_manager)
     return state_manager, plugin_manager, data_manager, project_manager
 
 def _get_managers(ctx: typer.Context) -> tuple[StateManager, PluginManager, DataManager, ProjectManager]:
@@ -205,7 +204,7 @@ def scan_videos(
     progress: bool = typer.Option(True, help="Show progress bar (default: true if interactive)"),
 ):
     """Recursively scan *roots* for video files and stream JSON lines (path, hash)."""
-    _, _, data_manager, _ = _init_managers()
+    _, _, data_manager, _ = _get_managers(typer.get_current_context())
     # If no roots were given, compute sensible defaults per OS
     try:
         from .core.scanners.video_discovery import default_roots_if_missing
@@ -252,7 +251,7 @@ def scan_dedup(
     )
 ):
     """Remove duplicate hashes and attach start_time (ISO-8601)."""
-    _, _, data_manager, _ = _init_managers()
+    _, _, data_manager, _ = _get_managers(typer.get_current_context())
 
     source_stream = sys.stdin if input_file in (None, Path("-")) else open(input_file, "r", encoding="utf-8")
     records = list(_iter_json_lines(source_stream))
@@ -283,7 +282,7 @@ def add_videos(
     assign: bool = typer.Option(False, help="Immediately assign videos to experiments based on metadata (placeholder)"),
 ):
     """Register unassigned videos in *project* from JSON lines produced by scan pipeline."""
-    state_manager, _, data_manager, project_manager = _init_managers()
+    state_manager, _, data_manager, project_manager = _get_managers(typer.get_current_context())
 
     # (1) resolve project path to default projects dir if not absolute/exists
     if not project_path.is_absolute() and not project_path.exists():
@@ -493,142 +492,97 @@ def list_projects(
         typer.echo(f"- {proj.name} ({proj})")
 
 
+@project_app.command("associate-lab", help="Associate a project with a lab configuration")
+def project_associate_lab(
+    project_path: Path = typer.Argument(..., help="Path to MUS1 project"),
+    lab_id: str = typer.Option(..., "--lab-id", help="ID of the lab to associate with"),
+    config_dir: Optional[Path] = typer.Option(None, "--config-dir", help="Directory containing lab configs"),
+):
+    """Associate a MUS1 project with a lab configuration for shared resources."""
+    _, _, _, project_manager = _get_managers(typer.get_current_context())
+
+    if not project_path.exists():
+        print(f"Error: Project not found: {project_path}")
+        raise typer.Exit(code=1)
+
+    try:
+        # Load the project first
+        project_manager.load_project(project_path)
+
+        # Associate with lab
+        project_manager.associate_with_lab(lab_id, config_dir)
+
+        lab_name = "Unknown"
+        if project_manager.lab_manager and project_manager.lab_manager.current_lab:
+            lab_name = project_manager.lab_manager.current_lab.metadata.name
+
+        print(f"Successfully associated project '{project_path}' with lab '{lab_name}' ({lab_id})")
+        print("The project now inherits lab-level workers, credentials, and scan targets.")
+
+    except Exception as e:
+        print(f"Error associating project with lab: {e}")
+        raise typer.Exit(code=1)
+
+
+@project_app.command("lab-status", help="Show lab association status for a project")
+def project_lab_status(
+    project_path: Path = typer.Argument(..., help="Path to MUS1 project"),
+):
+    """Show lab association status and inherited resources for a project."""
+    _, _, _, project_manager = _get_managers(typer.get_current_context())
+
+    if not project_path.exists():
+        print(f"Error: Project not found: {project_path}")
+        raise typer.Exit(code=1)
+
+    try:
+        # Load the project
+        project_manager.load_project(project_path)
+
+        lab_id = project_manager.get_lab_association()
+        if not lab_id:
+            print(f"Project '{project_path}' is not associated with any lab.")
+            print("Use 'mus1 project associate-lab <project> --lab-id <lab_id>' to associate it.")
+            return
+
+        print(f"Project '{project_path}' is associated with lab '{lab_id}'")
+
+        # Show inherited resources
+        if project_manager.lab_manager and project_manager.lab_manager.current_lab:
+            lab = project_manager.lab_manager.current_lab
+            print(f"\nInherited from lab '{lab.metadata.name}':")
+            print(f"- Workers: {len(lab.workers)}")
+            print(f"- Credentials: {len(lab.credentials)}")
+            print(f"- Scan targets: {len(lab.scan_targets)}")
+            print(f"- Master subjects: {len(lab.master_subjects)}")
+        else:
+            print("Warning: Lab configuration could not be loaded.")
+
+        # Show effective resources
+        effective_workers = project_manager.get_effective_workers()
+        effective_targets = project_manager.get_effective_scan_targets()
+        print("\nEffective resources (project + lab):")
+        print(f"- Total workers: {len(effective_workers)}")
+        print(f"- Total scan targets: {len(effective_targets)}")
+
+    except Exception as e:
+        print(f"Error getting lab status: {e}")
+        raise typer.Exit(code=1)
+
+
  
 
 
-@project_app.command("assign-subject", help="Create a minimal experiment and link a recording to a subject.")
-def project_assign_subject(
-    project_path: Path = typer.Argument(..., help="Path to MUS1 project"),
-    recording_path: Path = typer.Argument(..., help="Path to a recording file under shared/master"),
-    subject_id: str = typer.Argument(..., help="Subject ID (e.g., 690)"),
-    experiment_id: Optional[str] = typer.Option(None, "--experiment-id", help="Override experiment ID (default: recording basename)"),
-    exp_type: str = typer.Option("Unknown", "--type", help="Experiment type label"),
-    create_subject: bool = typer.Option(False, "--create-subject", help="Create subject if missing"),
-):
-    _, _, _, project_manager = _init_managers()
-    LoggingEventBus.get_instance().configure_default_file_handler(project_path)
-    project_manager.load_project(project_path)
-
-    if subject_id not in project_manager.state_manager.project_state.subjects:
-        if not create_subject:
-            raise typer.BadParameter(f"Subject '{subject_id}' not found. Use --create-subject to add.")
-        project_manager.add_subject(subject_id=subject_id)
-
-    result = project_manager.run_project_level_plugin_action(
-        "CopperlabAssembly",
-        "assign_subject_to_recording",
-        {
-            "action": "assign_subject_to_recording",
-            "project_path": str(project_path),
-            "subject_id": subject_id,
-            "recording_path": str(recording_path),
-            "experiment_id": experiment_id,
-            "exp_type": exp_type,
-        },
-    )
-
-    if result.get("status") != "success":
-        print(result.get("error", "Failed to assign subject to recording"))
-        raise typer.Exit(code=1)
-
-    eid = result.get("experiment_id")
-    print(f"Linked {recording_path} to experiment {eid}")
+"""Deprecated lab-specific commands removed per roadmap; use 'project assembly' surfaces instead."""
 
 
-@project_app.command("assign-subject-sex", help="Set sex for a subject (M/F, case-insensitive).")
-def project_assign_subject_sex(
-    project_path: Path = typer.Argument(..., help="Path to MUS1 project"),
-    subject_id: str = typer.Argument(..., help="Subject ID"),
-    sex: str = typer.Argument(..., help="M or F"),
-):
-    _, _, _, project_manager = _init_managers()
-    LoggingEventBus.get_instance().configure_default_file_handler(project_path)
-    project_manager.load_project(project_path)
-
-    result = project_manager.run_project_level_plugin_action(
-        "CopperlabAssembly",
-        "assign_subject_sex",
-        {
-            "action": "assign_subject_sex",
-            "project_path": str(project_path),
-            "subject_id": subject_id,
-            "sex": sex,
-        },
-    )
-
-    if result.get("status") != "success":
-        print(result.get("error", "Failed to assign subject sex"))
-        raise typer.Exit(code=1)
-
-    print(f"Updated {subject_id} sex to {result.get('sex')}")
+"""Deprecated lab-specific commands removed per roadmap; use 'project assembly' surfaces instead."""
 
 
 
 
 
-@project_app.command("assign-subject-sex-by-master-filename-metadata", help="Propose subject sex from master filenames and interactively accept.")
-def project_assign_subject_sex_by_master(
-    project_path: Path = typer.Argument(..., help="Path to MUS1 project"),
-    library_path: Optional[Path] = typer.Option(None, "--library-path", help="Override path for master library (defaults to <shared_root>/recordings/master)"),
-):
-    _, _, _, project_manager = _init_managers()
-    LoggingEventBus.get_instance().configure_default_file_handler(project_path)
-    project_manager.load_project(project_path)
-
-    if library_path is None:
-        try:
-            sr = project_manager.state_manager.project_state.shared_root or project_manager.get_shared_directory()
-        except Exception as e:
-            print(f"Shared root not configured: {e}. Run 'mus1 project set-shared-root' first.")
-            raise typer.Exit(code=1)
-        library_path = (Path(sr).expanduser().resolve() / "recordings" / "master").resolve()
-    if not library_path.exists():
-        print(f"Library path not found: {library_path}")
-        raise typer.Exit(code=1)
-
-    result = project_manager.run_project_level_plugin_action(
-        "CopperlabAssembly",
-        "propose_subject_sex_from_master",
-        {
-            "action": "propose_subject_sex_from_master",
-            "project_path": str(project_path),
-            "library_path": str(library_path),
-        },
-    )
-    if result.get("status") != "success":
-        print(result.get("error", "Failed to generate subject sex proposals"))
-        raise typer.Exit(code=1)
-
-    proposals = result.get("proposals", []) or []
-    if not proposals:
-        print("No subject sex proposals found.")
-        return
-
-    updated = 0
-    skipped = 0
-    for p in proposals:
-        sid = p.get("subject_id")
-        sex = p.get("sex")
-        if not sid or sex not in {"M", "F"}:
-            continue
-        if typer.confirm(f"Set subject {sid} sex to {sex}?", default=False):
-            res2 = project_manager.run_project_level_plugin_action(
-                "CopperlabAssembly",
-                "assign_subject_sex",
-                {
-                    "action": "assign_subject_sex",
-                    "project_path": str(project_path),
-                    "subject_id": sid,
-                    "sex": sex,
-                },
-            )
-            if res2.get("status") == "success":
-                updated += 1
-            else:
-                print(f"Failed to set sex for {sid}: {res2.get('error')}")
-        else:
-            skipped += 1
-    print(f"Sex updates accepted: {updated}, Skipped: {skipped}")
+"""Deprecated lab-specific commands removed per roadmap; use 'project assembly' surfaces instead."""
 
 
 @project_app.command("cleanup-copies", help="Identify and optionally remove or archive redundant off-shared copies by policy.")
@@ -639,7 +593,7 @@ def project_cleanup_copies(
     dry_run: bool = typer.Option(True, "--dry-run", help="Preview actions only"),
     archive_dir: Optional[Path] = typer.Option(None, "--archive-dir", help="Destination for archived files when policy=archive"),
 ):
-    state_manager, _, data_manager, project_manager = _init_managers()
+    state_manager, _, data_manager, project_manager = _get_managers(typer.get_current_context())
     if not project_path.exists():
         raise typer.BadParameter(f"Project not found: {project_path}")
     project_manager.load_project(project_path)
@@ -707,7 +661,7 @@ def create_project(
     shared_root: Optional[Path] = typer.Option(None, help="Root directory for shared projects (or set MUS1_SHARED_DIR)"),
 ):
     """Create a new MUS1 project locally or on a shared location (server placeholder)."""
-    state_manager, plugin_manager, data_manager, project_manager = _init_managers()
+    state_manager, plugin_manager, data_manager, project_manager = _get_managers(typer.get_current_context())
 
     # Resolve destination path
     target_path: Path
@@ -747,7 +701,7 @@ def project_set_shared_root(
     shared_root: Path = typer.Argument(..., help="Directory considered the authoritative shared storage root"),
 ):
     """Configure the project to use a shared root. Only files under this root are auto-eligible for registration."""
-    state_manager, _, _, project_manager = _init_managers()
+    state_manager, _, _, project_manager = _get_managers(typer.get_current_context())
     if not project_path.exists():
         raise typer.BadParameter(f"Project not found: {project_path}")
     # Configure project-scoped rotating log before further operations
@@ -767,7 +721,7 @@ def project_move_to_shared(
     shared_root: Optional[Path] = typer.Option(None, "--shared-root", help="Override shared root; otherwise use state or MUS1_SHARED_DIR/setup"),
 ):
     """Relocate the project into the shared root so it is accessible across the lab network."""
-    state_manager, _, _, project_manager = _init_managers()
+    state_manager, _, _, project_manager = _get_managers(typer.get_current_context())
     if not project_path.exists():
         raise typer.BadParameter(f"Project not found: {project_path}")
     project_manager.load_project(project_path)
@@ -800,7 +754,7 @@ def project_scan_and_move(
     verify_time: bool = typer.Option(False, "--verify-time", help="Probe container time and prefer it if it differs from mtime"),
 ):
     """Scan roots for videos, dedup, move into media/, and register unassigned."""
-    state_manager, _, data_manager, project_manager = _init_managers()
+    state_manager, _, data_manager, project_manager = _get_managers(typer.get_current_context())
 
     if not project_path.exists():
         raise typer.BadParameter(f"Project not found: {project_path}")
@@ -865,7 +819,7 @@ def project_stage_to_shared(
     This command assumes it is run on a machine that can access both the source paths
     and the project's shared root as local filesystem paths.
     """
-    state_manager, _, data_manager, project_manager = _init_managers()
+    state_manager, _, data_manager, project_manager = _get_managers(typer.get_current_context())
     if not project_path.exists():
         raise typer.BadParameter(f"Project not found: {project_path}")
     project_manager.load_project(project_path)
@@ -919,7 +873,7 @@ def project_stage_to_shared(
 @project_app.command("ingest", help="Scan roots, dedup, split by shared, and either preview or stage+register off-shared items.")
 def project_ingest(
     project_path: Path = typer.Argument(..., help="Path to MUS1 project"),
-    roots: List[Path] = typer.Argument(None, help="Directories or drive roots to scan"),
+    roots: List[Path] = typer.Argument(None, help="Directories or drive roots to scan (omit when using --target)"),
     dest_subdir: str = typer.Option("recordings/raw", "--dest-subdir", help="Destination under shared root for staging off-shared"),
     extensions: Optional[List[str]] = typer.Option(None, "--ext", help="Allowed extensions (.mp4 .avi …)"),
     exclude_dirs: Optional[List[str]] = typer.Option(None, "--exclude-dirs", help="Sub-strings for directories to skip"),
@@ -928,11 +882,12 @@ def project_ingest(
     emit_in_shared: Optional[Path] = typer.Option(None, "--emit-in-shared", help="Write JSONL of items already under shared root"),
     emit_off_shared: Optional[Path] = typer.Option(None, "--emit-off-shared", help="Write JSONL of items not under shared root"),
     progress: bool = typer.Option(True, help="Show progress bars"),
-    parallel: bool = typer.Option(False, "--parallel", help="Scan multiple roots in parallel (per-target/threaded)"),
+    parallel: bool = typer.Option(False, "--parallel", help="Scan in parallel (per-target/threaded)"),
     max_workers: int = typer.Option(4, "--max-workers", help="Parallel workers for --parallel"),
+    target_names: Optional[List[str]] = typer.Option(None, "--target", help="Scan configured targets by name (uses ProjectState.scan_targets)"),
 ):
     """Single-command ingest: scan→dedup→split, then preview or stage+register off-shared."""
-    state_manager, _, _data_manager, project_manager = _init_managers()
+    state_manager, _, _data_manager, project_manager = _get_managers(typer.get_current_context())
     if not project_path.exists():
         raise typer.BadParameter(f"Project not found: {project_path}")
     LoggingEventBus.get_instance().configure_default_file_handler(project_path)
@@ -974,6 +929,7 @@ def project_ingest(
         scan_progress_cb=scan_cb,
         dedup_progress_cb=dedup_cb,
         stage_progress_cb=stage_cb if progress else None,
+        target_names=target_names,
     )
     scan_pbar.close(); dedup_pbar.close(); stage_pbar.close()
 
@@ -1008,160 +964,7 @@ def project_ingest(
     )
 
 
-@project_app.command("build-master-library", help="Create/update master media under shared root using per-recording folders (pattern options deprecated).")
-def project_build_master_library(
-    project_path: Path = typer.Argument(..., help="Path to MUS1 project"),
-    dest_subdir: str = typer.Option("recordings/master", "--dest-subdir", help="Destination under shared root for the master library"),
-    ext_copy: Optional[List[str]] = typer.Option([".mp4"], "--ext-copy", help="Extensions to COPY into master library (repeatable)"),
-    ext_move: Optional[List[str]] = typer.Option([".mkv"], "--ext-move", help="Extensions to MOVE into master library (repeatable)"),
-    pattern: str = typer.Option("{base}_{date:%Y%m%d}_{hash8}{ext}", "--pattern", help="[DEPRECATED] Ignored; per-recording folders are used."),
-    dry_run: bool = typer.Option(False, "--dry-run", help="Preview without copying/moving or registering"),
-    progress: bool = typer.Option(True, help="Show progress bars"),
-):
-    """Build a canonical, flat master library from the project's known videos.
-
-    - Sources: both unassigned_videos and experiment_videos in the project state
-    - Policy: copy for --ext-copy, move for --ext-move
-    - Naming: canonical based on subject/experiment/date/hash to avoid collisions
-    - Output: files placed under shared_root/dest_subdir, registered as unassigned videos
-    """
-    state_manager, plugin_manager, data_manager, project_manager = _init_managers()
-
-    if not project_path.exists():
-        raise typer.BadParameter(f"Project not found: {project_path}")
-    LoggingEventBus.get_instance().configure_default_file_handler(project_path)
-    project_manager.load_project(project_path)
-
-    # Resolve shared root
-    sr = state_manager.project_state.shared_root
-    if not sr:
-        try:
-            sr = project_manager.get_shared_directory()
-        except Exception as e:
-            raise typer.BadParameter(f"Shared root not configured for project and not resolvable: {e}")
-    shared_root = Path(sr).expanduser().resolve()
-    dest_base = (shared_root / dest_subdir).expanduser().resolve()
-
-    # Gather known videos (hash/path/date) from state
-    ps = state_manager.project_state
-    items: list[tuple[Path, str, datetime]] = []
-
-    def _ensure_hash_and_tuple(vm) -> Optional[tuple[Path, str, datetime]]:
-        try:
-            p = Path(vm.path)
-            if not p.exists():
-                return None
-            h = vm.sample_hash or data_manager.compute_sample_hash(p)
-            dt = getattr(vm, "date", None) or data_manager._extract_start_time(p)
-            return (p, str(h), dt)
-        except Exception:
-            return None
-
-    for vm in ps.unassigned_videos.values():
-        tup = _ensure_hash_and_tuple(vm)
-        if tup:
-            items.append(tup)
-    for vm in ps.experiment_videos.values():
-        tup = _ensure_hash_and_tuple(vm)
-        if tup:
-            items.append(tup)
-
-    if not items:
-        print("No known videos in project state.")
-        raise typer.Exit(code=0)
-
-    # Build lookup maps for naming
-    hash_to_vm = {h: vm for h, vm in ((vm.sample_hash, vm) for vm in list(ps.unassigned_videos.values()) + list(ps.experiment_videos.values())) if h}
-    exp_by_id = ps.experiments
-
-    def _namer(src_path: Path) -> str:
-        # Try to find hash via quick compute; if expensive, we fall back to base
-        try:
-            h = data_manager.compute_sample_hash(src_path)
-        except Exception:
-            h = None
-        vm = hash_to_vm.get(h) if h else None
-        subject = "unknown"
-        experiment = "unknown"
-        date_val: datetime | None = None
-        if vm:
-            date_val = getattr(vm, "date", None)
-            exp_id = next(iter(vm.experiment_ids), None) if hasattr(vm, "experiment_ids") else None
-            if exp_id and exp_id in exp_by_id:
-                experiment = exp_id
-                subject = exp_by_id[exp_id].subject_id
-                if not date_val:
-                    date_val = exp_by_id[exp_id].date_recorded
-        if not date_val:
-            try:
-                date_val = data_manager._extract_start_time(src_path)
-            except Exception:
-                date_val = datetime.fromtimestamp(src_path.stat().st_mtime)
-        base = src_path.stem
-        ext = src_path.suffix
-        hash8 = (h or "").replace(" ", "")[:8] if h else ""
-        # Render pattern safely
-        try:
-            name = pattern.format(
-                subject=subject,
-                experiment=experiment,
-                date=date_val,
-                hash8=hash8,
-                base=base,
-                ext=ext,
-            )
-        except Exception:
-            name = f"{base}_{hash8}{ext}" if hash8 else f"{base}{ext}"
-        # Ensure extension is present
-        if not name.endswith(ext):
-            name = f"{name}{ext}"
-        # Strip directory parts if pattern introduced any
-        return Path(name).name
-
-    # Split by extension policy
-    ext_copy = [e.lower() for e in (ext_copy or [])]
-    ext_move = [e.lower() for e in (ext_move or [])]
-    allow = set(ext_copy + ext_move) if (ext_copy or ext_move) else None
-    src_copy: list[tuple[Path, str]] = []
-    src_move: list[tuple[Path, str]] = []
-    for p, h, _ in items:
-        if allow and p.suffix.lower() not in allow:
-            continue
-        if p.suffix.lower() in ext_move:
-            src_move.append((p, h))
-        else:
-            src_copy.append((p, h))
-
-    print(f"Planning master library at: {dest_base}")
-    print(f"Copy: {len(src_copy)} files | Move: {len(src_move)} files")
-
-    if dry_run:
-        raise typer.Exit(code=0)
-
-    # Execute copy stage
-    added_total = 0
-    pbar_total = len(src_copy) + len(src_move)
-    pbar = tqdm(total=pbar_total, desc="Building master library", disable=(not progress) or (not sys.stderr.isatty()))
-
-    def _tick(done: int, total: int):
-        pbar.update(1)
-
-    def _reg(gen):
-        nonlocal added_total
-        added = project_manager.register_unlinked_videos(gen)
-        added_total += added
-
-    if src_copy:
-        gen_copy = data_manager.stage_files_to_shared(src_copy, shared_root=shared_root, dest_base=dest_base, overwrite=False, progress_cb=_tick, delete_source_on_success=False, namer=_namer)
-        _reg(gen_copy)
-    if src_move:
-        gen_move = data_manager.stage_files_to_shared(src_move, shared_root=shared_root, dest_base=dest_base, overwrite=False, progress_cb=_tick, delete_source_on_success=True, namer=_namer)
-        _reg(gen_move)
-
-    pbar.close()
-    print(f"Master library build complete. Newly registered: {added_total}. Unassigned total: {len(state_manager.project_state.unassigned_videos)}")
-    if pattern:
-        typer.echo("Note: --pattern is deprecated and ignored; folder-based naming is enforced.")
+"""Deprecated master library builder removed; Master Project concept is in development."""
 
 
 @project_app.command("import-supported-3rdparty", help="Run an installed importer plugin for third-party or external media ingestion.")
@@ -1172,7 +975,7 @@ def project_import_supported_3rdparty(
     param: Optional[List[str]] = typer.Option(None, "--param", help="Additional KEY=VALUE pairs; repeat for multiple"),
     list_plugins: bool = typer.Option(False, "--list", help="List available importer plugins and exit"),
 ):
-    state_manager, plugin_manager, _dm, project_manager = _init_managers()
+    state_manager, plugin_manager, _dm, project_manager = _get_managers(typer.get_current_context())
     if not project_path.exists():
         raise typer.BadParameter(f"Project not found: {project_path}")
     LoggingEventBus.get_instance().configure_default_file_handler(project_path)
@@ -1256,102 +1059,25 @@ def project_import_third_party_folder(
     provenance: str = typer.Option("third_party_import", "--provenance", help="Provenance label to store in metadata"),
     progress: bool = typer.Option(True, help="Show progress bars"),
 ):
-    state_manager, plugin_manager, data_manager, project_manager = _init_managers()
+    _state_manager, _plugin_manager, _data_manager, project_manager = _get_managers(typer.get_current_context())
     if not project_path.exists():
         raise typer.BadParameter(f"Project not found: {project_path}")
     LoggingEventBus.get_instance().configure_default_file_handler(project_path)
-    project_manager.load_project(project_path)
-
-    sd = Path(source_dir).expanduser().resolve()
-    if not sd.exists() or not sd.is_dir():
-        raise typer.BadParameter(f"Source directory not found: {sd}")
-
-    # Collect media files
-    exts = {".mp4", ".mkv", ".avi", ".mov", ".mpg", ".mpeg"}
-    files: list[Path] = []
-    if recursive:
-        for p in sd.rglob("*"):
-            if p.is_file() and p.suffix.lower() in exts:
-                files.append(p)
-    else:
-        for p in sd.iterdir():
-            if p.is_file() and p.suffix.lower() in exts:
-                files.append(p)
-    if not files:
-        print("No media files found to import.")
-        raise typer.Exit(code=0)
-
-    # Hash and stage into media
-    staged: list[tuple[Path, str]] = []
-    pbar = tqdm(total=len(files), desc="Hashing", disable=(not progress) or (not sys.stderr.isatty()))
-    for p in files:
-        try:
-            h = data_manager.compute_sample_hash(p)
-            staged.append((p, h))
-        except Exception:
-            pass
-        pbar.update(1)
-    pbar.close()
-
-    media_dir = (project_path / "media").expanduser().resolve()
-    media_dir.mkdir(parents=True, exist_ok=True)
-    gen = data_manager.stage_files_to_shared(
-        staged,
-        shared_root=project_path,
-        dest_base=media_dir,
-        overwrite=False,
-        progress_cb=None,
-        delete_source_on_success=not copy,
-        namer=None,
-        verify_time=verify_time,
-    )
-    added = project_manager.register_unlinked_videos(gen)
-
-    # Apply provenance and original path note
-    try:
-        for vm in list(state_manager.project_state.unassigned_videos.values()):
-            p = Path(vm.path)
-            if str(p).startswith(str(media_dir)):
-                md = data_manager.read_recording_metadata(p.parent)
-                if md:
-                    prov = md.setdefault("provenance", {})
-                    prov["source"] = provenance
-                    notes = prov.get("notes", "")
-                    if sd.as_posix() not in notes:
-                        prov["notes"] = (notes + f"; imported_from={sd.as_posix()}").strip("; ")
-                    data_manager.write_recording_metadata(p.parent, md)
-    except Exception:
-        pass
-
-    print(f"Third-party import complete. Added {added} items. Unassigned total: {len(state_manager.project_state.unassigned_videos)}")
-
-
-@project_app.command("fix-master-times", help="Rename master library media files to reflect true recording time and update project state.")
-def project_fix_master_times(
-    project_path: Path = typer.Argument(..., help="Path to MUS1 project"),
-    dest_subdir: str = typer.Option("recordings/master", "--dest-subdir", help="Master library subdir under shared root"),
-    dry_run: bool = typer.Option(False, "--dry-run", help="Preview changes without renaming or saving"),
-    progress: bool = typer.Option(True, help="Show progress"),
-):
-    state_manager, _, data_manager, project_manager = _init_managers()
-
-    if not project_path.exists():
-        raise typer.BadParameter(f"Project not found: {project_path}")
-
-    LoggingEventBus.get_instance().configure_default_file_handler(project_path)
-    project_manager.load_project(project_path)
-
-    res = project_manager.fix_master_recording_times(
+    result = project_manager.import_third_party_folder(
         project_path=project_path,
-        dest_subdir=dest_subdir,
-        dry_run=dry_run,
+        source_dir=source_dir,
+        copy=copy,
+        recursive=recursive,
+        verify_time=verify_time,
+        provenance=provenance,
     )
-    if res.get("status") != "success":
-        print(f"[red]Failed:[/red] {res.get('error')}")
+    if result.get("status") != "success":
+        builtins.print(result.get("error", "Import failed."))
         raise typer.Exit(code=1)
-    print(
-        f"Scanned {res['scanned']} files. Renamed {res['renamed']}. Updated recordings: {res['updated_recordings']}. Updated experiments: {res['updated_experiments']}."
-    )
+    builtins.print(f"Third-party import complete. Added {int(result.get('added', 0))} items.")
+
+
+"""Deprecated master maintenance CLI removed; Master Project concept is in development."""
 
 def run():
     app()
@@ -1466,32 +1192,280 @@ def setup_projects(
     print(f"Saved local projects root to {config_path}\nLocal projects will default to: {path}")
 
 ###############################################################################
+# lab management (lab-level shared configuration)
+###############################################################################
+
+
+def _get_lab_manager() -> LabManager:
+    """Get or create a lab manager instance."""
+    return LabManager()
+
+
+@lab_app.command("create", help="Create a new lab configuration")
+def lab_create(
+    name: str = typer.Option(..., "--name", help="Human-readable lab name"),
+    lab_id: Optional[str] = typer.Option(None, "--id", help="Lab identifier (auto-generated from name if not provided)"),
+    description: str = typer.Option("", "--description", help="Lab description"),
+    config_dir: Optional[Path] = typer.Option(None, "--config-dir", help="Directory to store lab configs"),
+):
+    """Create a new lab configuration with shared resources."""
+    lab_manager = _get_lab_manager()
+    try:
+        lab_config = lab_manager.create_lab(
+            name=name,
+            lab_id=lab_id,
+            description=description,
+            config_dir=config_dir
+        )
+        print(f"Created lab '{name}' with ID '{lab_id or name.lower().replace(' ', '_').replace('-', '_')}'")
+        print(f"Configuration saved to: {lab_manager.current_lab_path}")
+    except FileExistsError as e:
+        print(f"Error: {e}")
+        raise typer.Exit(code=1)
+    except Exception as e:
+        print(f"Error creating lab: {e}")
+        raise typer.Exit(code=1)
+
+
+@lab_app.command("list", help="List available lab configurations")
+def lab_list(
+    config_dir: Optional[Path] = typer.Option(None, "--config-dir", help="Directory containing lab configs"),
+):
+    """List all available lab configurations."""
+    lab_manager = _get_lab_manager()
+    labs = lab_manager.list_available_labs(config_dir)
+
+    if not labs:
+        print("No lab configurations found.")
+        return
+
+    print("Available labs:")
+    for lab in labs:
+        print(f"- {lab['name']} (ID: {lab['id']})")
+        if lab['description']:
+            print(f"  Description: {lab['description']}")
+        print(f"  Projects: {lab['projects']}")
+        print(f"  Path: {lab['path']}")
+        print()
+
+
+@lab_app.command("load", help="Load a lab configuration for current session")
+def lab_load(
+    lab_id: str = typer.Argument(..., help="Lab ID or path to lab config file"),
+    config_dir: Optional[Path] = typer.Option(None, "--config-dir", help="Directory containing lab configs"),
+):
+    """Load a lab configuration for use in subsequent commands."""
+    lab_manager = _get_lab_manager()
+    try:
+        lab_config = lab_manager.load_lab(lab_id, config_dir)
+        print(f"Loaded lab '{lab_config.metadata.name}' ({lab_id})")
+        print(f"Workers: {len(lab_config.workers)}")
+        print(f"Credentials: {len(lab_config.credentials)}")
+        print(f"Scan targets: {len(lab_config.scan_targets)}")
+        print(f"Associated projects: {len(lab_config.associated_projects)}")
+    except FileNotFoundError as e:
+        print(f"Error: {e}")
+        raise typer.Exit(code=1)
+    except Exception as e:
+        print(f"Error loading lab: {e}")
+        raise typer.Exit(code=1)
+
+
+@lab_app.command("associate", help="Associate a project with the current lab")
+def lab_associate(
+    project_path: Path = typer.Argument(..., help="Path to MUS1 project"),
+    lab_id: Optional[str] = typer.Option(None, "--lab", help="Lab ID to associate with (if not already loaded)"),
+):
+    """Associate a MUS1 project with a lab configuration."""
+    lab_manager = _get_lab_manager()
+
+    # Load lab if specified
+    if lab_id:
+        try:
+            lab_manager.load_lab(lab_id)
+        except FileNotFoundError as e:
+            print(f"Error: {e}")
+            raise typer.Exit(code=1)
+
+    if lab_manager.current_lab is None:
+        print("Error: No lab loaded. Use 'mus1 lab load <lab_id>' first or specify --lab")
+        raise typer.Exit(code=1)
+
+    try:
+        lab_manager.associate_project(project_path)
+        print(f"Associated project '{project_path}' with lab '{lab_manager.current_lab.metadata.name}'")
+    except Exception as e:
+        print(f"Error associating project: {e}")
+        raise typer.Exit(code=1)
+
+
+@lab_app.command("status", help="Show current lab configuration status")
+def lab_status():
+    """Show information about the currently loaded lab."""
+    lab_manager = _get_lab_manager()
+
+    if lab_manager.current_lab is None:
+        print("No lab configuration currently loaded.")
+        print("Use 'mus1 lab load <lab_id>' to load a lab configuration.")
+        return
+
+    lab = lab_manager.current_lab
+    print(f"Current Lab: {lab.metadata.name}")
+    print(f"Description: {lab.metadata.description or 'None'}")
+    print(f"Created: {lab.metadata.created_at}")
+    print(f"Updated: {lab.metadata.updated_at}")
+    print(f"Config path: {lab_manager.current_lab_path}")
+    print()
+
+    print("Resources:")
+    print(f"- Workers: {len(lab.workers)}")
+    print(f"- Credentials: {len(lab.credentials)}")
+    print(f"- Scan targets: {len(lab.scan_targets)}")
+    print(f"- Master subjects: {len(lab.master_subjects)}")
+    print(f"- Software installs: {len(lab.software_installs)}")
+    print(f"- Associated projects: {len(lab.associated_projects)}")
+
+    if lab.associated_projects:
+        print("\nAssociated projects:")
+        for project_path in sorted(lab.associated_projects):
+            print(f"- {project_path}")
+
+
+@lab_app.command("add-worker", help="Add a worker to the current lab")
+def lab_add_worker(
+    name: str = typer.Option(..., "--name", help="Display name for the worker"),
+    ssh_alias: str = typer.Option(..., "--ssh-alias", help="Host alias from ~/.ssh/config"),
+    role: Optional[str] = typer.Option(None, help="Optional role tag (e.g., compute, storage)"),
+    provider: str = typer.Option("ssh", help="Provider: ssh|wsl|local|ssh-wsl", show_default=True),
+):
+    """Add a compute worker to the lab configuration."""
+    lab_manager = _get_lab_manager()
+
+    if lab_manager.current_lab is None:
+        print("Error: No lab loaded. Use 'mus1 lab load <lab_id>' first.")
+        raise typer.Exit(code=1)
+
+    try:
+        worker = WorkerEntry(
+            name=name,
+            ssh_alias=ssh_alias,
+            role=role,
+            provider=provider
+        )
+        lab_manager.add_worker(worker)
+        print(f"Added worker '{name}' to lab '{lab_manager.current_lab.metadata.name}'")
+    except ValueError as e:
+        print(f"Error: {e}")
+        raise typer.Exit(code=1)
+    except Exception as e:
+        print(f"Error adding worker: {e}")
+        raise typer.Exit(code=1)
+
+
+@lab_app.command("add-credential", help="Add SSH credentials to the current lab")
+def lab_add_credential(
+    alias: str = typer.Option(..., "--alias", help="SSH alias name"),
+    user: Optional[str] = typer.Option(None, "--user", help="Username"),
+    identity_file: Optional[Path] = typer.Option(None, "--identity-file", help="Path to SSH private key"),
+    description: Optional[str] = typer.Option(None, "--description", help="Description"),
+):
+    """Add SSH credentials to the lab configuration."""
+    lab_manager = _get_lab_manager()
+
+    if lab_manager.current_lab is None:
+        print("Error: No lab loaded. Use 'mus1 lab load <lab_id>' first.")
+        raise typer.Exit(code=1)
+
+    try:
+        lab_manager.add_credential(
+            alias=alias,
+            user=user,
+            identity_file=str(identity_file) if identity_file else None,
+            description=description
+        )
+        print(f"Added credentials for alias '{alias}' to lab '{lab_manager.current_lab.metadata.name}'")
+    except Exception as e:
+        print(f"Error adding credentials: {e}")
+        raise typer.Exit(code=1)
+
+
+@lab_app.command("add-target", help="Add a scan target to the current lab")
+def lab_add_target(
+    name: str = typer.Option(..., "--name", help="Target name"),
+    kind: str = typer.Option(..., "--kind", help="local|ssh|wsl"),
+    roots: List[Path] = typer.Option(..., "--root", help="Root paths to scan"),
+    ssh_alias: Optional[str] = typer.Option(None, "--ssh-alias", help="SSH alias for remote targets"),
+):
+    """Add a scan target to the lab configuration."""
+    lab_manager = _get_lab_manager()
+
+    if lab_manager.current_lab is None:
+        print("Error: No lab loaded. Use 'mus1 lab load <lab_id>' first.")
+        raise typer.Exit(code=1)
+
+    try:
+        target = ScanTarget(
+            name=name,
+            kind=kind,
+            roots=[str(r) for r in roots],
+            ssh_alias=ssh_alias
+        )
+        lab_manager.add_scan_target(target)
+        print(f"Added scan target '{name}' to lab '{lab_manager.current_lab.metadata.name}'")
+    except ValueError as e:
+        print(f"Error: {e}")
+        raise typer.Exit(code=1)
+    except Exception as e:
+        print(f"Error adding target: {e}")
+        raise typer.Exit(code=1)
+
+
+@lab_app.command("projects", help="List projects associated with the current lab")
+def lab_projects():
+    """List all projects associated with the current lab."""
+    lab_manager = _get_lab_manager()
+
+    if lab_manager.current_lab is None:
+        print("Error: No lab loaded. Use 'mus1 lab load <lab_id>' first.")
+        raise typer.Exit(code=1)
+
+    try:
+        projects = lab_manager.get_lab_projects()
+
+        if not projects:
+            print(f"No valid projects associated with lab '{lab_manager.current_lab.metadata.name}'.")
+            return
+
+        print(f"Projects associated with lab '{lab_manager.current_lab.metadata.name}':")
+        for project in projects:
+            print(f"- {project.name} ({project})")
+    except Exception as e:
+        print(f"Error listing lab projects: {e}")
+        raise typer.Exit(code=1)
+
+
+###############################################################################
 # workers management (typed in ProjectState.workers)
 ###############################################################################
 
 
 def _load_project_for_workers(project_path: Path) -> tuple[StateManager, ProjectManager]:
-    state_manager, _, _, project_manager = _init_managers()
+    state_manager, _, _, project_manager = _get_managers(typer.get_current_context())
     if not project_path.exists():
         raise typer.BadParameter(f"Project not found: {project_path}")
     project_manager.load_project(project_path)
     return state_manager, project_manager
 
 
-@workers_app.command("list", help="List worker entries for a project")
+@workers_app.command("list", help="[DEPRECATED] Use 'mus1 lab status' instead")
 def workers_list(project_path: Path = typer.Argument(..., help="Path to MUS1 project")):
-    state_manager, _pm = _load_project_for_workers(project_path)
-    workers = state_manager.project_state.workers or []
-    if not workers:
-        print("No workers configured.")
-        return
-    print("Workers:")
-    for w in workers:
-        role = w.role or ""
-        print(f"- {w.name}  alias={w.ssh_alias}  role={role}  provider={w.provider}")
+    print("ERROR: Project-level worker management is deprecated.")
+    print("Use 'mus1 lab status' to see lab-level workers.")
+    print("Use 'mus1 lab add-worker' to add workers to labs.")
+    raise typer.Exit(code=1)
 
 
-@workers_app.command("add", help="Add a worker entry (non-secret). Auth uses your ~/.ssh/config alias.")
+@workers_app.command("add", help="[DEPRECATED] Use 'mus1 lab add-worker' instead")
 def workers_add(
     project_path: Path = typer.Argument(..., help="Path to MUS1 project"),
     name: str = typer.Option(..., "--name", help="Display name for the worker"),
@@ -1500,48 +1474,33 @@ def workers_add(
     provider: str = typer.Option("ssh", help="Provider for executing commands: ssh|wsl|local|ssh-wsl", show_default=True),
     test: bool = typer.Option(False, help="Test SSH connectivity to the alias (BatchMode)")
 ):
-    state_manager, project_manager = _load_project_for_workers(project_path)
-    workers = state_manager.project_state.workers
-    if any(w.name == name for w in workers):
-        raise typer.BadParameter(f"Worker with name '{name}' already exists")
-
-    we = WorkerEntry(name=name, ssh_alias=ssh_alias, role=role, provider=provider)  # type: ignore[arg-type]
-    workers.append(we)
-
-    if test:
-        try:
-            result = subprocess.run([
-                "ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", ssh_alias, "true"
-            ], capture_output=True, text=True)
-            if result.returncode == 0:
-                print(f"SSH test OK for '{ssh_alias}'")
-            else:
-                print(f"SSH test FAILED for '{ssh_alias}': {result.stderr.strip()}")
-        except Exception as e:
-            print(f"SSH test error: {e}")
-
-    project_manager.save_project()
-    print(f"Added worker '{name}' (alias={ssh_alias}).")
+    print("ERROR: Project-level worker management is deprecated.")
+    print("Use 'mus1 lab add-worker' to add workers to labs.")
+    raise typer.Exit(code=1)
 
 
-@workers_app.command("remove", help="Remove a worker entry by name")
+@workers_app.command("detect-os", help="[DEPRECATED] Worker management moved to labs")
+def workers_detect_os(
+    project_path: Path = typer.Argument(..., help="Path to MUS1 project"),
+    name: str = typer.Option(..., "--name", "-n", help="Worker name to probe"),
+    timeout: int = typer.Option(10, "--timeout", help="Timeout in seconds for SSH commands"),
+):
+    print("ERROR: Project-level worker management is deprecated.")
+    print("Worker management has moved to labs. Use 'mus1 lab add-worker' to add workers.")
+    raise typer.Exit(code=1)
+
+
+@workers_app.command("remove", help="[DEPRECATED] Worker management moved to labs")
 def workers_remove(
     project_path: Path = typer.Argument(..., help="Path to MUS1 project"),
     name: str = typer.Argument(..., help="Worker name to remove"),
 ):
-    state_manager, project_manager = _load_project_for_workers(project_path)
-    workers = state_manager.project_state.workers
-    before = len(workers)
-    workers = [w for w in workers if w.name != name]
-    state_manager.project_state.workers = workers
-    if len(workers) == before:
-        print(f"No worker named '{name}' found.")
-        return
-    project_manager.save_project()
-    print(f"Removed worker '{name}'.")
+    print("ERROR: Project-level worker management is deprecated.")
+    print("Worker management has moved to labs. Use lab-level commands instead.")
+    raise typer.Exit(code=1)
 
 
-@workers_app.command("run", help="Run a command on a worker via its provider (ssh|wsl)")
+@workers_app.command("run", help="Run a command on a lab worker")
 def workers_run(
     project_path: Path = typer.Argument(..., help="Path to MUS1 project"),
     name: str = typer.Option(..., "--name", "-n", help="Worker name to use"),
@@ -1551,12 +1510,18 @@ def workers_run(
     timeout: Optional[int] = typer.Option(None, "--timeout", help="Timeout in seconds"),
     tty: bool = typer.Option(False, "--tty", help="Allocate a TTY (ssh -tt)"),
 ):
-    state_manager, _pm = _load_project_for_workers(project_path)
-    workers = state_manager.project_state.workers or []
+    # This one we can keep but redirect to use lab workers
+    _, project_manager = _load_project_for_workers(project_path)
+
     try:
+        workers = project_manager.get_workers()
         worker = next(w for w in workers if w.name == name)
     except StopIteration:
-        raise typer.BadParameter(f"No worker named '{name}' found")
+        raise typer.BadParameter(f"No worker named '{name}' found in associated lab")
+    except RuntimeError as e:
+        print(f"Error: {e}")
+        print("Make sure the project is associated with a lab using 'mus1 project associate-lab'")
+        raise typer.Exit(code=1)
 
     env_map: Optional[dict] = None
     if env:
@@ -1590,7 +1555,7 @@ def workers_run(
 
 
 def _load_project_for_targets(project_path: Path) -> tuple[StateManager, ProjectManager]:
-    state_manager, _, _, project_manager = _init_managers()
+    state_manager, _, _, project_manager = _get_managers(typer.get_current_context())
     if not project_path.exists():
         raise typer.BadParameter(f"Project not found: {project_path}")
     project_manager.load_project(project_path)
@@ -1655,84 +1620,7 @@ def targets_remove(
 ###############################################################################
 
 
-@project_app.command("scan-from-targets", help="Scan configured targets, dedup, and add unassigned videos to project. Filters to shared_root if set.")
-def project_scan_from_targets(
-    project_path: Path = typer.Argument(..., help="Path to MUS1 project"),
-    target_names: Optional[List[str]] = typer.Option(None, "--target", help="Restrict to specific targets by name"),
-    extensions: Optional[List[str]] = typer.Option(None, "--ext", help="Allowed extensions (.mp4 .avi …)"),
-    exclude_dirs: Optional[List[str]] = typer.Option(None, "--exclude-dirs", help="Sub-strings for directories to skip"),
-    non_recursive: bool = typer.Option(False, "--non-recursive", help="Disable recursive traversal"),
-    progress: bool = typer.Option(True, help="Show progress bars"),
-    parallel: bool = typer.Option(False, "--parallel", help="Scan targets in parallel"),
-    max_workers: int = typer.Option(4, "--max-workers", help="Parallel workers for --parallel"),
-    dry_run: bool = typer.Option(False, "--dry-run", help="Preview results without registering videos"),
-    emit_in_shared: Optional[Path] = typer.Option(None, "--emit-in-shared", help="Write JSONL of items already under shared root"),
-    emit_off_shared: Optional[Path] = typer.Option(None, "--emit-off-shared", help="Write JSONL of items not under shared root"),
-    verify_time: bool = typer.Option(False, "--verify-time", help="Probe container time and prefer on mismatch"),
-):
-    state_manager, _, data_manager, project_manager = _init_managers()
-    if not project_path.exists():
-        raise typer.BadParameter(f"Project not found: {project_path}")
-    # Configure project-scoped rotating log before further operations
-    LoggingEventBus.get_instance().configure_default_file_handler(project_path)
-    project_manager.load_project(project_path)
-
-    targets = list(state_manager.project_state.scan_targets or [])
-    if target_names:
-        targets = [t for t in targets if t.name in set(target_names)]
-    if not targets:
-        print("No matching scan targets configured.")
-        raise typer.Exit(code=1)
-
-    if parallel:
-        all_items = collect_from_targets_parallel(
-            state_manager,
-            data_manager,
-            targets,
-            extensions=extensions,
-            exclude_dirs=exclude_dirs,
-            non_recursive=non_recursive,
-            max_workers=max_workers,
-        )
-    else:
-        all_items = collect_from_targets(state_manager, data_manager, targets, extensions=extensions, exclude_dirs=exclude_dirs, non_recursive=non_recursive)
-
-    # Deduplicate and split relative to shared_root (if configured)
-    dedup_gen = data_manager.deduplicate_video_list(all_items)
-    in_shared, off_shared = project_manager.split_by_shared_root(dedup_gen)
-
-    # Optionally emit JSONL lists for review
-    if emit_in_shared:
-        data_manager.emit_jsonl(emit_in_shared, in_shared)
-    if emit_off_shared:
-        data_manager.emit_jsonl(emit_off_shared, off_shared)
-
-    if dry_run:
-        builtins.print(
-            f"Dry run: {len(in_shared)} items under shared, {len(off_shared)} items off-shared. Project: {project_path}"
-        )
-        raise typer.Exit(code=0)
-
-    # Register only items already under shared root
-    added = project_manager.register_unlinked_videos(iter(in_shared))
-    # If not writable here and there are off-shared, emit guidance
-    def _is_writable(p: Path) -> bool:
-        try:
-            p.mkdir(parents=True, exist_ok=True)
-            test = p / ".mus1-write-test"
-            test.write_text("ok", encoding="utf-8")
-            test.unlink(missing_ok=True)
-            return True
-        except Exception:
-            return False
-
-    sr = state_manager.project_state.shared_root
-    writable = _is_writable(Path(sr)) if sr else False
-    if off_shared and not writable:
-        builtins.print(f"Note: {len(off_shared)} items are off-shared and shared_root is not writable here. Use project ingest on the host to stage.")
-
-    builtins.print(f"Added {added} unassigned videos to {project_path}. Total unassigned: {len(state_manager.project_state.unassigned_videos)}; Off-shared pending: {len(off_shared)}")
-    # If user wants to stage off-shared now into media, they can run scan-and-move with --verify-time={verify_time}
+"""Deprecated: 'scan-from-targets' merged into 'ingest' via --target option."""
 
 @project_app.command("media-index", help="Index loose media in <project>/media: create per-recording folders and metadata.json; register as unassigned.")
 def project_media_index(
@@ -1740,7 +1628,7 @@ def project_media_index(
     progress: bool = typer.Option(True, help="Show progress"),
     provenance: str = typer.Option("scan_and_move", "--provenance", help="Provenance label to store in metadata"),
 ):
-    state_manager, plugin_manager, data_manager, project_manager = _init_managers()
+    state_manager, plugin_manager, data_manager, project_manager = _get_managers(typer.get_current_context())
 
     if not project_path.exists():
         raise typer.BadParameter(f"Project not found: {project_path}")
@@ -1805,7 +1693,7 @@ def project_media_assign(
     prompt_on_time_mismatch: bool = typer.Option(False, "--prompt-on-time-mismatch", help="If container time differs from mtime and metadata lacks CSV date, prompt user for manual date or UNK"),
     set_provenance: Optional[str] = typer.Option(None, "--set-provenance", help="Override provenance.source in metadata for assigned items"),
 ):
-    state_manager, plugin_manager, data_manager, project_manager = _init_managers()
+    state_manager, plugin_manager, data_manager, project_manager = _get_managers(typer.get_current_context())
     if not project_path.exists():
         raise typer.BadParameter(f"Project not found: {project_path}")
     LoggingEventBus.get_instance().configure_default_file_handler(project_path)
@@ -1933,223 +1821,23 @@ def credentials_remove(alias: str = typer.Argument(..., help="SSH alias name")):
 # assembly-driven scan by experiments (CSV-guided)
 # -----------------------------------------------------------------------------
 
-@project_app.command("assembly-scan-by-experiments", help="Use assembly plugin to parse experiments CSV and import matching media into project/media.")
-def project_assembly_scan_by_experiments(
-    project_path: Path = typer.Argument(..., help="Existing MUS1 project directory"),
-    experiments_csv: List[Path] = typer.Argument(..., help="One or more experiment CSV files"),
-    roots: Optional[List[Path]] = typer.Option(None, "--roots", help="Optional roots to scan. If omitted, assembly plugin scan_hints.roots (if any) will be used."),
-    verify_time: bool = typer.Option(False, "--verify-time", help="Probe container time and prefer on mismatch"),
-    provenance: str = typer.Option("assembly_guided_import", "--provenance", help="Provenance label for imported media"),
-    progress: bool = typer.Option(True, help="Show progress"),
-):
-    state_manager, plugin_manager, data_manager, project_manager = _init_managers()
-    if not project_path.exists():
-        raise typer.BadParameter(f"Project not found: {project_path}")
-    LoggingEventBus.get_instance().configure_default_file_handler(project_path)
-    project_manager.load_project(project_path)
-
-    # Resolve assembly plugin
-    asm = plugin_manager.get_plugin_by_name("CopperlabAssembly")
-    if not asm or not hasattr(asm, "parse_experiments_csv"):
-        raise typer.BadParameter("Assembly plugin not found (CopperlabAssembly)")
-
-    # Parse CSVs → subject IDs
-    subjects: set[str] = set()
-    for csvp in experiments_csv:
-        recs = asm.parse_experiments_csv(Path(csvp).expanduser().resolve())
-        for r in recs:
-            sid = str(r.get("subject_id", "")).strip()
-            if sid:
-                subjects.add(sid)
-    if not subjects:
-        print("No subjects extracted from CSVs.")
-        raise typer.Exit(code=0)
-
-    # Resolve roots from config if not provided
-    if not roots:
-        try:
-            hints = asm.load_scan_hints() or {}
-            cfg_roots = hints.get("roots") or []
-            if cfg_roots:
-                roots = [Path(r).expanduser() for r in cfg_roots]
-        except Exception:
-            roots = None
-
-    # If roots are provided, scan and filter by subject-id substrings
-    items: list[tuple[Path, str]] = []
-    if roots:
-        pbar = tqdm(desc="Scanning", unit="file", disable=(not progress) or (not sys.stderr.isatty()))
-        def _tick(done: int, total: int):
-            pbar.total = total
-            pbar.update(done - pbar.n)
-        vids = list(data_manager.discover_video_files(roots, extensions=None, recursive=True, excludes=None, progress_cb=_tick))
-        pbar.close()
-        for p, h in vids:
-            name = p.name.lower()
-            if any(s.lower() in name for s in subjects):
-                items.append((p, h))
-
-    if not items and roots:
-        print("No media matched subject IDs under provided roots.")
-        raise typer.Exit(code=0)
-
-    # Stage matched items into media
-    media_dir = (project_path / "media").expanduser().resolve()
-    media_dir.mkdir(parents=True, exist_ok=True)
-    staged_iter = data_manager.stage_files_to_shared(
-        items,
-        shared_root=project_path,
-        dest_base=media_dir,
-        overwrite=False,
-        progress_cb=None,
-        delete_source_on_success=False,
-        namer=None,
-        verify_time=verify_time,
-    )
-    added = project_manager.register_unlinked_videos(staged_iter)
-
-    # Apply provenance to staged items
-    try:
-        for vm in list(state_manager.project_state.unassigned_videos.values()):
-            p = Path(vm.path)
-            if str(p).startswith(str(media_dir)):
-                md = data_manager.read_recording_metadata(p.parent)
-                if md:
-                    md.setdefault("provenance", {})["source"] = provenance
-                    data_manager.write_recording_metadata(p.parent, md)
-    except Exception:
-        pass
-
-    print(f"Assembly scan complete. Added {added} items. Unassigned total: {len(state_manager.project_state.unassigned_videos)}")
+"""Deprecated lab-specific CSV-guided assembly scan removed per roadmap; use 'project assembly run'."""
 
 
 # -----------------------------------------------------------------------------
 # CSV → subjects + experiments (non-interactive)
 # -----------------------------------------------------------------------------
 
-@project_app.command("add-experiments-from-csv", help="Create subjects (if missing) and experiments from CSVs via CopperlabAssembly plugin.")
-def project_add_experiments_from_csv(
-    project_path: Path = typer.Argument(..., help="Existing MUS1 project directory"),
-    experiments_csv: List[Path] = typer.Argument(..., help="One or more experiment CSV files"),
-):
-    state_manager, plugin_manager, _dm, project_manager = _init_managers()
-    if not project_path.exists():
-        raise typer.BadParameter(f"Project not found: {project_path}")
-    LoggingEventBus.get_instance().configure_default_file_handler(project_path)
-    project_manager.load_project(project_path)
-
-    params = {
-        "action": "add_experiments_from_csv",
-        "project_path": str(project_path),
-        "csv_files": [str(Path(p).expanduser().resolve()) for p in experiments_csv],
-    }
-    result = project_manager.run_project_level_plugin_action(
-        "CopperlabAssembly",
-        "add_experiments_from_csv",
-        params,
-    )
-    if result.get("status") != "success":
-        builtins.print(result.get("error", "Failed to add experiments from CSV"))
-        raise typer.Exit(code=1)
-    builtins.print(
-        f"Subjects added: {int(result.get('added_subjects', 0))}. Experiments added: {int(result.get('added_experiments', 0))}. Skipped: {int(result.get('skipped_experiments', 0))}."
-    )
+"""Deprecated lab-specific CSV → experiments command removed per roadmap; use 'project assembly run'."""
 
 
-@project_app.command("link-media-by-csv", help="Link unassigned media to existing experiments by matching subject id from filename and recording date from metadata against CSV records.")
-def project_link_media_by_csv(
-    project_path: Path = typer.Argument(..., help="Path to MUS1 project"),
-    experiments_csv: List[Path] = typer.Argument(..., help="One or more experiment CSV files"),
-    dry_run: bool = typer.Option(False, "--dry-run", help="Preview without linking"),
-):
-    state_manager, plugin_manager, data_manager, project_manager = _init_managers()
-    if not project_path.exists():
-        raise typer.BadParameter(f"Project not found: {project_path}")
-    LoggingEventBus.get_instance().configure_default_file_handler(project_path)
-    project_manager.load_project(project_path)
-
-    # Build (sid, date)->(exp_id, type)
-    params = {
-        "action": "link_media_by_csv",
-        "project_path": str(project_path),
-        "csv_files": [str(Path(p).expanduser().resolve()) for p in experiments_csv],
-    }
-    if dry_run:
-        builtins.print("Dry-run: link_media_by_csv would run via CopperlabAssembly.")
-        raise typer.Exit(code=0)
-    result = project_manager.run_project_level_plugin_action(
-        "CopperlabAssembly",
-        "link_media_by_csv",
-        params,
-    )
-    if result.get("status") != "success":
-        builtins.print(result.get("error", "Failed to link media by CSV"))
-        raise typer.Exit(code=1)
-    builtins.print(f"Linked {int(result.get('linked', 0))} media items. Skipped: {int(result.get('skipped', 0))}.")
+"""Deprecated lab-specific link-media-by-csv command removed per roadmap; use 'project assembly run'."""
 
 # -----------------------------------------------------------------------------
 # master media list management (root-level)
 # -----------------------------------------------------------------------------
 
-@app.command("master-accept-current", help="Accept current project's media as the master media list")
-def master_accept_current(
-    project_path: Path = typer.Argument(..., help="Path to MUS1 project"),
-):
-    state_manager, _, data_manager, project_manager = _init_managers()
-    if not project_path.exists():
-        raise typer.BadParameter(f"Project not found: {project_path}")
-    project_manager.load_project(project_path)
-    idx = load_master_index()
-    media_dir = (project_path / "media").expanduser().resolve()
-    for p in media_dir.glob("**/*"):
-        if p.is_file():
-            try:
-                h = data_manager.compute_sample_hash(p)
-                md = data_manager.read_recording_metadata(p.parent)
-                add_or_update_master_item(
-                    idx,
-                    sample_hash=h,
-                    info={
-                        "recorded_time": (md.get("times") or {}).get("recorded_time") if md else None,
-                        "subject_id": md.get("subject_id") if md else None,
-                        "experiment_type": md.get("experiment_type") if md else None,
-                        "known_locations": [p],
-                    },
-                )
-            except Exception:
-                pass
-    save_master_index(idx)
-    print("Master media list updated from current project.")
+"""Deprecated master media CLI removed; Master Project concept is in development."""
 
 
-@app.command("master-add-unique", help="Add unique items from another project's media into the master list")
-def master_add_unique(
-    other_project: Path = typer.Argument(..., help="Path to other MUS1 project"),
-):
-    state_manager, _, data_manager, project_manager = _init_managers()
-    if not other_project.exists():
-        raise typer.BadParameter(f"Project not found: {other_project}")
-    idx = load_master_index()
-    items = idx.get("items", {})
-    media_dir = (other_project / "media").expanduser().resolve()
-    for p in media_dir.glob("**/*"):
-        if p.is_file():
-            try:
-                h = data_manager.compute_sample_hash(p)
-                if h in items:
-                    continue
-                md = data_manager.read_recording_metadata(p.parent)
-                add_or_update_master_item(
-                    idx,
-                    sample_hash=h,
-                    info={
-                        "recorded_time": (md.get("times") or {}).get("recorded_time") if md else None,
-                        "subject_id": md.get("subject_id") if md else None,
-                        "experiment_type": md.get("experiment_type") if md else None,
-                        "known_locations": [p],
-                    },
-                )
-            except Exception:
-                pass
-    save_master_index(idx)
-    print("Master media list unique items added.")
+"""Deprecated master media CLI removed; Master Project concept is in development."""

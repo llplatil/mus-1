@@ -69,9 +69,8 @@ Key design decisions:
 1. **Project commands**
    • `mus1 project create <path> <name>` – current behaviour.  
    • `mus1 project add-videos <project_path> <video_list.txt>` – index videos into an *existing* project.
-   • `mus1 project scan-from-targets <project_path> [--target ...]` – scan configured targets, dedup, and add items already under `shared_root`.
-   • `mus1 project ingest <project_path> [roots...]` – one-shot scan→dedup→split by shared→preview or stage+register off-shared.
-   • Parallelism: `--parallel --max-workers` for both `scan-from-targets` and `ingest`.
+   • `mus1 project ingest <project_path> [roots...] [--target ...]` – one-shot scan→dedup→split by shared→preview or stage+register off-shared; roots or configured targets.
+   • Parallelism: `--parallel --max-workers` supported.
    • Auto-host staging in `ingest`: when `shared_root` isn’t writable on current host, emit off-shared JSONL for host staging.
 
 2. **Scanner progress bar**  
@@ -177,7 +176,7 @@ Core changes
 DataManager
 • **discover_video_files(...)** – generator yielding `(path, hash)` with optional progress callback. 
 • **deduplicate_video_list(...)** – removes duplicate hashes, yielding `(path, hash, start_time)`; supports progress callback.
-• **scanners package** – `mus1/core/scanners/` houses `BaseScanner` plus OS-specific subclasses (macOS, Linux, Windows).
+• **scanners package** – `mus1/core/scanners/` houses `BaseScanner` plus OS-specific subclasses (macOS, Linux, Windows) and remote helpers for SSH/WSL.
 • **Staging to per-recording folders** – `stage_files_to_shared` creates `project/media/subject-YYYYMMDD-hash8/`, retains original filename, and writes `metadata.json`:
   - `file`: `path`, `filename`, `size_bytes`, `last_modified`, `sample_hash`, optional `full_hash`
   - `times`: `recorded_time`, `recorded_time_source` (csv|mtime|container|manual)
@@ -211,10 +210,10 @@ Shared Logging
 --------------
 `LoggingEventBus.configure_default_file_handler(project_root)` ensures both GUI and CLI write to the same rotating log inside each project directory. Project-aware CLI commands initialize this handler early so logs are captured from the start.
 
-Scan from Targets – Preview/Emit
---------------------------------
-`mus1 project scan-from-targets` supports a preview path:
-- `--dry-run`: do not register; print counts of items already under shared vs off-shared
+Targets Scanning – via ingest
+-----------------------------
+`mus1 project ingest --target` supports:
+- `--dry-run`: do not register; report counts under shared vs off-shared
 - `--emit-in-shared FILE`, `--emit-off-shared FILE`: write JSONL lists for review or later staging
 
 ---

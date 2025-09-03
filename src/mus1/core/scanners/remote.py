@@ -6,9 +6,9 @@ from pathlib import Path
 from typing import Iterable, Iterator, List, Tuple, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from .data_manager import DataManager
-from .state_manager import StateManager
-from .metadata import ScanTarget
+from ..data_manager import DataManager
+from ..state_manager import StateManager
+from ..metadata import ScanTarget
 
 
 def _iter_json_lines(text: str) -> Iterator[dict]:
