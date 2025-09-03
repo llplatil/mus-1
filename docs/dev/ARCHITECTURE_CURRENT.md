@@ -4,10 +4,18 @@ This document describes how MUS1 works today based on the code, including gaps a
 
 ## Core modules
 
+ - LabManager (`src/mus1/core/lab_manager.py`)
+  - Manages lab-level configuration stored in YAML/JSON files under `~/.mus1/labs/`
+  - Stores shared resources: workers (compute), credentials (SSH), scan targets (local/ssh/wsl), master subjects, software installs
+  - Provides methods to associate/disassociate projects with labs
+  - Handles lab metadata, creation, loading, and persistence
+
  - ProjectManager (`src/mus1/core/project_manager.py`)
   - Creates/loads/saves projects (`project_state.json`) under a local projects root resolved by precedence: (1) explicit argument (where supported), (2) env `MUS1_PROJECTS_DIR`, (3) per-user config `config.yaml` key `projects_root`, (4) default `~/MUS1/projects`.
   - Supports a shared projects root via `get_shared_directory()` resolved by precedence: (1) explicit argument, (2) env `MUS1_SHARED_DIR`, (3) per-user config `config.yaml` key `shared_root`. The shared path must be a locally mounted path. Both CLI and GUI can create/list projects under this shared root.
   - Saves use a lightweight advisory lock file `.mus1-lock` and atomic temp-file rename to reduce concurrent write conflicts on shared storage.
+  - **Lab Integration**: Projects can associate with labs via `associate_with_lab()` method. Once associated, projects inherit lab-level resources (workers, credentials, scan targets) directly without fallbacks.
+  - **Simplified Resource Access**: Removed fallback methods; projects now use `get_workers()`, `get_credentials()`, `get_scan_targets()` which require lab association and return lab resources directly.
   - Discovers plugins via Python entry points using `PluginManager.discover_entry_points()` (group `mus1.plugins`). Discovery is entry-point only; in-tree scanning has been removed from defaults.
   - Orchestrates analysis via `run_analysis(experiment_id, capability)`:
     - Looks up the experiment and a plugin whose `analysis_capabilities()` includes the capability.
@@ -82,19 +90,33 @@ Notes: In-tree plugin implementations were removed. Only the interface remains u
 - GUI scan summary is basic; per-target progress and error surfacing are planned.
  - Project-aware CLI commands initialize project logging early; remaining legacy commands may still print a missing FileHandler warning until consolidated.
 
-## Recent CLI additions (0.1.1)
-- Root: `mus1 --version` prints the installed MUS1 version.
-- Targets: `targets list` uses plain printing to avoid markup issues with paths.
-- Project scanning from targets: `--dry-run`, `--emit-in-shared FILE`, and `--emit-off-shared FILE` enable safe preview and export of lists for later staging.
-- New: `project ingest` for single-command scan→dedup→split→preview or stage+register.
-- Group helps: `mus1 project-help`, `mus1 scan-help`.
- - Parallel scanning: `scan-from-targets` and `ingest` support `--parallel --max-workers`.
- - Auto-host ingest: if `shared_root` isn’t writable on this machine, ingest emits off-shared list for host staging.
- - Setup helpers: `mus1 setup shared` writes `shared_root` to per-user config; `mus1 setup projects` writes `projects_root` to per-user config (used when `MUS1_PROJECTS_DIR` is not set).
- - Plugin helpers: `mus1 plugins list`, `mus1 plugins install`, and `mus1 plugins uninstall` manage external plugins discoverable via entry points (`mus1.plugins`).
- - New: `project assembly` group for plugin-driven project actions:
-   - `project assembly list` – list assembly-capable plugins
-   - `project assembly list-actions --plugin <name>` – list actions for a plugin
-   - `project assembly run --plugin <name> --action <name> [--params-file|-f] [--param KEY=VALUE]` – run an action
-   - Example (Copperlab): `subjects_from_csv_folder` returns `{subjects, conflicts}` with 3-digit ID normalization and reconciliation of sex, birth/death dates, genotype, treatment
- - GUI launch is via `mus1-gui` only; the CLI no longer exposes a `gui` subcommand.
+## Recent CLI additions (Lab-focused Architecture)
+- **Lab Management**: New `mus1 lab` command group for lab-level configuration
+  - `lab create --name <name>` – Create a new lab configuration
+  - `lab list` – List available lab configurations
+  - `lab load <lab_id>` – Load a lab for current session
+  - `lab associate <project>` – Associate a project with the current lab
+  - `lab status` – Show current lab configuration and resources
+  - `lab add-worker --name <name> --ssh-alias <alias>` – Add compute worker to lab
+  - `lab add-credential --alias <alias> --user <user>` – Add SSH credentials to lab
+  - `lab add-target --name <name> --kind <local|ssh|wsl>` – Add scan target to lab
+  - `lab projects` – List projects associated with the lab
+
+- **Project Lab Integration**:
+  - `project associate-lab <project> --lab-id <lab>` – Associate project with lab
+  - `project lab-status <project>` – Show lab association and inherited resources
+
+- **Deprecated Commands Removed**: All project-level worker/credential/target management commands have been deprecated and removed to enforce lab-centric architecture:
+  - ❌ `workers list|add|remove|detect-os` (use `lab` commands instead)
+  - ❌ `targets list|add|remove` (use `lab` commands instead)
+  - ❌ `credentials-set|credentials-list|credentials-remove` (use `lab` commands instead)
+
+- **Root**: `mus1 --version` prints the installed MUS1 version.
+- **Setup helpers**: `mus1 setup shared` writes `shared_root` to per-user config; `mus1 setup projects` writes `projects_root` to per-user config (used when `MUS1_PROJECTS_DIR` is not set).
+- **Plugin helpers**: `mus1 plugins list`, `mus1 plugins install`, and `mus1 plugins uninstall` manage external plugin packages registered via `mus1.plugins`.
+- **Project assembly**: `project assembly` group for plugin-driven project actions:
+  - `project assembly list` – list assembly-capable plugins
+  - `project assembly list-actions --plugin <name>` – list actions for a plugin
+  - `project assembly run --plugin <name> --action <name> [--params-file|-f] [--param KEY=VALUE]` – run an action
+  - Example (Copperlab): `subjects_from_csv_folder` returns `{subjects, conflicts}` with 3-digit ID normalization and reconciliation of sex, birth/death dates, genotype, treatment
+- GUI launch is via `mus1-gui` only; the CLI no longer exposes a `gui` subcommand.

@@ -6,8 +6,23 @@ Note: See `docs/dev/ARCHITECTURE_CURRENT.md` for the current, authoritative arch
 
 ## Core Components
 
+### LabManager
+- **(New)** Manages lab-level configuration stored in `~/.mus1/labs/` (YAML/JSON format).
+- **Lab Resources**: Centralized storage for:
+  - Workers (compute nodes with SSH/local/WSL support)
+  - Credentials (SSH authentication)
+  - Scan targets (local/ssh/wsl scan locations)
+  - Master subjects registry
+  - Software installations
+  - Associated projects
+- **Project Association**: Links projects to labs for resource inheritance.
+- **Persistence**: Atomic YAML/JSON file operations with metadata tracking.
+
 ### ProjectManager
 - **(Revised)** Orchestrates project-level operations (adding subjects/experiments, running analyses, renaming projects).
+- **Lab Integration**: Projects associate with labs via `associate_with_lab()` method.
+- **Resource Inheritance**: Projects access lab resources directly via `get_workers()`, `get_credentials()`, `get_scan_targets()`.
+- **Simplified Methods**: Removed fallback logic; requires lab association for resource access.
 - Manages project data persistence by saving/loading the `ProjectState` using JSON serialization (`pydantic_encoder`).
 - Coordinates with `PluginManager` to find appropriate tools (plugins) and `DataManager` to facilitate data loading.
 - Updates application state via `StateManager` after operations.
@@ -64,14 +79,22 @@ Key design decisions:
 5. **Re-use in scripts** – because Typer is function-oriented (`@app.command`), each CLI entry point doubles as an importable Python function, enabling notebooks and automation pipelines.
 6. **Future plug-ins** – plugin modules will be able to register CLI commands by calling `mus1_cli_app.add_typer(plugin_app, name="my-plugin")`, keeping extensibility aligned with the plugin architecture. (Planned)
 
-### Extended Requirements 
+### Extended Requirements (Lab-Focused)
 
-1. **Project commands**
-   • `mus1 project create <path> <name>` – current behaviour.  
-   • `mus1 project add-videos <project_path> <video_list.txt>` – index videos into an *existing* project.
-   • `mus1 project ingest <project_path> [roots...] [--target ...]` – one-shot scan→dedup→split by shared→preview or stage+register off-shared; roots or configured targets.
-   • Parallelism: `--parallel --max-workers` supported.
-   • Auto-host staging in `ingest`: when `shared_root` isn’t writable on current host, emit off-shared JSONL for host staging.
+1. **Lab Management**
+   • `mus1 lab create --name <lab_name>` – Create new lab configuration
+   • `mus1 lab load <lab_id>` – Load lab for current session
+   • `mus1 lab associate <project_path>` – Associate project with current lab
+   • `mus1 lab add-worker --name <name> --ssh-alias <alias>` – Add compute worker to lab
+   • `mus1 lab add-credential --alias <alias> --user <user>` – Add SSH credentials to lab
+   • `mus1 lab add-target --name <name> --kind <local|ssh|wsl>` – Add scan target to lab
+
+2. **Project Lab Integration**
+   • `mus1 project associate-lab <project_path> --lab-id <lab>` – Associate project with specific lab
+   • `mus1 project lab-status <project_path>` – Show lab association and inherited resources
+   • `mus1 project ingest <project_path> [roots...] [--target ...]` – one-shot scan→dedup→split by shared→preview or stage+register off-shared; uses lab scan targets when available
+   • Parallelism: `--parallel --max-workers` supported
+   • Auto-host staging in `ingest`: when `shared_root` isn't writable on current host, emit off-shared JSONL for host staging
 
 2. **Scanner progress bar**  
    • `--progress` flag streams a `tqdm` bar to stderr; enabled by default when interactive.
@@ -124,47 +147,56 @@ MUS1 exposes a generic, plugin-driven assembly group:
 
 Example (Copperlab): `subjects_from_csv_folder` parses a folder of CSV files, normalizes 3-digit subject IDs, reconciles sex, birth/death dates, genotype, and treatment, and returns a structured YAML with `subjects` and `conflicts` for review.
 
-## CLI Design Rules (truthful)
+## CLI Design Rules (Lab-Centric Architecture)
 
-1. Single entrypoints
+1. **Lab-First Workflow**
+   - CLI enforces lab-centric workflow: `mus1 lab create` → `mus1 lab add-*` → `mus1 project associate-lab` → project operations
+   - Projects require lab association for resource access (workers, credentials, scan targets)
+   - No fallback to project-level resources; lab association is mandatory
+
+2. **Single entrypoints**
    - CLI is invoked via `mus1`; GUI is invoked via `mus1-gui`. The CLI does not expose a `gui` subcommand.
 
-2. Thin CLI, heavy core
-   - CLI commands perform argument parsing, minimal validation, and output. All business logic is owned by core managers (`ProjectManager`, `DataManager`, `StateManager`) or external plugins discovered through entry points.
+3. **Thin CLI, heavy core**
+   - CLI commands perform argument parsing, minimal validation, and output. All business logic is owned by core managers (`LabManager`, `ProjectManager`, `DataManager`, `StateManager`) or external plugins discovered through entry points.
+   - **Updated**: `LabManager` added as core manager for lab-level operations
 
-3. Plugin discovery and usage
+4. **Plugin discovery and usage**
    - Plugins are discovered exclusively via Python entry points under the group `mus1.plugins`. No in-tree plugin scanning is used.
    - The CLI never hard-codes plugin details. Plugin-driven operations use generic surfaces, e.g., `mus1 project assembly run --plugin <name> --action <name>`.
 
-4. Manager lifecycle
-   - Managers are created once per CLI process and cached in Typer’s `ctx.obj` (see `_get_managers`). Subcommands reuse them to prevent repeated initialization and to keep behavior uniform.
+5. **Manager lifecycle**
+   - Managers are created once per CLI process and cached in Typer's `ctx.obj` (see `_get_managers`). Subcommands reuse them to prevent repeated initialization and to keep behavior uniform.
+   - **Updated**: `LabManager` included in manager lifecycle
 
-5. Output modes and progress
+6. **Output modes and progress**
    - Root flags: `--json`, `--quiet`, `--verbose` apply to all subcommands via `ctx.obj['output']`.
    - Use `typer.echo`/`typer.secho` for text. Use JSON (machine-readable) only when `--json` is set.
    - Progress bars (`tqdm`) are disabled when `--quiet` is set or when stdout is non-interactive.
 
-6. Errors and exit codes
+7. **Errors and exit codes**
    - Use `typer.BadParameter` for invalid user input (exit code 2 by Typer convention).
    - Use `typer.secho(..., err=True)` with red color for error messages.
-   - Return exit code 1 for operational failures (e.g., plugin/core error), 2 for configuration/environment issues (e.g., missing shared root), 0 for success.
+   - Return exit code 1 for operational failures (e.g., plugin/core error), 2 for configuration/environment issues (e.g., missing lab association), 0 for success.
+   - **New**: Exit code 3 for missing lab association errors
 
-7. Consistent parameter naming and help
+8. **Consistent parameter naming and help**
    - Prefer kebab-case options and clear nouns (e.g., `--dest-subdir`, `--library-path`).
    - Each command includes concise examples aligned with README and actual behavior.
 
-8. Assembly and import flows
+9. **Assembly and import flows**
    - The generic assembly group is the single path for project-level plugin actions. Avoid bespoke CLI commands for a specific lab plugin.
    - For third-party importers, use `mus1 project import-supported-3rdparty` instead of ad-hoc commands.
 
-9. Idempotence and safe preview
+10. **Idempotence and safe preview**
    - Commands that mutate state support preview or no-op paths where practical (e.g., `--dry-run`, JSON output for review) and are safe to re-run.
 
-10. No GUI coupling
+11. **No GUI coupling**
    - The CLI must not import or initialize GUI components; only import core and plugin APIs.
 
-11. Truthfulness and single source of truth
+12. **Truthfulness and single source of truth**
    - Documentation reflects current implemented behavior, not intentions. Version numbers are sourced from `pyproject.toml`.
+   - **Updated**: Documentation emphasizes lab-centric workflow and mandatory lab association
 ---
 
 ## Video Discovery & Media Workflow (Updated)

@@ -4,34 +4,54 @@ Mus-1 is a Python-based tool with an intuitive UI layer designed to streamline t
 
 ## Overview
 
-MUS1 facilitates a workflow starting from recordings, csv files and some proccessed tracking data, enabling users to:
-1. **Import and Organize:** Manage tracking files, associated videos, and metadata within structured MUS1 projects. Import body part definitions directly from DLC `config.yaml` files with the DeepLabCutHandlerPlugin.
-2. **Analyze Kinematics:** Perform foundational analyses like distance, speed, and zone occupancy using built-in analysis plugins.
-3. **Manage Experiments:** Organize experiments by subject, type, and batch, tracking processing stages.
-4. **Standardize:** Apply consistent analysis parameters and project settings.
+MUS1 facilitates a lab-centric workflow starting from recordings, CSV files and processed tracking data, enabling users to:
+1. **Lab Setup:** Create lab configurations with shared compute resources (workers, credentials, scan targets)
+2. **Project Association:** Link projects to labs for automatic resource inheritance
+3. **Import and Organize:** Manage tracking files, associated videos, and metadata within structured MUS1 projects. Import body part definitions directly from DLC `config.yaml` files with the DeepLabCutHandlerPlugin.
+4. **Analyze Kinematics:** Perform foundational analyses like distance, speed, and zone occupancy using built-in analysis plugins.
+5. **Manage Experiments:** Organize experiments by subject, type, and batch, tracking processing stages.
+6. **Standardize:** Apply consistent analysis parameters and lab-wide settings.
 
-The project uses a modular architecture with plugins for data handling (e.g., DeepLabCut outputs) and analysis (e.g., kinematics).
+The project uses a modular architecture with plugins for data handling (e.g., DeepLabCut outputs) and analysis (e.g., kinematics), all managed at the lab level.
 
 ## Features
 
+- **Lab-Centric Architecture**: Centralized lab configuration with shared compute resources (workers, credentials, scan targets)
 - **Material Design UI**: Clean, modern interface built with PySide6-Qt.
-- **Project Management**: Centralized handling of subjects, experiments, metadata, and analysis results.
+- **Project Management**: Centralized handling of subjects, experiments, metadata, and analysis results with lab association.
 - **DeepLabCut Integration**: Imports body parts from DLC configs and utilizes DLC tracking data (CSV/HDF5).
 - **Plugin Architecture**: Supports data handlers (DLC), importers, and analysis modules (e.g., kinematics). Plugins are discovered via Python entry points (`mus1.plugins`).
 - **Hierarchical Experiment Setup**: Step-by-step workflow linking data files and analysis parameters.
 - **Batch Processing**: Group experiments for efficient management (analysis planned).
 - **Observer Pattern**: UI components update automatically based on project state changes.
 - **Theme System**: Light/dark themes with OS detection.
-- **Per-recording Media Folders (New)**: Each recording lives in its own folder under `project/media/subject-YYYYMMDD-hash8/` with a `metadata.json` tracking `subject_id`, `experiment_type`, hashes, times, provenance, and processing history.
+- **Per-recording Media Folders**: Each recording lives in its own folder under `project/media/subject-YYYYMMDD-hash8/` with a `metadata.json` tracking `subject_id`, `experiment_type`, hashes, times, provenance, and processing history.
+- **Lab-Level Resource Management**: Workers, credentials, and scan targets managed at lab level and inherited by associated projects.
 
 ## Intended Workflow
 
-1.  **Tracking (External)**: Use **DeepLabCut** (installed separately) to track keypoints from your experimental videos. Generate tracking CSV/HDF5 files.
-2.  **MUS1 Project Setup**: Create a new project in MUS1.
-3.  **Import DLC Config (Optional)**: Use the `DlcProjectImporter` plugin within MUS1 to populate the project's master body part list from your DLC project's `config.yaml`.
-4.  **Define Experiments in MUS1**: Add subjects and experiments. Use the `DeepLabCutHandler` plugin parameters to link each experiment to its corresponding DLC tracking file (CSV/HDF5).
-5.  **Run Kinematic Analysis (MUS1)**: Use the `Mus1TrackingAnalysis` plugin via the MUS1 interface to calculate metrics like distance, speed, zone time, etc. Results are stored within the experiment's metadata.
-6.  **Future**: MoSeq2/Keypoint-MoSeq orchestration and feature extraction are planned via a dedicated plugin (see Roadmap). The current GCP orchestrator is deprecated in favor of a future server-backed integration.
+1.  **Lab Setup**: Create a lab configuration with shared resources
+   ```bash
+   mus1 lab create --name "My Lab"
+   mus1 lab add-worker --name compute-01 --ssh-alias server1
+   mus1 lab add-credential --alias server1 --user researcher
+   ```
+
+2.  **Project Association**: Create or associate projects with the lab
+   ```bash
+   mus1 project create my_project
+   mus1 project associate-lab my_project --lab-id my_lab
+   ```
+
+3.  **Tracking (External)**: Use **DeepLabCut** (installed separately) to track keypoints from your experimental videos. Generate tracking CSV/HDF5 files.
+
+4.  **Import DLC Config (Optional)**: Use the `DlcProjectImporter` plugin within MUS1 to populate the project's master body part list from your DLC project's `config.yaml`.
+
+5.  **Define Experiments in MUS1**: Add subjects and experiments. Use the `DeepLabCutHandler` plugin parameters to link each experiment to its corresponding DLC tracking file (CSV/HDF5).
+
+6.  **Run Kinematic Analysis (MUS1)**: Use the `Mus1TrackingAnalysis` plugin via the MUS1 interface to calculate metrics like distance, speed, zone time, etc. Results are stored within the experiment's metadata.
+
+7.  **Future**: MoSeq2/Keypoint-MoSeq orchestration and feature extraction are planned via a dedicated plugin (see Roadmap). The current GCP orchestrator is deprecated in favor of a future server-backed integration.
 
 ## Requirements
 
@@ -47,6 +67,24 @@ The project uses a modular architecture with plugins for data handling (e.g., De
 - Architecture Summary: `docs/dev/Architecture.md`
 
 ## CLI Quick Reference
+
+# Lab Management
+```bash
+# Create and configure labs
+mus1 lab create --name "My Lab"
+mus1 lab list
+mus1 lab load my_lab
+mus1 lab status
+
+# Add lab resources
+mus1 lab add-worker --name compute-01 --ssh-alias server1
+mus1 lab add-credential --alias server1 --user researcher
+mus1 lab add-target --name local-media --kind local --root ~/Videos
+
+# Associate projects with labs
+mus1 project associate-lab /path/to/project --lab-id my_lab
+mus1 project lab-status /path/to/project
+```
 
 # Assembly (generic, plugin-discovered)
 ```bash
@@ -75,10 +113,9 @@ Basics
 ```bash
 mus1 --version          # print version
 mus1 -h                 # top-level help
+mus1 lab -h             # lab sub-commands
 mus1 project -h         # project sub-commands
 mus1 scan -h            # scanner sub-commands
-mus1 project-help       # show full help for project group
-mus1 scan-help          # show full help for scan group
 ```
 
 Projects & shared storage
@@ -157,11 +194,11 @@ mus1 master-accept-current /path/to/project
 mus1 master-add-unique /path/to/other_project
 ```
 
-# Credentials (New)
+# Lab Resources (use lab commands instead of deprecated credentials commands)
 ```bash
-mus1 credentials-set <ssh_alias> --user myuser --identity-file ~/.ssh/id_ed25519
-mus1 credentials-list
-mus1 credentials-remove <ssh_alias>
+# All resource management is now done at the lab level
+mus1 lab add-credential --alias <ssh_alias> --user myuser
+mus1 lab status  # View all lab resources
 ```
 
 ```bash
@@ -272,7 +309,7 @@ mus1 setup shared --path /Volumes/CuSSD3/mus1-shared --create
 mus1 setup projects --path /Volumes/CuSSD3/mus1-projects --create
 ```
 
-## New Media Organization and Metadata (Dev)
+## Lab-Centric Media Organization and Metadata
 
 - Each recording is placed under `project/media/subject-YYYYMMDD-hash8/` and retains the original filename.
 - A `metadata.json` is created per recording with fields:
@@ -283,7 +320,7 @@ mus1 setup projects --path /Volumes/CuSSD3/mus1-projects --create
   - `processing_history`: array of stage events
   - `experiment_links`, `derived_files`, `is_master_member`
 - `--verify-time` performs a container probe and prefers it only when it differs from mtime.
-- Pattern-based master naming is deprecated; folder-based layout is enforced.
+- All media operations work within the lab context, using lab-level scan targets and workers for distributed processing.
 
 ## Getting Started
 

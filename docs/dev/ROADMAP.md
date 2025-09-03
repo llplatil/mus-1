@@ -128,22 +128,28 @@ Follow-up documentation tasks (post immediate work)
   - WSL2 specifics: enabling WSL, installing Ubuntu, installing MUS1 inside WSL, accessing `/mnt/*`, remote invocation via SSH + `wsl.exe`.
   - Verification checklist for a new lab machine (local scan, remote scan, add-videos to shared project).
 
-Current status (dev branch)
-- Typed data model added in `ProjectState`: `shared_root`, `workers`, `scan_targets`, `host_os`; `WorkerEntry` extended with `os_type` and `supports_wsl`.
-- Remote scan helpers reside in `core/scanners/remote.py`; local scanner selection via `select_local_scanner()`.
-- CLI additions (help texts updated):
-  - `mus1 project set-shared-root`: set per-project shared storage root.
-  - `mus1 project move-to-shared`: relocate a project under the shared root.
-  - `mus1 targets list|add|remove`: manage scan targets (local/ssh/wsl).
-  - `mus1 workers list|add|remove`: manage typed worker entries.
-  - `mus1 project ingest --target`: scan configured targets, dedup, and register unassigned videos (filtered to `shared_root` if set).
-  - `mus1 workers detect-os`: detect and record a worker's OS and WSL capability via SSH.
-  - `mus1 project stage-to-shared`: copy files into `shared_root/<subdir>`, verify hash, and register.
-  - `mus1 project import-supported-3rdparty`: generic importer runner that selects any installed importer plugin by name and passes YAML/CLI params.
-- GUI: Project view now supports setting `shared_root` and moving the project to shared.
-  - New Scan & Ingest page for target selection, scanning, summary, add/stage actions.
-  - Workers and Targets tabs for CRUD (aligned with CLI), styled via `mus1.qss`.
-  - Minimal `JobProvider` (ssh) implemented with a `mus1 workers run` helper for remote command execution.
+Current status (dev branch - Lab Architecture Complete)
+- **Lab Manager Implementation**: Complete `LabManager` and `LabConfig` system for lab-level configuration storage in `~/.mus1/labs/` (YAML/JSON).
+- **Lab Resources**: Centralized storage for workers, credentials, scan targets, master subjects, software installs, and project associations.
+- **ProjectManager Simplification**: Removed fallback methods; projects now require lab association and use direct lab resource access.
+- **CLI Lab Commands**: Complete lab management command set:
+  - `mus1 lab create --name <name>` – Create new lab configuration
+  - `mus1 lab list` – List available labs
+  - `mus1 lab load <lab_id>` – Load lab for session
+  - `mus1 lab associate <project>` – Associate project with lab
+  - `mus1 lab status` – Show lab resources and configuration
+  - `mus1 lab add-worker/add-credential/add-target` – Add lab resources
+  - `mus1 lab projects` – List associated projects
+- **Project Integration**: `mus1 project associate-lab` and `mus1 project lab-status` for lab association and status.
+- **Deprecated Commands Removed**: All project-level resource management commands removed to enforce lab-centric architecture.
+- **Simplified Architecture**: No more fallback logic; direct lab resource access only.
+
+**✅ Completed (Lab Architecture)**:
+- Lab-level configuration system with persistent storage
+- Project association with labs for resource inheritance
+- Complete CLI command set for lab management
+- Removal of fallback methods and deprecated commands
+- Streamlined codebase with lab-centric design
 
 Next best steps (prioritized)
 1) GUI scanning and staging UX

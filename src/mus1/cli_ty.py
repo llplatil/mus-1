@@ -539,7 +539,7 @@ def project_lab_status(
         # Load the project
         project_manager.load_project(project_path)
 
-        lab_id = project_manager.get_lab_association()
+        lab_id = project_manager.get_lab_id()
         if not lab_id:
             print(f"Project '{project_path}' is not associated with any lab.")
             print("Use 'mus1 project associate-lab <project> --lab-id <lab_id>' to associate it.")
@@ -558,12 +558,17 @@ def project_lab_status(
         else:
             print("Warning: Lab configuration could not be loaded.")
 
-        # Show effective resources
-        effective_workers = project_manager.get_effective_workers()
-        effective_targets = project_manager.get_effective_scan_targets()
-        print("\nEffective resources (project + lab):")
-        print(f"- Total workers: {len(effective_workers)}")
-        print(f"- Total scan targets: {len(effective_targets)}")
+        # Show lab resources
+        try:
+            workers = project_manager.get_workers()
+            targets = project_manager.get_scan_targets()
+            subjects = project_manager.get_master_subjects()
+            print("\nLab resources:")
+            print(f"- Workers: {len(workers)}")
+            print(f"- Scan targets: {len(targets)}")
+            print(f"- Master subjects: {len(subjects)}")
+        except RuntimeError as e:
+            print(f"\nNo lab resources available: {e}")
 
     except Exception as e:
         print(f"Error getting lab status: {e}")
@@ -1562,21 +1567,15 @@ def _load_project_for_targets(project_path: Path) -> tuple[StateManager, Project
     return state_manager, project_manager
 
 
-@targets_app.command("list", help="List scan targets for a project")
+@targets_app.command("list", help="[DEPRECATED] Use 'mus1 lab status' instead")
 def targets_list(project_path: Path = typer.Argument(..., help="Path to MUS1 project")):
-    state_manager, _pm = _load_project_for_targets(project_path)
-    targets = state_manager.project_state.scan_targets or []
-    if not targets:
-        builtins.print("No scan targets configured.")
-        return
-    builtins.print("Scan targets:")
-    for t in targets:
-        roots = ", ".join(str(r) for r in t.roots)
-        alias = t.ssh_alias or ""
-        builtins.print(f"- {t.name}  kind={t.kind}  alias={alias}  roots=[{roots}]")
+    print("ERROR: Project-level target management is deprecated.")
+    print("Use 'mus1 lab status' to see lab-level scan targets.")
+    print("Use 'mus1 lab add-target' to add targets to labs.")
+    raise typer.Exit(code=1)
 
 
-@targets_app.command("add", help="Add a scan target (local/ssh/wsl)")
+@targets_app.command("add", help="[DEPRECATED] Use 'mus1 lab add-target' instead")
 def targets_add(
     project_path: Path = typer.Argument(..., help="Path to MUS1 project"),
     name: str = typer.Option(..., "--name", help="Target name"),
@@ -1584,36 +1583,19 @@ def targets_add(
     roots: List[Path] = typer.Option(..., "--root", help="Root(s) to scan; repeat for multiple"),
     ssh_alias: Optional[str] = typer.Option(None, "--ssh-alias", help="SSH alias for ssh/wsl targets"),
 ):
-    state_manager, project_manager = _load_project_for_targets(project_path)
-    targets = state_manager.project_state.scan_targets
-    if any(t.name == name for t in targets):
-        raise typer.BadParameter(f"Target with name '{name}' already exists")
-    kind_l = kind.lower()
-    if kind_l not in ("local", "ssh", "wsl"):
-        raise typer.BadParameter("--kind must be one of: local, ssh, wsl")
-    if kind_l in ("ssh", "wsl") and not ssh_alias:
-        raise typer.BadParameter("--ssh-alias is required for ssh/wsl targets")
-    t = ScanTarget(name=name, kind=kind_l, roots=[Path(r).expanduser() for r in roots], ssh_alias=ssh_alias)  # type: ignore[arg-type]
-    targets.append(t)
-    project_manager.save_project()
-    print(f"Added target '{name}' ({kind_l}).")
+    print("ERROR: Project-level target management is deprecated.")
+    print("Use 'mus1 lab add-target' to add scan targets to labs.")
+    raise typer.Exit(code=1)
 
 
-@targets_app.command("remove", help="Remove a scan target by name")
+@targets_app.command("remove", help="[DEPRECATED] Target management moved to labs")
 def targets_remove(
     project_path: Path = typer.Argument(..., help="Path to MUS1 project"),
     name: str = typer.Argument(..., help="Target name to remove"),
 ):
-    state_manager, project_manager = _load_project_for_targets(project_path)
-    targets = state_manager.project_state.scan_targets
-    before = len(targets)
-    targets = [t for t in targets if t.name != name]
-    state_manager.project_state.scan_targets = targets
-    if len(targets) == before:
-        print(f"No target named '{name}' found.")
-        return
-    project_manager.save_project()
-    print(f"Removed target '{name}'.")
+    print("ERROR: Project-level target management is deprecated.")
+    print("Target management has moved to labs. Use lab-level commands instead.")
+    raise typer.Exit(code=1)
 
 ###############################################################################
 # project scan-from-targets
@@ -1788,33 +1770,29 @@ def project_media_assign(
 # credentials management
 # -----------------------------------------------------------------------------
 
-@app.command("credentials-set", help="Set or update credentials for an ssh alias (stored in ~/.mus1/credentials.json)")
+@app.command("credentials-set", help="[DEPRECATED] Use 'mus1 lab add-credential' instead")
 def credentials_set(
     alias: str = typer.Argument(..., help="SSH alias name (matches ScanTarget.ssh_alias)"),
     user: Optional[str] = typer.Option(None, "--user", help="Username for SSH"),
     identity_file: Optional[Path] = typer.Option(None, "--identity-file", help="Path to SSH private key"),
 ):
-    set_credential(alias, user=user, identity_file=str(identity_file) if identity_file else None)
-    print(f"Credentials set for alias '{alias}'.")
+    print("ERROR: Per-user credentials management is deprecated.")
+    print("Use 'mus1 lab add-credential' to add credentials to labs.")
+    raise typer.Exit(code=1)
 
 
-@app.command("credentials-list", help="List stored credentials aliases")
+@app.command("credentials-list", help="[DEPRECATED] Use 'mus1 lab status' instead")
 def credentials_list():
-    creds = load_credentials()
-    if not creds:
-        print("No credentials stored.")
-        return
-    for k, v in creds.items():
-        print(f"{k}: user={v.get('user','')}, identity_file={v.get('identity_file','')}")
+    print("ERROR: Per-user credentials management is deprecated.")
+    print("Use 'mus1 lab status' to see lab-level credentials.")
+    raise typer.Exit(code=1)
 
 
-@app.command("credentials-remove", help="Remove credentials for an alias")
+@app.command("credentials-remove", help="[DEPRECATED] Credentials management moved to labs")
 def credentials_remove(alias: str = typer.Argument(..., help="SSH alias name")):
-    ok = remove_credential(alias)
-    if ok:
-        print(f"Removed credentials for '{alias}'.")
-    else:
-        print(f"No credentials found for '{alias}'.")
+    print("ERROR: Per-user credentials management is deprecated.")
+    print("Credentials management has moved to labs. Use lab-level commands instead.")
+    raise typer.Exit(code=1)
 
 
 # -----------------------------------------------------------------------------

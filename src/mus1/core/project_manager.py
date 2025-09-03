@@ -1431,16 +1431,18 @@ class ProjectManager:
         # Scan: either via targets or filesystem roots
         videos: list[tuple[Path, str]] = []
         if target_names:
-            # Use configured targets from state; support parallel via simple threads
-            targets = list(self.state_manager.project_state.scan_targets or [])
-            targets = [t for t in targets if t.name in set(target_names)] if target_names else targets
-            if not targets:
-                return {"status": "failed", "error": "No matching scan targets configured."}
+            # Use lab-level scan targets
             try:
+                lab_targets = self.get_scan_targets()
+                targets = [t for t in lab_targets if t.name in set(target_names)] if target_names else lab_targets
+                if not targets:
+                    return {"status": "failed", "error": "No matching scan targets configured in lab."}
                 # Use scanners.remote helpers
                 from .scanners.remote import collect_from_targets, collect_from_targets_parallel
                 items = collect_from_targets_parallel(self.state_manager, dm, targets, extensions=extensions, exclude_dirs=exclude_dirs, non_recursive=non_recursive, max_workers=max_workers) if parallel else collect_from_targets(self.state_manager, dm, targets, extensions=extensions, exclude_dirs=exclude_dirs, non_recursive=non_recursive)
                 videos.extend(items)
+            except RuntimeError as e:
+                return {"status": "failed", "error": f"No lab associated: {e}"}
             except Exception as e:
                 return {"status": "failed", "error": f"Target scan failed: {e}"}
         else:
