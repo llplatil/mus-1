@@ -60,31 +60,20 @@ from PySide6.QtWidgets import QApplication, QSplashScreen, QDialog
 from PySide6.QtGui import QPixmap, QIcon
 from PySide6.QtTest import QTest
 
-# 1) Bring in relevant classes/functions from core
+# 1) Bring in unified initializer and GUI-specific imports
 print("Attempting to import from core...") # Add print right before import
-from .core import (
-    init_metadata,
-    StateManager,
-    DataManager,
-    ProjectManager,
-    ThemeManager,
-    PluginManager
-)
-from .core.logging_bus import LoggingEventBus
-
-# Import the project selection dialog
+from .core import initialize_mus1_app
 from .gui.project_selection_dialog import ProjectSelectionDialog
 
 def main():
-    logger = logging.getLogger('mus1')
-    logger.info("Launching MUS1...")
+    # Use unified MUS1 application initialization
+    state_manager, plugin_manager, data_manager, project_manager, theme_manager, log_bus = initialize_mus1_app()
 
-    if not init_metadata():
-        logger.error("Metadata init failed. Exiting.")
-        sys.exit(1)
+    logger = logging.getLogger('mus1')
+    logger.info("Launching MUS1 GUI...")
 
     app = QApplication(sys.argv)
-    
+
     # Set application icon
     app_icon = QIcon()
     # Ensure paths are correct and use Path objects
@@ -93,16 +82,6 @@ def main():
     app_icon.addFile(str(icon_dir / "m1logo no background for big sur.icns"))  # For macOS
     app_icon.addFile(str(icon_dir / "m1logo no background.png"))  # For Linux/general
     app.setWindowIcon(app_icon)
-    
-    log_bus = LoggingEventBus.get_instance()
-    log_bus.log("LoggingEventBus initialized", "info", "MainApp")
-
-    # Create the core managers
-    state_manager = StateManager()
-    plugin_manager = PluginManager()
-    data_manager = DataManager(state_manager, plugin_manager)
-    project_manager = ProjectManager(state_manager, plugin_manager, data_manager)
-    theme_manager = ThemeManager(state_manager)
 
     # Determine and apply the theme *before* showing any UI that depends on it
     effective_theme = theme_manager.get_effective_theme()

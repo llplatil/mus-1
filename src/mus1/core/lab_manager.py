@@ -63,6 +63,8 @@ class LabSharedStorage(BaseModel):
 
 class LabGenotype(BaseModel):
     """Genotype configuration for a specific gene."""
+    model_config = {"use_enum_values": True}
+
     gene_name: str = Field(..., description="Gene name (e.g., ATP7B)")
     inheritance_pattern: InheritancePattern = Field(default=InheritancePattern.RECESSIVE, description="Inheritance pattern")
     alleles: List[str] = Field(default_factory=lambda: ["WT", "Het", "KO"], description="Available alleles")
@@ -99,6 +101,27 @@ class LabManager:
         self._lab_config: Optional[LabConfig] = None
         self._config_path: Optional[Path] = None
         self._auto_load_current_lab()
+
+    def __getstate__(self):
+        """Prepare object for pickling."""
+        state = self.__dict__.copy()
+        return state
+
+    def __setstate__(self, state):
+        """Restore object from pickle and reload current lab."""
+        self.__dict__.update(state)
+        # After unpickling, try to reload the current lab
+        if hasattr(self, '_config_path') and self._config_path and self._config_path.exists():
+            try:
+                # Try to reload the lab from the saved path
+                lab_id = self._config_path.stem
+                self.load_lab(lab_id)
+                # Also save it as current lab for future sessions
+                self._save_current_lab()
+            except Exception as e:
+                # If reload fails, clear the state
+                self._lab_config = None
+                self._config_path = None
 
     def get_labs_directory(self, custom_dir: Path | None = None) -> Path:
         """Return the directory where MUS1 lab configurations are stored.
@@ -264,6 +287,9 @@ class LabManager:
         lab_config = LabConfig(**data)
         self._lab_config = lab_config
         self._config_path = config_path
+
+        # Save this as the current lab for future sessions
+        self._save_current_lab()
 
         return lab_config
 

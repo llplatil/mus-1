@@ -13,6 +13,11 @@ from .metadata import (
     ObjectMetadata,
     BodyPartMetadata
 )
+from .app_initializer import (
+    MUS1AppInitializer,
+    get_app_initializer,
+    initialize_mus1_app
+)
 
 __all__ = [
     "init_metadata",
@@ -23,4 +28,7 @@ __all__ = [
     "ProjectMetadata",
     "ObjectMetadata",
     "BodyPartMetadata",
+    "MUS1AppInitializer",
+    "get_app_initializer",
+    "initialize_mus1_app",
 ] 

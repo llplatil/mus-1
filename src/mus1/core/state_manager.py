@@ -20,6 +20,17 @@ class StateManager:
         self.log_bus = LoggingEventBus.get_instance()
         self.log_bus.log("StateManager initialized", "info", "StateManager")
 
+    def __getstate__(self):
+        """Prepare object for pickling."""
+        state = self.__dict__.copy()
+        return state
+
+    def __setstate__(self, state):
+        """Restore object from pickle."""
+        self.__dict__.update(state)
+        # Reinitialize the logging bus after unpickling
+        self.log_bus = LoggingEventBus.get_instance()
+
     @property
     def project_state(self) -> ProjectState:
         return self._project_state

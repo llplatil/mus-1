@@ -15,6 +15,7 @@ import typer
 from rich import print  # pretty help & errors
 from tqdm import tqdm
 
+from .core import initialize_mus1_app
 from .core.state_manager import StateManager
 from .core.plugin_manager import PluginManager
 from .core.data_manager import DataManager
@@ -34,18 +35,42 @@ import re
 import importlib.metadata as importlib_metadata
 
 _ctx = {"help_option_names": ["-h", "--help", "-help"]}
-app = typer.Typer(add_completion=False, rich_markup_mode="rich", context_settings=_ctx)
+app = typer.Typer(
+    help="MUS1 - Video analysis and behavior tracking system",
+    add_completion=False,
+    rich_markup_mode="rich",
+    context_settings=_ctx
+)
 scan_app = typer.Typer(
-    help="Video discovery utilities. On macOS, if no roots are provided, MUS1 will search common locations (~/Movies, ~/Videos, /Volumes).",
+    help="Scan and discover video files from local or remote locations",
     context_settings=_ctx,
 )
-project_app = typer.Typer(help="Project-level operations", context_settings=_ctx)
+project_app = typer.Typer(
+    help="Manage MUS1 projects, ingest videos, and organize experiments",
+    context_settings=_ctx
+)
 
-setup_app = typer.Typer(help="One-time local setup helpers (per-user)", context_settings=_ctx)
-workers_app = typer.Typer(help="Manage project worker entries (non-secret)", context_settings=_ctx)
-targets_app = typer.Typer(help="Manage scan targets (local/ssh/wsl)", context_settings=_ctx)
-lab_app = typer.Typer(help="Lab-level configuration and shared resources", context_settings=_ctx)
-genotype_app = typer.Typer(help="Genotype management for projects and labs", context_settings=_ctx)
+setup_app = typer.Typer(
+    help="Configure MUS1 installation (shared storage, labs, projects)",
+    context_settings=_ctx
+)
+workers_app = typer.Typer(
+    help="Execute commands on remote lab workers",
+    context_settings=_ctx
+)
+targets_app = typer.Typer(
+    help="Scan targets are now managed via 'lab' commands",
+    context_settings=_ctx,
+    deprecated=True
+)
+lab_app = typer.Typer(
+    help="Manage lab configurations, workers, credentials, and shared resources",
+    context_settings=_ctx
+)
+genotype_app = typer.Typer(
+    help="Manage genotypes, treatments, and experiment types for labs and projects",
+    context_settings=_ctx
+)
 
 app.add_typer(scan_app, name="scan")
 app.add_typer(project_app, name="project")
@@ -90,12 +115,59 @@ def _root_callback(
     # (we don't force exit here to preserve existing UX).
 
 
-@app.command("project-help", help="Show full help for the 'project' command group")
-def project_help():
-    # Typer wrapper doesn't expose get_help; use underlying Click command
-    from typer.main import get_command
-    cmd = get_command(project_app)
-    builtins.print(cmd.get_help(ctx=typer.Context(cmd)))
+@app.command("status", help="Show MUS1 system status, loaded plugins, and current lab/project state")
+def system_status():
+    """Show current MUS1 system status and verify state is running."""
+    state_manager, plugin_manager, data_manager, project_manager = _get_managers()
+
+    print("MUS1 System Status")
+    print("=" * 40)
+
+    print("Core State: RUNNING")
+    print(f"    StateManager: {type(state_manager).__name__}")
+    print(f"    PluginManager: {type(plugin_manager).__name__}")
+    print(f"    DataManager: {type(data_manager).__name__}")
+    print(f"   ProjectManager: {type(project_manager).__name__}")
+
+    # Plugin status
+    plugins = plugin_manager.get_plugins_with_project_actions()
+    print(f"\nPlugins Loaded: {len(plugins)}")
+    for plugin in plugins:
+        meta = plugin.plugin_self_metadata()
+        print(f"   - {meta.name}")
+
+    # Project state
+    if hasattr(state_manager, 'project_state'):
+        print("\nProject State: Available")
+        if hasattr(state_manager.project_state, 'unassigned_videos'):
+            unassigned_count = len(state_manager.project_state.unassigned_videos)
+            experiment_count = len(getattr(state_manager.project_state, 'experiments', {}))
+            print(f"   Unassigned videos: {unassigned_count}")
+            print(f"   Experiments: {experiment_count}")
+    else:
+        print("\nProject State: Not loaded")
+
+    # Lab status
+    if project_manager.lab_manager and project_manager.lab_manager.current_lab:
+        lab = project_manager.lab_manager.current_lab
+        print("\nLab Status: Connected")
+        print(f"   Lab: {lab.metadata.name}")
+        print(f"   Workers: {len(lab.workers)}")
+        print(f"   Scan targets: {len(lab.scan_targets)}")
+    else:
+        print("\nLab Status: Not connected")
+
+    print("\nSystem Ready for Operations!")
+
+
+@app.command("clear-state", help="Clear persistent CLI application state")
+def clear_state():
+    """Clear the persistent state file, forcing fresh initialization on next command."""
+    _clear_persistent_state()
+    global _managers_cache
+    _managers_cache = None
+    print("Persistent state cleared")
+    print("Next CLI command will re-initialize the application state")
 
 
 @app.command("scan-help", help="Show full help for the 'scan' command group")
@@ -109,25 +181,105 @@ def scan_help():
 ###############################################################################
 
 
-def _init_managers() -> tuple[StateManager, PluginManager, DataManager, ProjectManager]:
-    from .core.lab_manager import LabManager
-    state_manager = StateManager()
-    plugin_manager = PluginManager()
+# Global cache for initialized managers
+_managers_cache = None
+_lab_manager_cache = None
 
-    # Discover external plugins via entry points
+def _get_state_file() -> Path:
+    """Get the path to the persistent state file."""
+    if sys.platform == "darwin":
+        state_dir = Path.home() / "Library/Application Support/mus1"
+    elif os.name == "nt":
+        appdata = os.environ.get("APPDATA") or str(Path.home() / "AppData/Roaming")
+        state_dir = Path(appdata) / "mus1"
+    else:
+        xdg = os.environ.get("XDG_CONFIG_HOME") or str(Path.home() / ".config")
+        state_dir = Path(xdg) / "mus1"
+    state_dir.mkdir(parents=True, exist_ok=True)
+    return state_dir / "cli_state.pickle"
+
+def _save_managers_state():
+    """Save manager state to disk for persistence between CLI commands."""
+    if _managers_cache is not None:
+        try:
+            import pickle
+            state_file = _get_state_file()
+            # Save both managers and lab manager
+            state = {
+                'managers': _managers_cache,
+                'lab_manager': _lab_manager_cache
+            }
+            with open(state_file, "wb") as f:
+                pickle.dump(state, f)
+        except Exception:
+            # Silently fail if we can't save state
+            pass
+
+def _save_state_after_change():
+    """Save state after any change that affects managers."""
+    _save_managers_state()
+    print("State updated and saved")
+
+def _clear_persistent_state():
+    """Clear the persistent state file."""
     try:
-        plugin_manager.discover_entry_points()
+        state_file = _get_state_file()
+        if state_file.exists():
+            state_file.unlink()
     except Exception:
         pass
 
-    data_manager = DataManager(state_manager, plugin_manager)
-    lab_manager = LabManager()
-    project_manager = ProjectManager(state_manager, plugin_manager, data_manager, lab_manager)
-    return state_manager, plugin_manager, data_manager, project_manager
+def _load_managers_state():
+    """Load manager state from disk if available."""
+    global _lab_manager_cache
+    try:
+        import pickle
+        state_file = _get_state_file()
+        if state_file.exists():
+            with open(state_file, "rb") as f:
+                state = pickle.load(f)
+                # Handle both old format (just managers) and new format (dict with managers and lab_manager)
+                if isinstance(state, dict):
+                    managers = state.get('managers')
+                    lab_manager = state.get('lab_manager')
+                    if lab_manager:
+                        _lab_manager_cache = lab_manager
+                    return managers, lab_manager
+                else:
+                    # Old format - just managers tuple
+                    return state, None
+    except Exception:
+        # Silently fail if we can't load state
+        pass
+    return None, None
 
 def _get_managers() -> tuple[StateManager, PluginManager, DataManager, ProjectManager]:
-    # Initialize managers directly without requiring context
-    return _init_managers()
+    """
+    Get initialized managers with TRUE persistence that survives between CLI commands.
+
+    This ensures CLI commands maintain the same application state as the GUI,
+    creating a unified experience across different user interfaces.
+    """
+    global _managers_cache, _lab_manager_cache
+
+    # First try to load from persistent storage
+    if _managers_cache is None:
+        _managers_cache, _lab_manager_cache = _load_managers_state()
+
+    # If no persistent state, initialize fresh (same as GUI!)
+    if _managers_cache is None:
+        print("Initializing MUS1 core application state...")
+        state_manager, plugin_manager, data_manager, project_manager, theme_manager, log_bus = initialize_mus1_app()
+        _managers_cache = (state_manager, plugin_manager, data_manager, project_manager)
+        print("MUS1 core initialized and ready")
+
+        # Save state for future CLI commands
+        _save_managers_state()
+        print("Application state saved - will persist for future CLI commands")
+    else:
+        print("Loaded persistent MUS1 application state")
+
+    return _managers_cache
 
 def _out_prefs(ctx: typer.Context) -> dict:
     return (getattr(ctx, "obj", None) or {}).get("output", {})
@@ -200,7 +352,7 @@ def _iter_json_lines(stream) -> Iterable[dict]:
 # scan videos
 ###############################################################################
 
-@scan_app.command("videos", help="Recursively scan roots for video files and stream JSON lines (path, hash). If no roots are given on macOS, defaults are used (~/Movies, ~/Videos, /Volumes).")
+@scan_app.command("videos", help="Discover video files by scanning directories and output JSON lines with paths and hashes")
 def scan_videos(
     roots: List[Path] = typer.Argument(None, help="Directories or drive roots to scan. Omit on macOS to use defaults."),
     extensions: Optional[List[str]] = typer.Option(None, "--ext", help="Allowed extensions (.mp4 .avi …)"),
@@ -248,7 +400,7 @@ def scan_videos(
 # scan dedup
 ###############################################################################
 
-@scan_app.command("dedup")
+@scan_app.command("dedup", help="Remove duplicate videos by hash and add start_time metadata")
 def scan_dedup(
     input_file: Optional[Path] = typer.Argument(
         None,
@@ -281,7 +433,7 @@ def scan_dedup(
 ###############################################################################
 
 
-@project_app.command("add-videos")
+@project_app.command("add-videos", help="Register discovered videos as unassigned media in a project")
 def add_videos(
     project_path: Path = typer.Argument(..., help="Existing or new MUS1 project directory"),
     video_list: Path = typer.Argument(..., metavar="LIST|-", help="JSON-lines list or '-' for stdin"),
@@ -664,7 +816,7 @@ def project_cleanup_copies(
 ###############################################################################
 
 
-@project_app.command("create", help="Create a new MUS1 project. Defaults to ~/MUS1/projects unless --base-dir or MUS1_PROJECTS_DIR is set.")
+@project_app.command("create", help="Create a new MUS1 project for organizing videos and experiments")
 def create_project(
     name: str = typer.Argument(..., help="Project name (folder name) or absolute path"),
     location: str = typer.Option("local", help="Where to create the project: local|shared|server (server is placeholder)", show_default=True),
@@ -881,7 +1033,7 @@ def project_stage_to_shared(
     print(f"Staged and added {added} videos. Unassigned total: {len(state_manager.project_state.unassigned_videos)}")
 
 
-@project_app.command("ingest", help="Scan roots, dedup, split by shared, and either preview or stage+register off-shared items.")
+@project_app.command("ingest", help="Complete workflow: scan → dedup → stage to shared → register videos")
 def project_ingest(
     project_path: Path = typer.Argument(..., help="Path to MUS1 project"),
     roots: List[Path] = typer.Argument(None, help="Directories or drive roots to scan (omit when using --target)"),
@@ -1102,7 +1254,8 @@ def genotype_add_to_lab(
     gene_name: str = typer.Option(..., "--gene", "-g", help="Gene name (e.g., ATP7B)"),
     alleles: Optional[List[str]] = typer.Option(None, "--allele", "-a", help="Available alleles (repeat for multiple)"),
     inheritance: str = typer.Option("recessive", "--inheritance", "-i", help="Inheritance pattern: Dominant, Recessive, or X-Linked"),
-    lab_id: Optional[str] = typer.Option(None, "--lab", help="Lab ID"),
+    lab_id: Optional[str] = typer.Option(None, "--lab", help="Lab ID or path to lab config file"),
+    config_dir: Optional[Path] = typer.Option(None, "--config-dir", help="Directory containing lab configs"),
     mendelian: bool = typer.Option(True, "--mendelian/--non-mendelian", help="Mark as mendelian (mutually exclusive alleles)")
 ):
     """Add a genotype configuration to a lab."""
@@ -1126,7 +1279,7 @@ def genotype_add_to_lab(
             typer.echo("Error: Must specify --lab when no lab is currently loaded", err=True)
             raise typer.Exit(1)
         try:
-            lab_manager.load_lab(lab_id)
+            lab_manager.load_lab(lab_id, config_dir)
         except FileNotFoundError:
             typer.echo(f"Error: Lab '{lab_id}' not found", err=True)
             raise typer.Exit(1)
@@ -1147,7 +1300,8 @@ def genotype_add_to_lab(
     )
 
     lab_manager.add_genotype(genotype)
-    typer.echo(f"✓ Added genotype configuration '{gene_name}' to lab '{lab_manager.current_lab.metadata.name}'")
+    _save_managers_state()  # Save state after adding genotype
+    typer.echo(f"Added genotype configuration '{gene_name}' to lab '{lab_manager.current_lab.metadata.name}'")
 
 
 @genotype_app.command("add-to-project", help="Add a genotype configuration to a project")
@@ -1191,7 +1345,7 @@ def genotype_add_to_project(
             alleles=alleles,
             mendelian=mendelian
         )
-        typer.echo(f"✓ Added genotype configuration '{gene_name}' to project '{project_path.name}'")
+        typer.echo(f"Added genotype configuration '{gene_name}' to project '{project_path.name}'")
     except ValueError as e:
         typer.echo(f"Error: {e}", err=True)
         raise typer.Exit(1)
@@ -1254,7 +1408,7 @@ def genotype_accept_lab_tracked(
             typer.echo(f"Warning: Could not accept '{gene}': {e}")
 
     if accepted:
-        typer.echo(f"✓ Accepted {len(accepted)} lab-tracked genotypes for project: {', '.join(accepted)}")
+        typer.echo(f"Accepted {len(accepted)} lab-tracked genotypes for project: {', '.join(accepted)}")
     else:
         typer.echo("No genotypes were accepted.")
 
@@ -1286,7 +1440,7 @@ def genotype_track(
 
         state_manager.project_state.project_metadata.tracked_genotypes.add(gene_name)
         project_manager.save_project()
-        typer.echo(f"✓ Added '{gene_name}' to tracked genotypes in project")
+        typer.echo(f"Added '{gene_name}' to tracked genotypes in project")
 
     else:
         # Lab-level tracking
@@ -1303,7 +1457,7 @@ def genotype_track(
             return
 
         lab_manager.add_tracked_genotype(gene_name)
-        typer.echo(f"✓ Added '{gene_name}' to tracked genotypes in lab '{lab_id}'")
+        typer.echo(f"Added '{gene_name}' to tracked genotypes in lab '{lab_id}'")
 
 
 @genotype_app.command("list", help="List genotype configurations and tracked genes")
@@ -1392,7 +1546,7 @@ def genotype_push_to_lab(
 
     try:
         project_manager.push_genotype_to_lab(gene_name)
-        typer.echo(f"✓ Pushed genotype '{gene_name}' from project to lab level")
+        typer.echo(f"Pushed genotype '{gene_name}' from project to lab level")
 
     except Exception as e:
         typer.echo(f"Error pushing genotype: {e}", err=True)
@@ -1431,7 +1585,7 @@ def track_experiment_type(
 
         state_manager.project_state.project_metadata.tracked_experiment_types.add(experiment_type)
         project_manager.save_project()
-        typer.echo(f"✓ Added '{experiment_type}' to tracked experiment types in project")
+        typer.echo(f"Added '{experiment_type}' to tracked experiment types in project")
 
     else:
         # Lab-level tracking
@@ -1448,7 +1602,7 @@ def track_experiment_type(
             return
 
         lab_manager.add_tracked_experiment_type(experiment_type)
-        typer.echo(f"✓ Added '{experiment_type}' to tracked experiment types in lab '{lab_id}'")
+        typer.echo(f"Added '{experiment_type}' to tracked experiment types in lab '{lab_id}'")
 
 
 @genotype_app.command("track-treatment", help="Add a treatment to the tracked list")
@@ -1478,7 +1632,7 @@ def track_treatment(
 
         state_manager.project_state.project_metadata.tracked_treatments.add(treatment_name)
         project_manager.save_project()
-        typer.echo(f"✓ Added '{treatment_name}' to tracked treatments in project")
+        typer.echo(f"Added '{treatment_name}' to tracked treatments in project")
 
     else:
         # Lab-level tracking
@@ -1495,7 +1649,7 @@ def track_treatment(
             return
 
         lab_manager.add_tracked_treatment(treatment_name)
-        typer.echo(f"✓ Added '{treatment_name}' to tracked treatments in lab '{lab_id}'")
+        typer.echo(f"Added '{treatment_name}' to tracked treatments in lab '{lab_id}'")
 
 
 @genotype_app.command("untrack-treatment", help="Remove a treatment from the tracked list")
@@ -1525,7 +1679,7 @@ def untrack_treatment(
 
         state_manager.project_state.project_metadata.tracked_treatments.remove(treatment_name)
         project_manager.save_project()
-        typer.echo(f"✓ Removed '{treatment_name}' from tracked treatments in project")
+        typer.echo(f"Removed '{treatment_name}' from tracked treatments in project")
 
     else:
         # Lab-level untracking
@@ -1541,7 +1695,7 @@ def untrack_treatment(
             typer.echo(f"Treatment '{treatment_name}' is not tracked in lab '{lab_id}'")
             return
 
-        typer.echo(f"✓ Removed '{treatment_name}' from tracked treatments in lab '{lab_id}'")
+        typer.echo(f"Removed '{treatment_name}' from tracked treatments in lab '{lab_id}'")
 
 
 @genotype_app.command("accept-lab-tracked-treatments", help="Accept lab-tracked treatments for use in a project")
@@ -1586,7 +1740,7 @@ def accept_lab_tracked_treatments(
             typer.echo(f"Error tracking treatment '{treatment}': {e}", err=True)
 
     if accepted:
-        typer.echo(f"✓ Accepted lab treatments: {', '.join(accepted)}")
+        typer.echo(f"Accepted lab treatments: {', '.join(accepted)}")
     else:
         typer.echo("No treatments were accepted")
 
@@ -1612,18 +1766,18 @@ def list_tracked_treatments(
         project_manager.load_project(project_path)
 
         metadata = state_manager.project_state.project_metadata
-        typer.echo(f"\n📋 Project: {metadata.project_name}")
-        typer.echo("🎯 Tracked treatments:")
+        typer.echo(f"\nProject: {metadata.project_name}")
+        typer.echo("Tracked treatments:")
         for treatment in sorted(metadata.tracked_treatments):
-            typer.echo(f"  • {treatment}")
+            typer.echo(f"  - {treatment}")
 
-        typer.echo("\n🏥 Master treatments:")
+        typer.echo("\nMaster treatments:")
         for treatment in sorted(metadata.master_treatments, key=lambda x: x.name):
-            typer.echo(f"  • {treatment.name}")
+            typer.echo(f"  - {treatment.name}")
 
-        typer.echo("\n✅ Active treatments:")
+        typer.echo("\nActive treatments:")
         for treatment in sorted(metadata.active_treatments, key=lambda x: x.name):
-            typer.echo(f"  • {treatment.name}")
+            typer.echo(f"  - {treatment.name}")
 
     else:
         # Lab-level listing
@@ -1636,10 +1790,10 @@ def list_tracked_treatments(
                 raise typer.Exit(1)
 
         lab = lab_manager.current_lab
-        typer.echo(f"\n🏢 Lab: {lab.metadata.name}")
-        typer.echo("🎯 Tracked treatments:")
+        typer.echo(f"\nLab: {lab.metadata.name}")
+        typer.echo("Tracked treatments:")
         for treatment in sorted(lab.tracked_treatments):
-            typer.echo(f"  • {treatment}")
+            typer.echo(f"  - {treatment}")
 
 
 @genotype_app.command("push-treatment-to-lab", help="Push a project treatment to lab level")
@@ -1660,7 +1814,7 @@ def treatment_push_to_lab(
 
     try:
         project_manager.push_treatment_to_lab(treatment_name)
-        typer.echo(f"✓ Pushed treatment '{treatment_name}' from project to lab level")
+        typer.echo(f"Pushed treatment '{treatment_name}' from project to lab level")
 
     except Exception as e:
         typer.echo(f"Error pushing treatment: {e}", err=True)
@@ -1685,7 +1839,7 @@ def experiment_type_push_to_lab(
 
     try:
         project_manager.push_experiment_type_to_lab(experiment_type)
-        typer.echo(f"✓ Pushed experiment type '{experiment_type}' from project to lab level")
+        typer.echo(f"Pushed experiment type '{experiment_type}' from project to lab level")
 
     except Exception as e:
         typer.echo(f"Error pushing experiment type: {e}", err=True)
@@ -1922,27 +2076,44 @@ def setup_projects(
 
 def _get_lab_manager() -> LabManager:
     """Get or create a lab manager instance."""
-    return LabManager()
+    global _lab_manager_cache
+    if _lab_manager_cache is None:
+        _lab_manager_cache = LabManager()
+    return _lab_manager_cache
 
 
-@lab_app.command("create", help="Create a new lab configuration")
+@lab_app.command("create", help="Create a new lab configuration file for managing shared resources")
 def lab_create(
-    name: str = typer.Option(..., "--name", help="Human-readable lab name"),
-    lab_id: Optional[str] = typer.Option(None, "--id", help="Lab identifier (auto-generated from name if not provided)"),
-    description: str = typer.Option("", "--description", help="Lab description"),
-    config_dir: Optional[Path] = typer.Option(None, "--config-dir", help="Directory to store lab configs"),
+    name: str = typer.Argument(..., help="Human-readable lab name"),
+    target_path: Path = typer.Argument(..., help="Path where to save the lab configuration file"),
+    description: str = typer.Option("", "--description", "-d", help="Lab description"),
 ):
-    """Create a new lab configuration with shared resources."""
+    """Create a new lab configuration at the specified path."""
     lab_manager = _get_lab_manager()
+
+    # Handle target_path: if it's a file path (ends with .yaml), use its parent as config_dir
+    # If it's a directory, use it as config_dir
+    if target_path.suffix.lower() == '.yaml':
+        config_dir = target_path.parent
+        lab_id = target_path.stem  # Use filename without extension as lab_id
+        config_path = target_path
+    else:
+        config_dir = target_path
+        lab_id = name.lower().replace(" ", "_").replace("-", "_")
+        config_path = config_dir / f"{lab_id}.yaml"
+
     try:
+        # Ensure config_dir exists
+        config_dir.mkdir(parents=True, exist_ok=True)
+
         lab_config = lab_manager.create_lab(
             name=name,
             lab_id=lab_id,
             description=description,
             config_dir=config_dir
         )
-        print(f"Created lab '{name}' with ID '{lab_id or name.lower().replace(' ', '_').replace('-', '_')}'")
-        print(f"Configuration saved to: {lab_manager.current_lab_path}")
+        print(f"Created lab '{name}'")
+        print(f"Configuration saved to: {config_path}")
     except FileExistsError as e:
         print(f"Error: {e}")
         raise typer.Exit(code=1)
@@ -1982,11 +2153,14 @@ def lab_load(
     lab_manager = _get_lab_manager()
     try:
         lab_config = lab_manager.load_lab(lab_id, config_dir)
+        # Save updated state to persistence
+        _save_managers_state()
         print(f"Loaded lab '{lab_config.metadata.name}' ({lab_id})")
         print(f"Workers: {len(lab_config.workers)}")
         print(f"Credentials: {len(lab_config.credentials)}")
         print(f"Scan targets: {len(lab_config.scan_targets)}")
         print(f"Associated projects: {len(lab_config.associated_projects)}")
+        print(f"\nLab state saved - will persist for future CLI commands")
     except FileNotFoundError as e:
         print(f"Error: {e}")
         raise typer.Exit(code=1)
@@ -2023,7 +2197,7 @@ def lab_associate(
         raise typer.Exit(code=1)
 
 
-@lab_app.command("status", help="Show current lab configuration status")
+@lab_app.command("status", help="Display current lab configuration, workers, credentials, and shared storage")
 def lab_status():
     """Show information about the currently loaded lab."""
     lab_manager = _get_lab_manager()
@@ -2078,7 +2252,7 @@ def lab_status():
             print(f"- {project_path}")
 
 
-@lab_app.command("add-worker", help="Add a worker to the current lab")
+@lab_app.command("add-worker", help="Add a remote worker machine for distributed processing")
 def lab_add_worker(
     name: str = typer.Option(..., "--name", help="Display name for the worker"),
     ssh_alias: str = typer.Option(..., "--ssh-alias", help="Host alias from ~/.ssh/config"),
@@ -2476,59 +2650,10 @@ def lab_list_tracked():
 
 
 ###############################################################################
-# workers management (typed in ProjectState.workers)
+# remote worker execution
 ###############################################################################
 
 
-def _load_project_for_workers(project_path: Path) -> tuple[StateManager, ProjectManager]:
-    state_manager, _, _, project_manager = _get_managers()
-    if not project_path.exists():
-        raise typer.BadParameter(f"Project not found: {project_path}")
-    project_manager.load_project(project_path)
-    return state_manager, project_manager
-
-
-@workers_app.command("list", help="[DEPRECATED] Use 'mus1 lab status' instead")
-def workers_list(project_path: Path = typer.Argument(..., help="Path to MUS1 project")):
-    print("ERROR: Project-level worker management is deprecated.")
-    print("Use 'mus1 lab status' to see lab-level workers.")
-    print("Use 'mus1 lab add-worker' to add workers to labs.")
-    raise typer.Exit(code=1)
-
-
-@workers_app.command("add", help="[DEPRECATED] Use 'mus1 lab add-worker' instead")
-def workers_add(
-    project_path: Path = typer.Argument(..., help="Path to MUS1 project"),
-    name: str = typer.Option(..., "--name", help="Display name for the worker"),
-    ssh_alias: str = typer.Option(..., "--ssh-alias", help="Host alias from ~/.ssh/config"),
-    role: Optional[str] = typer.Option(None, help="Optional role tag (e.g., compute, storage)"),
-    provider: str = typer.Option("ssh", help="Provider for executing commands: ssh|wsl|local|ssh-wsl", show_default=True),
-    test: bool = typer.Option(False, help="Test SSH connectivity to the alias (BatchMode)")
-):
-    print("ERROR: Project-level worker management is deprecated.")
-    print("Use 'mus1 lab add-worker' to add workers to labs.")
-    raise typer.Exit(code=1)
-
-
-@workers_app.command("detect-os", help="[DEPRECATED] Worker management moved to labs")
-def workers_detect_os(
-    project_path: Path = typer.Argument(..., help="Path to MUS1 project"),
-    name: str = typer.Option(..., "--name", "-n", help="Worker name to probe"),
-    timeout: int = typer.Option(10, "--timeout", help="Timeout in seconds for SSH commands"),
-):
-    print("ERROR: Project-level worker management is deprecated.")
-    print("Worker management has moved to labs. Use 'mus1 lab add-worker' to add workers.")
-    raise typer.Exit(code=1)
-
-
-@workers_app.command("remove", help="[DEPRECATED] Worker management moved to labs")
-def workers_remove(
-    project_path: Path = typer.Argument(..., help="Path to MUS1 project"),
-    name: str = typer.Argument(..., help="Worker name to remove"),
-):
-    print("ERROR: Project-level worker management is deprecated.")
-    print("Worker management has moved to labs. Use lab-level commands instead.")
-    raise typer.Exit(code=1)
 
 
 @workers_app.command("run", help="Run a command on a lab worker")
@@ -2542,7 +2667,10 @@ def workers_run(
     tty: bool = typer.Option(False, "--tty", help="Allocate a TTY (ssh -tt)"),
 ):
     # This one we can keep but redirect to use lab workers
-    _, project_manager = _load_project_for_workers(project_path)
+    state_manager, _, _, project_manager = _get_managers()
+    if not project_path.exists():
+        raise typer.BadParameter(f"Project not found: {project_path}")
+    project_manager.load_project(project_path)
 
     try:
         workers = project_manager.get_workers()
@@ -2581,47 +2709,12 @@ def workers_run(
     raise typer.Exit(code=result.return_code)
 
 ###############################################################################
-# targets management (typed in ProjectState.scan_targets)
+# scan targets (deprecated - use lab commands)
 ###############################################################################
 
 
-def _load_project_for_targets(project_path: Path) -> tuple[StateManager, ProjectManager]:
-    state_manager, _, _, project_manager = _get_managers()
-    if not project_path.exists():
-        raise typer.BadParameter(f"Project not found: {project_path}")
-    project_manager.load_project(project_path)
-    return state_manager, project_manager
 
 
-@targets_app.command("list", help="[DEPRECATED] Use 'mus1 lab status' instead")
-def targets_list(project_path: Path = typer.Argument(..., help="Path to MUS1 project")):
-    print("ERROR: Project-level target management is deprecated.")
-    print("Use 'mus1 lab status' to see lab-level scan targets.")
-    print("Use 'mus1 lab add-target' to add targets to labs.")
-    raise typer.Exit(code=1)
-
-
-@targets_app.command("add", help="[DEPRECATED] Use 'mus1 lab add-target' instead")
-def targets_add(
-    project_path: Path = typer.Argument(..., help="Path to MUS1 project"),
-    name: str = typer.Option(..., "--name", help="Target name"),
-    kind: str = typer.Option(..., "--kind", help="local|ssh|wsl"),
-    roots: List[Path] = typer.Option(..., "--root", help="Root(s) to scan; repeat for multiple"),
-    ssh_alias: Optional[str] = typer.Option(None, "--ssh-alias", help="SSH alias for ssh/wsl targets"),
-):
-    print("ERROR: Project-level target management is deprecated.")
-    print("Use 'mus1 lab add-target' to add scan targets to labs.")
-    raise typer.Exit(code=1)
-
-
-@targets_app.command("remove", help="[DEPRECATED] Target management moved to labs")
-def targets_remove(
-    project_path: Path = typer.Argument(..., help="Path to MUS1 project"),
-    name: str = typer.Argument(..., help="Target name to remove"),
-):
-    print("ERROR: Project-level target management is deprecated.")
-    print("Target management has moved to labs. Use lab-level commands instead.")
-    raise typer.Exit(code=1)
 
 ###############################################################################
 # project scan-from-targets
@@ -2903,32 +2996,9 @@ def project_remove_subjects(
             typer.secho(f"Failed to remove: {', '.join(failed_removals)}", fg="red")
 
 # -----------------------------------------------------------------------------
-# credentials management
+# credentials management (deprecated - use lab commands)
 # -----------------------------------------------------------------------------
 
-@app.command("credentials-set", help="[DEPRECATED] Use 'mus1 lab add-credential' instead")
-def credentials_set(
-    alias: str = typer.Argument(..., help="SSH alias name (matches ScanTarget.ssh_alias)"),
-    user: Optional[str] = typer.Option(None, "--user", help="Username for SSH"),
-    identity_file: Optional[Path] = typer.Option(None, "--identity-file", help="Path to SSH private key"),
-):
-    print("ERROR: Per-user credentials management is deprecated.")
-    print("Use 'mus1 lab add-credential' to add credentials to labs.")
-    raise typer.Exit(code=1)
-
-
-@app.command("credentials-list", help="[DEPRECATED] Use 'mus1 lab status' instead")
-def credentials_list():
-    print("ERROR: Per-user credentials management is deprecated.")
-    print("Use 'mus1 lab status' to see lab-level credentials.")
-    raise typer.Exit(code=1)
-
-
-@app.command("credentials-remove", help="[DEPRECATED] Credentials management moved to labs")
-def credentials_remove(alias: str = typer.Argument(..., help="SSH alias name")):
-    print("ERROR: Per-user credentials management is deprecated.")
-    print("Credentials management has moved to labs. Use lab-level commands instead.")
-    raise typer.Exit(code=1)
 
 
 # -----------------------------------------------------------------------------

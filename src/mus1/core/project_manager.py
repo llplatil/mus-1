@@ -41,6 +41,17 @@ class ProjectManager:
         self._current_project_root: Path | None = None
         self.log_bus = LoggingEventBus.get_instance()
         self.log_bus.log("ProjectManager initialized with shared managers", "info", "ProjectManager")
+
+    def __getstate__(self):
+        """Prepare object for pickling."""
+        state = self.__dict__.copy()
+        return state
+
+    def __setstate__(self, state):
+        """Restore object from pickle."""
+        self.__dict__.update(state)
+        # Reinitialize the logging bus after unpickling
+        self.log_bus = LoggingEventBus.get_instance()
         
         # Discover external plugins via entry points (preferred in dev/refactor)
         try:
