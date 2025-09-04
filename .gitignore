@@ -75,6 +75,7 @@ Thumbs.db
 
 # External plugin dev clones and private requirements
 .plugins/
+!.plugins/mus1-assembly-plugin-copperlab/
 requirements-plugins.private.txt
 
 # Large media
