@@ -93,6 +93,115 @@ class DataManager:
             logger.error(f"Error reading CSV file {file_path}: {e}")
             raise IOError(f"Could not read CSV file {file_path}: {e}")
 
+    def read_csv_folder(self, folder_path: Path, file_pattern: str = "*.csv", **kwargs) -> Dict[str, pd.DataFrame]:
+        """
+        Reads all CSV files from a folder into a dictionary of DataFrames.
+
+        Args:
+            folder_path: Path to the folder containing CSV files.
+            file_pattern: Glob pattern for CSV files (default: "*.csv").
+            **kwargs: Additional keyword arguments passed to read_csv.
+
+        Returns:
+            Dictionary mapping filename to DataFrame.
+        """
+        if not folder_path.exists() or not folder_path.is_dir():
+            raise ValueError(f"Folder not found: {folder_path}")
+
+        csv_files = list(folder_path.glob(file_pattern))
+        if not csv_files:
+            logger.warning(f"No CSV files found in {folder_path} with pattern {file_pattern}")
+            return {}
+
+        result = {}
+        for csv_file in sorted(csv_files):
+            try:
+                df = self.read_csv(csv_file, **kwargs)
+                result[csv_file.name] = df
+                logger.debug(f"Successfully read CSV file: {csv_file.name}")
+            except Exception as e:
+                logger.warning(f"Failed to read CSV file {csv_file.name}: {e}")
+                continue
+
+        logger.info(f"Successfully read {len(result)} CSV files from {folder_path}")
+        return result
+
+    def merge_csv_dataframes(self, dataframes: Dict[str, pd.DataFrame], merge_strategy: str = "union",
+                           source_column: bool = True) -> pd.DataFrame:
+        """
+        Merges multiple DataFrames from CSV files with different strategies.
+
+        Args:
+            dataframes: Dictionary of filename -> DataFrame.
+            merge_strategy: "union" (combine all columns), "intersection" (only common columns).
+            source_column: Whether to add a column indicating the source file.
+
+        Returns:
+            A single merged DataFrame.
+        """
+        if not dataframes:
+            return pd.DataFrame()
+
+        dfs = list(dataframes.values())
+        filenames = list(dataframes.keys())
+
+        if merge_strategy == "intersection":
+            # Find common columns across all DataFrames
+            common_columns = set(dfs[0].columns)
+            for df in dfs[1:]:
+                common_columns = common_columns.intersection(set(df.columns))
+
+            if not common_columns:
+                raise ValueError("No common columns found across CSV files")
+
+            # Filter each DataFrame to common columns only
+            dfs = [df[list(common_columns)] for df in dfs]
+
+        elif merge_strategy == "union":
+            # Combine all unique columns
+            all_columns = set()
+            for df in dfs:
+                all_columns.update(df.columns)
+
+            # Add missing columns with NaN values
+            for i, df in enumerate(dfs):
+                missing_cols = all_columns - set(df.columns)
+                for col in missing_cols:
+                    dfs[i][col] = pd.NA
+
+        # Concatenate all DataFrames
+        merged_df = pd.concat(dfs, ignore_index=True, sort=False)
+
+        # Add source column if requested
+        if source_column:
+            # Create source array matching the length of each DataFrame
+            source_data = []
+            for filename, df in dataframes.items():
+                source_data.extend([filename] * len(df))
+            merged_df['source_file'] = source_data
+
+        logger.info(f"Merged {len(dataframes)} DataFrames into single DataFrame with {len(merged_df)} rows")
+        return merged_df
+
+    def read_csv_folder_merged(self, folder_path: Path, file_pattern: str = "*.csv",
+                             merge_strategy: str = "union", source_column: bool = True,
+                             **kwargs) -> pd.DataFrame:
+        """
+        Convenience method to read all CSV files from a folder and merge them into a single DataFrame.
+
+        Args:
+            folder_path: Path to the folder containing CSV files.
+            file_pattern: Glob pattern for CSV files.
+            merge_strategy: "union" or "intersection" for merging strategy.
+            source_column: Whether to add source file column.
+            **kwargs: Additional arguments passed to read_csv.
+
+        Returns:
+            A single merged DataFrame containing data from all CSV files.
+        """
+        dataframes = self.read_csv_folder(folder_path, file_pattern, **kwargs)
+        return self.merge_csv_dataframes(dataframes, merge_strategy, source_column)
+
     def read_hdf(self, file_path: Path, key: str = 'df_with_missing', **kwargs) -> pd.DataFrame:
         """
         Reads an HDF5 file (HDFStore) and returns a DataFrame.

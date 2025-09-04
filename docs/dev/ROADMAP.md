@@ -19,7 +19,7 @@ This roadmap reflects how the code works today and what is planned next. It avoi
   - `Mus1TrackingAnalysisPlugin` (analysis): kinematics, heatmap, zones/objects, NOR index, partial OF metrics; loads tracking data via handler/DataManager.
   - **Enhanced CopperlabAssembly Plugin** (assembly): Iterative subject extraction with confidence scoring, genotype normalization (ATP7B: WT/Het/KO), experiment type validation (RR/OF/NOV with subtypes), batch approval workflow.
   - `CustomProjectAssembly_Skeleton` (package): CSV parsing + QA utils + optional subject importer used by assembly-driven scan.
-  - `GcpMoSeq2OrchestratorPlugin` marked deprecated (kept for reference only).
+
 
 ## Known gaps and quirks (truthful)
 - Handler uses likelihood filtering but relies on `numpy`; this is imported in the handler, but ensure it remains imported to avoid runtime NameError in future edits.
@@ -160,9 +160,9 @@ Current status (dev branch - Lab Architecture Complete)
 - Streamlined codebase with lab-centric design
 
 **✅ Completed (Enhanced Subject Management & Genotype System)**:
-- Lab-level genotype management with ATP7B configuration (WT/Het/KO alleles)
+- Lab-level genotype management
 - Iterative subject extraction with confidence scoring (high/medium/low/uncertain)
-- Enhanced experiment types (RR/OF/NOV) with proper subtypes and validation
+- Enhanced experiment types (RR/OF/NOV) for private plugin
 - Subject lifecycle management CLI commands with bulk operations
 - Workflow script for interactive subject extraction and approval
 - Genotype validation and normalization in Copperlab plugin

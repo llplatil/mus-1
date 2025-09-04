@@ -106,7 +106,9 @@ Notes: In-tree plugin implementations were removed. Only the interface remains u
   - `lab add-worker --name <name> --ssh-alias <alias>` – Add compute worker to lab
   - `lab add-credential --alias <alias> --user <user>` – Add SSH credentials to lab
   - `lab add-target --name <name> --kind <local|ssh|wsl>` – Add scan target to lab
-  - `lab add-genotype --gene-name <name> --alleles <list>` – Configure genotype systems (e.g., ATP7B: WT,Het,KO)
+  - `genotype add-to-lab --gene <name> --allele <allele> --inheritance <pattern>` – Configure genotype systems (e.g., ATP7B: WT,Het,KO)
+  - `genotype track <gene_name> --lab <lab_id>` – Track genes at lab level
+  - `genotype list --lab <lab_id>` – List genotype configurations and tracked genes
   - `lab projects` – List projects associated with the lab
 
 - **Project Lab Integration**:
@@ -115,6 +117,15 @@ Notes: In-tree plugin implementations were removed. Only the interface remains u
 
 - **Subject Management**: New commands for subject lifecycle management
   - `project remove-subjects --subject-id <id> [--all]` – Remove subjects from projects with optional bulk operations
+
+- **Genotype Management**: Comprehensive genotype system management
+  - `genotype add-to-lab --gene <name> --allele <allele> --inheritance <pattern>` – Add genotype to lab
+  - `genotype add-to-project --gene <name> --allele <allele> --inheritance <pattern> --project <path>` – Add genotype to project
+  - `genotype accept-lab-tracked <gene_names> --project <path>` – Accept lab-tracked genotypes for project use
+  - `genotype track <gene_name> --lab <lab_id>` – Track genes at lab level
+  - `genotype list --lab <lab_id>` – List genotype configurations and tracked genes
+  - `genotype track-exp-type <exp_type> --lab <lab_id>` – Track experiment types at lab level
+  - `genotype list-exp-types --lab <lab_id>` – List tracked experiment types
 
 - **Deprecated Commands Removed**: All project-level worker/credential/target management commands have been deprecated and removed to enforce lab-centric architecture:
   - ❌ `workers list|add|remove|detect-os` (use `lab` commands instead)

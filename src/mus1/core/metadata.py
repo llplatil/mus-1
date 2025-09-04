@@ -54,6 +54,14 @@ ARENA_SOURCE_DLC_EXPORT = "DLC_Export"
 ARENA_SOURCE_MANUAL = "Manual"
 ARENA_SOURCE_UNKNOWN = "Unknown"
 
+
+class InheritancePattern(str, Enum):
+    """Supported inheritance patterns for genotypes."""
+    DOMINANT = "Dominant"
+    RECESSIVE = "Recessive"
+    X_LINKED = "X-Linked"
+
+
 @dataclass
 class PluginMetadata:
     """Plugin metadata structure"""
@@ -90,6 +98,31 @@ class TrackingData(BaseModel):
     source: str = "Unknown"
 
 
+class SubjectGenotype(BaseModel):
+    """Structured genotype information for a subject."""
+    gene_name: str
+    allele: str
+
+    def __str__(self) -> str:
+        return f"{self.gene_name}:{self.allele}"
+
+    @classmethod
+    def from_string(cls, genotype_str: str) -> Optional['SubjectGenotype']:
+        """Parse genotype string in format 'GENE:ALLELE'."""
+        if not genotype_str or ":" not in genotype_str:
+            return None
+
+        gene_part, allele = genotype_str.split(":", 1)
+
+        # If locus is present (GENE_LOCUS:ALLELE), extract just the gene name
+        if "_" in gene_part:
+            gene_name = gene_part.split("_", 1)[0]
+        else:
+            gene_name = gene_part
+
+        return cls(gene_name=gene_name, allele=allele)
+
+
 class SubjectMetadata(BaseModel):
     """
     Represents a single subject.
@@ -102,7 +135,8 @@ class SubjectMetadata(BaseModel):
     sex: Sex = Sex.UNKNOWN
     birth_date: Optional[datetime] = None
     death_date: Optional[datetime] = None  # Add death date field
-    genotype: Optional[str] = None
+    genotype: Optional[str] = None  # Legacy string field for backward compatibility
+    genotype_structured: Optional[SubjectGenotype] = None  # New structured field
     treatment: Optional[str] = None
     notes: str = ""
     in_training_set: bool = False
@@ -114,6 +148,31 @@ class SubjectMetadata(BaseModel):
         if not v or len(v) < 3:
             raise ValueError("Subject ID must be at least 3 characters.")
         return v
+
+    @validator("genotype", pre=True, always=True)
+    def sync_genotype_fields(cls, v, values):
+        """Sync between legacy genotype string and structured genotype."""
+        if v and isinstance(v, str):
+            # If genotype string is set, try to parse it into structured form
+            structured = SubjectGenotype.from_string(v)
+            if structured:
+                values['genotype_structured'] = structured
+        return v
+
+    @property
+    def effective_genotype(self) -> Optional[str]:
+        """Get the effective genotype string, preferring structured if available."""
+        if self.genotype_structured:
+            return str(self.genotype_structured)
+        return self.genotype
+
+    def set_genotype(self, gene_name: str, allele: str) -> None:
+        """Set genotype using structured format."""
+        self.genotype_structured = SubjectGenotype(
+            gene_name=gene_name,
+            allele=allele
+        )
+        self.genotype = str(self.genotype_structured)
 
     @validator("birth_date")
     def validate_birth_date(cls, v: Optional[datetime]) -> Optional[datetime]:
@@ -332,11 +391,14 @@ class ProjectMetadata(BaseModel):
             raise ValueError("Project name must be at least 3 characters")
         return v
 
-    # Add new fields for treatments and genotypes
+    # Add new fields for treatments, experiemnt types and genotypes
     master_treatments: List[TreatmentMetadata] = Field(default_factory=list)
     active_treatments: List[TreatmentMetadata] = Field(default_factory=list)
     master_genotypes: List[GenotypeMetadata] = Field(default_factory=list)
     active_genotypes: List[GenotypeMetadata] = Field(default_factory=list)
+    tracked_genotypes: Set[str] = Field(default_factory=set, description="Gene names tracked by this project")
+    tracked_experiment_types: Set[str] = Field(default_factory=set, description="Experiment types tracked by this project")
+    tracked_treatments: Set[str] = Field(default_factory=set, description="Treatment names tracked by this project")
 
 
 class ArenaImageMetadata(BaseModel):
@@ -483,9 +545,25 @@ class TreatmentMetadata(BaseModel):
 
 
 class GenotypeMetadata(BaseModel):
-    name: str
+    """Genotype configuration for a specific gene."""
+    gene_name: str = Field(..., description="Gene name (e.g., ATP7B)")
+    inheritance_pattern: InheritancePattern = Field(default=InheritancePattern.RECESSIVE, description="Inheritance pattern")
+    alleles: List[str] = Field(default_factory=lambda: ["WT", "Het", "KO"], description="Available alleles")
+    is_mutually_exclusive: bool = Field(True, description="Whether an animal can only have one allele")
     date_added: datetime = Field(default_factory=datetime.now)
-    description: Optional[str] = None
+
+    def validate_allele(self, allele: str) -> bool:
+        """Check if an allele is valid for this genotype."""
+        return allele in self.alleles
+
+    @property
+    def name(self) -> str:
+        """Backward compatibility: return gene name as name."""
+        return self.gene_name
+
+    def get_allele_string(self, allele: str) -> str:
+        """Return formatted allele string (e.g., 'ATP7B:WT')."""
+        return f"{self.gene_name}:{allele}"
 
 
 

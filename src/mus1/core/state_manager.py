@@ -277,6 +277,184 @@ class StateManager:
         active = sort_items(active, sort_mode, key_func=lambda x: x.name.lower() if hasattr(x, "name") else str(x))
         return {"available": available, "active": active}
 
+    def get_lab_genotypes(self) -> dict:
+        """
+        Returns lab-level genotypes and tracked genotypes.
+        Requires project to be associated with a lab.
+        """
+        if not hasattr(self._project_state, 'lab_manager') or not self._project_state.lab_manager:
+            return {"error": "No lab association found"}
+
+        lab_manager = self._project_state.lab_manager
+        if not lab_manager.current_lab:
+            return {"error": "No current lab loaded"}
+
+        lab = lab_manager.current_lab
+        return {
+            "genotypes": lab.genotypes,
+            "tracked_genotypes": list(lab.tracked_genotypes),
+            "available_alleles": {gene_name: gt.alleles for gene_name, gt in lab.genotypes.items()}
+        }
+
+    def get_project_genotypes(self) -> dict:
+        """
+        Returns project-level genotypes and tracked genotypes.
+        """
+        if self._project_state.project_metadata is not None:
+            return {
+                "master_genotypes": self._project_state.project_metadata.master_genotypes,
+                "tracked_genotypes": list(self._project_state.project_metadata.tracked_genotypes),
+                "available_alleles": {gt.gene_name: gt.alleles for gt in self._project_state.project_metadata.master_genotypes}
+            }
+        else:
+            genotypes = self._project_state.settings.get("genotypes", {"available": [], "active": []})
+            return {
+                "master_genotypes": genotypes.get("available", []),
+                "tracked_genotypes": [],
+                "available_alleles": {}
+            }
+
+    def get_available_genotypes(self) -> dict:
+        """
+        Returns a comprehensive view of all available genotypes from both lab and project levels.
+        """
+        result = {
+            "lab_genotypes": {},
+            "project_genotypes": {},
+            "tracked_lab_genotypes": [],
+            "project_tracked_genotypes": []
+        }
+
+        # Get lab genotypes
+        lab_data = self.get_lab_genotypes()
+        if "error" not in lab_data:
+            result["lab_genotypes"] = lab_data["genotypes"]
+            result["tracked_lab_genotypes"] = lab_data["tracked_genotypes"]
+
+        # Get project genotypes
+        project_data = self.get_project_genotypes()
+        result["project_genotypes"] = project_data["master_genotypes"]
+        result["project_tracked_genotypes"] = project_data["tracked_genotypes"]
+
+        return result
+
+    def get_lab_experiment_types(self) -> dict:
+        """
+        Returns lab-level experiment types and tracked experiment types.
+        Requires project to be associated with a lab.
+        """
+        if not hasattr(self._project_state, 'lab_manager') or not self._project_state.lab_manager:
+            return {"error": "No lab association found"}
+
+        lab_manager = self._project_state.lab_manager
+        if not lab_manager.current_lab:
+            return {"error": "No current lab loaded"}
+
+        lab = lab_manager.current_lab
+        return {
+            "tracked_experiment_types": list(lab.tracked_experiment_types),
+            "supported_types": list(lab.tracked_experiment_types)  # For now, tracked = supported
+        }
+
+    def get_project_experiment_types(self) -> dict:
+        """
+        Returns project-level experiment types and tracked experiment types.
+        """
+        if self._project_state.project_metadata is not None:
+            return {
+                "tracked_experiment_types": list(self._project_state.project_metadata.tracked_experiment_types),
+                "supported_types": list(self._project_state.project_metadata.tracked_experiment_types)
+            }
+        else:
+            return {
+                "tracked_experiment_types": [],
+                "supported_types": []
+            }
+
+    def get_lab_treatments(self) -> dict:
+        """
+        Returns lab-level treatments and tracked treatments.
+        """
+        from .lab_manager import LabManager
+        lab_manager = LabManager()
+
+        if not lab_manager.current_lab:
+            return {"error": "No current lab loaded"}
+
+        lab = lab_manager.current_lab
+        return {
+            "tracked_treatments": list(lab.tracked_treatments)
+        }
+
+    def get_project_treatments(self) -> dict:
+        """
+        Returns project-level treatments and tracked treatments.
+        """
+        if self._project_state.project_metadata is not None:
+            return {
+                "master_treatments": self._project_state.project_metadata.master_treatments,
+                "tracked_treatments": list(self._project_state.project_metadata.tracked_treatments)
+            }
+        else:
+            treatments = self._project_state.settings.get("treatments", {"available": [], "active": []})
+            return {
+                "master_treatments": treatments.get("available", []),
+                "tracked_treatments": []
+            }
+
+    def get_available_treatments(self) -> dict:
+        """
+        Returns a comprehensive view of all available treatments from both lab and project levels.
+        """
+        result = {
+            "lab_treatments": [],
+            "project_treatments": [],
+            "tracked_lab_treatments": [],
+            "tracked_project_treatments": []
+        }
+
+        # Get lab treatments
+        lab_data = self.get_lab_treatments()
+        if "error" not in lab_data:
+            result["tracked_lab_treatments"] = lab_data["tracked_treatments"]
+
+        # Get project treatments
+        project_data = self.get_project_treatments()
+        result["project_treatments"] = [t.name for t in project_data["master_treatments"]]
+        result["tracked_project_treatments"] = project_data["tracked_treatments"]
+
+        return result
+
+    def get_available_experiment_types(self) -> dict:
+        """
+        Returns a comprehensive view of all available experiment types from both lab and project levels.
+        """
+        result = {
+            "lab_experiment_types": [],
+            "project_experiment_types": [],
+            "plugin_experiment_types": []
+        }
+
+        # Get lab experiment types
+        lab_data = self.get_lab_experiment_types()
+        if "error" not in lab_data:
+            result["lab_experiment_types"] = lab_data["tracked_experiment_types"]
+
+        # Get project experiment types
+        project_data = self.get_project_experiment_types()
+        result["project_experiment_types"] = project_data["tracked_experiment_types"]
+
+        # Get plugin experiment types
+        try:
+            from .plugin_manager import PluginManager
+            plugin_manager = PluginManager()
+            plugin_types = plugin_manager.get_supported_experiment_types()
+            result["plugin_experiment_types"] = list(plugin_types)
+        except Exception:
+            result["plugin_experiment_types"] = []
+
+        return result
+
     def get_global_sort_mode(self) -> str:
         """
         Returns the current global sort mode using the consolidated global_settings property.

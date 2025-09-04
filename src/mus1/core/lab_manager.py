@@ -21,7 +21,7 @@ from datetime import datetime
 from dataclasses import dataclass, field
 from pydantic import BaseModel, Field
 
-from .metadata import WorkerEntry, ScanTarget, SubjectMetadata, ExperimentMetadata, Sex
+from .metadata import WorkerEntry, ScanTarget, SubjectMetadata, ExperimentMetadata, Sex, InheritancePattern
 
 
 class LabMetadata(BaseModel):
@@ -62,11 +62,10 @@ class LabSharedStorage(BaseModel):
 
 
 class LabGenotype(BaseModel):
-    """Genotype configuration for a specific gene locus."""
+    """Genotype configuration for a specific gene."""
     gene_name: str = Field(..., description="Gene name (e.g., ATP7B)")
-    locus: str = Field(..., description="Gene locus or region identifier")
-    alleles: List[str] = Field(..., description="Available alleles (e.g., ['WT', 'Het', 'KO'])")
-    description: Optional[str] = Field(None, description="Description of the genotype system")
+    inheritance_pattern: InheritancePattern = Field(default=InheritancePattern.RECESSIVE, description="Inheritance pattern")
+    alleles: List[str] = Field(default_factory=lambda: ["WT", "Het", "KO"], description="Available alleles")
     is_mutually_exclusive: bool = Field(True, description="Whether an animal can only have one allele")
     date_added: datetime = Field(default_factory=datetime.now)
 
@@ -83,7 +82,10 @@ class LabConfig(BaseModel):
     scan_targets: List[ScanTarget] = Field(default_factory=list, description="Common scan targets")
     master_subjects: Dict[str, SubjectMetadata] = Field(default_factory=dict, description="Master subject registry")
     master_experiment_types: List[str] = Field(default_factory=list, description="Common experiment types")
+    tracked_experiment_types: Set[str] = Field(default_factory=set, description="Experiment types tracked by this lab")
+    tracked_treatments: Set[str] = Field(default_factory=set, description="Treatment names tracked by this lab")
     genotypes: Dict[str, LabGenotype] = Field(default_factory=dict, description="Lab genotype configurations by gene name")
+    tracked_genotypes: Set[str] = Field(default_factory=set, description="Gene names tracked by this lab")
     software_installs: Dict[str, LabSoftwareInstall] = Field(default_factory=dict, description="3rd party software")
     associated_projects: Set[str] = Field(default_factory=set, description="Paths to associated projects")
     shared_storage: LabSharedStorage = Field(default_factory=LabSharedStorage, description="Shared storage configuration")
@@ -468,37 +470,112 @@ class LabManager:
         if self._lab_config is None:
             raise RuntimeError("No lab configuration loaded")
 
-        gene_key = f"{genotype.gene_name}_{genotype.locus}"
-        if gene_key in self._lab_config.genotypes:
-            raise ValueError(f"Genotype for gene '{genotype.gene_name}' locus '{genotype.locus}' already exists")
+        if genotype.gene_name in self._lab_config.genotypes:
+            raise ValueError(f"Genotype for gene '{genotype.gene_name}' already exists")
 
-        self._lab_config.genotypes[gene_key] = genotype
+        self._lab_config.genotypes[genotype.gene_name] = genotype
         self.save_lab()
 
-    def remove_genotype(self, gene_name: str, locus: str) -> bool:
+    def remove_genotype(self, gene_name: str) -> bool:
         """Remove a genotype configuration. Returns True if removed."""
         if self._lab_config is None:
             raise RuntimeError("No lab configuration loaded")
 
-        gene_key = f"{gene_name}_{locus}"
-        if gene_key in self._lab_config.genotypes:
-            del self._lab_config.genotypes[gene_key]
+        if gene_name in self._lab_config.genotypes:
+            del self._lab_config.genotypes[gene_name]
             self.save_lab()
             return True
         return False
 
-    def get_genotype(self, gene_name: str, locus: str) -> Optional[LabGenotype]:
+    def get_genotype(self, gene_name: str) -> Optional[LabGenotype]:
         """Get a genotype configuration."""
         if self._lab_config is None:
             return None
-        gene_key = f"{gene_name}_{locus}"
-        return self._lab_config.genotypes.get(gene_key)
+        return self._lab_config.genotypes.get(gene_name)
 
     def get_all_genotypes(self) -> Dict[str, LabGenotype]:
         """Get all genotype configurations."""
         if self._lab_config is None:
             return {}
         return self._lab_config.genotypes.copy()
+
+    def add_tracked_genotype(self, gene_name: str) -> None:
+        """Add a gene name to the tracked genotypes list."""
+        if self._lab_config is None:
+            raise RuntimeError("No lab configuration loaded")
+
+        if gene_name not in self._lab_config.tracked_genotypes:
+            self._lab_config.tracked_genotypes.add(gene_name)
+            self.save_lab()
+
+    def remove_tracked_genotype(self, gene_name: str) -> bool:
+        """Remove a gene name from the tracked genotypes list. Returns True if removed."""
+        if self._lab_config is None:
+            raise RuntimeError("No lab configuration loaded")
+
+        if gene_name in self._lab_config.tracked_genotypes:
+            self._lab_config.tracked_genotypes.remove(gene_name)
+            self.save_lab()
+            return True
+        return False
+
+    def get_tracked_genotypes(self) -> Set[str]:
+        """Get the list of tracked genotype gene names."""
+        if self._lab_config is None:
+            return set()
+        return self._lab_config.tracked_genotypes.copy()
+
+    def add_tracked_treatment(self, treatment_name: str) -> None:
+        """Add a treatment name to the tracked treatments list."""
+        if self._lab_config is None:
+            raise RuntimeError("No lab configuration loaded")
+
+        if treatment_name not in self._lab_config.tracked_treatments:
+            self._lab_config.tracked_treatments.add(treatment_name)
+            self.save_lab()
+
+    def remove_tracked_treatment(self, treatment_name: str) -> bool:
+        """Remove a treatment name from the tracked treatments list. Returns True if removed."""
+        if self._lab_config is None:
+            raise RuntimeError("No lab configuration loaded")
+
+        if treatment_name in self._lab_config.tracked_treatments:
+            self._lab_config.tracked_treatments.remove(treatment_name)
+            self.save_lab()
+            return True
+        return False
+
+    def get_tracked_treatments(self) -> Set[str]:
+        """Get the list of tracked treatment names."""
+        if self._lab_config is None:
+            return set()
+        return self._lab_config.tracked_treatments.copy()
+
+    def add_tracked_experiment_type(self, experiment_type: str) -> None:
+        """Add an experiment type to the tracked list."""
+        if self._lab_config is None:
+            raise RuntimeError("No lab configuration loaded")
+
+        if experiment_type not in self._lab_config.tracked_experiment_types:
+            self._lab_config.tracked_experiment_types.add(experiment_type)
+            self.save_lab()
+
+    def remove_tracked_experiment_type(self, experiment_type: str) -> bool:
+        """Remove an experiment type from the tracked list. Returns True if removed."""
+        if self._lab_config is None:
+            raise RuntimeError("No lab configuration loaded")
+
+        if experiment_type in self._lab_config.tracked_experiment_types:
+            self._lab_config.tracked_experiment_types.remove(experiment_type)
+            self.save_lab()
+            return True
+        return False
+
+    def get_tracked_experiment_types(self) -> Set[str]:
+        """Get the list of tracked experiment types."""
+        if self._lab_config is None:
+            return set()
+        return self._lab_config.tracked_experiment_types.copy()
 
     def validate_subject_genotype(self, subject: SubjectMetadata) -> List[str]:
         """Validate a subject's genotype against lab genotype configurations.
@@ -511,21 +588,19 @@ class LabManager:
 
         # Extract genotype info from subject's genotype field
         # This assumes genotype field contains gene-specific information
-        if subject.genotype:
+        genotype_str = subject.effective_genotype
+        if genotype_str:
             # Parse genotype string (e.g., "ATP7B:WT" or "ATP7B:Het")
-            if ":" in subject.genotype:
-                gene_part, allele_part = subject.genotype.split(":", 1)
-                gene_name, locus = gene_part, "default"  # Default locus if not specified
+            if ":" in genotype_str:
+                gene_part, allele_part = genotype_str.split(":", 1)
+                gene_name = gene_part
 
-                if "_" in gene_part:
-                    gene_name, locus = gene_part.split("_", 1)
-
-                genotype_config = self.get_genotype(gene_name, locus)
+                genotype_config = self.get_genotype(gene_name)
                 if genotype_config:
                     if not genotype_config.validate_allele(allele_part):
-                        errors.append(f"Invalid allele '{allele_part}' for gene '{gene_name}' locus '{locus}'. Valid alleles: {genotype_config.alleles}")
+                        errors.append(f"Invalid allele '{allele_part}' for gene '{gene_name}'. Valid alleles: {genotype_config.alleles}")
                 else:
-                    errors.append(f"No genotype configuration found for gene '{gene_name}' locus '{locus}'")
+                    errors.append(f"No genotype configuration found for gene '{gene_name}'")
 
         return errors
 

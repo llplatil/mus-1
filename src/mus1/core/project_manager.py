@@ -1133,16 +1133,40 @@ class ProjectManager:
         self.save_project()
         self.state_manager.notify_observers()
 
-    def add_genotype(self, new_genotype: str) -> None:
+    def add_genotype(self, gene_name: str, inheritance_pattern: str = "recessive", alleles: list = None, mendelian: bool = True) -> None:
+        """Add a genotype configuration to the project."""
         state = self.state_manager.project_state
         if state.project_metadata is None:
             raise RuntimeError("ProjectMetadata is not initialized.")
-        if any(g.name == new_genotype for g in state.project_metadata.master_genotypes):
-            raise ValueError(f"Genotype '{new_genotype}' already exists in available genotypes.")
-        from .metadata import GenotypeMetadata
-        state.project_metadata.master_genotypes.append(GenotypeMetadata(name=new_genotype))
+
+        # Check if genotype already exists in project master list
+        if any(g.gene_name == gene_name for g in state.project_metadata.master_genotypes):
+            raise ValueError(f"Genotype '{gene_name}' already exists in project genotypes.")
+
+        # Create project-level genotype
+        from .metadata import GenotypeMetadata, InheritancePattern
+
+        # Validate inheritance pattern
+        try:
+            inheritance_enum = InheritancePattern(inheritance_pattern.title())
+        except ValueError:
+            raise ValueError(f"Invalid inheritance pattern '{inheritance_pattern}'. Must be Dominant, Recessive, or X-Linked")
+
+        # Set default alleles if not provided
+        if alleles is None:
+            alleles = ["WT", "Het", "KO"]
+
+        genotype = GenotypeMetadata(
+            gene_name=gene_name,
+            inheritance_pattern=inheritance_enum,
+            alleles=alleles,
+            is_mutually_exclusive=mendelian
+        )
+
+        state.project_metadata.master_genotypes.append(genotype)
         self.save_project()
         self.state_manager.notify_observers()
+        self.log_bus.log(f"Created new project genotype '{gene_name}'", "info", "ProjectManager")
 
     def update_active_treatments(self, active_treatments: list[str]) -> None:
         state = self.state_manager.project_state
@@ -1178,17 +1202,284 @@ class ProjectManager:
         self.state_manager.notify_observers()
 
     def remove_genotype(self, genotype: str) -> None:
+        """Remove a genotype from the project. Handles both project-level and lab-tracked genotypes."""
         state = self.state_manager.project_state
         if state.project_metadata is None:
             raise RuntimeError("ProjectMetadata is not initialized.")
-        state.project_metadata.master_genotypes = [
-            g for g in state.project_metadata.master_genotypes if g.name != genotype
-        ]
+
+        removed = False
+
+        # Check if it's a project-level genotype (in master list)
+        if any(g.name == genotype for g in state.project_metadata.master_genotypes):
+            state.project_metadata.master_genotypes = [
+                g for g in state.project_metadata.master_genotypes if g.name != genotype
+            ]
+            removed = True
+            self.log_bus.log(f"Removed project genotype '{genotype}'", "info", "ProjectManager")
+
+        # Check if it's a lab-tracked genotype
+        if genotype in state.project_metadata.tracked_genotypes:
+            state.project_metadata.tracked_genotypes.remove(genotype)
+            removed = True
+            self.log_bus.log(f"Removed lab genotype '{genotype}' from project tracking", "info", "ProjectManager")
+
+        # Remove from active genotypes regardless of source
         state.project_metadata.active_genotypes = [
             g for g in state.project_metadata.active_genotypes if g.name != genotype
         ]
+
+        if removed:
+            self.save_project()
+            self.state_manager.notify_observers()
+        else:
+            raise ValueError(f"Genotype '{genotype}' not found in project.")
+
+    def get_available_genotypes(self) -> Dict[str, Any]:
+        """Get all genotypes available to this project (both project-level and lab-level)."""
+        state = self.state_manager.project_state
+        if state.project_metadata is None:
+            raise RuntimeError("ProjectMetadata is not initialized.")
+
+        result = {
+            "project_genotypes": [g.dict() for g in state.project_metadata.master_genotypes],
+            "tracked_genotypes": list(state.project_metadata.tracked_genotypes),
+            "lab_genotypes": []
+        }
+
+        # Add lab genotypes if available
+        if self.lab_manager and self.lab_manager.current_lab:
+            lab_genotypes = []
+            for gene_name in state.project_metadata.tracked_genotypes:
+                lab_gt = self.lab_manager.get_genotype(gene_name)
+                if lab_gt:
+                    lab_genotypes.append(lab_gt.dict())
+            result["lab_genotypes"] = lab_genotypes
+
+        return result
+
+    def track_lab_genotype(self, genotype_name: str) -> None:
+        """Track a genotype from the lab in this project."""
+        state = self.state_manager.project_state
+        if state.project_metadata is None:
+            raise RuntimeError("ProjectMetadata is not initialized.")
+
+        # Check if genotype exists at lab level
+        if not self.lab_manager or not self.lab_manager.current_lab:
+            raise RuntimeError("No lab associated with this project.")
+
+        lab_genotype = self.lab_manager.get_genotype(genotype_name)
+        if not lab_genotype:
+            raise ValueError(f"Genotype '{genotype_name}' not found in lab.")
+
+        # Check if already tracked
+        if genotype_name in state.project_metadata.tracked_genotypes:
+            raise ValueError(f"Genotype '{genotype_name}' is already tracked by this project.")
+
+        # Check if it exists as a project-level genotype (conflict)
+        if any(g.name == genotype_name for g in state.project_metadata.master_genotypes):
+            raise ValueError(f"Genotype '{genotype_name}' already exists as a project-level genotype.")
+
+        state.project_metadata.tracked_genotypes.add(genotype_name)
         self.save_project()
         self.state_manager.notify_observers()
+        self.log_bus.log(f"Started tracking lab genotype '{genotype_name}'", "info", "ProjectManager")
+
+    def untrack_lab_genotype(self, genotype_name: str) -> None:
+        """Stop tracking a lab genotype in this project."""
+        state = self.state_manager.project_state
+        if state.project_metadata is None:
+            raise RuntimeError("ProjectMetadata is not initialized.")
+
+        if genotype_name not in state.project_metadata.tracked_genotypes:
+            raise ValueError(f"Genotype '{genotype_name}' is not tracked by this project.")
+
+        state.project_metadata.tracked_genotypes.remove(genotype_name)
+
+        # Also remove from active genotypes
+        state.project_metadata.active_genotypes = [
+            g for g in state.project_metadata.active_genotypes if g.name != genotype_name
+        ]
+
+        self.save_project()
+        self.state_manager.notify_observers()
+        self.log_bus.log(f"Stopped tracking lab genotype '{genotype_name}'", "info", "ProjectManager")
+
+    def track_lab_treatment(self, treatment_name: str) -> None:
+        """Track a treatment from the lab in this project."""
+        state = self.state_manager.project_state
+        if state.project_metadata is None:
+            raise RuntimeError("ProjectMetadata is not initialized.")
+
+        # Check if treatment exists at lab level
+        if not self.lab_manager or not self.lab_manager.current_lab:
+            raise RuntimeError("No lab associated with this project.")
+
+        lab_treatments = self.lab_manager.get_tracked_treatments()
+        if treatment_name not in lab_treatments:
+            raise ValueError(f"Treatment '{treatment_name}' not found in lab.")
+
+        # Check if already tracked
+        if treatment_name in state.project_metadata.tracked_treatments:
+            raise ValueError(f"Treatment '{treatment_name}' is already tracked by this project.")
+
+        # Check if it exists as a project-level treatment (conflict)
+        if any(t.name == treatment_name for t in state.project_metadata.master_treatments):
+            raise ValueError(f"Treatment '{treatment_name}' already exists as a project-level treatment.")
+
+        state.project_metadata.tracked_treatments.add(treatment_name)
+        self.save_project()
+        self.state_manager.notify_observers()
+        self.log_bus.log(f"Started tracking lab treatment '{treatment_name}'", "info", "ProjectManager")
+
+    def untrack_lab_treatment(self, treatment_name: str) -> None:
+        """Stop tracking a lab treatment in this project."""
+        state = self.state_manager.project_state
+        if state.project_metadata is None:
+            raise RuntimeError("ProjectMetadata is not initialized.")
+
+        if treatment_name not in state.project_metadata.tracked_treatments:
+            raise ValueError(f"Treatment '{treatment_name}' is not tracked by this project.")
+
+        state.project_metadata.tracked_treatments.remove(treatment_name)
+
+        # Also remove from active treatments
+        state.project_metadata.active_treatments = [
+            t for t in state.project_metadata.active_treatments if t.name != treatment_name
+        ]
+
+        self.save_project()
+        self.state_manager.notify_observers()
+        self.log_bus.log(f"Stopped tracking lab treatment '{treatment_name}'", "info", "ProjectManager")
+
+    def get_available_genotypes(self) -> Dict[str, Any]:
+        """Get all available genotypes (project + lab)."""
+        state = self.state_manager.project_state
+        if state.project_metadata is None:
+            return {"project_genotypes": [], "lab_genotypes": [], "available": []}
+
+        result = {
+            "project_genotypes": [g.dict() for g in state.project_metadata.master_genotypes],
+            "lab_genotypes": [],
+            "available": [g.name for g in state.project_metadata.master_genotypes]  # Start with project ones
+        }
+
+        # Add lab genotypes if available
+        if self.lab_manager and self.lab_manager.current_lab:
+            lab_genotypes = []
+            for gene_name in self.lab_manager.get_tracked_genotypes():
+                lab_gt = self.lab_manager.get_genotype(gene_name)
+                if lab_gt:
+                    lab_genotypes.append(lab_gt.dict())
+                    result["available"].append(lab_gt.gene_name)
+            result["lab_genotypes"] = lab_genotypes
+
+        return result
+
+    def get_available_treatments(self) -> Dict[str, Any]:
+        """Get all available treatments (project + lab)."""
+        state = self.state_manager.project_state
+        if state.project_metadata is None:
+            return {"project_treatments": [], "lab_treatments": [], "available": []}
+
+        result = {
+            "project_treatments": [t.dict() for t in state.project_metadata.master_treatments],
+            "lab_treatments": list(self.lab_manager.get_tracked_treatments()) if self.lab_manager else [],
+            "available": [t.name for t in state.project_metadata.master_treatments]
+        }
+
+        # Add lab treatments
+        if self.lab_manager:
+            result["available"].extend(result["lab_treatments"])
+
+        return result
+
+    def get_available_experiment_types(self) -> Dict[str, Any]:
+        """Get all available experiment types (project + lab)."""
+        state = self.state_manager.project_state
+        if state.project_metadata is None:
+            return {"project_types": [], "lab_types": [], "available": []}
+
+        result = {
+            "project_types": list(state.project_metadata.master_experiment_types),
+            "lab_types": list(self.lab_manager.get_tracked_experiment_types()) if self.lab_manager else [],
+            "available": list(state.project_metadata.master_experiment_types)
+        }
+
+        # Add lab experiment types
+        if self.lab_manager:
+            result["available"].extend(result["lab_types"])
+
+        return result
+
+    def push_genotype_to_lab(self, genotype_name: str) -> None:
+        """Push a project genotype to lab level if it doesn't already exist."""
+        if not self.lab_manager or not self.lab_manager.current_lab:
+            raise RuntimeError("No lab associated with this project.")
+
+        state = self.state_manager.project_state
+        if state.project_metadata is None:
+            raise RuntimeError("ProjectMetadata is not initialized.")
+
+        # Find the genotype in project master list
+        genotype = None
+        for g in state.project_metadata.master_genotypes:
+            if g.name == genotype_name:
+                genotype = g
+                break
+
+        if not genotype:
+            raise ValueError(f"Genotype '{genotype_name}' not found in project master list.")
+
+        # Check if it already exists at lab level
+        if self.lab_manager.get_genotype(genotype_name):
+            raise ValueError(f"Genotype '{genotype_name}' already exists at lab level.")
+
+        # Create lab genotype from project genotype
+        from .metadata import LabGenotype
+        lab_genotype = LabGenotype(
+            gene_name=genotype.name,
+            inheritance_pattern=genotype.inheritance_pattern if hasattr(genotype, 'inheritance_pattern') else "RECESSIVE",
+            alleles=genotype.alleles if hasattr(genotype, 'alleles') else ["WT", "Het", "KO"],
+            description=f"Pushed from project: {genotype.description}" if genotype.description else "Pushed from project"
+        )
+
+        self.lab_manager.add_genotype(lab_genotype)
+        self.lab_manager.add_tracked_genotype(genotype_name)
+        self.log_bus.log(f"Pushed genotype '{genotype_name}' to lab level", "info", "ProjectManager")
+
+    def push_treatment_to_lab(self, treatment_name: str) -> None:
+        """Push a project treatment to lab level."""
+        if not self.lab_manager or not self.lab_manager.current_lab:
+            raise RuntimeError("No lab associated with this project.")
+
+        # Check if it already exists at lab level
+        lab_treatments = self.lab_manager.get_tracked_treatments()
+        if treatment_name in lab_treatments:
+            raise ValueError(f"Treatment '{treatment_name}' already tracked at lab level.")
+
+        self.lab_manager.add_tracked_treatment(treatment_name)
+        self.log_bus.log(f"Pushed treatment '{treatment_name}' to lab level", "info", "ProjectManager")
+
+    def push_experiment_type_to_lab(self, experiment_type: str) -> None:
+        """Push a project experiment type to lab level."""
+        if not self.lab_manager or not self.lab_manager.current_lab:
+            raise RuntimeError("No lab associated with this project.")
+
+        state = self.state_manager.project_state
+        if state.project_metadata is None:
+            raise RuntimeError("ProjectMetadata is not initialized.")
+
+        # Check if it's in project master list
+        if experiment_type not in state.project_metadata.master_experiment_types:
+            raise ValueError(f"Experiment type '{experiment_type}' not found in project master list.")
+
+        # Check if it already exists at lab level
+        lab_types = self.lab_manager.get_tracked_experiment_types()
+        if experiment_type in lab_types:
+            raise ValueError(f"Experiment type '{experiment_type}' already tracked at lab level.")
+
+        self.lab_manager.add_tracked_experiment_type(experiment_type)
+        self.log_bus.log(f"Pushed experiment type '{experiment_type}' to lab level", "info", "ProjectManager")
 
     def run_analysis(self, experiment_id: str, capability_to_run: str) -> None:
         """

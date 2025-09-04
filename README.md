@@ -130,7 +130,7 @@ mus1 lab add-credential --alias server1 --user researcher
 mus1 lab add-target --name local-media --kind local --root ~/Videos
 
 # Add genotype configurations
-mus1 lab add-genotype --gene-name ATP7B --locus default --alleles WT,Het,KO
+mus1 genotype add-to-lab --gene ATP7B --allele WT --allele Het --allele KO --inheritance recessive --mendelian
 
 # Associate projects with labs
 mus1 project associate-lab /path/to/project --lab-id my_lab
@@ -220,17 +220,12 @@ mus1 project set-shared-root /path/to/project /mnt/mus1
 mus1 project move-to-shared /path/to/project
 ```
 
-Targets and workers
+# Lab-based resource management (recommended)
 ```bash
-# Targets represent scan roots per-machine (local/ssh/wsl)
-mus1 targets list   /path/to/project
-mus1 targets add    /path/to/project --name this-machine --kind local --root ~/Videos --root /media/T7
-mus1 targets remove /path/to/project <name>
-
-# Workers represent remote execution endpoints (optional)
-mus1 workers list   /path/to/project
-mus1 workers add    /path/to/project --name ubuntu --ssh-alias lab-ubuntu --test
-mus1 workers run    /path/to/project --name ubuntu -- echo hello
+# All resource management is now done at the lab level
+mus1 lab add-worker --name compute-01 --ssh-alias server1
+mus1 lab add-target --name local-media --kind local --root ~/Videos
+mus1 lab status  # View all lab resources
 ```
 
 Scanning and ingest
@@ -248,16 +243,10 @@ mus1 project media-assign /path/to/project \
   --set-provenance manual_assignment
 
 # CSV-guided assembly examples
-# 1) Extract subjects from a folder of CSVs (lab plugin), get YAML with subjects and conflicts, LAB SPECIFIC
+# Extract subjects from a folder of CSVs (lab plugin), get YAML with subjects and conflicts, LAB SPECIFIC
 mus1 project assembly run /path/to/project \
   -p CopperlabAssembly -a subjects_from_csv_folder \
   --param csv_dir=/path/to/csvs
-
-# 2) (Legacy) assembly-scan-by-experiments remains for now but is deprecated in favor of assembly run
-mus1 project assembly-scan-by-experiments /path/to/project CSV1 [CSV2 ...] \
-  --roots /Volumes/Data ~/Videos \
-  --verify-time \
-  --provenance assembly_guided_import
 
 # Import third-party processed folder (copy by default or move) into media with provenance
 mus1 project import-third-party-folder /path/to/project /path/to/source \
@@ -266,13 +255,21 @@ mus1 project import-third-party-folder /path/to/project /path/to/source \
   --provenance third_party_import
 ```
 
-# Master media list (New)
+# Genotype management
 ```bash
-# Accept current project's media as the lab master list (stored at the configured projects root under master_media_index.json)
-mus1 master-accept-current /path/to/project
+# Configure genotype systems at lab level
+mus1 genotype add-to-lab --gene ATP7B --allele WT --allele Het --allele KO --inheritance recessive --mendelian
 
-# Add unique items from another project's media to the master list
-mus1 master-add-unique /path/to/other_project
+# Track genes and experiment types at lab level
+mus1 genotype track ATP7B --lab my_lab
+mus1 genotype track-exp-type RR --lab my_lab
+
+# List genotype configurations and tracked items
+mus1 genotype list --lab my_lab
+mus1 genotype list-exp-types --lab my_lab
+
+# Accept lab-tracked genotypes for project use
+mus1 genotype accept-lab-tracked ATP7B --project /path/to/project
 ```
 
 # Lab Resources (use lab commands instead of deprecated credentials commands)
@@ -286,12 +283,12 @@ mus1 lab status  # View all lab resources
 # Scan arbitrary roots and get JSONL (stdout), then dedup
 mus1 scan videos <roots...> | mus1 scan dedup
 
-# Aggregate scans from configured targets, dedup, and register items under shared
-# (preview only; do not register; write JSONL lists for review)
-mus1 project scan-from-targets /path/to/project \
-  --dry-run \
+# Scan and ingest from multiple roots with parallel processing
+mus1 project ingest /path/to/project [roots...] \
+  --preview \
   --emit-in-shared ~/in.jsonl \
-  --emit-off-shared ~/off.jsonl
+  --emit-off-shared ~/off.jsonl \
+  --parallel --max-workers 4
 
 # Stage off-shared files (from JSONL) into shared_root/<subdir> and register
 mus1 project stage-to-shared /path/to/project /tmp/all.unique.jsonl recordings/raw
@@ -355,8 +352,8 @@ CLI
 # List projects from shared storage
 mus1 project list --shared
 
-# Create a project on shared storage
-mus1 project create my_proj --location shared
+# Create a project (will automatically use shared storage if lab is active)
+mus1 project create my_proj
 
 # Configure per-user shared root (no secrets)
 mus1 setup shared --path /mnt/mus1 --create
@@ -365,10 +362,10 @@ mus1 setup shared --path /mnt/mus1 --create
 mus1 project set-shared-root /path/to/project /mnt/mus1
 mus1 project move-to-shared /path/to/project
 
-# Define scan targets and aggregate scans
-mus1 targets add /path/to/project --name lab-mac --kind local --root ~/Videos --root /Volumes
-mus1 targets add /path/to/project --name copper --kind ssh --ssh-alias copperlab-server --root /data/recordings
-mus1 project scan-from-targets /path/to/project --target lab-mac --target copper
+# Use lab-based scan targets and ingest
+mus1 lab add-target --name lab-mac --kind local --root ~/Videos --root /Volumes
+mus1 lab add-target --name copper --kind ssh --ssh-alias copperlab-server --root /data/recordings
+mus1 project ingest /path/to/project --target lab-mac --target copper --dest-subdir recordings/raw
 
 # Stage off-shared files into shared_root/subdir with hash verification and register
 mus1 project stage-to-shared /path/to/project /tmp/all.unique.jsonl recordings/raw
@@ -383,7 +380,7 @@ Notes
 - On save, `.mus1-lock` is created and removed automatically. If you see a stale lock after a crash, it can be deleted safely once no MUS1 instance is writing.
 - Remote scans require MUS1 to be installed on the remote host's PATH (or inside WSL for Windows). Test SSH connectivity via:
   ```bash
-  mus1 workers add /path/to/project --name copper --ssh-alias copperlab-server --test
+  mus1 lab add-worker --name copper --ssh-alias copperlab-server
   ```
 
 ### Project folders default (local and shared)

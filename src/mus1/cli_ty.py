@@ -45,6 +45,7 @@ setup_app = typer.Typer(help="One-time local setup helpers (per-user)", context_
 workers_app = typer.Typer(help="Manage project worker entries (non-secret)", context_settings=_ctx)
 targets_app = typer.Typer(help="Manage scan targets (local/ssh/wsl)", context_settings=_ctx)
 lab_app = typer.Typer(help="Lab-level configuration and shared resources", context_settings=_ctx)
+genotype_app = typer.Typer(help="Genotype management for projects and labs", context_settings=_ctx)
 
 app.add_typer(scan_app, name="scan")
 app.add_typer(project_app, name="project")
@@ -52,6 +53,7 @@ app.add_typer(setup_app, name="setup")
 app.add_typer(workers_app, name="workers")
 app.add_typer(targets_app, name="targets")
 app.add_typer(lab_app, name="lab")
+app.add_typer(genotype_app, name="genotype")
 plugins_app = typer.Typer(help="Manage external MUS1 plugins (installed via pip entry points)", context_settings=_ctx)
 app.add_typer(plugins_app, name="plugins")
 assembly_app = typer.Typer(help="Project assembly via installed plugins (entry points).", context_settings=_ctx)
@@ -1088,6 +1090,663 @@ def project_import_third_party_folder(
 
 """Deprecated master maintenance CLI removed; Master Project concept is in development."""
 
+
+###############################################################################
+# genotype management
+###############################################################################
+
+
+@genotype_app.command("add-to-lab", help="Add a genotype configuration to a lab")
+def genotype_add_to_lab(
+    ctx: typer.Context,
+    gene_name: str = typer.Option(..., "--gene", "-g", help="Gene name (e.g., ATP7B)"),
+    alleles: Optional[List[str]] = typer.Option(None, "--allele", "-a", help="Available alleles (repeat for multiple)"),
+    inheritance: str = typer.Option("recessive", "--inheritance", "-i", help="Inheritance pattern: Dominant, Recessive, or X-Linked"),
+    lab_id: Optional[str] = typer.Option(None, "--lab", help="Lab ID"),
+    mendelian: bool = typer.Option(True, "--mendelian/--non-mendelian", help="Mark as mendelian (mutually exclusive alleles)")
+):
+    """Add a genotype configuration to a lab."""
+    from .core.metadata import InheritancePattern
+
+    # Validate inheritance pattern
+    try:
+        inheritance_pattern = InheritancePattern(inheritance.title())
+    except ValueError:
+        typer.echo(f"Error: Invalid inheritance pattern '{inheritance}'. Must be Dominant, Recessive, or X-Linked", err=True)
+        raise typer.Exit(1)
+
+    # Set default alleles for supported inheritance patterns
+    if alleles is None:
+        alleles = ["WT", "Het", "KO"]
+
+    # Lab-level genotype
+    lab_manager = _get_lab_manager()
+    if lab_manager.current_lab is None:
+        if not lab_id:
+            typer.echo("Error: Must specify --lab when no lab is currently loaded", err=True)
+            raise typer.Exit(1)
+        try:
+            lab_manager.load_lab(lab_id)
+        except FileNotFoundError:
+            typer.echo(f"Error: Lab '{lab_id}' not found", err=True)
+            raise typer.Exit(1)
+
+    # Check if genotype already exists
+    existing = lab_manager.get_genotype(gene_name)
+
+    if existing:
+        if not typer.confirm(f"Genotype '{gene_name}' already exists in lab. Update it?"):
+            return
+
+    from .core.lab_manager import LabGenotype
+    genotype = LabGenotype(
+        gene_name=gene_name,
+        inheritance_pattern=inheritance_pattern,
+        alleles=alleles,
+        is_mutually_exclusive=mendelian
+    )
+
+    lab_manager.add_genotype(genotype)
+    typer.echo(f"✓ Added genotype configuration '{gene_name}' to lab '{lab_manager.current_lab.metadata.name}'")
+
+
+@genotype_app.command("add-to-project", help="Add a genotype configuration to a project")
+def genotype_add_to_project(
+    ctx: typer.Context,
+    gene_name: str = typer.Option(..., "--gene", "-g", help="Gene name (e.g., ATP7B)"),
+    alleles: Optional[List[str]] = typer.Option(None, "--allele", "-a", help="Available alleles (repeat for multiple)"),
+    inheritance: str = typer.Option("recessive", "--inheritance", "-i", help="Inheritance pattern: Dominant, Recessive, or X-Linked"),
+    project_path: Optional[Path] = typer.Option(None, "--project", "-p", help="Project path"),
+    mendelian: bool = typer.Option(True, "--mendelian/--non-mendelian", help="Mark as mendelian (mutually exclusive alleles)")
+):
+    """Add a genotype configuration to a project."""
+    from .core.metadata import GenotypeMetadata, InheritancePattern
+
+    # Validate inheritance pattern
+    try:
+        inheritance_pattern = InheritancePattern(inheritance.title())
+    except ValueError:
+        typer.echo(f"Error: Invalid inheritance pattern '{inheritance}'. Must be Dominant, Recessive, or X-Linked", err=True)
+        raise typer.Exit(1)
+
+    # Set default alleles for supported inheritance patterns
+    if alleles is None:
+        alleles = ["WT", "Het", "KO"]
+
+    # Project-level genotype
+    state_manager, _, _, project_manager = _get_managers()
+    if not project_path:
+        typer.echo("Error: Must specify --project", err=True)
+        raise typer.Exit(1)
+
+    if not project_path.exists():
+        raise typer.BadParameter(f"Project not found: {project_path}")
+    project_manager.load_project(project_path)
+
+    # Use the project manager's add_genotype method
+    try:
+        project_manager.add_genotype(
+            gene_name=gene_name,
+            inheritance_pattern=inheritance,
+            alleles=alleles,
+            mendelian=mendelian
+        )
+        typer.echo(f"✓ Added genotype configuration '{gene_name}' to project '{project_path.name}'")
+    except ValueError as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(1)
+
+
+@genotype_app.command("accept-lab-tracked", help="Accept lab-tracked genotypes for use in a project")
+def genotype_accept_lab_tracked(
+    gene_names: List[str] = typer.Argument(..., help="Gene names to accept from lab (space-separated)"),
+    project_path: Optional[Path] = typer.Option(None, "--project", "-p", help="Project path"),
+    all_lab: bool = typer.Option(False, "--all", help="Accept all genotypes tracked by the lab")
+):
+    """Accept lab-tracked genotypes for use in a project."""
+    state_manager, _, _, project_manager = _get_managers()
+
+    if not project_path:
+        typer.echo("Error: Must specify --project", err=True)
+        raise typer.Exit(1)
+
+    if not project_path.exists():
+        raise typer.BadParameter(f"Project not found: {project_path}")
+    project_manager.load_project(project_path)
+
+    # Check if project is associated with a lab
+    if not project_manager.lab_manager or not project_manager.lab_manager.current_lab:
+        typer.echo("Error: Project is not associated with a lab. Use 'mus1 project associate-lab' first.", err=True)
+        raise typer.Exit(1)
+
+    lab_manager = project_manager.lab_manager
+    lab_genotypes = lab_manager.get_tracked_genotypes()
+
+    if all_lab:
+        genes_to_accept = lab_genotypes
+    else:
+        genes_to_accept = set(gene_names)
+
+    # Validate that requested genes exist in lab
+    missing = genes_to_accept - lab_genotypes
+    if missing:
+        typer.echo(f"Error: The following genes are not tracked by the lab: {', '.join(missing)}", err=True)
+        raise typer.Exit(1)
+
+    # Check for conflicts with existing project genotypes
+    conflicts = []
+    for gene in genes_to_accept:
+        if any(gt.gene_name == gene for gt in state_manager.project_state.project_metadata.master_genotypes):
+            conflicts.append(gene)
+
+    if conflicts:
+        typer.echo(f"Warning: The following genes already exist as project-level genotypes: {', '.join(conflicts)}")
+        if not typer.confirm("Continue and track lab versions instead?"):
+            return
+
+    # Accept the genotypes
+    accepted = []
+    for gene in genes_to_accept:
+        try:
+            project_manager.track_lab_genotype(gene)
+            accepted.append(gene)
+        except ValueError as e:
+            typer.echo(f"Warning: Could not accept '{gene}': {e}")
+
+    if accepted:
+        typer.echo(f"✓ Accepted {len(accepted)} lab-tracked genotypes for project: {', '.join(accepted)}")
+    else:
+        typer.echo("No genotypes were accepted.")
+
+
+@genotype_app.command("track", help="Add a gene to the tracked genotypes list")
+def genotype_track(
+    gene_name: str = typer.Argument(..., help="Gene name to track"),
+    project_path: Optional[Path] = typer.Option(None, "--project", "-p", help="Project path"),
+    lab_id: Optional[str] = typer.Option(None, "--lab", help="Lab ID")
+):
+    """Add a gene to the tracked genotypes list for a project or lab."""
+    if project_path and lab_id:
+        typer.echo("Error: Cannot specify both --project and --lab", err=True)
+        raise typer.Exit(1)
+    if not project_path and not lab_id:
+        typer.echo("Error: Must specify either --project or --lab", err=True)
+        raise typer.Exit(1)
+
+    if project_path:
+        # Project-level tracking
+        state_manager, _, _, project_manager = _get_managers()
+        if not project_path.exists():
+            raise typer.BadParameter(f"Project not found: {project_path}")
+        project_manager.load_project(project_path)
+
+        if gene_name in state_manager.project_state.project_metadata.tracked_genotypes:
+            typer.echo(f"Gene '{gene_name}' is already tracked in project")
+            return
+
+        state_manager.project_state.project_metadata.tracked_genotypes.add(gene_name)
+        project_manager.save_project()
+        typer.echo(f"✓ Added '{gene_name}' to tracked genotypes in project")
+
+    else:
+        # Lab-level tracking
+        lab_manager = _get_lab_manager()
+        if lab_manager.current_lab is None:
+            try:
+                lab_manager.load_lab(lab_id)
+            except FileNotFoundError:
+                typer.echo(f"Error: Lab '{lab_id}' not found", err=True)
+                raise typer.Exit(1)
+
+        if gene_name in lab_manager.get_tracked_genotypes():
+            typer.echo(f"Gene '{gene_name}' is already tracked in lab '{lab_id}'")
+            return
+
+        lab_manager.add_tracked_genotype(gene_name)
+        typer.echo(f"✓ Added '{gene_name}' to tracked genotypes in lab '{lab_id}'")
+
+
+@genotype_app.command("list", help="List genotype configurations and tracked genes")
+def genotype_list(
+    project_path: Optional[Path] = typer.Option(None, "--project", "-p", help="Project path"),
+    lab_id: Optional[str] = typer.Option(None, "--lab", help="Lab ID")
+):
+    """List genotype configurations and tracked genes for a project or lab."""
+    out_prefs = _out_prefs(typer.get_current_context())
+
+    if project_path and lab_id:
+        typer.echo("Error: Cannot specify both --project and --lab", err=True)
+        raise typer.Exit(1)
+    if not project_path and not lab_id:
+        typer.echo("Error: Must specify either --project or --lab", err=True)
+        raise typer.Exit(1)
+
+    if project_path:
+        # Project-level
+        state_manager, _, _, project_manager = _get_managers()
+        if not project_path.exists():
+            raise typer.BadParameter(f"Project not found: {project_path}")
+        project_manager.load_project(project_path)
+
+        metadata = state_manager.project_state.project_metadata
+
+        if out_prefs.get("json"):
+            result = {
+                "master_genotypes": [gt.dict() for gt in metadata.master_genotypes],
+                "tracked_genotypes": list(metadata.tracked_genotypes)
+            }
+            typer.echo(json.dumps(result))
+        else:
+            typer.echo(f"Genotype configurations in project '{project_path.name}':")
+            for gt in metadata.master_genotypes:
+                typer.echo(f"  - {gt.gene_name} ({gt.inheritance_pattern.value}): {', '.join(gt.alleles)} ({'mendelian' if gt.is_mutually_exclusive else 'non-mendelian'})")
+
+            if metadata.tracked_genotypes:
+                typer.echo(f"\nTracked genes: {', '.join(sorted(metadata.tracked_genotypes))}")
+
+    else:
+        # Lab-level
+        lab_manager = _get_lab_manager()
+        if lab_manager.current_lab is None:
+            try:
+                lab_manager.load_lab(lab_id)
+            except FileNotFoundError:
+                typer.echo(f"Error: Lab '{lab_id}' not found", err=True)
+                raise typer.Exit(1)
+
+        lab = lab_manager.current_lab
+
+        if out_prefs.get("json"):
+            genotypes_dict = {}
+            for key, gt in lab.genotypes.items():
+                genotypes_dict[key] = gt.dict()
+            result = {
+                "genotypes": genotypes_dict,
+                "tracked_genotypes": list(lab.tracked_genotypes)
+            }
+            typer.echo(json.dumps(result))
+        else:
+            typer.echo(f"Genotype configurations in lab '{lab.metadata.name}':")
+            for key, gt in lab.genotypes.items():
+                typer.echo(f"  - {key} ({gt.inheritance_pattern.value}): {', '.join(gt.alleles)} ({'mendelian' if gt.is_mutually_exclusive else 'non-mendelian'})")
+
+            if lab.tracked_genotypes:
+                typer.echo(f"\nTracked genes: {', '.join(sorted(lab.tracked_genotypes))}")
+
+
+@genotype_app.command("push-to-lab", help="Push a project genotype to lab level")
+def genotype_push_to_lab(
+    gene_name: str = typer.Argument(..., help="Gene name to push to lab"),
+    project_path: Path = typer.Option(None, "--project", "-p", help="Project path"),
+):
+    """Push a genotype configuration from a project to lab level."""
+    if not project_path:
+        typer.echo("Error: Must specify --project", err=True)
+        raise typer.Exit(1)
+
+    state_manager, _, _, project_manager = _get_managers()
+    if not project_path.exists():
+        raise typer.BadParameter(f"Project not found: {project_path}")
+
+    project_manager.load_project(project_path)
+
+    try:
+        project_manager.push_genotype_to_lab(gene_name)
+        typer.echo(f"✓ Pushed genotype '{gene_name}' from project to lab level")
+
+    except Exception as e:
+        typer.echo(f"Error pushing genotype: {e}", err=True)
+        raise typer.Exit(1)
+
+
+###############################################################################
+# experiment type management
+###############################################################################
+
+
+@genotype_app.command("track-exp-type", help="Add an experiment type to the tracked list")
+def track_experiment_type(
+    experiment_type: str = typer.Argument(..., help="Experiment type to track"),
+    project_path: Optional[Path] = typer.Option(None, "--project", "-p", help="Project path"),
+    lab_id: Optional[str] = typer.Option(None, "--lab", help="Lab ID")
+):
+    """Add an experiment type to the tracked list for a project or lab."""
+    if project_path and lab_id:
+        typer.echo("Error: Cannot specify both --project and --lab", err=True)
+        raise typer.Exit(1)
+    if not project_path and not lab_id:
+        typer.echo("Error: Must specify either --project or --lab", err=True)
+        raise typer.Exit(1)
+
+    if project_path:
+        # Project-level tracking
+        state_manager, _, _, project_manager = _get_managers()
+        if not project_path.exists():
+            raise typer.BadParameter(f"Project not found: {project_path}")
+        project_manager.load_project(project_path)
+
+        if experiment_type in state_manager.project_state.project_metadata.tracked_experiment_types:
+            typer.echo(f"Experiment type '{experiment_type}' is already tracked in project")
+            return
+
+        state_manager.project_state.project_metadata.tracked_experiment_types.add(experiment_type)
+        project_manager.save_project()
+        typer.echo(f"✓ Added '{experiment_type}' to tracked experiment types in project")
+
+    else:
+        # Lab-level tracking
+        lab_manager = _get_lab_manager()
+        if lab_manager.current_lab is None:
+            try:
+                lab_manager.load_lab(lab_id)
+            except FileNotFoundError:
+                typer.echo(f"Error: Lab '{lab_id}' not found", err=True)
+                raise typer.Exit(1)
+
+        if experiment_type in lab_manager.get_tracked_experiment_types():
+            typer.echo(f"Experiment type '{experiment_type}' is already tracked in lab '{lab_id}'")
+            return
+
+        lab_manager.add_tracked_experiment_type(experiment_type)
+        typer.echo(f"✓ Added '{experiment_type}' to tracked experiment types in lab '{lab_id}'")
+
+
+@genotype_app.command("track-treatment", help="Add a treatment to the tracked list")
+def track_treatment(
+    treatment_name: str = typer.Argument(..., help="Treatment name to track"),
+    project_path: Optional[Path] = typer.Option(None, "--project", "-p", help="Project path"),
+    lab_id: Optional[str] = typer.Option(None, "--lab", help="Lab ID")
+):
+    """Add a treatment to the tracked list for a project or lab."""
+    if project_path and lab_id:
+        typer.echo("Error: Cannot specify both --project and --lab", err=True)
+        raise typer.Exit(1)
+    if not project_path and not lab_id:
+        typer.echo("Error: Must specify either --project or --lab", err=True)
+        raise typer.Exit(1)
+
+    if project_path:
+        # Project-level tracking
+        state_manager, _, _, project_manager = _get_managers()
+        if not project_path.exists():
+            raise typer.BadParameter(f"Project not found: {project_path}")
+        project_manager.load_project(project_path)
+
+        if treatment_name in state_manager.project_state.project_metadata.tracked_treatments:
+            typer.echo(f"Treatment '{treatment_name}' is already tracked in project")
+            return
+
+        state_manager.project_state.project_metadata.tracked_treatments.add(treatment_name)
+        project_manager.save_project()
+        typer.echo(f"✓ Added '{treatment_name}' to tracked treatments in project")
+
+    else:
+        # Lab-level tracking
+        lab_manager = _get_lab_manager()
+        if lab_manager.current_lab is None:
+            try:
+                lab_manager.load_lab(lab_id)
+            except FileNotFoundError:
+                typer.echo(f"Error: Lab '{lab_id}' not found", err=True)
+                raise typer.Exit(1)
+
+        if treatment_name in lab_manager.get_tracked_treatments():
+            typer.echo(f"Treatment '{treatment_name}' is already tracked in lab '{lab_id}'")
+            return
+
+        lab_manager.add_tracked_treatment(treatment_name)
+        typer.echo(f"✓ Added '{treatment_name}' to tracked treatments in lab '{lab_id}'")
+
+
+@genotype_app.command("untrack-treatment", help="Remove a treatment from the tracked list")
+def untrack_treatment(
+    treatment_name: str = typer.Argument(..., help="Treatment name to untrack"),
+    project_path: Optional[Path] = typer.Option(None, "--project", "-p", help="Project path"),
+    lab_id: Optional[str] = typer.Option(None, "--lab", help="Lab ID")
+):
+    """Remove a treatment from the tracked list for a project or lab."""
+    if project_path and lab_id:
+        typer.echo("Error: Cannot specify both --project and --lab", err=True)
+        raise typer.Exit(1)
+    if not project_path and not lab_id:
+        typer.echo("Error: Must specify either --project or --lab", err=True)
+        raise typer.Exit(1)
+
+    if project_path:
+        # Project-level untracking
+        state_manager, _, _, project_manager = _get_managers()
+        if not project_path.exists():
+            raise typer.BadParameter(f"Project not found: {project_path}")
+        project_manager.load_project(project_path)
+
+        if treatment_name not in state_manager.project_state.project_metadata.tracked_treatments:
+            typer.echo(f"Treatment '{treatment_name}' is not tracked in project")
+            return
+
+        state_manager.project_state.project_metadata.tracked_treatments.remove(treatment_name)
+        project_manager.save_project()
+        typer.echo(f"✓ Removed '{treatment_name}' from tracked treatments in project")
+
+    else:
+        # Lab-level untracking
+        lab_manager = _get_lab_manager()
+        if lab_manager.current_lab is None:
+            try:
+                lab_manager.load_lab(lab_id)
+            except FileNotFoundError:
+                typer.echo(f"Error: Lab '{lab_id}' not found", err=True)
+                raise typer.Exit(1)
+
+        if not lab_manager.remove_tracked_treatment(treatment_name):
+            typer.echo(f"Treatment '{treatment_name}' is not tracked in lab '{lab_id}'")
+            return
+
+        typer.echo(f"✓ Removed '{treatment_name}' from tracked treatments in lab '{lab_id}'")
+
+
+@genotype_app.command("accept-lab-tracked-treatments", help="Accept lab-tracked treatments for use in a project")
+def accept_lab_tracked_treatments(
+    treatment_names: List[str] = typer.Argument(None, help="Treatment names to accept from lab (space-separated)"),
+    project_path: Optional[Path] = typer.Option(None, "--project", "-p", help="Project path"),
+    all_lab: bool = typer.Option(False, "--all", help="Accept all treatments tracked by the lab")
+):
+    """Accept lab-tracked treatments for use in a project."""
+    if not project_path:
+        typer.echo("Error: Must specify --project", err=True)
+        raise typer.Exit(1)
+
+    state_manager, _, _, project_manager = _get_managers()
+    if not project_path.exists():
+        raise typer.BadParameter(f"Project not found: {project_path}")
+    project_manager.load_project(project_path)
+
+    lab_manager = _get_lab_manager()
+    if not lab_manager.current_lab:
+        typer.echo("Error: No lab associated with this project", err=True)
+        raise typer.Exit(1)
+
+    lab_treatments = lab_manager.get_tracked_treatments()
+    if all_lab:
+        treatments_to_accept = lab_treatments
+    else:
+        treatments_to_accept = treatment_names if treatment_names else []
+
+    accepted = []
+    for treatment in treatments_to_accept:
+        if treatment not in lab_treatments:
+            typer.echo(f"Warning: Treatment '{treatment}' not found in lab", err=True)
+            continue
+        if treatment in state_manager.project_state.project_metadata.tracked_treatments:
+            typer.echo(f"Treatment '{treatment}' already tracked in project")
+            continue
+        try:
+            project_manager.track_lab_treatment(treatment)
+            accepted.append(treatment)
+        except Exception as e:
+            typer.echo(f"Error tracking treatment '{treatment}': {e}", err=True)
+
+    if accepted:
+        typer.echo(f"✓ Accepted lab treatments: {', '.join(accepted)}")
+    else:
+        typer.echo("No treatments were accepted")
+
+
+@genotype_app.command("list-treatments", help="List treatment configurations and tracked treatments")
+def list_tracked_treatments(
+    project_path: Optional[Path] = typer.Option(None, "--project", "-p", help="Project path"),
+    lab_id: Optional[str] = typer.Option(None, "--lab", help="Lab ID")
+):
+    """List treatment configurations and tracked treatments for a project or lab."""
+    if project_path and lab_id:
+        typer.echo("Error: Cannot specify both --project and --lab", err=True)
+        raise typer.Exit(1)
+    if not project_path and not lab_id:
+        typer.echo("Error: Must specify either --project or --lab", err=True)
+        raise typer.Exit(1)
+
+    if project_path:
+        # Project-level listing
+        state_manager, _, _, project_manager = _get_managers()
+        if not project_path.exists():
+            raise typer.BadParameter(f"Project not found: {project_path}")
+        project_manager.load_project(project_path)
+
+        metadata = state_manager.project_state.project_metadata
+        typer.echo(f"\n📋 Project: {metadata.project_name}")
+        typer.echo("🎯 Tracked treatments:")
+        for treatment in sorted(metadata.tracked_treatments):
+            typer.echo(f"  • {treatment}")
+
+        typer.echo("\n🏥 Master treatments:")
+        for treatment in sorted(metadata.master_treatments, key=lambda x: x.name):
+            typer.echo(f"  • {treatment.name}")
+
+        typer.echo("\n✅ Active treatments:")
+        for treatment in sorted(metadata.active_treatments, key=lambda x: x.name):
+            typer.echo(f"  • {treatment.name}")
+
+    else:
+        # Lab-level listing
+        lab_manager = _get_lab_manager()
+        if lab_manager.current_lab is None:
+            try:
+                lab_manager.load_lab(lab_id)
+            except FileNotFoundError:
+                typer.echo(f"Error: Lab '{lab_id}' not found", err=True)
+                raise typer.Exit(1)
+
+        lab = lab_manager.current_lab
+        typer.echo(f"\n🏢 Lab: {lab.metadata.name}")
+        typer.echo("🎯 Tracked treatments:")
+        for treatment in sorted(lab.tracked_treatments):
+            typer.echo(f"  • {treatment}")
+
+
+@genotype_app.command("push-treatment-to-lab", help="Push a project treatment to lab level")
+def treatment_push_to_lab(
+    treatment_name: str = typer.Argument(..., help="Treatment name to push to lab"),
+    project_path: Path = typer.Option(None, "--project", "-p", help="Project path"),
+):
+    """Push a treatment from a project to lab level."""
+    if not project_path:
+        typer.echo("Error: Must specify --project", err=True)
+        raise typer.Exit(1)
+
+    state_manager, _, _, project_manager = _get_managers()
+    if not project_path.exists():
+        raise typer.BadParameter(f"Project not found: {project_path}")
+
+    project_manager.load_project(project_path)
+
+    try:
+        project_manager.push_treatment_to_lab(treatment_name)
+        typer.echo(f"✓ Pushed treatment '{treatment_name}' from project to lab level")
+
+    except Exception as e:
+        typer.echo(f"Error pushing treatment: {e}", err=True)
+        raise typer.Exit(1)
+
+
+@genotype_app.command("push-exp-type-to-lab", help="Push a project experiment type to lab level")
+def experiment_type_push_to_lab(
+    experiment_type: str = typer.Argument(..., help="Experiment type to push to lab"),
+    project_path: Path = typer.Option(None, "--project", "-p", help="Project path"),
+):
+    """Push an experiment type from a project to lab level."""
+    if not project_path:
+        typer.echo("Error: Must specify --project", err=True)
+        raise typer.Exit(1)
+
+    state_manager, _, _, project_manager = _get_managers()
+    if not project_path.exists():
+        raise typer.BadParameter(f"Project not found: {project_path}")
+
+    project_manager.load_project(project_path)
+
+    try:
+        project_manager.push_experiment_type_to_lab(experiment_type)
+        typer.echo(f"✓ Pushed experiment type '{experiment_type}' from project to lab level")
+
+    except Exception as e:
+        typer.echo(f"Error pushing experiment type: {e}", err=True)
+        raise typer.Exit(1)
+
+
+@genotype_app.command("list-exp-types", help="List tracked experiment types")
+def list_tracked_experiment_types(
+    project_path: Optional[Path] = typer.Option(None, "--project", "-p", help="Project path"),
+    lab_id: Optional[str] = typer.Option(None, "--lab", help="Lab ID"),
+    include_plugins: bool = typer.Option(False, "--plugins", help="Include experiment types from installed plugins")
+):
+    """List tracked experiment types for a project or lab."""
+    if project_path and lab_id:
+        typer.echo("Error: Cannot specify both --project and --lab", err=True)
+        raise typer.Exit(1)
+    if not project_path and not lab_id:
+        typer.echo("Error: Must specify either --project or --lab", err=True)
+        raise typer.Exit(1)
+
+    if project_path:
+        # Project-level
+        state_manager, plugin_manager, _, project_manager = _get_managers()
+        if not project_path.exists():
+            raise typer.BadParameter(f"Project not found: {project_path}")
+        project_manager.load_project(project_path)
+
+        metadata = state_manager.project_state.project_metadata
+
+        result = {
+            "tracked_experiment_types": list(metadata.tracked_experiment_types)
+        }
+        if include_plugins:
+            plugin_types = set()
+            for plugin in plugin_manager.get_plugins_with_project_actions():
+                plugin_meta = plugin.plugin_self_metadata()
+                if plugin_meta.supported_experiment_types:
+                    plugin_types.update(plugin_meta.supported_experiment_types)
+            result["plugin_experiment_types"] = list(plugin_types)
+        typer.echo(json.dumps(result))
+        return
+
+    else:
+        # Lab-level
+        lab_manager = _get_lab_manager()
+        if lab_manager.current_lab is None:
+            try:
+                lab_manager.load_lab(lab_id)
+            except FileNotFoundError:
+                typer.echo(f"Error: Lab '{lab_id}' not found", err=True)
+                raise typer.Exit(1)
+
+        lab = lab_manager.current_lab
+
+        result = {
+            "tracked_experiment_types": list(lab.tracked_experiment_types)
+        }
+        typer.echo(json.dumps(result))
+        return
+
+
 def run():
     app()
 
@@ -1624,6 +2283,196 @@ def lab_configure_storage(
     except Exception as e:
         print(f"Error configuring shared storage: {e}")
         raise typer.Exit(code=1)
+
+
+@lab_app.command("add-tracked-genotype", help="Add a genotype configuration to lab tracking")
+def lab_add_tracked_genotype(
+    gene_name: str = typer.Argument(..., help="Gene name (e.g., ATP7B)"),
+    inheritance: str = typer.Option("RECESSIVE", "--inheritance", help="Inheritance pattern (RECESSIVE, DOMINANT, etc.)"),
+    alleles: List[str] = typer.Option(["WT", "Het", "KO"], "--allele", help="Available alleles (can specify multiple)"),
+    description: Optional[str] = typer.Option(None, "--description", help="Description of this genotype"),
+):
+    """Add a genotype configuration to the current lab."""
+    lab_manager = _get_lab_manager()
+
+    if lab_manager.current_lab is None:
+        print("Error: No lab loaded. Use 'mus1 lab load <lab_id>' or 'mus1 lab activate <lab_id>' first.")
+        raise typer.Exit(code=1)
+
+    try:
+        from .core.metadata import LabGenotype, InheritancePattern
+        inheritance_pattern = InheritancePattern(inheritance.upper())
+
+        genotype = LabGenotype(
+            gene_name=gene_name,
+            inheritance_pattern=inheritance_pattern,
+            alleles=alleles,
+            description=description
+        )
+
+        lab_manager.add_genotype(genotype)
+        lab_manager.add_tracked_genotype(gene_name)
+        print(f"Added genotype '{gene_name}' to lab '{lab_manager.current_lab.metadata.name}'")
+        print(f"  Inheritance: {inheritance_pattern.value}")
+        print(f"  Alleles: {', '.join(alleles)}")
+
+    except Exception as e:
+        print(f"Error adding genotype: {e}")
+        raise typer.Exit(code=1)
+
+
+@lab_app.command("add-tracked-treatment", help="Add a treatment to lab tracking")
+def lab_add_tracked_treatment(
+    treatment_name: str = typer.Argument(..., help="Treatment name"),
+):
+    """Add a treatment to the current lab's tracked list."""
+    lab_manager = _get_lab_manager()
+
+    if lab_manager.current_lab is None:
+        print("Error: No lab loaded. Use 'mus1 lab load <lab_id>' or 'mus1 lab activate <lab_id>' first.")
+        raise typer.Exit(code=1)
+
+    try:
+        lab_manager.add_tracked_treatment(treatment_name)
+        print(f"Added treatment '{treatment_name}' to lab '{lab_manager.current_lab.metadata.name}' tracking")
+
+    except Exception as e:
+        print(f"Error adding treatment: {e}")
+        raise typer.Exit(code=1)
+
+
+@lab_app.command("add-tracked-experiment-type", help="Add an experiment type to lab tracking")
+def lab_add_tracked_experiment_type(
+    experiment_type: str = typer.Argument(..., help="Experiment type name"),
+):
+    """Add an experiment type to the current lab's tracked list."""
+    lab_manager = _get_lab_manager()
+
+    if lab_manager.current_lab is None:
+        print("Error: No lab loaded. Use 'mus1 lab load <lab_id>' or 'mus1 lab activate <lab_id>' first.")
+        raise typer.Exit(code=1)
+
+    try:
+        lab_manager.add_tracked_experiment_type(experiment_type)
+        print(f"Added experiment type '{experiment_type}' to lab '{lab_manager.current_lab.metadata.name}' tracking")
+
+    except Exception as e:
+        print(f"Error adding experiment type: {e}")
+        raise typer.Exit(code=1)
+
+
+@lab_app.command("remove-tracked-genotype", help="Remove a genotype from lab tracking")
+def lab_remove_tracked_genotype(
+    gene_name: str = typer.Argument(..., help="Gene name to remove"),
+):
+    """Remove a genotype from the current lab's tracked list."""
+    lab_manager = _get_lab_manager()
+
+    if lab_manager.current_lab is None:
+        print("Error: No lab loaded. Use 'mus1 lab load <lab_id>' or 'mus1 lab activate <lab_id>' first.")
+        raise typer.Exit(code=1)
+
+    try:
+        removed = lab_manager.remove_tracked_genotype(gene_name)
+        if removed:
+            print(f"Removed genotype '{gene_name}' from lab '{lab_manager.current_lab.metadata.name}' tracking")
+        else:
+            print(f"Genotype '{gene_name}' was not tracked by lab '{lab_manager.current_lab.metadata.name}'")
+
+    except Exception as e:
+        print(f"Error removing genotype: {e}")
+        raise typer.Exit(code=1)
+
+
+@lab_app.command("remove-tracked-treatment", help="Remove a treatment from lab tracking")
+def lab_remove_tracked_treatment(
+    treatment_name: str = typer.Argument(..., help="Treatment name to remove"),
+):
+    """Remove a treatment from the current lab's tracked list."""
+    lab_manager = _get_lab_manager()
+
+    if lab_manager.current_lab is None:
+        print("Error: No lab loaded. Use 'mus1 lab load <lab_id>' or 'mus1 lab activate <lab_id>' first.")
+        raise typer.Exit(code=1)
+
+    try:
+        removed = lab_manager.remove_tracked_treatment(treatment_name)
+        if removed:
+            print(f"Removed treatment '{treatment_name}' from lab '{lab_manager.current_lab.metadata.name}' tracking")
+        else:
+            print(f"Treatment '{treatment_name}' was not tracked by lab '{lab_manager.current_lab.metadata.name}'")
+
+    except Exception as e:
+        print(f"Error removing treatment: {e}")
+        raise typer.Exit(code=1)
+
+
+@lab_app.command("remove-tracked-experiment-type", help="Remove an experiment type from lab tracking")
+def lab_remove_tracked_experiment_type(
+    experiment_type: str = typer.Argument(..., help="Experiment type to remove"),
+):
+    """Remove an experiment type from the current lab's tracked list."""
+    lab_manager = _get_lab_manager()
+
+    if lab_manager.current_lab is None:
+        print("Error: No lab loaded. Use 'mus1 lab load <lab_id>' or 'mus1 lab activate <lab_id>' first.")
+        raise typer.Exit(code=1)
+
+    try:
+        removed = lab_manager.remove_tracked_experiment_type(experiment_type)
+        if removed:
+            print(f"Removed experiment type '{experiment_type}' from lab '{lab_manager.current_lab.metadata.name}' tracking")
+        else:
+            print(f"Experiment type '{experiment_type}' was not tracked by lab '{lab_manager.current_lab.metadata.name}'")
+
+    except Exception as e:
+        print(f"Error removing experiment type: {e}")
+        raise typer.Exit(code=1)
+
+
+@lab_app.command("list-tracked", help="List all tracked items in the current lab")
+def lab_list_tracked():
+    """List all tracked genotypes, treatments, and experiment types in the current lab."""
+    lab_manager = _get_lab_manager()
+
+    if lab_manager.current_lab is None:
+        print("Error: No lab loaded. Use 'mus1 lab load <lab_id>' or 'mus1 lab activate <lab_id>' first.")
+        raise typer.Exit(code=1)
+
+    lab = lab_manager.current_lab
+
+    print(f"Tracked items for lab '{lab.metadata.name}':")
+    print()
+
+    # Genotypes
+    print("Genotypes:")
+    if lab.genotypes:
+        for gene_name, genotype in lab.genotypes.items():
+            print(f"  {gene_name}: {genotype.inheritance_pattern.value} - {', '.join(genotype.alleles)}")
+            if genotype.description:
+                print(f"    Description: {genotype.description}")
+    else:
+        print("  (none)")
+
+    print()
+
+    # Treatments
+    print("Treatments:")
+    if lab.tracked_treatments:
+        for treatment in sorted(lab.tracked_treatments):
+            print(f"  {treatment}")
+    else:
+        print("  (none)")
+
+    print()
+
+    # Experiment types
+    print("Experiment Types:")
+    if lab.tracked_experiment_types:
+        for exp_type in sorted(lab.tracked_experiment_types):
+            print(f"  {exp_type}")
+    else:
+        print("  (none)")
 
 
 ###############################################################################
