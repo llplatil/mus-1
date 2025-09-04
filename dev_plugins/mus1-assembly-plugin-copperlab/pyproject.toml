@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mus1-assembly-plugin-copperlab"
+version = "0.0.1"
+description = "Copperlab assembly plugin for MUS1"
+authors = [{name = "Copperlab"}]
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+  "pandas>=2.0",
+  "mus1>=0.1.2",
+]
+
+[project.entry-points."mus1.plugins"]
+CopperlabAssembly = "mus1_assembly_plugin_copperlab.assembly:CopperlabAssembly"
+
+[tool.setuptools]
+packages = ["mus1_assembly_plugin_copperlab"]
