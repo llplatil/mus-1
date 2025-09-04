@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mus1-assembly-plugin-copperlab"
+version = "0.0.1"
+description = "Copperlab assembly plugin for MUS1"
+authors = [{ name = "Copperlab" }]
+requires-python = ">=3.10"
+dependencies = ["mus1>=0.0.0"]
+readme = "README.md"
+license = { text = "MIT" }
+
+[project.urls]
+Homepage = "https://github.com/llplatil/mus1-assembly-plugin-copperlab"
+
+[project.entry-points."mus1.plugins"]
+CopperlabAssembly = "mus1_assembly_plugin_copperlab.assembly:CopperlabAssembly"
+
+[project.entry-points."console_scripts"]
+copperlab = "mus1_assembly_plugin_copperlab.assembly:CopperlabAssembly.main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+
+
