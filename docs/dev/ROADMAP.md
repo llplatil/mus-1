@@ -9,12 +9,15 @@ This roadmap reflects how the code works today and what is planned next. It avoi
 - Analysis orchestration: `ProjectManager.run_analysis(experiment_id, capability)` validates via plugin, calls `analyze_experiment`, stores results, and advances `processing_stage` when appropriate.
 - Data IO helpers in `DataManager`: `read_yaml`, `read_csv`, `read_hdf`; handler invocation through `call_handler_method`.
 - Video discovery and ingestion: pluggable scanners (`macOS` specialized, base for others), `discover_video_files`, `deduplicate_video_list`, and unassigned→assigned workflow using `sample_hash` keys.
-- Typer CLI (`mus1`) with commands: `scan videos`, `scan dedup`, `project list`, `project create`, `project scan-and-move`, `project media-index`, `project media-assign`, `project assembly` (list/list-actions/run), `project import-third-party-folder`. Root supports `--version`.
+- Typer CLI (`mus1`) with commands: `scan videos`, `scan dedup`, `project list`, `project create`, `project scan-and-move`, `project media-index`, `project media-assign`, `project remove-subjects`, `project assembly` (list/list-actions/run), `project import-third-party-folder`, `lab` command group. Root supports `--version`.
   - `project ingest` is the single ingest path and now supports `--target` to scan configured targets; `scan-from-targets` has been removed.
+  - **New**: `project remove-subjects` for subject lifecycle management with bulk operations
+  - **New**: `lab add-genotype` for configuring genotype systems at lab level
 - UI: `ExperimentView` builds parameter forms from plugin metadata, separates Importer/Analysis/Exporter lists, supports bulk add, and links videos through the unassigned workflow.
 - Plugins:
   - `DeepLabCutHandlerPlugin` (handler): extract body parts, validate/ack tracking sources, load DataFrame via helper with optional likelihood thresholding.
   - `Mus1TrackingAnalysisPlugin` (analysis): kinematics, heatmap, zones/objects, NOR index, partial OF metrics; loads tracking data via handler/DataManager.
+  - **Enhanced CopperlabAssembly Plugin** (assembly): Iterative subject extraction with confidence scoring, genotype normalization (ATP7B: WT/Het/KO), experiment type validation (RR/OF/NOV with subtypes), batch approval workflow.
   - `CustomProjectAssembly_Skeleton` (package): CSV parsing + QA utils + optional subject importer used by assembly-driven scan.
   - `GcpMoSeq2OrchestratorPlugin` marked deprecated (kept for reference only).
 
@@ -155,6 +158,15 @@ Current status (dev branch - Lab Architecture Complete)
 - Complete CLI command set for lab management including shared storage
 - Removal of fallback methods and deprecated commands
 - Streamlined codebase with lab-centric design
+
+**✅ Completed (Enhanced Subject Management & Genotype System)**:
+- Lab-level genotype management with ATP7B configuration (WT/Het/KO alleles)
+- Iterative subject extraction with confidence scoring (high/medium/low/uncertain)
+- Enhanced experiment types (RR/OF/NOV) with proper subtypes and validation
+- Subject lifecycle management CLI commands with bulk operations
+- Workflow script for interactive subject extraction and approval
+- Genotype validation and normalization in Copperlab plugin
+- Enhanced Copperlab plugin with new assembly actions
 
 Next best steps (prioritized)
 1) GUI scanning and staging UX

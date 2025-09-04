@@ -53,11 +53,11 @@ class LoggingEventBus:
         """Attach/replace a RotatingFileHandler inside *project_root*.
 
         Called by CLI and GUI startup so both write to the same log file
-        `<project>/mus1_cli.log`.  When the file size exceeds *max_size* it
+        `<project>/mus1.log`.  When the file size exceeds *max_size* it
         rotates, keeping *backups* older logs.  This prevents megabyte-long log
         files during development without manual cleanup.
         """
-        log_path = project_root / "mus1_cli.log"
+        log_path = project_root / "mus1.log"
         # Remove existing RotatingFileHandler(s) that write elsewhere
         for h in list(self.logger.handlers):
             if isinstance(h, RotatingFileHandler):
@@ -81,7 +81,8 @@ class LoggingEventBus:
         for handler in self.logger.handlers + logging.getLogger().handlers:
             if isinstance(handler, logging.FileHandler): # Includes RotatingFileHandler
                 return handler.baseFilename
-        self.logger.warning("Could not find a FileHandler to determine log file path.")
+        # Only log warning if this is called after handlers should have been configured
+        # During initialization, it's normal to not have file handlers yet
         return None
         
     # Removed _check_log_file_size method

@@ -1,27 +1,32 @@
-# MUS1: An Open Source Workflow Integration Platform for Animal Behavior Analysis 
+# MUS1: An Open Source Workflow Integration Platform for Animal Behavior Analysis
 
 Mus-1 is a Python-based tool with an intuitive UI layer designed to streamline the analysis of subject behavior data allowing multidisciplinary workflows through a plugin based infrastructure. Mus-1 users can integrate multiple 3rd party open source tools within their respective pipline while maintaining data integrity without the hassle of managing import and export workflows from one analysis tool to the next. At its core, Mus-1 is built to accommodate each lab's unique research through its ability to support a variety of workflows and data types either through existing plugins or by developing a plugin that meets one's exact needs as outlined by the documentation provided within the Mus-1 install.
 
 ## Overview
 
 MUS1 facilitates a lab-centric workflow starting from recordings, CSV files and processed tracking data, enabling users to:
-1. **Lab Setup:** Create lab configurations with shared compute resources (workers, credentials, scan targets) and **shared storage configuration**
+1. **Lab Setup:** Create lab configurations with shared compute resources (workers, credentials, scan targets), **shared storage configuration**, and **genotype management**
 2. **Project Association:** Link projects to labs for automatic resource inheritance and **shared storage usage**
 3. **Import and Organize:** Manage tracking files, associated videos, and metadata within structured MUS1 projects. Import body part definitions directly from DLC `config.yaml` files with the DeepLabCutHandlerPlugin.
-4. **Analyze Kinematics:** Perform foundational analyses like distance, speed, and zone occupancy using built-in analysis plugins.
-5. **Manage Experiments:** Organize experiments by subject, type, and batch, tracking processing stages.
-6. **Standardize:** Apply consistent analysis parameters and lab-wide settings.
+4. **Subject Management:** Extract subjects from CSV files with confidence scoring, manage subject lifecycles with CLI commands, and validate against lab genotype configurations
+5. **Analyze Kinematics:** Perform foundational analyses like distance, speed, and zone occupancy using built-in analysis plugins.
+6. **Manage Experiments:** Organize experiments by subject, type, and batch, tracking processing stages with support for RR (Rota Rod), OF (Open Field), and NOV (Novel Object) experiment types
+7. **Standardize:** Apply consistent analysis parameters and lab-wide settings.
 
-The project uses a modular architecture with plugins for data handling (e.g., DeepLabCut outputs) and analysis (e.g., kinematics), all managed at the lab level. **New:** MUS1 now supports shared storage configuration, allowing projects to automatically use external drives (like CuSSD3) when a lab is active.
+The project uses a modular architecture with plugins for data handling (e.g., DeepLabCut outputs), analysis (e.g., kinematics), and assembly (e.g., Copperlab CSV processing), all managed at the lab level. **New:** MUS1 now supports shared storage configuration, lab-level genotype tracking, and iterative subject extraction workflows.
 
 ## Features
 
 - **Lab-Centric Architecture**: Centralized lab configuration with shared compute resources (workers, credentials, scan targets)
 - **Shared Storage Configuration**: Automatic detection and usage of external drives (like CuSSD3) for project storage when labs are active
+- **Lab-Level Genotype Management**: Configure and validate gene loci (e.g., ATP7B with WT/Het/KO alleles) at lab level with mutual exclusivity
+- **Iterative Subject Extraction**: Extract subjects from CSV files with confidence scoring (high/medium/low/uncertain) and interactive approval workflows
+- **Subject Lifecycle Management**: CLI commands for removing subjects from projects with optional bulk operations
+- **Enhanced Experiment Types**: Support for RR (Rota Rod), OF (Open Field), and NOV (Novel Object) with specific subtypes and validation
 - **Material Design UI**: Clean, modern interface built with PySide6-Qt.
 - **Project Management**: Centralized handling of subjects, experiments, metadata, and analysis results with lab association.
 - **DeepLabCut Integration**: Imports body parts from DLC configs and utilizes DLC tracking data (CSV/HDF5).
-- **Plugin Architecture**: Supports data handlers (DLC), importers, and analysis modules (e.g., kinematics). Plugins are discovered via Python entry points (`mus1.plugins`).
+- **Plugin Architecture**: Supports data handlers (DLC), importers, assembly plugins, and analysis modules. Plugins are discovered via Python entry points (`mus1.plugins`).
 - **Hierarchical Experiment Setup**: Step-by-step workflow linking data files and analysis parameters.
 - **Batch Processing**: Group experiments for efficient management (analysis planned).
 - **Observer Pattern**: UI components update automatically based on project state changes.
@@ -31,11 +36,13 @@ The project uses a modular architecture with plugins for data handling (e.g., De
 
 ## Intended Workflow
 
-1.  **Lab Setup**: Create a lab configuration with shared resources and storage
+1.  **Lab Setup**: Create a lab configuration with shared resources, storage, and genotype management
    ```bash
    mus1 lab create --name "My Lab"
    mus1 lab add-worker --name compute-01 --ssh-alias server1
    mus1 lab add-credential --alias server1 --user researcher
+   # Configure genotype system (e.g., ATP7B for Copperlab)
+   mus1 lab add-genotype --gene-name ATP7B --locus default --alleles WT,Het,KO
    ```
 
 2.  **Configure Shared Storage** (Optional): Set up shared storage for the lab
@@ -55,15 +62,41 @@ The project uses a modular architecture with plugins for data handling (e.g., De
    mus1 project associate-lab my_project --lab-id my_lab
    ```
 
-5.  **Tracking (External)**: Use **DeepLabCut** (installed separately) to track keypoints from your experimental videos. Generate tracking CSV/HDF5 files.
+5.  **Subject Extraction**: Extract subjects from CSV files with confidence scoring and approval workflow
+   ```bash
+   # Initialize iterative subject extraction
+   mus1 project assembly run my_project --plugin CopperlabAssembly \
+     --action extract_subjects_iterative --param "csv_dir=/path/to/csvs"
 
-6.  **Import DLC Config (Optional)**: Use the `DlcProjectImporter` plugin within MUS1 to populate the project's master body part list from your DLC project's `config.yaml`.
+   # Get batches for review by confidence level
+   mus1 project assembly run my_project --plugin CopperlabAssembly \
+     --action get_subject_batch --param "csv_dir=/path/to/csvs" \
+     --param "confidence_level=high" --param "batch_size=10"
 
-7.  **Define Experiments in MUS1**: Add subjects and experiments. Use the `DeepLabCutHandler` plugin parameters to link each experiment to its corresponding DLC tracking file (CSV/HDF5).
+   # Approve subjects to add to lab
+   mus1 project assembly run my_project --plugin CopperlabAssembly \
+     --action approve_subject_batch --param "csv_dir=/path/to/csvs" \
+     --param "subject_ids=169,175,180" --param "confidence_level=high"
+   ```
 
-8.  **Run Kinematic Analysis (MUS1)**: Use the `Mus1TrackingAnalysis` plugin via the MUS1 interface to calculate metrics like distance, speed, zone time, etc. Results are stored within the experiment's metadata.
+6.  **Subject Management**: Manage subject lifecycles throughout the project
+   ```bash
+   # Remove specific subjects
+   mus1 project remove-subjects my_project --subject-id 169 --subject-id 175
 
-9.  **Future**: MoSeq2/Keypoint-MoSeq orchestration and feature extraction are planned via a dedicated plugin (see Roadmap). The current GCP orchestrator is deprecated in favor of a future server-backed integration.
+   # Remove all subjects (with confirmation)
+   mus1 project remove-subjects my_project --all
+   ```
+
+7.  **Tracking (External)**: Use **DeepLabCut** (installed separately) to track keypoints from your experimental videos. Generate tracking CSV/HDF5 files.
+
+8.  **Import DLC Config (Optional)**: Use the `DlcProjectImporter` plugin within MUS1 to populate the project's master body part list from your DLC project's `config.yaml`.
+
+9.  **Define Experiments in MUS1**: Add subjects and experiments with enhanced experiment types (RR, OF, NOV). Use the `DeepLabCutHandler` plugin parameters to link each experiment to its corresponding DLC tracking file (CSV/HDF5).
+
+10. **Run Kinematic Analysis (MUS1)**: Use the `Mus1TrackingAnalysis` plugin via the MUS1 interface to calculate metrics like distance, speed, zone time, etc. Results are stored within the experiment's metadata.
+
+11. **Future**: MoSeq2/Keypoint-MoSeq orchestration and feature extraction are planned via a dedicated plugin (see Roadmap). The current GCP orchestrator is deprecated in favor of a future server-backed integration.
 
 ## Requirements
 
@@ -96,9 +129,19 @@ mus1 lab add-worker --name compute-01 --ssh-alias server1
 mus1 lab add-credential --alias server1 --user researcher
 mus1 lab add-target --name local-media --kind local --root ~/Videos
 
+# Add genotype configurations
+mus1 lab add-genotype --gene-name ATP7B --locus default --alleles WT,Het,KO
+
 # Associate projects with labs
 mus1 project associate-lab /path/to/project --lab-id my_lab
 mus1 project lab-status /path/to/project
+```
+
+# Subject Management
+```bash
+# Remove subjects from projects
+mus1 project remove-subjects /path/to/project --subject-id 169 --subject-id 175
+mus1 project remove-subjects /path/to/project --all
 ```
 
 # Assembly (generic, plugin-discovered)
@@ -107,7 +150,27 @@ mus1 project lab-status /path/to/project
 mus1 project assembly list
 mus1 project assembly list-actions CopperlabAssembly
 
-# Run an action with YAML params or KEY=VALUE pairs
+# Iterative subject extraction workflow
+mus1 project assembly run /path/to/project \
+  --plugin CopperlabAssembly \
+  --action extract_subjects_iterative \
+  --param csv_dir=/path/to/csvs
+
+mus1 project assembly run /path/to/project \
+  --plugin CopperlabAssembly \
+  --action get_subject_batch \
+  --param csv_dir=/path/to/csvs \
+  --param confidence_level=high \
+  --param batch_size=10
+
+mus1 project assembly run /path/to/project \
+  --plugin CopperlabAssembly \
+  --action approve_subject_batch \
+  --param csv_dir=/path/to/csvs \
+  --param subject_ids=169,175,180 \
+  --param confidence_level=high
+
+# Legacy CSV processing
 mus1 project assembly run /path/to/project \
   --plugin CopperlabAssembly \
   --action subjects_from_csv_folder \

@@ -13,12 +13,14 @@ Note: See `docs/dev/ARCHITECTURE_CURRENT.md` for the current, authoritative arch
   - Credentials (SSH authentication)
   - Scan targets (local/ssh/wsl scan locations)
   - Master subjects registry
+  - **Genotype Configurations**: Gene loci with allele definitions and validation (e.g., ATP7B: WT/Het/KO)
   - Software installations
   - Associated projects
 - **(New)** Shared Storage Configuration: Automatic detection and configuration of external drives (like CuSSD3)
 - **Project Association**: Links projects to labs for resource inheritance.
 - **Persistence**: Atomic YAML/JSON file operations with metadata tracking.
 - **(New)** Auto-activation: Automatically loads last activated lab and sets shared storage environment variables
+- **(New)** Genotype Validation: Validates subject genotypes against lab genotype configurations with mutual exclusivity
 
 ### ProjectManager
 - **(Revised)** Orchestrates project-level operations (adding subjects/experiments, running analyses, renaming projects).

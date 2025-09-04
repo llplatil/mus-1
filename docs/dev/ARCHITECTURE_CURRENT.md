@@ -8,6 +8,7 @@ This document describes how MUS1 works today based on the code, including gaps a
   - Manages lab-level configuration stored in YAML/JSON files under `~/.mus1/labs/`
   - Stores shared resources: workers (compute), credentials (SSH), scan targets (local/ssh/wsl), master subjects, software installs
   - **New:** Manages shared storage configuration with automatic drive detection
+  - **New:** Manages genotype configurations with validation (e.g., ATP7B: WT/Het/KO with mutual exclusivity)
   - Provides methods to associate/disassociate projects with labs
   - Handles lab metadata, creation, loading, and persistence
   - **New:** Auto-loads last activated lab and sets shared storage environment variables
@@ -58,7 +59,7 @@ This document describes how MUS1 works today based on the code, including gaps a
 - Importer: `mus1-plugin-dlc-importer` (public)
 - Analysis: `mus1-plugin-tracking-analysis` (public)
 - Importer: `mus1-plugin-moseq2-importer` (public)
-- Assembly (lab-specific): `mus1-assembly-plugin-copperlab` (private, editable for dev)
+- **Enhanced Assembly (lab-specific)**: `mus1-assembly-plugin-copperlab` (private, editable for dev) - Now supports iterative subject extraction with confidence scoring, genotype normalization (ATP7B: WT/Het/KO), and experiment type validation (RR/OF/NOV with subtypes)
 - Skeleton: `mus1-assembly-skeleton` (public template)
 
 Notes: In-tree plugin implementations were removed. Only the interface remains under `src/mus1/plugins/base_plugin.py`. Real plugins are external packages discovered via entry points.
@@ -105,11 +106,15 @@ Notes: In-tree plugin implementations were removed. Only the interface remains u
   - `lab add-worker --name <name> --ssh-alias <alias>` – Add compute worker to lab
   - `lab add-credential --alias <alias> --user <user>` – Add SSH credentials to lab
   - `lab add-target --name <name> --kind <local|ssh|wsl>` – Add scan target to lab
+  - `lab add-genotype --gene-name <name> --alleles <list>` – Configure genotype systems (e.g., ATP7B: WT,Het,KO)
   - `lab projects` – List projects associated with the lab
 
 - **Project Lab Integration**:
   - `project associate-lab <project> --lab-id <lab>` – Associate project with lab
   - `project lab-status <project>` – Show lab association and inherited resources
+
+- **Subject Management**: New commands for subject lifecycle management
+  - `project remove-subjects --subject-id <id> [--all]` – Remove subjects from projects with optional bulk operations
 
 - **Deprecated Commands Removed**: All project-level worker/credential/target management commands have been deprecated and removed to enforce lab-centric architecture:
   - ❌ `workers list|add|remove|detect-os` (use `lab` commands instead)
@@ -123,5 +128,10 @@ Notes: In-tree plugin implementations were removed. Only the interface remains u
   - `project assembly list` – list assembly-capable plugins
   - `project assembly list-actions --plugin <name>` – list actions for a plugin
   - `project assembly run --plugin <name> --action <name> [--params-file|-f] [--param KEY=VALUE]` – run an action
-  - Example (Copperlab): `subjects_from_csv_folder` returns `{subjects, conflicts}` with 3-digit ID normalization and reconciliation of sex, birth/death dates, genotype, treatment
+  - **Enhanced Copperlab Plugin**: Now supports iterative subject extraction with confidence scoring
+    - `extract_subjects_iterative` – Initialize extraction process with confidence scoring (high/medium/low/uncertain)
+    - `get_subject_batch` – Get batches of subjects for review by confidence level
+    - `approve_subject_batch` – Approve subjects to add to lab master registry
+    - `finalize_subject_import` – Complete the import process and clean up
+    - Legacy: `subjects_from_csv_folder` returns `{subjects, conflicts}` with 3-digit ID normalization and reconciliation of sex, birth/death dates, genotype, treatment
 - GUI launch is via `mus1-gui` only; the CLI no longer exposes a `gui` subcommand.

@@ -111,6 +111,13 @@ def _init_managers() -> tuple[StateManager, PluginManager, DataManager, ProjectM
     from .core.lab_manager import LabManager
     state_manager = StateManager()
     plugin_manager = PluginManager()
+
+    # Discover external plugins via entry points
+    try:
+        plugin_manager.discover_entry_points()
+    except Exception:
+        pass
+
     data_manager = DataManager(state_manager, plugin_manager)
     lab_manager = LabManager()
     project_manager = ProjectManager(state_manager, plugin_manager, data_manager, lab_manager)
@@ -335,7 +342,7 @@ def add_videos(
 
 @assembly_app.command("list", help="List plugins that expose project-level assembly actions")
 def assembly_list(ctx: typer.Context):
-    _, plugin_manager, _dm, _pm = _get_managers(ctx)
+    _, plugin_manager, _dm, _pm = _get_managers()
     plugins = plugin_manager.get_plugins_with_project_actions()
     out_prefs = (ctx.obj or {}).get("output", {})
     if out_prefs.get("json"):
@@ -352,10 +359,10 @@ def assembly_list(ctx: typer.Context):
 
 @assembly_app.command("list-actions", help="List project-level actions for an assembly plugin")
 def assembly_list_actions(
+    ctx: typer.Context,
     plugin: str = typer.Argument(..., help="Plugin name"),
 ):
-    ctx = typer.get_current_context()
-    _, plugin_manager, _dm, _pm = _get_managers(ctx)
+    _, plugin_manager, _dm, _pm = _get_managers()
     actions = plugin_manager.get_project_actions_for_plugin(plugin)
     out_prefs = (ctx.obj or {}).get("output", {})
     if out_prefs.get("json"):
@@ -371,14 +378,14 @@ def assembly_list_actions(
 
 @assembly_app.command("run", help="Run a project-level assembly action with optional params.")
 def assembly_run(
+    ctx: typer.Context,
     project_path: Path = typer.Argument(..., help="Path to MUS1 project"),
     plugin: str = typer.Option(None, "--plugin", "-p", help="Assembly plugin name"),
     action: str = typer.Option(None, "--action", "-a", help="Action name to run"),
     params_file: Optional[Path] = typer.Option(None, "--params-file", "-f", help="YAML dict of params"),
     param: Optional[List[str]] = typer.Option(None, "--param", help="KEY=VALUE pairs; repeat for multiple"),
 ):
-    ctx = typer.get_current_context()
-    state_manager, plugin_manager, _dm, project_manager = _get_managers(ctx)
+    state_manager, plugin_manager, _dm, project_manager = _get_managers()
     out_prefs = (ctx.obj or {}).get("output", {})
     if not project_path.exists():
         raise typer.BadParameter(f"Project not found: {project_path}")
@@ -1935,6 +1942,116 @@ def project_media_assign(
     project_manager.save_project()
     state_manager.notify_observers()
     print("Assignment pass complete.")
+
+# -----------------------------------------------------------------------------
+# subject management
+# -----------------------------------------------------------------------------
+
+@project_app.command("remove-subjects", help="Remove subjects from a MUS1 project")
+def project_remove_subjects(
+    ctx: typer.Context,
+    project_path: Path = typer.Argument(..., help="Path to MUS1 project"),
+    subject_ids: Optional[List[str]] = typer.Option(None, "--subject-id", "-s", help="Subject IDs to remove (can specify multiple times)"),
+    all_subjects: bool = typer.Option(False, "--all", help="Remove all subjects from the project"),
+    confirm: bool = typer.Option(True, "--confirm/--no-confirm", help="Require confirmation before removal", show_default=True),
+):
+    """Remove subjects from a MUS1 project.
+
+    You can specify individual subject IDs with --subject-id or use --all to remove all subjects.
+    """
+    state_manager, _, _, project_manager = _get_managers()
+    out_prefs = (ctx.obj or {}).get("output", {})
+
+    if not project_path.exists():
+        raise typer.BadParameter(f"Project not found: {project_path}")
+
+    LoggingEventBus.get_instance().configure_default_file_handler(project_path)
+    project_manager.load_project(project_path)
+
+    # Get current subjects
+    current_subjects = list(state_manager.project_state.subjects.keys())
+    if not current_subjects:
+        if out_prefs.get("json"):
+            typer.echo('{"status": "success", "message": "No subjects to remove", "removed_count": 0}')
+        else:
+            typer.echo("No subjects found in project.")
+        return
+
+    # Determine which subjects to remove
+    if all_subjects:
+        subjects_to_remove = current_subjects
+        if confirm:
+            count = len(subjects_to_remove)
+            if not typer.confirm(f"Remove all {count} subjects from the project?"):
+                typer.echo("Operation cancelled.")
+                raise typer.Exit(code=0)
+    elif subject_ids:
+        subjects_to_remove = []
+        not_found = []
+        for sid in subject_ids:
+            if sid in current_subjects:
+                subjects_to_remove.append(sid)
+            else:
+                not_found.append(sid)
+
+        if not_found:
+            typer.secho(f"Warning: Subjects not found: {', '.join(not_found)}", fg="yellow")
+
+        if not subjects_to_remove:
+            typer.echo("No valid subjects to remove.")
+            return
+
+        if confirm:
+            if not typer.confirm(f"Remove {len(subjects_to_remove)} subject(s): {', '.join(subjects_to_remove)}?"):
+                typer.echo("Operation cancelled.")
+                raise typer.Exit(code=0)
+    else:
+        typer.echo("Error: Must specify either --all or one or more --subject-id values")
+        raise typer.Exit(code=1)
+
+    # Remove subjects
+    removed_count = 0
+    failed_removals = []
+
+    for subject_id in subjects_to_remove:
+        try:
+            # Remove subject from project state
+            if subject_id in state_manager.project_state.subjects:
+                del state_manager.project_state.subjects[subject_id]
+                removed_count += 1
+
+                # Also remove from any experiments that reference this subject
+                experiments_to_update = []
+                for exp_id, exp in state_manager.project_state.experiments.items():
+                    if exp.subject_id == subject_id:
+                        experiments_to_update.append(exp_id)
+
+                for exp_id in experiments_to_update:
+                    # Mark experiment as having unknown subject
+                    state_manager.project_state.experiments[exp_id].subject_id = "unknown"
+
+        except Exception as e:
+            failed_removals.append(f"{subject_id}: {str(e)}")
+
+    # Save the updated project
+    project_manager.save_project()
+
+    # Report results
+    if out_prefs.get("json"):
+        result = {
+            "status": "success",
+            "removed_count": removed_count,
+            "total_subjects_before": len(current_subjects),
+            "remaining_subjects": len(current_subjects) - removed_count
+        }
+        if failed_removals:
+            result["failed_removals"] = failed_removals
+        typer.echo(json.dumps(result))
+    else:
+        typer.echo(f"Successfully removed {removed_count} subject(s)")
+        typer.echo(f"Remaining subjects: {len(current_subjects) - removed_count}")
+        if failed_removals:
+            typer.secho(f"Failed to remove: {', '.join(failed_removals)}", fg="red")
 
 # -----------------------------------------------------------------------------
 # credentials management
