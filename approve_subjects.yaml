@@ -1,0 +1,44 @@
+subjects_data:
+- id: '974'
+  sex: null
+  birth_date: null
+  genotype: null
+  treatment: null
+  source_file: Mouse Zn MASTER - 6-14 WEEKS BEHAVIOR ANIMALS (1).csv
+- id: '995'
+  sex: null
+  birth_date: null
+  genotype: null
+  treatment: null
+  source_file: Mouse Zn MASTER - 6-14 WEEKS BEHAVIOR ANIMALS (1).csv
+- id: '427'
+  sex: null
+  birth_date: null
+  genotype: null
+  treatment: null
+  source_file: Mouse Zn MASTER - 6-14 WEEKS BEHAVIOR ANIMALS (1).csv
+- id: '692'
+  sex: null
+  birth_date: null
+  genotype: null
+  treatment: null
+  source_file: Mouse Zn MASTER - 6-14 WEEKS BEHAVIOR ANIMALS (1).csv
+- id: '430'
+  sex: null
+  birth_date: null
+  genotype: null
+  treatment: null
+  source_file: Mouse Zn MASTER - 6-14 WEEKS BEHAVIOR ANIMALS (1).csv
+- id: '215'
+  sex: null
+  birth_date: null
+  genotype: null
+  treatment: null
+  source_file: Mouse Zn MASTER - 6-14 WEEKS BEHAVIOR ANIMALS (1).csv
+subject_ids:
+- '974'
+- '995'
+- '427'
+- '692'
+- '430'
+- '215'

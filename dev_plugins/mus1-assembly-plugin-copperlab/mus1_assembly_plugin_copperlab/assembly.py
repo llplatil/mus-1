@@ -148,7 +148,7 @@ class CopperlabAssembly(BasePlugin):
     def _parse_csv_experiments(self, csv_path: Path) -> List[Dict[str, Any]]:
         """Parse experiment data from CSV file."""
         try:
-            df = pd.read_csv(csv_path, encoding="utf-8", errors="ignore")
+            df = pd.read_csv(csv_path, encoding="utf-8", encoding_errors="ignore")
         except Exception:
             # Fallback to manual parsing if pandas fails
             return self._parse_csv_manual(csv_path)
@@ -223,7 +223,16 @@ class CopperlabAssembly(BasePlugin):
 
     def _extract_subject_id_from_row(self, row) -> Optional[str]:
         """Extract subject ID from DataFrame row."""
+        import math
         for col in row:
+            # Handle numeric values read by pandas (e.g., 974.0)
+            if isinstance(col, (int, float)) and not (isinstance(col, float) and math.isnan(col)):
+                try:
+                    val = int(col)
+                    if 0 < val < 1000:
+                        return f"{val:03d}"
+                except Exception:
+                    pass
             col_str = str(col).strip()
             if col_str and col_str.isdigit() and len(col_str) <= 3:
                 return f"{int(col_str):03d}"
@@ -309,7 +318,7 @@ class CopperlabAssembly(BasePlugin):
     def _extract_subjects_from_single_csv(self, csv_path: Path) -> List[Dict[str, Any]]:
         """Extract subjects from a single CSV file."""
         try:
-            df = pd.read_csv(csv_path, encoding="utf-8", errors="ignore")
+            df = pd.read_csv(csv_path, encoding="utf-8", encoding_errors="ignore")
         except Exception:
             return []
 
@@ -331,7 +340,17 @@ class CopperlabAssembly(BasePlugin):
         treatment = None
 
         # Extract subject ID
+        import math
         for col in row:
+            # Prefer numeric detection first
+            if isinstance(col, (int, float)) and not (isinstance(col, float) and math.isnan(col)):
+                try:
+                    val = int(col)
+                    if 0 < val < 1000:
+                        subject_id = f"{val:03d}"
+                        break
+                except Exception:
+                    pass
             col_str = str(col).strip()
             if col_str and col_str.isdigit() and len(col_str) <= 3:
                 subject_id = f"{int(col_str):03d}"
@@ -394,7 +413,7 @@ class CopperlabAssembly(BasePlugin):
     def _validate_csv_file(self, csv_path: Path) -> Dict[str, Any]:
         """Validate a CSV file for data consistency."""
         try:
-            df = pd.read_csv(csv_path, encoding="utf-8", errors="ignore")
+            df = pd.read_csv(csv_path, encoding="utf-8", encoding_errors="ignore")
         except Exception as e:
             return {"errors": [f"Failed to read CSV: {e}"], "warnings": [], "stats": {}}
 
@@ -545,17 +564,19 @@ class CopperlabAssembly(BasePlugin):
                         from mus1.core.metadata import Sex
                         sex_enum = Sex.F
 
-                    project_manager.add_subject(
+                    kwargs = dict(
                         subject_id=subject_data["id"],
-                        sex=sex_enum,
                         birth_date=subject_data.get("birth_date"),
                         genotype=subject_data.get("genotype"),
-                        treatment=subject_data.get("treatment")
+                        treatment=subject_data.get("treatment"),
                     )
+                    if sex_enum is not None:
+                        kwargs["sex"] = sex_enum
+                    project_manager.add_subject(**kwargs)
 
                     approved_subjects.append(subject_data)
                 except Exception as e:
-                    logger.error(f"Failed to create subject {subject_data[id]}: {e}")
+                    logger.error(f"Failed to create subject {subject_data['id']}: {e}")
 
         return {
             "status": "success",
