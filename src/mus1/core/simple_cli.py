@@ -23,7 +23,7 @@ from .config_manager import get_config_manager, set_config, get_config
 from .repository import ColonyRepository, SubjectRepository, ExperimentRepository
 from .schema import Database
 from .setup_service import (
-    SetupService, SetupStatusDTO, get_setup_service
+    SetupService, SetupStatusDTO, get_setup_service, MUS1RootLocationDTO
 )
 
 app = typer.Typer(
@@ -449,6 +449,60 @@ def scan_videos(
 # SETUP COMMANDS
 # ===========================================
 
+@setup_app.command("root")
+def setup_mus1_root(
+    path: Path = typer.Argument(..., help="Path to MUS1 root directory"),
+    create: bool = typer.Option(True, help="Create directory if it doesn't exist"),
+    copy_config: bool = typer.Option(True, help="Copy existing configuration to new location"),
+):
+    """Set up MUS1 root location for configuration and data storage."""
+    setup_service = get_setup_service()
+
+    # Check if already configured
+    if setup_service.is_mus1_root_configured():
+        existing_path = setup_service.get_mus1_root_path()
+        rich_print(f"[yellow]⚠[/yellow] MUS1 root location already configured at: {existing_path}")
+        if not Confirm.ask("Reconfigure MUS1 root location?"):
+            rich_print("[blue]ℹ[/blue] Setup cancelled")
+            return
+
+    # Create DTO and run setup
+    root_dto = MUS1RootLocationDTO(
+        path=path,
+        create_if_missing=create,
+        copy_existing_config=copy_config
+    )
+
+    try:
+        result = setup_service.setup_mus1_root_location(root_dto)
+
+        if result["success"]:
+            rich_print("[green]✓[/green] MUS1 root location configured successfully!")
+            rich_print(f"[blue]ℹ[/blue] Root path: {result['path']}")
+            rich_print(f"[blue]ℹ[/blue] Configuration saved to: {result['config_path']}")
+
+            # Show created subdirectories
+            subdirs = ["config", "logs", "cache", "temp"]
+            rich_print("\n[blue]ℹ[/blue] Created subdirectories:")
+            for subdir in subdirs:
+                subdir_path = path / subdir
+                if subdir_path.exists():
+                    rich_print(f"  ✓ {subdir_path}")
+
+            # Next steps
+            rich_print("\n[bold]Next steps:[/bold]")
+            rich_print("1. Run 'mus1 setup user' to configure your user profile")
+            rich_print("2. Run 'mus1 setup shared' to configure shared storage")
+            rich_print("3. Run 'mus1 lab create' to set up your first lab")
+        else:
+            rich_print(f"[red]✗[/red] {result['message']}")
+            raise typer.Exit(1)
+
+    except Exception as e:
+        rich_print(f"[red]✗[/red] Setup failed: {e}")
+        raise typer.Exit(1)
+
+
 @setup_app.command("user")
 def setup_user(
     name: Optional[str] = typer.Option(None, help="User's full name"),
@@ -572,6 +626,16 @@ def setup_status():
     table.add_column("Status", style="green")
     table.add_column("Details")
 
+    # MUS1 Root Location
+    if status.mus1_root_configured:
+        path = Path(status.mus1_root_path)
+        if path.exists():
+            table.add_row("MUS1 Root", "✓ Configured", f"Path: {status.mus1_root_path}")
+        else:
+            table.add_row("MUS1 Root", "⚠ Path missing", f"Configured but doesn't exist: {status.mus1_root_path}")
+    else:
+        table.add_row("MUS1 Root", "⚠ Not configured", "Run 'mus1 setup root'")
+
     # User configuration
     if status.user_configured:
         table.add_row("User Profile", "✓ Configured", f"Name: {status.user_name}")
@@ -612,19 +676,82 @@ def setup_wizard():
     rich_print(Panel.fit(
         "[bold blue]Welcome to MUS1 Setup Wizard![/bold blue]\n\n"
         "This wizard will help you configure MUS1 for your research workflow.\n"
-        "We'll set up your user profile, shared storage, labs, and projects.",
+        "We'll set up your MUS1 root location, user profile, shared storage, labs, and projects.",
         title="🎯 MUS1 First-Time Setup"
     ))
 
     # Check if already configured
-    user_name = get_config("user.name")
-    if user_name:
+    setup_service = get_setup_service()
+    if setup_service.is_user_configured():
+        user_name = get_config("user.name")
         rich_print(f"[yellow]⚠[/yellow] MUS1 is already configured for user: {user_name}")
         if not Confirm.ask("Run setup wizard anyway?"):
             rich_print("[blue]ℹ[/blue] Setup cancelled")
             return
 
-    rich_print("\n[bold]Step 1: User Profile Setup[/bold]")
+    rich_print("\n[bold]Step 1: MUS1 Root Location Setup[/bold]")
+    rich_print("MUS1 needs a directory to store its configuration and data.")
+    rich_print(f"Current repository location: {Path.cwd()}")
+
+    # MUS1 Root Location setup
+    use_current = Confirm.ask("Use current repository location as MUS1 root?", default=True)
+    mus1_root_path = None
+
+    if use_current:
+        mus1_root_path = Path.cwd()
+        rich_print(f"[blue]ℹ[/blue] Using current location: {mus1_root_path}")
+    else:
+        # Ask for custom location
+        if platform.system() == "Darwin":  # macOS
+            suggested_root = str(Path.home() / "Documents" / "MUS1-Data")
+        else:
+            suggested_root = str(Path.home() / "mus1-data")
+
+        root_input = Prompt.ask("Enter MUS1 root directory path", default=suggested_root)
+        mus1_root_path = Path(root_input)
+
+        # Validate and create if needed
+        if not mus1_root_path.exists():
+            if Confirm.ask(f"Path {mus1_root_path} doesn't exist. Create it?", default=True):
+                try:
+                    mus1_root_path.mkdir(parents=True, exist_ok=True)
+                    rich_print("[green]✓[/green] Created MUS1 root directory")
+                except Exception as e:
+                    rich_print(f"[red]✗[/red] Failed to create directory: {e}")
+                    mus1_root_path = Path.cwd()  # Fall back to current directory
+                    rich_print(f"[blue]ℹ[/blue] Falling back to current location: {mus1_root_path}")
+            else:
+                mus1_root_path = Path.cwd()  # Fall back to current directory
+                rich_print(f"[blue]ℹ[/blue] Using current location: {mus1_root_path}")
+
+        if mus1_root_path.exists():
+            # Test permissions
+            test_file = mus1_root_path / ".mus1_test"
+            try:
+                test_file.write_text("test")
+                test_file.unlink()
+                rich_print("[green]✓[/green] Write permissions verified")
+            except Exception as e:
+                rich_print(f"[yellow]⚠[/yellow] Permission issue: {e}")
+                rich_print("[blue]ℹ[/blue] You can fix permissions later")
+
+    # Setup MUS1 root location
+    root_dto = MUS1RootLocationDTO(
+        path=mus1_root_path,
+        create_if_missing=True,
+        copy_existing_config=not use_current  # Only copy if using custom location
+    )
+
+    try:
+        root_result = setup_service.setup_mus1_root_location(root_dto)
+        if root_result["success"]:
+            rich_print("[green]✓[/green] MUS1 root location configured")
+        else:
+            rich_print(f"[yellow]⚠[/yellow] MUS1 root setup issue: {root_result['message']}")
+    except Exception as e:
+        rich_print(f"[yellow]⚠[/yellow] Could not setup MUS1 root: {e}")
+
+    rich_print("\n[bold]Step 2: User Profile Setup[/bold]")
     rich_print("Let's set up your user profile...")
 
     # User profile setup
@@ -641,7 +768,7 @@ def setup_wizard():
         suggested_shared = str(Path.home() / "mus1-shared")
 
     # Ask about shared storage
-    rich_print("\n[bold]Step 2: Shared Storage Setup[/bold]")
+    rich_print("\n[bold]Step 3: Shared Storage Setup[/bold]")
     rich_print("MUS1 can use shared storage for collaborative projects.")
     rich_print(f"Suggested path for macOS: {suggested_shared}")
 
@@ -689,7 +816,7 @@ def setup_wizard():
     # Create default directories
     default_projects_dir.mkdir(parents=True, exist_ok=True)
 
-    rich_print("\n[bold]Step 3: Lab Setup[/bold]")
+    rich_print("\n[bold]Step 4: Lab Setup[/bold]")
     create_lab_now = Confirm.ask("Do you want to create your first lab now?", default=True)
 
     lab_created = False
@@ -728,6 +855,7 @@ def setup_wizard():
     table.add_column("Status", style="green")
     table.add_column("Details")
 
+    table.add_row("MUS1 Root", "✓ Configured", str(mus1_root_path))
     table.add_row("User Profile", "✓ Configured", f"Name: {name}")
     table.add_row("Email", "✓ Configured", email)
     table.add_row("Organization", "✓ Configured", organization)

@@ -10,6 +10,7 @@ from PySide6.QtCore import Qt, QSize, Signal
 from PySide6.QtGui import QPixmap, QPalette, QBrush, QColor, QPainter, QImage, QIcon
 from ..core.project_manager_clean import ProjectManagerClean
 from ..core.config_manager import get_config
+from ..core.setup_service import get_setup_service
 
 
 class ProjectSelectionDialog(QDialog):
@@ -172,33 +173,78 @@ class ProjectSelectionDialog(QDialog):
         """Refresh the list of existing projects."""
         self.projects_list.clear()
         try:
+            # Get setup service for better project discovery
+            setup_service = get_setup_service()
+            labs = setup_service.get_labs()
+
             # Determine source: Local or Shared
             location_choice = None
             if hasattr(self, 'existing_location_combo'):
                 location_choice = self.existing_location_combo.currentText().lower()
 
-            # Discover projects by looking for project directories
-            # A project directory contains mus1.db file
+            projects = []
+
+            # Discover projects from labs (preferred method)
+            for lab_id, lab_config in labs.items():
+                lab_projects = lab_config.get("projects", [])
+                for project in lab_projects:
+                    project_path = Path(project["path"])
+                    if project_path.exists() and (project_path / "mus1.db").exists():
+                        projects.append({
+                            "path": project_path,
+                            "name": project["name"],
+                            "lab": lab_id,
+                            "source": "lab_config"
+                        })
+
+            # Also discover projects from filesystem (fallback)
             if location_choice == "shared":
                 shared_root = get_config("storage.shared_root", "/Volumes")
                 base_dir = Path(shared_root) / "Projects"
             else:
                 base_dir = self.project_root
 
-            projects = []
             if base_dir.exists():
                 for item in base_dir.iterdir():
                     if item.is_dir() and (item / "mus1.db").exists():
-                        projects.append(item)
+                        # Check if already found in lab config
+                        already_found = any(p["path"] == item for p in projects)
+                        if not already_found:
+                            projects.append({
+                                "path": item,
+                                "name": item.name,
+                                "lab": "Unknown",
+                                "source": "filesystem"
+                            })
 
         except Exception as e:
             print(f"Error listing projects: {e}")
             projects = []
-        for project_path in projects:
-            item = QListWidgetItem(project_path.name)
-            # Keep full path for selection handling if needed later
-            item.setData(Qt.UserRole, str(project_path))
+
+        # Add projects to list with lab information
+        for project in projects:
+            display_name = f"{project['name']}"
+            if project['lab'] != "Unknown":
+                display_name += f" (Lab: {project['lab']})"
+
+            item = QListWidgetItem(display_name)
+            # Store both name and full path
+            item.setData(Qt.UserRole, str(project['path']))
+            item.setData(Qt.UserRole + 1, project['name'])  # Store clean name separately
             self.projects_list.addItem(item)
+
+        # Show helpful message if no projects found
+        if not projects:
+            if setup_service.is_user_configured():
+                empty_item = QListWidgetItem("No projects found. Create your first project!")
+                empty_item.setFlags(empty_item.flags() & ~Qt.ItemIsSelectable)
+                empty_item.setForeground(QColor("gray"))
+                self.projects_list.addItem(empty_item)
+            else:
+                empty_item = QListWidgetItem("Complete setup first to create projects")
+                empty_item.setFlags(empty_item.flags() & ~Qt.ItemIsSelectable)
+                empty_item.setForeground(QColor("gray"))
+                self.projects_list.addItem(empty_item)
     
     def create_new_project(self):
         """Create a new project with the given name."""
@@ -253,12 +299,22 @@ class ProjectSelectionDialog(QDialog):
         current_item = self.projects_list.currentItem()
         if not current_item:
             # No project selected
-            # In a real app, you might show a dialog
             print("Please select a project")
             return
-        
-        self.selected_project_name = current_item.text()
-        # Capture full path from user data if present
+
+        # Get clean project name (stored separately to avoid lab info in name)
+        clean_name = current_item.data(Qt.UserRole + 1)
+        if clean_name:
+            self.selected_project_name = clean_name
+        else:
+            # Fallback to text but try to clean it
+            text = current_item.text()
+            if " (Lab: " in text:
+                self.selected_project_name = text.split(" (Lab: ")[0]
+            else:
+                self.selected_project_name = text
+
+        # Capture full path from user data
         data_path = current_item.data(Qt.UserRole)
         if data_path:
             self.selected_project_path = data_path

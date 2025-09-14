@@ -89,8 +89,22 @@ class ColonyDTO:
 
 
 @dataclass
+class MUS1RootLocationDTO:
+    """Data transfer object for MUS1 root location setup."""
+    path: Path
+    create_if_missing: bool = True
+    copy_existing_config: bool = True
+
+    def __post_init__(self):
+        """Validate MUS1 root location data."""
+        if not self.path:
+            raise ValueError("MUS1 root path is required")
+
+
+@dataclass
 class SetupWorkflowDTO:
     """Complete setup workflow data transfer object."""
+    mus1_root_location: Optional[MUS1RootLocationDTO] = None
     user_profile: Optional[UserProfileDTO] = None
     shared_storage: Optional[SharedStorageDTO] = None
     lab: Optional[LabDTO] = None
@@ -105,6 +119,8 @@ class SetupWorkflowDTO:
 @dataclass
 class SetupStatusDTO:
     """Status information for setup components."""
+    mus1_root_configured: bool = False
+    mus1_root_path: Optional[str] = None
     user_configured: bool = False
     user_name: Optional[str] = None
     shared_storage_configured: bool = False
@@ -128,6 +144,114 @@ class SetupService:
 
     def __init__(self):
         self.config_manager = get_config_manager()
+
+    # ===========================================
+    # MUS1 ROOT LOCATION MANAGEMENT
+    # ===========================================
+
+    def is_mus1_root_configured(self) -> bool:
+        """Check if MUS1 root location is configured."""
+        return bool(get_config("mus1.root_path"))
+
+    def get_mus1_root_path(self) -> Optional[Path]:
+        """Get configured MUS1 root path."""
+        path_str = get_config("mus1.root_path")
+        return Path(path_str) if path_str else None
+
+    def setup_mus1_root_location(self, root_dto: MUS1RootLocationDTO) -> Dict[str, Any]:
+        """
+        Set up MUS1 root location.
+
+        Args:
+            root_dto: MUS1 root location configuration
+
+        Returns:
+            Dict with success status and details
+        """
+        # Validate/create directory
+        if not root_dto.path.exists():
+            if root_dto.create_if_missing:
+                try:
+                    root_dto.path.mkdir(parents=True, exist_ok=True)
+                except Exception as e:
+                    return {
+                        "success": False,
+                        "message": f"Failed to create MUS1 root directory: {e}"
+                    }
+            else:
+                return {
+                    "success": False,
+                    "message": f"MUS1 root directory does not exist: {root_dto.path}"
+                }
+
+        # Verify it's a directory
+        if not root_dto.path.is_dir():
+            return {
+                "success": False,
+                "message": f"MUS1 root path is not a directory: {root_dto.path}"
+            }
+
+        # Create MUS1 subdirectories
+        subdirs = ["config", "logs", "cache", "temp"]
+        for subdir in subdirs:
+            (root_dto.path / subdir).mkdir(exist_ok=True)
+
+        # If copying existing config, move the config database
+        if root_dto.copy_existing_config:
+            self._move_config_to_new_location(root_dto.path)
+
+        # Save configuration
+        set_config("mus1.root_path", str(root_dto.path), scope="install")
+        set_config("mus1.root_setup_date", datetime.now().isoformat(), scope="install")
+
+        return {
+            "success": True,
+            "message": "MUS1 root location configured successfully",
+            "path": root_dto.path,
+            "config_path": str(self.config_manager.db_path)
+        }
+
+    def _move_config_to_new_location(self, new_root: Path):
+        """
+        Move existing configuration to new MUS1 root location.
+        This is called when user chooses a custom location.
+        """
+        try:
+            # Create temporary config file for bootstrapping
+            temp_config = Path.home() / ".mus1_root"
+            with open(temp_config, 'w') as f:
+                f.write(str(new_root))
+
+            # Get current config database path
+            current_db_path = self.config_manager.db_path
+
+            # Create new config directory in MUS1 root
+            new_config_dir = new_root / "config"
+            new_config_dir.mkdir(exist_ok=True)
+
+            # Copy config database to new location
+            import shutil
+            new_db_path = new_config_dir / current_db_path.name
+
+            if current_db_path.exists():
+                shutil.copy2(current_db_path, new_db_path)
+
+                # Update the config manager to use the new database path
+                # This requires reinitializing the config manager with the new path
+                from .config_manager import init_config_manager
+                init_config_manager(new_db_path)
+
+        except Exception as e:
+            # If moving fails, continue with setup but log the error
+            print(f"Warning: Could not move config to new location: {e}")
+        finally:
+            # Clean up temporary config file
+            try:
+                temp_config = Path.home() / ".mus1_root"
+                if temp_config.exists():
+                    temp_config.unlink()
+            except Exception:
+                pass
 
     # ===========================================
     # USER PROFILE MANAGEMENT
@@ -373,6 +497,8 @@ class SetupService:
         projects_count = sum(len(lab.get("projects", [])) for lab in labs.values())
 
         return SetupStatusDTO(
+            mus1_root_configured=self.is_mus1_root_configured(),
+            mus1_root_path=get_config("mus1.root_path"),
             user_configured=self.is_user_configured(),
             user_name=get_config("user.name"),
             shared_storage_configured=self.is_shared_storage_configured(),
@@ -399,7 +525,15 @@ class SetupService:
         }
 
         try:
-            # Step 1: User Profile
+            # Step 1: MUS1 Root Location
+            if workflow_dto.mus1_root_location:
+                root_result = self.setup_mus1_root_location(workflow_dto.mus1_root_location)
+                if root_result["success"]:
+                    results["steps_completed"].append("mus1_root_location")
+                else:
+                    results["errors"].append(f"MUS1 root location: {root_result['message']}")
+
+            # Step 2: User Profile
             if workflow_dto.user_profile:
                 user_result = self.setup_user_profile(workflow_dto.user_profile)
                 if user_result["success"]:
@@ -407,7 +541,7 @@ class SetupService:
                 else:
                     results["errors"].append(f"User profile: {user_result['message']}")
 
-            # Step 2: Shared Storage
+            # Step 3: Shared Storage
             if workflow_dto.shared_storage:
                 storage_result = self.setup_shared_storage(workflow_dto.shared_storage)
                 if storage_result["success"]:
@@ -415,7 +549,7 @@ class SetupService:
                 else:
                     results["errors"].append(f"Shared storage: {storage_result['message']}")
 
-            # Step 3: Lab
+            # Step 4: Lab
             if workflow_dto.lab:
                 lab_result = self.create_lab(workflow_dto.lab)
                 if lab_result["success"]:
@@ -423,7 +557,7 @@ class SetupService:
                 else:
                     results["errors"].append(f"Lab: {lab_result['message']}")
 
-            # Step 4: Colony
+            # Step 5: Colony
             if workflow_dto.colony:
                 colony_result = self.add_colony_to_lab(workflow_dto.colony)
                 if colony_result["success"]:

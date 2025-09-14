@@ -76,6 +76,14 @@ class ConfigManager:
 
     def _get_default_db_path(self) -> Path:
         """Get the default database path."""
+        # First check if MUS1 root is configured
+        mus1_root = self._get_mus1_root_path()
+        if mus1_root:
+            config_dir = mus1_root / "config"
+            config_dir.mkdir(parents=True, exist_ok=True)
+            return config_dir / "config.db"
+
+        # Fall back to platform-specific defaults
         if os.name == "nt":  # Windows
             appdata = os.environ.get("APPDATA", str(Path.home() / "AppData/Roaming"))
             config_dir = Path(appdata) / "mus1"
@@ -90,6 +98,26 @@ class ConfigManager:
 
         config_dir.mkdir(parents=True, exist_ok=True)
         return config_dir / "config.db"
+
+    def _get_mus1_root_path(self) -> Optional[Path]:
+        """Get the configured MUS1 root path."""
+        # Try to read from environment variable first
+        env_root = os.environ.get("MUS1_ROOT")
+        if env_root:
+            return Path(env_root)
+
+        # Try to read from a temporary config file (for bootstrapping)
+        temp_config = Path.home() / ".mus1_root"
+        if temp_config.exists():
+            try:
+                with open(temp_config, 'r') as f:
+                    path_str = f.read().strip()
+                    if path_str:
+                        return Path(path_str)
+            except Exception:
+                pass
+
+        return None
 
     @contextmanager
     def _get_connection(self):

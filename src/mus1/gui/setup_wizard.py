@@ -28,7 +28,7 @@ from PySide6.QtGui import QFont, QPixmap, QIcon
 
 from ..core.setup_service import (
     SetupService, UserProfileDTO, SharedStorageDTO, LabDTO, ColonyDTO,
-    SetupWorkflowDTO, SetupStatusDTO, get_setup_service
+    SetupWorkflowDTO, SetupStatusDTO, get_setup_service, MUS1RootLocationDTO
 )
 
 
@@ -53,7 +53,15 @@ class SetupWorker(QObject):
         try:
             self.progress.emit("Starting MUS1 setup...")
 
-            # Step 1: User Profile
+            # Step 1: MUS1 Root Location
+            if self.workflow_dto.mus1_root_location:
+                self.progress.emit("Setting up MUS1 root location...")
+                result = self.setup_service.setup_mus1_root_location(self.workflow_dto.mus1_root_location)
+                if not result["success"]:
+                    self.error.emit(f"MUS1 root location setup failed: {result['message']}")
+                    return
+
+            # Step 2: User Profile
             if self.workflow_dto.user_profile:
                 self.progress.emit("Setting up user profile...")
                 result = self.setup_service.setup_user_profile(self.workflow_dto.user_profile)
@@ -61,7 +69,7 @@ class SetupWorker(QObject):
                     self.error.emit(f"User profile setup failed: {result['message']}")
                     return
 
-            # Step 2: Shared Storage
+            # Step 3: Shared Storage
             if self.workflow_dto.shared_storage:
                 self.progress.emit("Configuring shared storage...")
                 result = self.setup_service.setup_shared_storage(self.workflow_dto.shared_storage)
@@ -69,7 +77,7 @@ class SetupWorker(QObject):
                     self.error.emit(f"Shared storage setup failed: {result['message']}")
                     return
 
-            # Step 3: Lab
+            # Step 4: Lab
             if self.workflow_dto.lab:
                 self.progress.emit("Creating lab...")
                 result = self.setup_service.create_lab(self.workflow_dto.lab)
@@ -77,7 +85,7 @@ class SetupWorker(QObject):
                     self.error.emit(f"Lab creation failed: {result['message']}")
                     return
 
-            # Step 4: Colony
+            # Step 5: Colony
             if self.workflow_dto.colony:
                 self.progress.emit("Adding colony...")
                 result = self.setup_service.add_colony_to_lab(self.workflow_dto.colony)
@@ -128,6 +136,139 @@ class WelcomePage(QWizardPage):
             layout.addWidget(warning_label)
 
         self.setLayout(layout)
+
+
+class MUS1RootLocationPage(QWizardPage):
+    """Page for choosing MUS1 root location."""
+
+    def __init__(self):
+        super().__init__()
+        self.setTitle("MUS1 Root Location")
+        self.setSubTitle("Choose where MUS1 should store its configuration and data")
+
+        layout = QVBoxLayout()
+
+        # Description
+        desc_label = QLabel(
+            "MUS1 needs a directory to store its configuration, logs, and other data.\n\n"
+            "You can use the current location (where you cloned the MUS1 repository) "
+            "or choose a different location for better organization."
+        )
+        desc_label.setWordWrap(True)
+        layout.addWidget(desc_label)
+
+        # Current location info
+        current_location_group = QGroupBox("Current Repository Location")
+        current_layout = QVBoxLayout()
+
+        self.current_path_label = QLabel()
+        self.current_path_label.setText(f"📁 {Path.cwd()}")
+        self.current_path_label.setStyleSheet("font-family: monospace; color: blue;")
+        current_layout.addWidget(self.current_path_label)
+
+        use_current_checkbox = QCheckBox("Use this location as MUS1 root")
+        use_current_checkbox.setChecked(True)
+        use_current_checkbox.toggled.connect(self.on_use_current_toggled)
+        current_layout.addWidget(use_current_checkbox)
+
+        current_location_group.setLayout(current_layout)
+        layout.addWidget(current_location_group)
+
+        # Custom location option
+        custom_location_group = QGroupBox("Choose Custom Location")
+        custom_layout = QVBoxLayout()
+
+        custom_desc = QLabel(
+            "Select a different directory for MUS1 data. This keeps your codebase "
+            "separate from your configuration and project data."
+        )
+        custom_desc.setWordWrap(True)
+        custom_layout.addWidget(custom_desc)
+
+        # Path selection
+        path_layout = QHBoxLayout()
+        self.custom_path_edit = QLineEdit()
+        self.custom_path_edit.setPlaceholderText("Select or enter MUS1 root directory path")
+        self.custom_path_edit.setEnabled(False)
+        path_layout.addWidget(self.custom_path_edit)
+
+        self.browse_button = QPushButton("Browse...")
+        self.browse_button.setEnabled(False)
+        self.browse_button.clicked.connect(self.browse_custom_path)
+        path_layout.addWidget(self.browse_button)
+
+        custom_layout.addLayout(path_layout)
+
+        # Platform-specific suggestions
+        if platform.system() == "Darwin":  # macOS
+            suggestion_label = QLabel(
+                "💡 Suggested: ~/Documents/MUS1-Data or /Volumes/MUS1-Data"
+            )
+        else:
+            suggestion_label = QLabel(
+                "💡 Suggested: ~/mus1-data or /opt/mus1-data"
+            )
+        suggestion_label.setStyleSheet("color: gray; font-size: 11px;")
+        custom_layout.addWidget(suggestion_label)
+
+        custom_location_group.setLayout(custom_layout)
+        layout.addWidget(custom_location_group)
+
+        # Copy existing config option
+        self.copy_config_checkbox = QCheckBox(
+            "Copy existing configuration (if any) to new location"
+        )
+        self.copy_config_checkbox.setChecked(True)
+        self.copy_config_checkbox.setEnabled(False)
+        layout.addWidget(self.copy_config_checkbox)
+
+        self.setLayout(layout)
+
+        # Connect signals
+        self.use_current_checkbox = use_current_checkbox
+
+    def on_use_current_toggled(self, checked: bool):
+        """Handle toggling between current and custom location."""
+        self.custom_path_edit.setEnabled(not checked)
+        self.browse_button.setEnabled(not checked)
+        self.copy_config_checkbox.setEnabled(not checked)
+
+        if checked:
+            self.copy_config_checkbox.setChecked(False)
+
+    def browse_custom_path(self):
+        """Browse for custom MUS1 root path."""
+        path = QFileDialog.getExistingDirectory(
+            self, "Select MUS1 Root Directory",
+            self.custom_path_edit.text() or str(Path.home())
+        )
+        if path:
+            self.custom_path_edit.setText(path)
+
+    def validatePage(self) -> bool:
+        """Validate MUS1 root location selection."""
+        if self.use_current_checkbox.isChecked():
+            return True  # Current location is always valid
+
+        # Validate custom path
+        custom_path = self.custom_path_edit.text().strip()
+        if not custom_path:
+            QMessageBox.warning(self, "Validation Error", "Please enter a path for MUS1 root location")
+            return False
+
+        path = Path(custom_path)
+        if path.exists() and not path.is_dir():
+            QMessageBox.warning(self, "Validation Error", "Selected path is not a directory")
+            return False
+
+        return True
+
+    def get_selected_path(self) -> Path:
+        """Get the selected MUS1 root path."""
+        if self.use_current_checkbox.isChecked():
+            return Path.cwd()
+        else:
+            return Path(self.custom_path_edit.text().strip())
 
 
 class UserProfilePage(QWizardPage):
@@ -392,15 +533,23 @@ class ConclusionPage(QWizardPage):
         wizard = self.wizard()
 
         # Build summary
-        summary = "<h3>🎉 MUS1 Setup Complete!</h3><br>"
+        summary = "<h3>MUS1 Setup Summary</h3><br>"
         summary += "<table border='1' cellpadding='5'>"
         summary += "<tr><th>Component</th><th>Status</th><th>Details</th></tr>"
 
+        # MUS1 Root Location
+        if hasattr(wizard, 'mus1_root_dto') and wizard.mus1_root_dto:
+            summary += f"<tr><td>MUS1 Root</td><td>✓ Configured</td><td>{wizard.mus1_root_dto.path}</td></tr>"
+        else:
+            summary += "<tr><td>MUS1 Root</td><td>⚠ Not configured</td><td>Will use default location</td></tr>"
+
         # User Profile
-        if hasattr(wizard, 'user_dto'):
+        if hasattr(wizard, 'user_dto') and wizard.user_dto:
             summary += f"<tr><td>User Profile</td><td>✓ Configured</td><td>Name: {wizard.user_dto.name}</td></tr>"
             summary += f"<tr><td>Email</td><td>✓ Configured</td><td>{wizard.user_dto.email}</td></tr>"
             summary += f"<tr><td>Organization</td><td>✓ Configured</td><td>{wizard.user_dto.organization}</td></tr>"
+        else:
+            summary += "<tr><td>User Profile</td><td>⚠ Not configured</td><td>Will be configured during setup</td></tr>"
 
         # Shared Storage
         if hasattr(wizard, 'shared_dto') and wizard.shared_dto:
@@ -453,12 +602,14 @@ class MUS1SetupWizard(QWizard):
         self.setMinimumSize(600, 500)
 
         # Initialize data
+        self.mus1_root_dto = None
         self.user_dto = None
         self.shared_dto = None
         self.lab_dto = None
 
         # Add pages
         self.addPage(WelcomePage())
+        self.addPage(MUS1RootLocationPage())
         self.addPage(UserProfilePage())
         self.addPage(SharedStoragePage())
         self.addPage(LabSetupPage())
@@ -470,15 +621,17 @@ class MUS1SetupWizard(QWizard):
     def on_page_changed(self, page_id: int):
         """Handle page changes."""
         if page_id == 4:  # Conclusion page
+            # Collect data from pages before initializing conclusion page
+            self.collect_setup_data()
             self.run_setup()
 
     def run_setup(self):
         """Run the setup process."""
-        # Collect data from pages
-        self.collect_setup_data()
+        # Data collection already done in on_page_changed
 
         # Create workflow DTO
         workflow_dto = SetupWorkflowDTO(
+            mus1_root_location=self.mus1_root_dto,
             user_profile=self.user_dto,
             shared_storage=self.shared_dto,
             lab=self.lab_dto
@@ -500,8 +653,19 @@ class MUS1SetupWizard(QWizard):
 
     def collect_setup_data(self):
         """Collect setup data from wizard pages."""
+        # MUS1 Root Location
+        root_page = self.page(1)  # MUS1RootLocationPage
+        selected_path = root_page.get_selected_path()
+        copy_config = root_page.copy_config_checkbox.isChecked() if hasattr(root_page, 'copy_config_checkbox') else False
+
+        self.mus1_root_dto = MUS1RootLocationDTO(
+            path=selected_path,
+            create_if_missing=True,
+            copy_existing_config=copy_config
+        )
+
         # User profile
-        user_page = self.page(1)  # UserProfilePage
+        user_page = self.page(2)  # UserProfilePage
         self.user_dto = UserProfileDTO(
             name=user_page.field("user_name").strip(),
             email=user_page.field("user_email").strip(),
@@ -513,7 +677,7 @@ class MUS1SetupWizard(QWizard):
         )
 
         # Shared storage
-        storage_page = self.page(2)  # SharedStoragePage
+        storage_page = self.page(3)  # SharedStoragePage
         if storage_page.configure_checkbox.isChecked():
             self.shared_dto = SharedStorageDTO(
                 path=Path(storage_page.path_edit.text().strip()),
@@ -522,7 +686,7 @@ class MUS1SetupWizard(QWizard):
             )
 
         # Lab
-        lab_page = self.page(3)  # LabSetupPage
+        lab_page = self.page(4)  # LabSetupPage
         if lab_page.create_checkbox.isChecked():
             self.lab_dto = LabDTO(
                 id=lab_page.lab_id_edit.text().strip(),

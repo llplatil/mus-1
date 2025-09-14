@@ -82,6 +82,7 @@ def main():
     # Check setup status and show setup wizard if needed
     from .core.setup_service import get_setup_service
     setup_service = get_setup_service()
+    setup_completed = False
 
     if not setup_service.is_user_configured():
         logger.info("First-time setup required")
@@ -91,13 +92,13 @@ def main():
             logger.info("Setup cancelled by user")
             return  # User cancelled setup
         logger.info("Setup wizard completed")
+        setup_completed = True
 
     # Show project selection dialog
     from .gui.main_window import MainWindow
 
-    # TODO: Implement proper project selection workflow
-    # For now, create MainWindow with no selected project
-    main_window = MainWindow(selected_project=None)
+    # Pass setup completion status to MainWindow
+    main_window = MainWindow(selected_project=None, setup_completed=setup_completed)
     main_window.apply_theme()
     main_window.show()
 

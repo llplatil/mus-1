@@ -25,7 +25,7 @@ class MainWindow(QMainWindow):
     - Handles global menu actions
     - Manages project selection and view setup
     """
-    def __init__(self, project_path=None, selected_project=None):
+    def __init__(self, project_path=None, selected_project=None, setup_completed=False):
         super().__init__()
 
         # Set object name and class for styling
@@ -41,6 +41,7 @@ class MainWindow(QMainWindow):
         self.project_manager = None
         self.gui_services = None
         self.selected_project_name = selected_project
+        self.setup_completed = setup_completed
 
         # Initialize theme manager (will be updated when project is loaded)
         self.theme_manager = None
@@ -211,8 +212,13 @@ class MainWindow(QMainWindow):
             # Use pre-selected project name
             self.load_project(self.selected_project_name)
         else:
-            # Show project selection dialog
-            self.show_project_selection_dialog()
+            # Check if setup was just completed
+            if self.setup_completed:
+                # Show welcome dialog for first project creation
+                self.show_welcome_dialog()
+            else:
+                # Show project selection dialog
+                self.show_project_selection_dialog()
 
     def load_project(self, project_name):
         """
@@ -229,6 +235,49 @@ class MainWindow(QMainWindow):
             try:
                 # Initialize the clean project manager
                 self.project_manager = ProjectManagerClean(project_path)
+
+                # Add a minimal state_manager stub to prevent GUI errors
+                if not hasattr(self.project_manager, 'state_manager'):
+                    # Create a minimal state manager stub
+                    class MinimalStateManager:
+                        def __init__(self):
+                            self.project_state = type('ProjectState', (), {})()
+                            self.project_state.shared_root = None
+                            self.project_state.scan_targets = []
+                            self.project_state.workers = []
+                            self.global_settings = {}
+                            self._observers = []
+
+                        def subscribe(self, observer):
+                            self._observers.append(observer)
+
+                        def unsubscribe(self, observer):
+                            if observer in self._observers:
+                                self._observers.remove(observer)
+
+                        def notify_observers(self):
+                            for observer in self._observers:
+                                try:
+                                    observer()
+                                except Exception as e:
+                                    print(f"Error notifying observer: {e}")
+
+                        def update_project_settings(self, settings):
+                            pass
+
+                        def get_experiment_by_id(self, exp_id):
+                            return None
+
+                        def get_recording_count_for_experiment(self, exp_id):
+                            return 0
+
+                        def get_sorted_list(self, list_type):
+                            return []
+
+                        def get_supported_experiment_subtypes(self, exp_type):
+                            return []
+
+                    self.project_manager.state_manager = MinimalStateManager()
 
                 # Initialize GUI services
                 self.gui_services = GUIServiceFactory(self.project_manager)
@@ -288,6 +337,49 @@ class MainWindow(QMainWindow):
             # Initialize the clean project manager
             self.project_manager = ProjectManagerClean(project_path)
 
+            # Add a minimal state_manager stub to prevent GUI errors
+            if not hasattr(self.project_manager, 'state_manager'):
+                # Create a minimal state manager stub
+                class MinimalStateManager:
+                    def __init__(self):
+                        self.project_state = type('ProjectState', (), {})()
+                        self.project_state.shared_root = None
+                        self.project_state.scan_targets = []
+                        self.project_state.workers = []
+                        self.global_settings = {}
+                        self._observers = []
+
+                    def subscribe(self, observer):
+                        self._observers.append(observer)
+
+                    def unsubscribe(self, observer):
+                        if observer in self._observers:
+                            self._observers.remove(observer)
+
+                    def notify_observers(self):
+                        for observer in self._observers:
+                            try:
+                                observer()
+                            except Exception as e:
+                                print(f"Error notifying observer: {e}")
+
+                    def update_project_settings(self, settings):
+                        pass
+
+                    def get_experiment_by_id(self, exp_id):
+                        return None
+
+                    def get_recording_count_for_experiment(self, exp_id):
+                        return 0
+
+                    def get_sorted_list(self, list_type):
+                        return []
+
+                    def get_supported_experiment_subtypes(self, exp_type):
+                        return []
+
+                self.project_manager.state_manager = MinimalStateManager()
+
             # Initialize GUI services
             self.gui_services = GUIServiceFactory(self.project_manager)
 
@@ -315,6 +407,8 @@ class MainWindow(QMainWindow):
             self.log_bus.log(f"Project '{project_name}' loaded successfully from path.", "success", "MainWindow")
         except Exception as e:
             self.log_bus.log(f"Error loading project from '{project_path}': {e}", "error", "MainWindow")
+            # On error, show project selection dialog instead of crashing
+            self.show_project_selection_dialog()
 
     def refresh_all_views(self):
         """Refresh data in all views."""
@@ -331,6 +425,117 @@ class MainWindow(QMainWindow):
             # but calling it ensures consistency if other lists are added later.
             self.project_view.refresh_lists()
         self.log_bus.log("View refresh complete.", "info", "MainWindow")
+
+    def show_welcome_dialog(self):
+        """Show welcome dialog after setup completion."""
+        from PySide6.QtWidgets import QDialog, QVBoxLayout, QLabel, QPushButton, QHBoxLayout
+        from PySide6.QtCore import Qt
+        from pathlib import Path
+
+        # Check if there are existing projects
+        existing_projects = self.discover_existing_projects()
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Welcome to MUS1!")
+        dialog.setMinimumSize(500, 300)
+        dialog.setModal(True)
+
+        layout = QVBoxLayout(dialog)
+
+        # Welcome message
+        welcome_label = QLabel("Welcome to MUS1!")
+        welcome_label.setStyleSheet("font-size: 18px; font-weight: bold; color: #2e7d32;")
+        welcome_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(welcome_label)
+
+        # Setup completion message
+        setup_msg = QLabel("Your MUS1 setup is complete! Now let's get you started with your first project.")
+        setup_msg.setWordWrap(True)
+        setup_msg.setAlignment(Qt.AlignCenter)
+        layout.addWidget(setup_msg)
+
+        layout.addStretch()
+
+        # Action buttons
+        button_layout = QHBoxLayout()
+
+        if existing_projects:
+            # Show both create and open options
+            create_button = QPushButton("Create New Project")
+            create_button.clicked.connect(lambda: self.handle_welcome_choice(dialog, "create"))
+            button_layout.addWidget(create_button)
+
+            open_button = QPushButton("Open Existing Project")
+            open_button.clicked.connect(lambda: self.handle_welcome_choice(dialog, "open"))
+            button_layout.addWidget(open_button)
+        else:
+            # Only show create option
+            create_button = QPushButton("Create Your First Project")
+            create_button.clicked.connect(lambda: self.handle_welcome_choice(dialog, "create"))
+            button_layout.addWidget(create_button)
+
+        layout.addLayout(button_layout)
+
+        # Show project count if any exist
+        if existing_projects:
+            count_label = QLabel(f"You have {len(existing_projects)} existing project(s) configured.")
+            count_label.setStyleSheet("color: gray; font-size: 11px;")
+            count_label.setAlignment(Qt.AlignCenter)
+            layout.addWidget(count_label)
+
+        dialog.exec()
+
+    def handle_welcome_choice(self, dialog, choice):
+        """Handle user's choice from welcome dialog."""
+        dialog.accept()
+
+        if choice == "create":
+            self.show_project_selection_dialog()
+        elif choice == "open":
+            # Show project selection but focus on existing projects
+            dialog = ProjectSelectionDialog(project_root="./projects", parent=self)
+            # Could set dialog to show existing projects tab by default
+            if dialog.exec() == QDialog.Accepted:
+                chosen_project = getattr(dialog, 'selected_project_name', None)
+                chosen_path = getattr(dialog, 'selected_project_path', None)
+                if chosen_path:
+                    try:
+                        self.load_project_path(Path(chosen_path))
+                    except Exception:
+                        if chosen_project:
+                            self.load_project(chosen_project)
+                elif chosen_project:
+                    self.load_project(chosen_project)
+                else:
+                    self.log_bus.log("No project selected from dialog.", "warning", "MainWindow")
+                    self.update_window_title()
+
+    def discover_existing_projects(self):
+        """Discover existing projects from configured locations."""
+        from ..core.config_manager import get_config
+        from pathlib import Path
+
+        projects = []
+
+        # Check default projects directory
+        default_dir = get_config("user.default_projects_dir", str(Path.home() / "Documents" / "MUS1" / "Projects"))
+        if default_dir:
+            projects_dir = Path(default_dir)
+            if projects_dir.exists():
+                for item in projects_dir.iterdir():
+                    if item.is_dir() and (item / "mus1.db").exists():
+                        projects.append(item)
+
+        # Check shared storage
+        shared_root = get_config("storage.shared_root")
+        if shared_root:
+            shared_projects_dir = Path(shared_root) / "Projects"
+            if shared_projects_dir.exists():
+                for item in shared_projects_dir.iterdir():
+                    if item.is_dir() and (item / "mus1.db").exists():
+                        projects.append(item)
+
+        return projects
 
     def show_project_selection_dialog(self):
         """Show dialog for selecting a project."""
