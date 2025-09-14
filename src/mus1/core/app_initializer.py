@@ -11,15 +11,12 @@ import sys
 from pathlib import Path
 from typing import Optional, Tuple
 
-from .metadata import init_metadata
-from .state_manager import StateManager
-from .plugin_manager import PluginManager
-from .data_manager import DataManager
-from .project_manager import ProjectManager
-from .theme_manager import ThemeManager
-from .logging_bus import LoggingEventBus
+# Updated for clean architecture - old managers removed
 from .config_manager import init_config_manager, get_config_manager
 from .config_migration import ConfigMigrationManager
+
+# Temporarily disabled - need to update for new architecture
+# from .logging_bus import LoggingEventBus
 
 
 class MUS1AppInitializer:
@@ -82,38 +79,18 @@ class MUS1AppInitializer:
         if self._metadata_initialized:
             return True
 
-        success = init_metadata()
-        if success:
-            self._metadata_initialized = True
-        else:
-            self.logger.error("Metadata initialization failed")
-        return success
+        # Clean architecture doesn't need complex initialization
+        self._metadata_initialized = True
+        self.logger.info("Clean architecture metadata initialized")
+        return True
 
-    def initialize_core_managers(self) -> Tuple[StateManager, PluginManager, DataManager, ProjectManager, ThemeManager]:
-        """Initialize all core managers with consistent setup."""
+    def initialize_core_managers(self) -> Tuple:
+        """Initialize core managers - simplified for clean architecture."""
         if self._managers is not None:
             return self._managers
 
-        # Create managers in dependency order
-        state_manager = StateManager()
-        plugin_manager = PluginManager()
-        data_manager = DataManager(state_manager, plugin_manager)
-
-        # Initialize lab manager for project manager
-        from .lab_manager import LabManager
-        lab_manager = LabManager()
-
-        project_manager = ProjectManager(state_manager, plugin_manager, data_manager, lab_manager)
-        theme_manager = ThemeManager(state_manager)
-
-        # Discover external plugins via entry points
-        try:
-            plugin_manager.discover_entry_points()
-            self.logger.info(f"Discovered {len(plugin_manager.get_plugins_with_project_actions())} plugin(s) with project actions")
-        except Exception as e:
-            self.logger.warning(f"Plugin discovery failed: {e}")
-
-        self._managers = (state_manager, plugin_manager, data_manager, project_manager, theme_manager)
+        # For now, return minimal set - will be expanded when GUI is updated
+        self._managers = ()
         return self._managers
 
     def initialize_config_system(self):
@@ -169,19 +146,47 @@ class MUS1AppInitializer:
         if not config_manager.get("ui.sort_mode"):
             config_manager.set("ui.sort_mode", "Natural Order (Numbers as Numbers)", scope="user")
 
-    def initialize_logging_bus(self) -> LoggingEventBus:
-        """Initialize the logging event bus."""
-        log_bus = LoggingEventBus.get_instance()
-        log_bus.log("LoggingEventBus initialized", "info", "AppInitializer")
-        return log_bus
+    def initialize_logging_bus(self):
+        """Initialize the logging event bus - temporarily disabled."""
+        # Temporarily disabled during cleanup
+        # log_bus = LoggingEventBus.get_instance()
+        # log_bus.log("LoggingEventBus initialized", "info", "AppInitializer")
+        # return log_bus
+        return None
 
-    def initialize_complete_app(self, log_file: Optional[Path] = None) -> Tuple[
-        StateManager, PluginManager, DataManager, ProjectManager, ThemeManager, LoggingEventBus
-    ]:
+    def initialize_plugin_system(self):
+        """Initialize the plugin system with clean architecture."""
+        try:
+            from .plugin_manager_clean import PluginManagerClean
+            from .schema import Database
+
+            # For now, use in-memory database for plugin metadata
+            # In production, this should be part of the project database
+            plugin_db = Database(":memory:")
+            plugin_db.create_tables()
+
+            plugin_manager = PluginManagerClean(plugin_db)
+
+            # Discover plugins via entry points
+            discovered = plugin_manager.discover_entry_points()
+
+            self.logger.info(f"Plugin system initialized with {len(plugin_manager.get_all_plugins())} plugins")
+            return plugin_manager
+
+        except Exception as e:
+            self.logger.error(f"Failed to initialize plugin system: {e}", exc_info=True)
+            # Return a basic plugin manager that does nothing
+            from .plugin_manager_clean import PluginManagerClean
+            from .schema import Database
+            plugin_db = Database(":memory:")
+            plugin_db.create_tables()
+            return PluginManagerClean(plugin_db)
+
+    def initialize_complete_app(self, log_file: Optional[Path] = None) -> Tuple:
         """
         Complete application initialization for both GUI and CLI.
 
-        This ensures identical setup regardless of whether user launches GUI or CLI.
+        Simplified for clean architecture transition.
         """
         # Step 1: Initialize logging first
         self.initialize_logging(log_file)
@@ -194,15 +199,19 @@ class MUS1AppInitializer:
         # Step 3: Initialize unified configuration system
         self.initialize_config_system()
 
-        # Step 4: Initialize logging event bus
+        # Step 4: Initialize logging event bus (disabled)
         log_bus = self.initialize_logging_bus()
 
-        # Step 5: Initialize all core managers
-        state_manager, plugin_manager, data_manager, project_manager, theme_manager = self.initialize_core_managers()
+        # Step 5: Initialize all core managers (simplified)
+        managers = self.initialize_core_managers()
 
-        self.logger.info("MUS1 core initialization complete")
+        # Step 6: Initialize plugin system
+        plugin_manager = self.initialize_plugin_system()
 
-        return state_manager, plugin_manager, data_manager, project_manager, theme_manager, log_bus
+        self.logger.info("MUS1 clean architecture initialization complete")
+
+        # Return tuple with plugin manager included
+        return managers + (log_bus, plugin_manager)
 
 
 # Global initializer instance
@@ -215,13 +224,11 @@ def get_app_initializer() -> MUS1AppInitializer:
         _initializer = MUS1AppInitializer()
     return _initializer
 
-def initialize_mus1_app(log_file: Optional[Path] = None) -> Tuple[
-    StateManager, PluginManager, DataManager, ProjectManager, ThemeManager, LoggingEventBus
-]:
+def initialize_mus1_app(log_file: Optional[Path] = None) -> Tuple:
     """
     Convenience function to initialize the complete MUS1 application.
 
-    Returns all initialized managers and services needed by both GUI and CLI.
+    Returns initialized components - simplified for clean architecture transition.
     """
     initializer = get_app_initializer()
     return initializer.initialize_complete_app(log_file)

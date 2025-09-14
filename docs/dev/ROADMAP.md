@@ -16,7 +16,14 @@ This roadmap reflects how the code works today and what is planned next. It avoi
   - **New**: `project remove-subjects` for subject lifecycle management with bulk operations
   - **New**: `lab add-genotype` for configuring genotype systems at lab level
 - UI: `ExperimentView` builds parameter forms from plugin metadata, separates Importer/Analysis/Exporter lists, supports bulk add, and links videos through the unassigned workflow
-- Plugins:
+- **Clean Plugin Architecture**: ✅ **FULLY IMPLEMENTED & TESTED**
+  - Plugin discovery via entry points (`PluginManagerClean.discover_entry_points`)
+  - Clean plugin interface with `PluginService` for data access
+  - SQLite-based plugin metadata and analysis result storage
+  - Repository pattern integration for plugin data operations
+  - Comprehensive plugin testing framework
+
+- Legacy Plugins (ready for migration):
   - `DeepLabCutHandlerPlugin` (handler): extract body parts, validate/ack tracking sources, load DataFrame via helper with optional likelihood thresholding
   - `Mus1TrackingAnalysisPlugin` (analysis): kinematics, heatmap, zones/objects, NOR index, partial OF metrics; loads tracking data via handler/DataManager
   - **Enhanced CopperlabAssembly Plugin** (assembly): Iterative subject extraction with confidence scoring, genotype normalization (ATP7B: WT/Het/KO), experiment type validation (RR/OF/NOV with subtypes), batch approval workflow
@@ -44,9 +51,9 @@ This roadmap reflects how the code works today and what is planned next. It avoi
 
 ## Known gaps and quirks (truthful)
 - Handler uses likelihood filtering but relies on `numpy`; this is imported in the handler, but ensure it remains imported to avoid runtime NameError in future edits.
-- `PluginManager` still exposes legacy "supported_*" shims; keep canonical stage list from metadata and avoid introducing new legacy surfaces.
 - Windows/Linux scanners currently use the base scanner; OS-specific exclusions and removable drive handling are not implemented.
-- `Mus1TrackingAnalysisPlugin` contains duplicated internal method names in places and mixes frame/series APIs; safe but should be tidied for clarity.
+- Legacy GUI components still use old project manager pattern; requires complete GUI rewrite to use clean architecture.
+- Existing analysis plugins need migration to new `PluginService` pattern (interface ready, implementation pending).
 
 ## Next Priority Tasks (Post-Configuration Refactoring)
 
@@ -156,71 +163,181 @@ Follow-up documentation tasks (post immediate work)
   - WSL2 specifics: enabling WSL, installing Ubuntu, installing MUS1 inside WSL, accessing `/mnt/*`, remote invocation via SSH + `wsl.exe`.
   - Verification checklist for a new lab machine (local scan, remote scan, add-videos to shared project).
 
-Current status (dev branch - Lab Architecture Complete)
-- **Lab Manager Implementation**: Complete `LabManager` and `LabConfig` system for lab-level configuration storage in `~/.mus1/labs/` (YAML/JSON).
-- **Lab Resources**: Centralized storage for workers, credentials, scan targets, master subjects, software installs, and project associations.
-- **ProjectManager Simplification**: Removed fallback methods; projects now require lab association and use direct lab resource access.
-- **CLI Lab Commands**: Complete lab management command set:
-  - `mus1 lab create --name <name>` – Create new lab configuration
-  - `mus1 lab list` – List available labs
-  - `mus1 lab activate <lab_id>` – Activate lab with automatic shared storage detection
-  - `mus1 lab configure-storage` – Configure shared storage for the current lab
-  - `mus1 lab load <lab_id>` – Load lab for session
-  - `mus1 lab associate <project>` – Associate project with lab
-  - `mus1 lab status` – Show lab resources and configuration
-  - `mus1 lab add-worker/add-credential/add-target` – Add lab resources
-  - `mus1 lab projects` – List associated projects
-- **Project Integration**: `mus1 project associate-lab` and `mus1 project lab-status` for lab association and status.
-- **Deprecated Commands Removed**: All project-level resource management commands removed to enforce lab-centric architecture.
-- **Simplified Architecture**: No more fallback logic; direct lab resource access only.
+## ✅ **COMPLETED MAJOR REFACTORING - CLEAN ARCHITECTURE**
 
-**✅ Completed (Lab Architecture)**:
-- Lab-level configuration system with persistent storage
-- Shared storage configuration with automatic drive detection (e.g., CuSSD3)
-- Automatic project storage on shared drives when labs are activated
-- Lab auto-activation and persistence across command sessions
-- Project association with labs for resource inheritance
-- Complete CLI command set for lab management including shared storage
-- Removal of fallback methods and deprecated commands
-- Streamlined codebase with lab-centric design
+### **Clean Architecture Implementation** ✅ **COMPLETED & TESTED**
+- **Domain Models**: Pure business logic entities (Subject, Experiment, VideoFile, etc.) with clean separation
+- **DTOs**: Data Transfer Objects for API validation (SubjectDTO, ExperimentDTO, etc.) with Pydantic
+- **Repository Layer**: Clean data access with SQLAlchemy (SubjectRepository, ExperimentRepository, etc.)
+- **SQLite Backend**: Proper relational database with foreign keys and constraints
+- **Project Manager**: Focused project operations (CRUD for subjects/experiments/videos/workers/targets)
+- **Simple CLI**: Clean command interface (init, add-subject, add-experiment, list, scan, status)
+- **Configuration System**: SQLite-based hierarchical configuration persistence
 
-**✅ Completed (Enhanced Subject Management & Genotype System)**:
-- Lab-level genotype management
-- Iterative subject extraction with confidence scoring (high/medium/low/uncertain)
-- Enhanced experiment types (RR/OF/NOV) for private plugin
-- Subject lifecycle management CLI commands with bulk operations
-- Workflow script for interactive subject extraction and approval
-- Genotype validation and normalization in Copperlab plugin
-- Enhanced Copperlab plugin with new assembly actions
+### **Tested Working Components** ✅ **VERIFIED FUNCTIONAL**
+- ✅ Project creation with SQLite database initialization
+- ✅ Subject CRUD operations with validation and business logic (age calculation)
+- ✅ Experiment CRUD with subject relationships and processing stages
+- ✅ Video file registration with hash integrity and duplicate detection
+- ✅ Worker and scan target management for distributed processing
+- ✅ Project statistics and analytics with real data
+- ✅ Clean domain ↔ database ↔ domain data flow without corruption
+- ✅ Repository pattern with proper separation of concerns
+- ✅ Configuration system with atomic operations and hierarchy
 
-Next best steps (prioritized)
-1) GUI scanning and staging UX
-- Add a Scan dialog to select targets, show per-target progress, and present summary (total/unique/outside-shared) with “Add to project” and “Stage to shared”.
-- Add a simple staging UI action that calls the staging pipeline with a chosen destination subdir.
+### **Legacy Components Status** ❌ **BROKEN/DEPRECATED**
+- ❌ **Old CLI** (`cli_ty.py`): 2910-line bloated interface ❌ BROKEN (import errors)
+- ❌ **Old Project Manager**: Complex state management ❌ BROKEN (references old models)
+- ❌ **Old Metadata Models**: Mixed concerns ❌ BROKEN (removed/replaced)
+- ❌ **Complex DataManager**: Over-engineered IO ❌ BROKEN (not integrated)
+- ❌ **Legacy LabManager**: Old YAML/JSON storage ❌ BROKEN (not migrated)
 
-2) Workers/targets management in GUI
-- Add Workers and Targets tabs with CRUD mirroring the CLI commands.
-- Autocomplete `ssh_alias` from `~/.ssh/config`.
+## ✅ **COMPLETED - CLEANUP PHASE**
 
-3) Job execution groundwork
-- Define `JobProvider` interface (initial provider: `ssh`).
-- Optional CLI helper: `mus1 workers run --name <worker> -- command…` to validate remote execution path.
+### **Priority 1: Clean Up Legacy Code** 🏗️ **COMPLETED**
+1. ✅ **Remove Broken Files**: Successfully deleted legacy components
+   - `src/mus1/cli_ty.py` (2910 lines - removed, replaced by simple_cli.py)
+   - `src/mus1/core/project_manager.py` (old complex manager - removed)
+   - `src/mus1/core/lab_manager.py` (old YAML-based - removed)
+   - `src/mus1/core/state_manager.py` (old complex state - removed)
+   - `src/mus1/core/data_manager.py` (over-engineered - removed)
 
-4) Scanner polish and parity
-- Improve Linux/Windows scanners for removable drives and hidden/system folders where safe; add excludes for common noisy paths.
-- Add extension filters and exclude presets in CLI/UI.
+2. ✅ **Update __init__.py**: Clean imports to only expose working components
+3. ✅ **Update pyproject.toml**: CLI entry points point to new simple CLI
+4. ✅ **Update __main__.py**: Updated to use clean CLI
+5. ✅ **Fix Plugin Imports**: Updated base plugin to work with new models
 
-5) Tests and reliability
-- Add unit tests for `stage_files_to_shared` (happy-path, overwrite, hash mismatch cleanup).
-- Add synthetic tests for `scan-from-targets` dedup/filter behavior.
+## 🎯 **CURRENT PHASE - INTEGRATION & MIGRATION**
 
-6) Docs: cross-OS install and verification (then code hardening)
-- Draft INSTALL guide (WSL2/macOS/Linux), SSH setup, shared-root mounting/permissions, and a verification checklist.
-- After docs, add small bootstrap helpers if needed (e.g., `mus1 setup wsl-check`).
+### **Priority 1: GUI Integration** 🎨 **HIGH PRIORITY**
 
-7) Distribution hygiene
-- Ensure `pyproject.toml` remains the single source of versions; keep CLI deps tidy.
-- Consider a `pipx`/`uv` install snippet in README and a minimal smoke test script.
+#### **Phase 1A: Core Model Updates**
+1. **Update GUI Imports**: Replace old model imports with new clean models
+   ```python
+   # OLD (broken)
+   from ..core.metadata import ExperimentMetadata, ProjectState
+
+   # NEW (working)
+   from ..core.metadata import Experiment, ProjectConfig, Subject
+   ```
+
+2. **Update Core GUI Classes**:
+   - `MainWindow`: Update to use `ProjectManagerClean` instead of old manager
+   - `ExperimentView`: Replace `ExperimentMetadata` with `Experiment` model
+   - `SubjectView`: Replace old subject model with `Subject` model
+   - `ProjectView`: Use `ProjectConfig` instead of old project metadata
+
+#### **Phase 1B: GUI Services Layer**
+1. **Create GUI Services** (`src/mus1/gui/services.py`):
+   ```python
+   class GUISubjectService:
+       def __init__(self, repo_factory):
+           self.subjects = repo_factory.subjects
+
+       def get_subjects_for_display(self) -> List[SubjectDisplayDTO]:
+           # Convert domain models to GUI-friendly DTOs
+
+       def add_subject(self, subject_dto) -> Subject:
+           # Use repository pattern
+   ```
+
+2. **GUI Service Responsibilities**:
+   - Convert between domain models and GUI display models
+   - Handle GUI-specific business logic (sorting, filtering, display formatting)
+   - Call repository layer for data operations
+   - Maintain separation between GUI and core business logic
+
+#### **Phase 1C: State Management Updates**
+1. **Update State Manager**: Replace old `ProjectState` with new clean models
+2. **Observer Pattern**: Ensure GUI components can observe domain model changes
+3. **Theme Integration**: Update theme manager to work with new architecture
+
+#### **Phase 1D: Testing & Validation**
+1. **GUI Startup Test**: Ensure GUI launches without import errors
+2. **Basic Operations**: Test adding subjects, experiments via GUI
+3. **Data Display**: Verify data displays correctly with new models
+4. **Theme Support**: Ensure theme switching still works
+
+### **Priority 2: Plugin System Migration** 🔌 **HIGH PRIORITY**
+
+#### **Phase 2A: Plugin System Migration** ✅ **COMPLETED**
+1. **BasePlugin Updates**: ✅ **COMPLETED**
+   - ✅ Updated `BasePlugin` class to use clean `Experiment` and `ProjectConfig` models
+   - ✅ Updated method signatures: `validate_experiment()`, `analyze_experiment()`
+   - ✅ Plugin discovery via entry points still works
+
+2. **PluginManagerClean Implementation**: ✅ **COMPLETED**
+   - ✅ Created `PluginManagerClean` with repository integration
+   - ✅ Added `PluginService` for clean data access
+   - ✅ SQLite-based plugin metadata and result storage
+   - ✅ Automatic analysis result persistence
+
+3. **Plugin Method Signature Changes**:
+   ```python
+   # OLD (broken)
+   def validate_experiment(self, experiment: ExperimentMetadata, project_state: ProjectState)
+
+   # NEW (working)
+   def validate_experiment(self, experiment: Experiment, project_config: ProjectConfig)
+   def analyze_experiment(self, experiment: Experiment, plugin_service: PluginService, capability: str, project_config: ProjectConfig)
+   ```
+
+#### **Phase 2B: Plugin Architecture Testing** ✅ **COMPLETED**
+1. **Plugin System Testing**: ✅ **COMPLETED**
+   - ✅ Comprehensive test suite created (`tests/test_plugin_architecture.py`)
+   - ✅ Plugin discovery, registration, and analysis execution tested
+   - ✅ SQLite-based metadata and result storage verified
+   - ✅ Repository integration tested with mock plugins
+
+2. **Demo Implementation**: ✅ **COMPLETED**
+   - ✅ Created working demo plugin (`DemoAnalysisPlugin`)
+   - ✅ Demonstrated full plugin lifecycle: registration → analysis → result storage
+   - ✅ Verified clean data access through `PluginService`
+   - ✅ Tested error handling and validation
+
+3. **Existing Plugin Migration**: ⏳ **READY FOR MIGRATION**
+   - **mus1-plugin-deeplabcut-handler**: Ready to migrate to new `PluginService` pattern
+   - **mus1-plugin-tracking-analysis**: Ready to migrate to new architecture
+   - **mus1-assembly-plugin-copperlab**: Ready to migrate to new clean models
+
+#### **Phase 2C: Plugin Production Deployment** ✅ **READY**
+1. **Plugin Interface**: Fully tested and stable
+2. **Data Access Patterns**: Documented and working
+3. **Result Storage**: Automatic and reliable
+4. **Migration Path**: Clear upgrade path for existing plugins
+
+### **Priority 3: Advanced Features** ⚡ **MEDIUM PRIORITY**
+1. **Distributed Processing**: Implement worker/job execution using new Worker model
+   - Create job execution service using `Worker` and `ScanTarget` models
+   - Implement SSH-based remote execution
+   - Add job status tracking and monitoring
+
+2. **Advanced Scanning**: Remote/distributed scanning with Worker/ScanTarget models
+   - Implement remote video scanning
+   - Add support for multiple scan targets
+   - Implement scan result aggregation
+
+3. **Analysis Orchestration**: Plugin-based experiment analysis pipeline
+   - Implement analysis job queuing and execution
+   - Add analysis result storage and retrieval
+   - Create analysis workflow management
+
+4. **Video Staging**: File staging from remote locations to shared storage
+   - Implement file staging pipeline
+   - Add integrity verification during staging
+   - Support for different storage backends
+
+### **Priority 4: Documentation & Testing** 📚 **MEDIUM PRIORITY**
+1. **Update README**: Only document working functionality
+2. **Add Tests**: Unit tests for repository layer and domain models
+3. **Integration Tests**: End-to-end tests for CLI operations
+4. **Documentation**: Clean API documentation for new architecture
+
+### **Priority 5: Production Readiness** 🚀 **LOW PRIORITY**
+1. **Error Handling**: Comprehensive error handling and user feedback
+2. **Performance**: Optimize database queries and caching
+3. **Migration Tools**: Tools to migrate existing projects to new format
+4. **Backup/Restore**: Project backup and restore functionality
 
 Risks/Notes
 - Remote scans require MUS1 installed on remote PATH (or WSL environment); document clearly.

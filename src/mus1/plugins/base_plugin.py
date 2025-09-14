@@ -6,23 +6,24 @@ import pandas as pd
 # Forward reference for type hint
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
-    from ..core.data_manager import DataManager
+    from ..core.plugin_manager_clean import PluginService
+    from ..core.project_manager_clean import ProjectManagerClean
 
-from ..core.metadata import ExperimentMetadata, ProjectState, PluginMetadata
+from ..core.metadata import Experiment, ProjectConfig, PluginMetadata
 
 class BasePlugin(ABC):
     @abstractmethod
-    def validate_experiment(self, experiment: ExperimentMetadata, project_state: ProjectState) -> None:
+    def validate_experiment(self, experiment: Experiment, project_config: ProjectConfig) -> None:
         """
         Perform plugin-specific validations for the experiment.
-        
+
         Each plugin should validate only its own parameters found in experiment.plugin_params[plugin_name].
         This allows multiple plugins to be used in a single experiment.
-        
+
         Args:
-            experiment: The experiment metadata to validate
-            project_state: The current project state for context
-            
+            experiment: The experiment to validate
+            project_config: The project configuration for context
+
         Raises:
             ValueError: If validation fails due to invalid parameter values.
             FileNotFoundError: If validation fails because required files are missing.
@@ -30,18 +31,20 @@ class BasePlugin(ABC):
         pass
 
     @abstractmethod
-    def analyze_experiment(self, experiment: ExperimentMetadata, data_manager: 'DataManager', capability: str) -> Dict[str, Any]:
+    def analyze_experiment(self, experiment: Experiment, plugin_service: 'PluginService',
+                          capability: str, project_config: ProjectConfig) -> Dict[str, Any]:
         """
         Run experiment-specific analysis based on the capability and return the results.
-        
+
         Plugins should load necessary data on demand within this method using the
-        provided `data_manager` and file paths stored in `experiment.plugin_params`.
-        
+        provided `plugin_service` which gives access to repositories and data access methods.
+
         Args:
             experiment: The experiment metadata containing parameters.
-            data_manager: The DataManager instance for data loading capabilities.
+            plugin_service: The PluginService instance for clean data access.
             capability: The specific capability requested (e.g., 'load_tracking_data', 'nor_index').
-            
+            project_config: The project configuration for context.
+
         Returns:
             A dictionary containing analysis results. The structure depends on the capability,
             but it is **highly recommended** to include the following standard keys:
@@ -50,8 +53,8 @@ class BasePlugin(ABC):
             - 'error' (str, optional): Description of the error if status is 'failed'.
             - 'message' (str, optional): A user-friendly message about the outcome.
             - 'capability_executed' (str): The capability string that was run. REQUIRED.
-            - 'output_file_paths' (Dict[str, str], optional): Dictionary mapping descriptive names
-              (e.g., 'heatmap_png', 'syllable_results_h5') to their absolute file paths if the
+            - 'result_data' (Dict[str, Any], optional): The actual analysis results data.
+            - 'output_file_paths' (List[str], optional): List of output file paths if the
               plugin saved output files.
             - ... (capability-specific results): Other key-value pairs containing the actual
               analysis outputs (e.g., calculated metrics, data summaries).
@@ -121,14 +124,14 @@ class BasePlugin(ABC):
         """
         return []
 
-    def run_action(self, action: str, params: Dict[str, Any], project_manager: Any) -> Dict[str, Any]:
+    def run_action(self, action: str, params: Dict[str, Any], project_manager: 'ProjectManagerClean') -> Dict[str, Any]:
         """
         Optional: Execute a project-level action by name.
 
         Args:
             action: Action identifier, one of supported_project_actions().
             params: Arbitrary parameters passed from caller/CLI.
-            project_manager: Access to core project APIs.
+            project_manager: The ProjectManagerClean instance for core project operations.
 
         Returns:
             Dict containing at least 'status': 'success'|'failed'.

@@ -4,8 +4,10 @@ from .project_view import ProjectView
 from .subject_view import SubjectView
 from .experiment_view import ExperimentView
 from .project_selection_dialog import ProjectSelectionDialog
+from .gui_services import GUIServiceFactory
 from ..core.logging_bus import LoggingEventBus
-from ..core import ThemeManager, PluginManager
+from ..core.project_manager_clean import ProjectManagerClean
+from ..core import ThemeManager
 import logging
 import sys
 from pathlib import Path
@@ -23,24 +25,25 @@ class MainWindow(QMainWindow):
     - Handles global menu actions
     - Manages project selection and view setup
     """
-    def __init__(self, state_manager, data_manager, project_manager, plugin_manager, selected_project=None):
+    def __init__(self, project_path=None, selected_project=None):
         super().__init__()
-        
+
         # Set object name and class for styling
         self.setObjectName("mainWindow")
         self.setProperty("class", "mus1-main-window")
-        
+
         # Configure main window
         self.resize(1200, 800)
         self.setMinimumSize(800, 600)  # Enforce minimum size as per UI guidelines
-        
-        # Store core managers
-        self.state_manager = state_manager
-        self.data_manager = data_manager
-        self.project_manager = project_manager
-        self.plugin_manager = plugin_manager
+
+        # Initialize project manager and services
+        self.project_path = Path(project_path) if project_path else None
+        self.project_manager = None
+        self.gui_services = None
         self.selected_project_name = selected_project
-        self.theme_manager = ThemeManager(self.state_manager)
+
+        # Initialize theme manager (will be updated when project is loaded)
+        self.theme_manager = None
         
         # Get the LoggingEventBus singleton
         self.log_bus = LoggingEventBus.get_instance()
@@ -154,10 +157,10 @@ class MainWindow(QMainWindow):
         self.tab_widget.addTab(self.project_view, "Project")
         self.tab_widget.addTab(self.subject_view, "Subjects")
         self.tab_widget.addTab(self.experiment_view, "Experiments")
-        
+
         # Register navigation panes with log_bus for message display
         self.register_log_observers()
-        
+
         # Set initial active tab
         self.tab_widget.setCurrentIndex(0)
         self.on_tab_changed(0)
@@ -217,29 +220,41 @@ class MainWindow(QMainWindow):
         and refreshes data. This is the central method for loading projects.
         """
         self.log_bus.log(f"Attempting to load project: {project_name}", "info", "MainWindow")
-        available_projects = self.project_manager.list_available_projects()
-        project_path = next((p for p in available_projects if p.name == project_name), None)
 
-        if project_path:
+        # For now, assume project path is based on project name
+        # TODO: This should be updated to use proper project discovery
+        project_path = Path(f"./projects/{project_name}")
+
+        if project_path.exists():
             try:
-                # Check for large project state file
-                project_state_path = project_path / "project_state.json"
-                is_large_project = project_state_path.exists() and project_state_path.stat().st_size > 5 * 1024 * 1024  # 5MB
+                # Initialize the clean project manager
+                self.project_manager = ProjectManagerClean(project_path)
 
-                # Load the project using project_manager
-                self.project_manager.load_project(project_path, optimize_for_large_files=is_large_project)
+                # Initialize GUI services
+                self.gui_services = GUIServiceFactory(self.project_manager)
+
+                # TODO: Update ThemeManager to work with ConfigManager
+                # For now, create a simple placeholder
+                self.theme_manager = None
 
                 # --- Project Loaded Successfully ---
                 self.selected_project_name = project_name
                 self.update_window_title() # Update the window title
 
-                # Notify views of the newly loaded project via their refresh methods
-                # ExperimentView subscribes to StateManager changes automatically and will refresh below.
-                # SubjectView likewise handles state updates internally.
-                
-                # Project View - Update its internal state/display
-                # This call ensures ProjectView's labels/fields reflect the loaded project
+                # Notify views of the newly loaded project
                 self.project_view.set_initial_project(project_name)
+
+                # Set GUI services on views
+                experiment_service = self.gui_services.create_experiment_service()
+                subject_service = self.gui_services.create_subject_service()
+                project_service = self.gui_services.create_project_service()
+
+                if hasattr(self.experiment_view, 'set_gui_services'):
+                    self.experiment_view.set_gui_services(experiment_service)
+                if hasattr(self.subject_view, 'set_gui_services'):
+                    self.subject_view.set_gui_services(subject_service)
+                if hasattr(self.project_view, 'set_gui_services'):
+                    self.project_view.set_gui_services(project_service)
 
                 self.log_bus.log(f"Project '{project_name}' loaded successfully.", "success", "MainWindow")
 
@@ -253,12 +268,16 @@ class MainWindow(QMainWindow):
                 self.log_bus.log(f"Error loading project '{project_name}': {e}", "error", "MainWindow")
                 # Reset state on error
                 self.selected_project_name = None
+                self.project_manager = None
+                self.gui_services = None
                 self.update_window_title() # Update title to 'No Project Loaded'
                 # Optionally, show an error dialog to the user here
         else:
-            self.log_bus.log(f"Could not find project path for '{project_name}'. Available: {[p.name for p in available_projects]}", "error", "MainWindow")
+            self.log_bus.log(f"Could not find project path for '{project_name}': {project_path}", "error", "MainWindow")
             # Reset state if project not found
             self.selected_project_name = None
+            self.project_manager = None
+            self.gui_services = None
             self.update_window_title() # Update title to 'No Project Loaded'
             # Optionally, show an error dialog
 
@@ -266,12 +285,33 @@ class MainWindow(QMainWindow):
         """Loads a project directly from a full path, then updates UI."""
         try:
             project_name = project_path.name
-            project_state_path = project_path / "project_state.json"
-            is_large_project = project_state_path.exists() and project_state_path.stat().st_size > 5 * 1024 * 1024
-            self.project_manager.load_project(project_path, optimize_for_large_files=is_large_project)
+
+            # Initialize the clean project manager
+            self.project_manager = ProjectManagerClean(project_path)
+
+            # Initialize GUI services
+            self.gui_services = GUIServiceFactory(self.project_manager)
+
+            # TODO: Update ThemeManager to work with ConfigManager
+            # For now, create a simple placeholder
+            self.theme_manager = None
+
             self.selected_project_name = project_name
             self.update_window_title()
             self.project_view.set_initial_project(project_name)
+
+            # Set GUI services on views
+            experiment_service = self.gui_services.create_experiment_service()
+            subject_service = self.gui_services.create_subject_service()
+            project_service = self.gui_services.create_project_service()
+
+            if hasattr(self.experiment_view, 'set_gui_services'):
+                self.experiment_view.set_gui_services(experiment_service)
+            if hasattr(self.subject_view, 'set_gui_services'):
+                self.subject_view.set_gui_services(subject_service)
+            if hasattr(self.project_view, 'set_gui_services'):
+                self.project_view.set_gui_services(project_service)
+
             self.refresh_all_views()
             self.apply_theme()
             self.log_bus.log(f"Project '{project_name}' loaded successfully from path.", "success", "MainWindow")
@@ -296,7 +336,8 @@ class MainWindow(QMainWindow):
 
     def show_project_selection_dialog(self):
         """Show dialog for selecting a project."""
-        dialog = ProjectSelectionDialog(self.project_manager, self)
+        # TODO: Get project root from config
+        dialog = ProjectSelectionDialog(project_root="./projects", parent=self)
 
         if dialog.exec() == QDialog.Accepted:
             chosen_project = getattr(dialog, 'selected_project_name', None)
@@ -332,11 +373,12 @@ class MainWindow(QMainWindow):
 
     def apply_theme(self):
         """Apply the current theme to the application and propagate to all views."""
-        effective_theme = self.theme_manager.apply_theme(QApplication.instance())
-        self.setProperty("theme", effective_theme)
-        self.style().unpolish(self)
-        self.style().polish(self)
-        self.propagate_theme_to_views(effective_theme)
+        if self.theme_manager:
+            effective_theme = self.theme_manager.apply_theme(QApplication.instance())
+            self.setProperty("theme", effective_theme)
+            self.style().unpolish(self)
+            self.style().polish(self)
+            self.propagate_theme_to_views(effective_theme)
 
     def propagate_theme_to_views(self, theme):
         """Propagate theme changes to all views."""
@@ -346,7 +388,9 @@ class MainWindow(QMainWindow):
 
     def change_theme(self, theme_choice):
         """Handle theme changes and propagate to all views."""
-        self.state_manager.set_theme_preference(theme_choice)
-        self.apply_theme()
+        if self.theme_manager:
+            # Update theme preference in config manager
+            self.theme_manager.config_manager.set("theme", theme_choice)
+            self.apply_theme()
 
     # Additional methods for hooking up signals, responding to user actions, etc.

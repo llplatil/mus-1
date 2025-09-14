@@ -11,7 +11,10 @@ from ..core.logging_bus import LoggingEventBus
 from PySide6.QtCore import Qt
 from .metadata_display import MetadataTreeView  # Import for overview display
 from pathlib import Path
-from ..core import ObjectMetadata, BodyPartMetadata  # Import needed for body parts and objects pages
+from .gui_services import GUISubjectService
+from ..core.metadata import Sex
+# TODO: Update to use new clean architecture models
+# from ..core import ObjectMetadata, BodyPartMetadata  # Import needed for body parts and objects pages
 
 class SubjectView(BaseView):
     def __init__(self, parent=None):
@@ -22,10 +25,9 @@ class SubjectView(BaseView):
         self.log_bus = LoggingEventBus.get_instance()
         self.log_bus.log("SubjectView initialized", "info", "SubjectView")
 
-        # Immediately assign the project_manager so that subsequent methods can use it
-        self.project_manager = self.window().project_manager
-        # Assign state_manager for easier access
-        self.state_manager = self.window().state_manager
+        # Initialize GUI services
+        self.gui_services = None  # Will be set when project is loaded
+        self.subject_service = None  # Will be set when project is loaded
 
         # Setup navigation for this view with six pages
         self.setup_navigation(["Subject Overview", "Bodyparts", "Genotypes", "Treatments", "Objects", "Subjects"])
@@ -41,13 +43,19 @@ class SubjectView(BaseView):
         # Set default selection to Subject Overview
         self.change_page(0)
 
+        # TODO: Update state subscription to use new architecture
         # --- New: subscribe to state changes so overview auto-updates ---
         # Store reference for cleanup and ensure immediate population
-        self._state_manager = self.state_manager
-        self._state_subscription = self._handle_state_change
-        self._state_manager.subscribe(self._state_subscription)
+        # self._state_manager = self.state_manager
+        # self._state_subscription = self._handle_state_change
+        # self._state_manager.subscribe(self._state_subscription)
         # Populate UI immediately (in case a project is already loaded)
-        self._handle_state_change()
+        # self._handle_state_change()
+
+    def set_gui_services(self, gui_services):
+        """Set the GUI services when a project is loaded."""
+        self.gui_services = gui_services
+        self.subject_service = gui_services  # GUISubjectService is the service itself
 
     def setup_add_subject_page(self):
         """Setup the Subjects page (previously named Add Subject)."""
@@ -152,9 +160,9 @@ class SubjectView(BaseView):
         self.add_page(self.page_add_subject, "Subjects")
     
     def handle_add_subject(self):
-        """Handle the logic for adding a new subject, as before."""
-        if not self.project_manager:
-            self.log_bus.log("Error: No ProjectManager is set", "error", "SubjectView")
+        """Handle the logic for adding a new subject using GUI services."""
+        if not self.subject_service:
+            self.log_bus.log("Error: GUI services not available", "error", "SubjectView")
             return
 
         subject_id = self.subject_id_edit.text().strip()
@@ -162,46 +170,43 @@ class SubjectView(BaseView):
             self.log_bus.log("Error: Subject ID cannot be empty", "error", "SubjectView")
             return
 
-        # Verify subject ID uniqueness
-        existing_ids = [subj.id for subj in self.project_manager.state_manager.get_sorted_list("subjects")]
-        if subject_id in existing_ids:
-            print("Subject ID already exists!")
+        # Check if subject ID already exists
+        existing_subject = self.subject_service.get_subject_by_id(subject_id)
+        if existing_subject:
             self.log_bus.log(f"Error: Subject ID '{subject_id}' already exists", "error", "SubjectView")
             return
 
-        # Retrieve the sex enum from the combo
-        sex_value = self.sex_combo.currentText()
-        if sex_value == Sex.M.value:
-            sex_enum = Sex.M
-        elif sex_value == Sex.F.value:
-            sex_enum = Sex.F
-        else:
-            sex_enum = Sex.UNKNOWN
+        # Get sex value from combo
+        sex_value = self.sex_combo.currentText().upper()
+        try:
+            sex_enum = Sex(sex_value) if sex_value != "UNKNOWN" else None
+        except ValueError:
+            sex_enum = None
 
-        genotype = self.genotype_combo.currentText().strip()
-        notes = self.notes_edit.toPlainText().strip()
+        genotype = self.genotype_combo.currentText().strip() or None
+        # TODO: Handle notes and in_training_set when Subject model supports them
         birth_date = self.birthdate_edit.dateTime().toPython()
-        in_training_set = self.training_set_check.isChecked()
 
-        # Add the subject via ProjectManager
-        self.project_manager.add_subject(
+        # Add the subject via GUI service
+        subject = self.subject_service.add_subject(
             subject_id=subject_id,
-            sex=sex_enum,
+            sex=sex_value if sex_enum else None,
             genotype=genotype,
-            notes=notes,
-            birth_date=birth_date,
-            in_training_set=in_training_set,
+            birth_date=birth_date
         )
 
-        # Clear the input fields after successful addition
-        self.subject_id_edit.clear()
-        self.genotype_combo.clear()
-        self.notes_edit.clear()
-        self.birthdate_edit.setDateTime(QDateTime.currentDateTime())
-        self.training_set_check.setChecked(False)
+        if subject:
+            # Clear the input fields after successful addition
+            self.subject_id_edit.clear()
+            self.genotype_combo.clear()
+            # TODO: Handle notes and training_set_check when Subject model supports them
+            # self.notes_edit.clear()
+            # self.training_set_check.setChecked(False)
+            self.birthdate_edit.setDateTime(QDateTime.currentDateTime())
 
-        # Refresh the displayed subject list on the same page
-        self.refresh_subject_list_display()
+            # Refresh the displayed subject list on the same page
+            self.refresh_subject_list_display()
+            self.log_bus.log(f"Subject '{subject_id}' added successfully", "success", "SubjectView")
         
         # Log the successful addition and show notification
         self.log_bus.log(f"Subject '{subject_id}' added successfully", "success", "SubjectView")
@@ -363,7 +368,11 @@ class SubjectView(BaseView):
 
     def refresh_overview(self):
         """Refresh the Subjects Overview display using metadata_tree."""
-        if not self.project_manager:
+        # TODO: Update to use new architecture
+        if not self.project_manager or not self.state_manager:
+            # Clear the tree view if managers are not available
+            if hasattr(self, 'metadata_tree'):
+                self.metadata_tree.clear()
             return
         state = self.project_manager.state_manager.project_state
         subjects = state.subjects          # Dictionary of subject metadata
@@ -695,7 +704,14 @@ class SubjectView(BaseView):
         """Refresh the body parts lists."""
         if not hasattr(self, 'all_bodyparts_list') or not hasattr(self, 'current_body_parts_list'):
             return
-        
+
+        # TODO: Update to use new architecture
+        if not self.state_manager:
+            # Temporarily clear lists until new architecture is implemented
+            self.all_bodyparts_list.clear()
+            self.current_body_parts_list.clear()
+            return
+
         # Get sorted body parts from state_manager
         sorted_parts = self.state_manager.get_sorted_body_parts()
         

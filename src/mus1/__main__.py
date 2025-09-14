@@ -1,8 +1,8 @@
-"""Executable entrypoint for `python -m Mus1_Refactor`.
+"""Executable entrypoint for `python -m mus1`.
 
-Delegates to Typer CLI defined in `cli_ty.py`.
+Delegates to the clean simple CLI.
 """
-from .cli_ty import run
+from .core.simple_cli import app
 
 if __name__ == "__main__":
-    run()
+    app()

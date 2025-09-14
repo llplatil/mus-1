@@ -67,7 +67,16 @@ from .gui.project_selection_dialog import ProjectSelectionDialog
 
 def main():
     # Use unified MUS1 application initialization
-    state_manager, plugin_manager, data_manager, project_manager, theme_manager, log_bus = initialize_mus1_app()
+    # Note: initialize_mus1_app now returns different components due to clean architecture
+    managers = initialize_mus1_app()
+    log_bus = managers[-2] if len(managers) >= 2 else None
+    plugin_manager = managers[-1] if len(managers) >= 1 else None
+
+    # For now, create dummy managers for compatibility
+    state_manager = None
+    data_manager = None
+    project_manager = None
+    theme_manager = None
 
     logger = logging.getLogger('mus1')
     logger.info("Launching MUS1 GUI...")

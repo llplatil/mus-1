@@ -1,12 +1,14 @@
-from PySide6.QtWidgets import (QWidget, QVBoxLayout, QFormLayout, QLabel, QLineEdit, 
-                         QComboBox, QDateTimeEdit, QPushButton, QGroupBox, QScrollArea, 
+from PySide6.QtWidgets import (QWidget, QVBoxLayout, QFormLayout, QLabel, QLineEdit,
+                         QComboBox, QDateTimeEdit, QPushButton, QGroupBox, QScrollArea,
                          QCheckBox, QMessageBox, QListWidget, QListWidgetItem, QTextEdit, QHBoxLayout,
                          QFileDialog, QTableWidget, QTableWidgetItem, QHeaderView, QSpinBox, QDoubleSpinBox, QAbstractItemView, QStackedWidget, QLayout)
 from PySide6.QtCore import QTimer, Qt, QDateTime
 from datetime import datetime
-from .navigation_pane import NavigationPane 
+from .navigation_pane import NavigationPane
 from .base_view import BaseView
 from .metadata_display import MetadataGridDisplay
+from .gui_services import GUIExperimentService
+from ..core.metadata import ProcessingStage
 import os
 import json
 from pathlib import Path
@@ -19,15 +21,13 @@ if TYPE_CHECKING:
 class ExperimentView(BaseView):
     def __init__(self, parent=None):
         super().__init__(parent, view_name="experiments")
-        
-        # Set up core managers from window
-        self.state_manager = self.window().state_manager
-        self.project_manager = self.window().project_manager
-        self.data_manager = self.window().data_manager
-        self.plugin_manager = self.window().plugin_manager
 
-        # Fetch processing stages from the core metadata instead of hard-coding
-        self.PROCESSING_STAGES = self.state_manager.get_processing_stages()
+        # Initialize GUI services
+        self.gui_services = None  # Will be set when project is loaded
+        self.plugin_manager = None  # Will be set when project is loaded
+
+        # Fetch processing stages from the new metadata
+        self.PROCESSING_STAGES = [stage.value for stage in ProcessingStage]
         
         # Set up navigation first (added 'Add Multiple Experiments')
         self.setup_navigation(["Add Experiment", "Add Multiple Experiments", "View Experiments", "Create Batch"])
@@ -40,9 +40,17 @@ class ExperimentView(BaseView):
         
         # Start with first page
         self.change_page(0)
-        
+
         # Initialize data
         self.refresh_data()
+
+    def set_gui_services(self, gui_services):
+        """Set the GUI services when a project is loaded."""
+        self.gui_services = gui_services
+
+    def set_plugin_manager(self, plugin_manager):
+        """Set the plugin manager when a project is loaded."""
+        self.plugin_manager = plugin_manager
 
     def setup_add_experiment_page(self):
         """Sets up the 'Add Experiment' sub-page according to the new workflow."""
@@ -425,37 +433,33 @@ class ExperimentView(BaseView):
              page_title = self.navigation_button_texts[current_index]
         else:
              logger.warning(f"Could not determine page title for index {current_index}.")
-             
+
         logger.debug(f"Refreshing data for page: {page_title} (Index: {current_index})")
 
         if page_title == "Add Experiment":
-             # Populate subject combo
+             # Populate subject combo using GUI services
              self.subject_id_combo.clear()
-             if self.state_manager:
-                 subjects = self.state_manager.get_sorted_subjects()
+             if self.gui_services:
+                 subjects = self.gui_services.get_subjects_for_display()
                  if subjects:
-                     for subj in subjects:
-                         self.subject_id_combo.addItem(subj.id, subj.id) # Display ID, store ID as data
+                     for subject in subjects:
+                         display_text = f"{subject.id} ({subject.sex_display}, {subject.age_display})"
+                         self.subject_id_combo.addItem(display_text, subject.id)
                  else:
                       self.subject_id_combo.addItem("No subjects available", None)
              else:
-                 self.subject_id_combo.addItem("State Mgr Error", None)
+                 self.subject_id_combo.addItem("GUI services not available", None)
 
-             # Populate experiment type combo
+             # Populate experiment type combo with basic types for now
+             # TODO: Get from configuration when implemented
              self.experiment_type_combo.clear()
              self.experiment_type_combo.addItem("Select Type...", None)
-             if self.state_manager:
-                 exp_types = self.state_manager.get_supported_experiment_types()
-                 if exp_types:
-                      for etype in exp_types:
-                           self.experiment_type_combo.addItem(etype, etype) # Display name, store name as data
-                 else:
-                     self.experiment_type_combo.addItem("No types found", None)
-             else:
-                  self.experiment_type_combo.addItem("State Mgr Error", None)
+             basic_types = ["OpenField", "NOR", "Rotarod", "FearConditioning", "MorrisWaterMaze"]
+             for exp_type in basic_types:
+                 self.experiment_type_combo.addItem(exp_type, exp_type)
 
-             # Trigger initial plugin discovery if a type is pre-selected or form is ready
-             self._discover_plugins()
+             # TODO: Trigger plugin discovery when plugins are integrated
+             # self._discover_plugins()
 
         elif page_title == "View Experiments":
              self.refresh_experiment_list_display()
@@ -593,28 +597,28 @@ class ExperimentView(BaseView):
                     processing_stage = "recorded"
                     break
 
-        # --- Call ProjectManager ---
+        # --- Call GUI Service ---
         try:
-            logger.info(f"Adding experiment '{experiment_id}' with plugins: {associated_plugin_names}")
-            logger.debug(f"Plugin Params: {plugin_params_data}")
+            logger.info(f"Adding experiment '{experiment_id}'")
 
-            # Ensure ProjectManager reference is valid
-            if not self.project_manager:
-                 logger.error("ProjectManager is not available. Cannot add experiment.")
-                 self.show_error_message("Internal Error", "Project Manager not initialized.")
+            # Ensure GUI services are available
+            if not self.gui_services:
+                 logger.error("GUI services not available. Cannot add experiment.")
+                 self.show_error_message("Internal Error", "GUI services not initialized.")
                  return
 
-            # Call ProjectManager with the updated signature
-            self.project_manager.add_experiment(
+            # Call GUI service with simplified parameters for now
+            # TODO: Add plugin support when plugins are integrated
+            experiment = self.gui_services.add_experiment(
                 experiment_id=experiment_id,
                 subject_id=subject_id,
+                experiment_type=exp_type,
                 date_recorded=date_recorded,
-                exp_type=exp_type,
-                exp_subtype=self.experiment_subtype_combo.currentData() if hasattr(self, 'experiment_subtype_combo') else None,
-                processing_stage=processing_stage,
-                associated_plugins=associated_plugin_names,
-                plugin_params=plugin_params_data
+                processing_stage=processing_stage
             )
+
+            if not experiment:
+                return  # Error already handled by service
             # Clear form on success
             self.experiment_id_input.clear()
             # Keep Subject selected? Maybe useful for adding multiple experiments for one subject.
@@ -674,38 +678,23 @@ class ExperimentView(BaseView):
                 self.navigation_pane.add_log_message(f"Unexpected error adding experiment: {e}", "error")
 
     def refresh_experiment_list_display(self):
-        if not self.state_manager:
-             logger.warning("StateManager not available, cannot refresh experiment list.")
+        if not self.gui_services:
+             logger.warning("GUI services not available, cannot refresh experiment list.")
              self.experimentListWidget.clear()
-             self.experimentListWidget.addItem("Error: StateManager unavailable.")
+             self.experimentListWidget.addItem("Error: GUI services unavailable.")
              return
 
-        sorted_exps = self.state_manager.get_sorted_list("experiments")
+        experiments = self.gui_services.get_experiments_for_display()
         self.experimentListWidget.clear()
-        if sorted_exps:
-            for e in sorted_exps:
-                # Use more robust access with defaults
-                exp_id = getattr(e, 'id', 'N/A')
-                exp_type = getattr(e, 'type', 'N/A')
-                stage = getattr(e, 'processing_stage', 'N/A')
-                subject_id = getattr(e, 'subject_id', 'N/A')
-
-                # Check if any video is linked to this experiment
-                has_video = False
-                try:
-                    videos_dict = self.state_manager.project_state.experiment_videos
-                    for vm in videos_dict.values():
-                        if exp_id in vm.experiment_ids:
-                            has_video = True
-                            break
-                except Exception:
-                    pass
-
+        if experiments:
+            for exp in experiments:
+                # TODO: Add video linking check when video management is implemented
+                has_video = False  # Placeholder for now
                 video_marker = " 📹" if has_video else ""
 
-                display_text = f"{exp_id} ({exp_type}, Subj: {subject_id}, Stage: {stage}){video_marker}"
+                display_text = f"{exp.id} ({exp.experiment_type}, Subj: {exp.subject_id}, Stage: {exp.processing_stage}){video_marker}"
                 item = QListWidgetItem(display_text)
-                item.setData(Qt.ItemDataRole.UserRole, exp_id)  # Store ID for reliable lookup
+                item.setData(Qt.ItemDataRole.UserRole, exp.id)  # Store ID for reliable lookup
                 self.experimentListWidget.addItem(item)
         else:
              self.experimentListWidget.addItem("No experiments found in project.")
@@ -1359,12 +1348,14 @@ class ExperimentView(BaseView):
         try:
             # --- New workflow: register + link via unassigned list ---
             video_path = Path(file_path)
-            sample_hash = self.data_manager.compute_sample_hash(video_path)
-            start_time = self.data_manager._extract_start_time(video_path)  # pylint: disable=protected-access
+            # TODO: Implement video hashing and registration with new architecture
+            # sample_hash = self.data_manager.compute_sample_hash(video_path)
+            # start_time = self.data_manager._extract_start_time(video_path)
             # Register if not already known
-            self.project_manager.register_unlinked_videos([(video_path, sample_hash, start_time)])
+            # self.project_manager.register_unlinked_videos([(video_path, sample_hash, start_time)])
             # Link to the chosen experiment
-            self.project_manager.link_unassigned_video(sample_hash, exp_id)
+            # self.project_manager.link_unassigned_video(sample_hash, exp_id)
+            QMessageBox.warning(self, "Not Implemented", "Video linking not yet implemented in new architecture.")
             QMessageBox.information(self, "Success", f"Video linked to experiment '{exp_id}'.")
         except Exception as e:
             logger.error(f"Failed to link video to experiment {exp_id}: {e}", exc_info=True)
@@ -1457,12 +1448,13 @@ class ExperimentView(BaseView):
             return
 
         try:
+            # TODO: Implement video hashing with new architecture
             # Use DataManager's fast hashing utility directly
-            if self.data_manager:
-                sample_hash = self.data_manager.compute_sample_hash(video_path)
-                self.sample_hash_value.setText(sample_hash)
-            else:
-                self.sample_hash_value.setText("—")
+            # if self.data_manager:
+            #     sample_hash = self.data_manager.compute_sample_hash(video_path)
+            #     self.sample_hash_value.setText(sample_hash)
+            # else:
+            self.sample_hash_value.setText("—")
 
             # Auto-populate the Date Recorded field with the file's mtime
             mtime = int(video_path.stat().st_mtime)

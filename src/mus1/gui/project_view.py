@@ -6,11 +6,14 @@ from PySide6.QtWidgets import (
 from pathlib import Path
 from .base_view import BaseView
 from PySide6.QtCore import Qt, Signal
-from ..core import ObjectMetadata, BodyPartMetadata, PluginManager
-from ..core.data_manager import FrameRateResolutionError
+# TODO: Update to use new clean architecture models
+# from ..core import ObjectMetadata, BodyPartMetadata, PluginManager
+# TODO: Update to use new clean architecture
+# from ..core.data_manager import FrameRateResolutionError
 from ..plugins.base_plugin import BasePlugin
 from typing import Dict, Any
 from ..core.scanners.remote import collect_from_targets
+from .gui_services import GUIProjectService
 
 
 class NotesBox(QGroupBox):
@@ -72,10 +75,19 @@ class ProjectView(BaseView):
 
     def __init__(self, parent=None):
         super().__init__(parent, view_name="project")
-        self.state_manager = self.window().state_manager
-        self.project_manager = self.window().project_manager
-        self.plugin_manager = self.window().plugin_manager
-        self.data_manager = self.window().data_manager
+        # Initialize GUI services
+        self.gui_services = None  # Will be set when project is loaded
+        self.project_service = None  # Will be set when project is loaded
+
+        # TODO: Update to use new clean architecture
+        # self.state_manager = self.window().state_manager
+        # self.project_manager = self.window().project_manager
+        # self.plugin_manager = self.window().plugin_manager
+        # self.data_manager = self.window().data_manager
+        self.state_manager = None
+        self.project_manager = None
+        self.plugin_manager = None
+        self.data_manager = None
         self.importer_param_widgets: Dict[str, QWidget] = {} # Initialize the dictionary here
         self.setup_navigation(["Import Project", "Project Settings", "General Settings"])
         self.setup_import_project_page()
@@ -89,6 +101,11 @@ class ProjectView(BaseView):
         self.add_navigation_button("Workers")
         self.add_navigation_button("Targets")
         self.change_page(0)
+
+    def set_gui_services(self, gui_services):
+        """Set the GUI services when a project is loaded."""
+        self.gui_services = gui_services
+        self.project_service = gui_services  # GUIProjectService is the service itself
 
     def format_item(self, item):
         """Utility to return the proper display string for an item."""

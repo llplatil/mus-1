@@ -8,16 +8,18 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, QSize, Signal
 from PySide6.QtGui import QPixmap, QPalette, QBrush, QColor, QPainter, QImage, QIcon
+from ..core.project_manager_clean import ProjectManagerClean
 
 
 class ProjectSelectionDialog(QDialog):
     """Dialog for creating or selecting existing projects."""
     
-    def __init__(self, project_manager, parent=None):
+    def __init__(self, project_root=None, parent=None):
         super().__init__(parent)
-        
+
         self.setObjectName("projectSelectionDialog")
-        self.project_manager = project_manager
+        self.project_root = Path(project_root) if project_root else Path("./projects")
+        self.project_manager = None  # Will be initialized when project is selected
         self.selected_project_name = None  # Will be set when a project is selected
         self.selected_project_path = None  # Full path to selected project (string)
         
@@ -174,11 +176,20 @@ class ProjectSelectionDialog(QDialog):
             if hasattr(self, 'existing_location_combo'):
                 location_choice = self.existing_location_combo.currentText().lower()
 
+            # Discover projects by looking for project directories
+            # A project directory contains mus1.db file
             if location_choice == "shared":
-                base_dir = self.project_manager.get_shared_directory()
-                projects = self.project_manager.list_available_projects(base_dir)
+                # TODO: Get shared directory from config
+                base_dir = Path("./shared_projects")
             else:
-                projects = self.project_manager.list_available_projects()
+                base_dir = self.project_root
+
+            projects = []
+            if base_dir.exists():
+                for item in base_dir.iterdir():
+                    if item.is_dir() and (item / "mus1.db").exists():
+                        projects.append(item)
+
         except Exception as e:
             print(f"Error listing projects: {e}")
             projects = []
@@ -214,15 +225,21 @@ class ProjectSelectionDialog(QDialog):
             # Choose Local or Shared base automatically
             location_choice = self.location_type_combo.currentText().lower()
             if location_choice == "shared":
-                base_path = self.project_manager.get_shared_directory()
+                # TODO: Get shared directory from config
+                base_path = Path("./shared_projects")
             else:
-                base_path = self.project_manager.get_projects_directory()
+                base_path = self.project_root
 
         # Create the full project directory path
         project_root = base_path / project_name
 
         try:
-            self.project_manager.create_project(project_root, project_name)
+            # Create project directory
+            project_root.mkdir(parents=True, exist_ok=False)
+
+            # Initialize the project with ProjectManagerClean
+            project_manager = ProjectManagerClean(project_root)
+
             self.selected_project_name = project_name
             self.selected_project_path = str(project_root)
             self.accept()  # Close dialog with "accept" result
