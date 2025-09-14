@@ -78,16 +78,6 @@ class ProjectView(BaseView):
         # Initialize GUI services
         self.gui_services = None  # Will be set when project is loaded
         self.project_service = None  # Will be set when project is loaded
-
-        # TODO: Update to use new clean architecture
-        # self.state_manager = self.window().state_manager
-        # self.project_manager = self.window().project_manager
-        # self.plugin_manager = self.window().plugin_manager
-        # self.data_manager = self.window().data_manager
-        self.state_manager = None
-        self.project_manager = None
-        self.plugin_manager = None
-        self.data_manager = None
         self.importer_param_widgets: Dict[str, QWidget] = {} # Initialize the dictionary here
         self.setup_navigation(["Import Project", "Project Settings", "General Settings"])
         self.setup_import_project_page()
@@ -148,23 +138,17 @@ class ProjectView(BaseView):
         self.populate_importer_plugins() # Populate the dropdown
 
     def populate_importer_plugins(self):
-        """Populates the importer plugin selection dropdown using StateManager."""
-        if not hasattr(self, 'importer_plugin_combo') or not self.state_manager:
+        """Populates the importer plugin selection dropdown using new architecture."""
+        if not hasattr(self, 'importer_plugin_combo'):
             return
 
         self.importer_plugin_combo.blockSignals(True)
         self.importer_plugin_combo.clear()
         self.importer_plugin_combo.addItem("Select an importer...", None)
 
-        # --- Find Importer Plugins via StateManager ---
-        importer_plugins_meta = self.state_manager.get_plugins_by_type('importer')
-
-        if not importer_plugins_meta:
-            self.navigation_pane.add_log_message("No importer plugins found in state.", "warning")
-        else:
-            # The method already returns metadata, so we just sort and add it.
-            for meta in sorted(importer_plugins_meta, key=lambda m: m.name):
-                self.importer_plugin_combo.addItem(meta.name, meta.name)
+        # For now, add a placeholder since plugin system integration is pending
+        self.importer_plugin_combo.addItem("Plugin system integration pending", None)
+        self.navigation_pane.add_log_message("Importer plugin integration pending in clean architecture.", "info")
 
         self.importer_plugin_combo.blockSignals(False)
         self.on_importer_plugin_selected(self.importer_plugin_combo.currentIndex())
@@ -178,15 +162,15 @@ class ProjectView(BaseView):
         self.import_project_button.setEnabled(False)
 
         plugin_name = self.importer_plugin_combo.itemData(index)
-        if not plugin_name:
+        if not plugin_name or plugin_name == "Plugin system integration pending":
             return # Placeholder selected
 
-        plugin = self.plugin_manager.get_plugin_by_name(plugin_name)
-        if not plugin:
-            self.navigation_pane.add_log_message(f"Selected importer plugin '{plugin_name}' not found.", "error")
-            return
+        # Plugin system integration is pending, so we can't get plugin metadata yet
+        self.navigation_pane.add_log_message(f"Plugin system integration pending for '{plugin_name}'.", "info")
+        return
 
-        self.importer_params_group.setVisible(True) # Show the parameter group
+        # TODO: Re-enable when plugin system is integrated
+        # self.importer_params_group.setVisible(True) # Show the parameter group
         self.importer_params_group.setTitle(f"{plugin_name} Parameters") # Update title
 
         # Get fields from the selected plugin
@@ -467,11 +451,9 @@ class ProjectView(BaseView):
         self.populate_importer_plugins()
 
     def update_theme_dropdown_from_state(self):
-        if hasattr(self, 'theme_dropdown') and self.state_manager:
-            theme_pref = self.state_manager.get_theme_preference()
-            index = self.theme_dropdown.findText(theme_pref)
-            if index >= 0:
-                self.theme_dropdown.setCurrentIndex(index)
+        # Theme management moved to ConfigManager, handled by MainWindow
+        if hasattr(self, 'theme_dropdown'):
+            self.navigation_pane.add_log_message("Theme management now handled by ConfigManager.", "info")
 
     def handle_apply_general_settings(self):
         """Apply the general settings."""
@@ -552,31 +534,10 @@ class ProjectView(BaseView):
 
     def update_frame_rate_from_state(self):
         """Update frame rate settings from the current state using DataManager resolution."""
-        try:
-            # Check if data_manager exists before calling resolve_frame_rate
-            if not self.data_manager:
-                 self.navigation_pane.add_log_message("DataManager not available.", "warning")
-                 return
-
-            final_frame_rate = self.data_manager.resolve_frame_rate(None, None, None)
-        except FrameRateResolutionError as e:
-            self.navigation_pane.add_log_message(f"Frame rate resolution error: {str(e)}", "error")
-            final_frame_rate = "OFF" # Default to OFF on error
-        except AttributeError:
-             self.navigation_pane.add_log_message("DataManager not fully initialized.", "warning")
-             return
-
-
-        if final_frame_rate == "OFF":
-            frame_rate_enabled = False
-            # Get default from metadata if available, otherwise fallback
-            default_rate = 60
-            if self.state_manager and self.state_manager.project_state and self.state_manager.project_state.project_metadata:
-                 default_rate = self.state_manager.project_state.project_metadata.global_frame_rate
-            display_rate = default_rate
-        else:
-            frame_rate_enabled = True
-            display_rate = final_frame_rate
+        # Frame rate management is not implemented in the new architecture yet
+        # Set default values for now
+        frame_rate_enabled = False
+        display_rate = 60  # Default frame rate
 
         # Update UI elements if they exist
         if hasattr(self, 'frame_rate_slider'):
@@ -588,6 +549,8 @@ class ProjectView(BaseView):
             self.enable_frame_rate_checkbox.blockSignals(True)
             self.enable_frame_rate_checkbox.setChecked(frame_rate_enabled)
             self.enable_frame_rate_checkbox.blockSignals(False)
+
+        self.navigation_pane.add_log_message("Frame rate management not yet implemented in clean architecture.", "info")
         if hasattr(self, 'frame_rate_value_label'):
              self.frame_rate_value_label.setText(str(display_rate))
 
@@ -606,25 +569,18 @@ class ProjectView(BaseView):
 
     def update_sort_mode_from_state(self):
         """Update sort mode dropdown from the current state."""
-        if not self.state_manager: return # Check if state_manager exists
-
-        state = self.state_manager.project_state
-
         # Check if we have the sort mode dropdown
         if not hasattr(self, 'sort_mode_dropdown'):
-            # print("WARNING: Sort mode dropdown not found") # Keep commented
             return
 
-        # Get sort mode using the consolidated property access
-        sort_mode = self.state_manager.get_global_sort_mode()
-
-        # Find and select the appropriate item in the dropdown
-        index = self.sort_mode_dropdown.findText(sort_mode)
+        # Sort mode management is not implemented in the new architecture yet
+        # Set a default sort mode for now
+        default_sort_mode = "name"  # or whatever the default should be
+        index = self.sort_mode_dropdown.findText(default_sort_mode)
         if index >= 0:
             self.sort_mode_dropdown.setCurrentIndex(index)
-        else:
-             # Log if the sort mode from state isn't in the dropdown options
-             self.navigation_pane.add_log_message(f"Sort mode '{sort_mode}' from state not found in dropdown.", "warning")
+
+        self.navigation_pane.add_log_message("Sort mode management not yet implemented in clean architecture.", "info")
 
     def populate_project_list(self):
         """Populates the project selection dropdown."""
@@ -634,39 +590,14 @@ class ProjectView(BaseView):
 
         current_selection = self.switch_project_combo.currentText()
         self.switch_project_combo.clear()
-        try:
-            # Ensure project_manager exists before calling list_available_projects
-            if not self.project_manager:
-                 self.navigation_pane.add_log_message("ProjectManager not available.", "error")
-                 return
 
-            # Determine source dir based on location chooser
-            location_choice = self.switch_location_combo.currentText().lower() if hasattr(self, 'switch_location_combo') else "local"
-            if location_choice == "shared":
-                base_dir = self.project_manager.get_shared_directory()
-                projects = self.project_manager.list_available_projects(base_dir)
-            else:
-                projects = self.project_manager.list_available_projects()
-
-            # Sort and add items with full path in user data
-            projects_sorted = sorted(projects, key=lambda p: p.name.lower())
-            for p in projects_sorted:
-                self.switch_project_combo.addItem(p.name, str(p))
-            project_names = [p.name for p in projects_sorted]
-
-            # Try to restore previous selection or select current project
-            current_project = self.window().selected_project_name
-            if current_project in project_names:
-                 index = self.switch_project_combo.findText(current_project)
-                 if index >= 0:
-                     self.switch_project_combo.setCurrentIndex(index)
-            elif current_selection in project_names:
-                 index = self.switch_project_combo.findText(current_selection)
-                 if index >= 0:
-                     self.switch_project_combo.setCurrentIndex(index)
-
-        except Exception as e:
-            self.navigation_pane.add_log_message(f"Error populating project list: {e}", "error")
+        # For now, add current project if available
+        if hasattr(self.window(), 'selected_project_name') and self.window().selected_project_name:
+            self.switch_project_combo.addItem(self.window().selected_project_name, self.window().selected_project_name)
+            self.navigation_pane.add_log_message("Project switching not fully implemented in clean architecture.", "info")
+        else:
+            self.switch_project_combo.addItem("No projects available", None)
+            self.navigation_pane.add_log_message("Project list population pending in clean architecture.", "info")
 
     def handle_switch_project(self):
         """Handles the 'Switch' button click."""

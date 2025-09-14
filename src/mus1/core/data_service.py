@@ -6,7 +6,7 @@ This shows how to use the simplified metadata models with SQLite backend.
 
 import json
 from typing import List, Optional
-from .metadata import Subject, Experiment, SubjectDTO, ExperimentDTO, Sex, ProcessingStage
+from .metadata import Subject, Experiment, SubjectDTO, ExperimentDTO, ColonyDTO, Sex, ProcessingStage, SubjectDesignation
 from .schema import Database, SubjectModel, ExperimentModel, subject_to_model, model_to_subject, experiment_to_model, model_to_experiment
 
 class SubjectService:
@@ -89,28 +89,81 @@ class ExperimentService:
 # EXAMPLE USAGE
 # ===========================================
 
+class ColonyService:
+    """Service for managing colonies with clean data flow."""
+
+    def __init__(self, db: Database):
+        self.db = db
+
+    def create_colony(self, colony_dto: ColonyDTO):
+        """Create a colony: DTO -> Domain -> Database -> Domain."""
+        from .metadata import Colony
+        # DTO validation happens automatically via Pydantic
+        colony_dto_dict = colony_dto.dict()
+
+        # Create domain model
+        domain_colony = Colony(**colony_dto_dict)
+
+        # Convert to database model and save
+        from .schema import colony_to_model, model_to_colony
+        db_colony = colony_to_model(domain_colony)
+        with self.db.get_session() as session:
+            session.add(db_colony)
+            session.commit()
+            session.refresh(db_colony)
+
+        # Return domain model
+        return model_to_colony(db_colony)
+
+    def get_colony(self, colony_id: str):
+        """Get a colony."""
+        from .schema import model_to_colony
+        with self.db.get_session() as session:
+            from .schema import ColonyModel
+            db_colony = session.query(ColonyModel).filter(ColonyModel.id == colony_id).first()
+            if db_colony:
+                return model_to_colony(db_colony)
+        return None
+
 def example_usage():
-    """Example of clean data flow."""
+    """Example of clean data flow with colonies and subjects."""
 
     # Initialize database
     db = Database(":memory:")
     db.create_tables()
 
     # Create services
+    colony_service = ColonyService(db)
     subject_service = SubjectService(db)
     experiment_service = ExperimentService(db)
+
+    # Create colony via DTO
+    colony_dto = ColonyDTO(
+        id="COL001",
+        name="ATP7B Mouse Colony",
+        lab_id="LAB001",
+        genotype_of_interest="ATP7B",
+        background_strain="C57BL/6J",
+        common_traits={"coat_color": "black", "behavior": "normal"},
+        notes="Main colony for ATP7B studies"
+    )
+
+    colony = colony_service.create_colony(colony_dto)
+    print(f"Created colony: {colony.id} - {colony.full_description}")
 
     # Create subject via DTO
     subject_dto = SubjectDTO(
         id="SUB001",
+        colony_id=colony.id,
         sex=Sex.MALE,
-        genotype="ATP7B:WT",
+        designation=SubjectDesignation.EXPERIMENTAL,
+        individual_genotype="ATP7B:WT",
         notes="Test subject"
     )
 
     # Clean flow: DTO -> Domain -> Database -> Domain
     subject = subject_service.create_subject(subject_dto)
-    print(f"Created subject: {subject.id}, age: {subject.age_days} days")
+    print(f"Created subject: {subject.id}, colony: {subject.colony_id}, age: {subject.age_days} days")
 
     # Create experiment
     experiment_dto = ExperimentDTO(
@@ -125,7 +178,10 @@ def example_usage():
 
     # Retrieve data
     retrieved_subject = subject_service.get_subject("SUB001")
-    print(f"Retrieved subject genotype: {retrieved_subject.genotype}")
+    print(f"Retrieved subject colony: {retrieved_subject.colony_id}")
+
+    retrieved_colony = colony_service.get_colony(colony.id)
+    print(f"Retrieved colony: {retrieved_colony.full_description}")
 
 if __name__ == "__main__":
     example_usage()

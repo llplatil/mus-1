@@ -1,94 +1,82 @@
 #!/usr/bin/env bash
-# dev-launch.sh – streamlined launcher for MUS1 development
+# dev-launch.sh – MUS1 Development Launcher
 #
-# Behaviour:
-#   1. Re-uses an existing .venv if possible (fast-path)
-#   2. Rebuilds the venv only when necessary:
-#        • .venv is missing, OR
-#        • pyproject.toml has changed since last installation
-#   3. Ensures MUS1 is installed in *editable* mode from this checkout
-#   4. Finally execs the mus1 CLI so all args/flags are forwarded.
+# Launches MUS1 in development mode with automatic environment setup.
+# Handles virtual environment activation and dependency management.
 #
-# The script is idempotent and should complete in ~0 s when nothing changed.
+# Usage: ./dev-launch.sh [gui|COMMAND...]
+#   gui          Launch GUI mode (recommended)
+#   COMMAND...   Run CLI commands
 
 set -euo pipefail
 
-ROOT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-cd "$ROOT_DIR"
-
-# Disable legacy local plugin scan by default; external packages use entry points
-export MUS1_ENABLE_LOCAL_PLUGIN_SCAN=${MUS1_ENABLE_LOCAL_PLUGIN_SCAN:-0}
-
+# Configuration
 VENV_DIR=".venv"
 PYPROJECT_FILE="pyproject.toml"
 HASH_FILE="$VENV_DIR/.pyproject.sha256"
 
 ###############################################################################
-# Helper functions
+# Helper Functions
 ###############################################################################
 
 calc_hash() {
-  shasum -a 256 "$PYPROJECT_FILE" | awk '{print $1}'
+    shasum -a 256 "$PYPROJECT_FILE" | awk '{print $1}'
 }
 
-create_venv() {
-  echo "[dev-launch] Creating virtual environment ($VENV_DIR)"
-  if command -v uv >/dev/null 2>&1; then
-    uv venv "$VENV_DIR"
-  else
-    python3 -m venv "$VENV_DIR"
-  fi
-  # shellcheck source=/dev/null
-  source "$VENV_DIR/bin/activate"
-  python -m pip install --upgrade pip
-  python -m pip install -e .
-  calc_hash > "$HASH_FILE"
+ensure_venv() {
+    if [ ! -d "$VENV_DIR" ]; then
+        echo "🔧 Creating virtual environment..."
+        python3 -m venv "$VENV_DIR"
+        setup_venv
+    elif [ ! -f "$VENV_DIR/bin/activate" ]; then
+        echo "🔧 Recreating incomplete virtual environment..."
+        rm -rf "$VENV_DIR"
+        python3 -m venv "$VENV_DIR"
+        setup_venv
+    elif [ ! -f "$HASH_FILE" ] || [ "$(calc_hash)" != "$(cat "$HASH_FILE")" ]; then
+        echo "🔧 Dependencies changed, updating environment..."
+        setup_venv
+    fi
 }
 
-activate_venv() {
-  # shellcheck source=/dev/null
-  source "$VENV_DIR/bin/activate"
-}
-
-editable_install_ok() {
-  python - <<'PY'
-import sys, importlib.util, pathlib
-try:
-    spec = importlib.util.find_spec("mus1")
-except ModuleNotFoundError:
-    sys.exit(1)
-if not spec or not spec.origin:
-    sys.exit(1)
-origin_path = pathlib.Path(spec.origin).resolve()
-# We run this script from the repo root (the script cd's there),
-# so the current working directory is the repository root.
-repo_root = pathlib.Path.cwd()
-if repo_root in origin_path.parents:
-    sys.exit(0)  # good – editable install from this checkout
-sys.exit(1)
-PY
+setup_venv() {
+    # shellcheck source=/dev/null
+    source "$VENV_DIR/bin/activate"
+    python -m pip install --quiet --upgrade pip
+    python -m pip install --quiet -e .
+    calc_hash > "$HASH_FILE"
+    echo "✅ Environment ready"
 }
 
 ###############################################################################
-# Main logic
+# Main Logic
 ###############################################################################
 
-if [ ! -d "$VENV_DIR" ]; then
-  create_venv
-elif [ ! -f "$VENV_DIR/bin/activate" ]; then
-  echo "[dev-launch] Detected incomplete venv – rebuilding"
-  rm -rf "$VENV_DIR"
-  create_venv
-else
-  activate_venv
-  if [ ! -f "$HASH_FILE" ] || [ "$(calc_hash)" != "$(cat "$HASH_FILE")" ]; then
-    echo "[dev-launch] pyproject.toml changed – rebuilding environment"
-    rm -rf "$VENV_DIR"
-    create_venv
-  elif ! editable_install_ok; then
-    echo "[dev-launch] Installing MUS1 in editable mode (pip install -e .)"
-    python -m pip install -e .
-  fi
+# Ensure we're in project root
+if [ ! -f "$PYPROJECT_FILE" ]; then
+    echo "❌ Error: Must run from MUS1 project root (pyproject.toml not found)"
+    exit 1
 fi
 
-exec mus1 "$@"
+# Set up environment
+ensure_venv
+
+# Activate virtual environment
+# shellcheck source=/dev/null
+source "$VENV_DIR/bin/activate"
+
+# Launch appropriate mode
+if [ "${1:-}" = "gui" ]; then
+    echo "🚀 Launching MUS1 GUI..."
+
+    # Configure Qt for macOS
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        export QT_QPA_PLATFORM_PLUGIN_PATH="$VENV_DIR/lib/python3.*/site-packages/PySide6/Qt6/plugins/platforms"
+        export QT_QPA_PLATFORM="cocoa"
+    fi
+
+    exec mus1-gui
+else
+    # Run CLI command
+    exec mus1 "$@"
+fi

@@ -15,7 +15,7 @@ from datetime import datetime
 import tempfile
 import json
 
-from .metadata import Subject, Experiment, VideoFile, Worker, ScanTarget, Sex, ProcessingStage, WorkerProvider, ScanTargetKind
+from .metadata import Subject, Experiment, VideoFile, Worker, ScanTarget, Colony, Sex, ProcessingStage, SubjectDesignation, WorkerProvider, ScanTargetKind
 from .project_manager_clean import ProjectManagerClean
 from .simple_cli import app  # Import CLI for demonstration
 
@@ -36,20 +36,43 @@ def demo_clean_architecture():
         pm = ProjectManagerClean(project_path)
         print("🗄️  Initialized SQLite database")
 
-        # 1. Add subjects
-        print("\n👤 Adding subjects...")
+        # Set up lab association
+        pm.set_lab_id("LAB001")
+        print("🏢 Associated project with lab LAB001")
+
+        # 1. Create colony
+        print("\n🏠 Creating colony...")
+        colony = Colony(
+            id="COL001",
+            name="ATP7B Study Colony",
+            lab_id="LAB001",
+            genotype_of_interest="ATP7B",
+            background_strain="C57BL/6J",
+            common_traits={"coat_color": "agouti", "behavior": "normal"},
+            notes="Main colony for ATP7B behavioral studies"
+        )
+
+        saved_colony = pm.add_colony(colony)
+        print(f"✅ Created colony: {saved_colony.id} - {saved_colony.full_description}")
+
+        # 2. Add subjects to colony
+        print("\n👤 Adding subjects to colony...")
         subject1 = Subject(
             id="SUB001",
+            colony_id=colony.id,
             sex=Sex.MALE,
-            genotype="ATP7B:WT",
+            designation=SubjectDesignation.EXPERIMENTAL,
+            individual_genotype="ATP7B:WT",
             birth_date=datetime(2023, 1, 15),
             notes="Wild-type male subject"
         )
 
         subject2 = Subject(
             id="SUB002",
+            colony_id=colony.id,
             sex=Sex.FEMALE,
-            genotype="ATP7B:KO",
+            designation=SubjectDesignation.EXPERIMENTAL,
+            individual_genotype="ATP7B:KO",
             birth_date=datetime(2023, 2, 20),
             notes="Knockout female subject"
         )
@@ -57,10 +80,20 @@ def demo_clean_architecture():
         saved_subject1 = pm.add_subject(subject1)
         saved_subject2 = pm.add_subject(subject2)
 
-        print(f"✅ Added subject: {saved_subject1.id} ({saved_subject1.genotype}) - Age: {saved_subject1.age_days} days")
-        print(f"✅ Added subject: {saved_subject2.id} ({saved_subject2.genotype}) - Age: {saved_subject2.age_days} days")
+        print(f"✅ Added subject: {saved_subject1.id} (colony: {saved_subject1.colony_id}) - Age: {saved_subject1.age_days} days")
+        print(f"✅ Added subject: {saved_subject2.id} (colony: {saved_subject2.colony_id}) - Age: {saved_subject2.age_days} days")
 
-        # 2. Add experiments
+        # Demonstrate colony-based subject queries
+        print("\n🔍 Colony-based queries:")
+        colony_subjects = pm.list_subjects_from_colony(colony.id)
+        print(f"   • Found {len(colony_subjects)} subjects in colony {colony.id}")
+
+        # Show how a project can import subjects from a colony
+        print("\n📥 Demonstrating subject import from colony:")
+        imported_subjects = pm.import_subjects_from_colony(colony.id)
+        print(f"   • Imported {len(imported_subjects)} subjects from colony {colony.id}")
+
+        # 3. Add experiments
         print("\n🧪 Adding experiments...")
         experiment1 = Experiment(
             id="EXP001",
@@ -146,6 +179,15 @@ def demo_clean_architecture():
         print("\n📈 Project Statistics:")
         for key, value in stats.items():
             print(f"   • {key}: {value}")
+
+        # Show colony information
+        colonies = pm.list_colonies()
+        print("\n🏠 Colony Information:")
+        for colony_info in colonies:
+            colony_subject_count = len(pm.list_subjects_from_colony(colony_info.id))
+            print(f"   • {colony_info.id}: {colony_info.name} ({colony_subject_count} subjects)")
+            print(f"     Genotype of interest: {colony_info.genotype_of_interest}")
+            print(f"     Background strain: {colony_info.background_strain}")
 
         # 7. Demonstrate duplicate detection
         print("\n🔍 Duplicate video detection:")

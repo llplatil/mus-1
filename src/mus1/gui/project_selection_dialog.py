@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QSize, Signal
 from PySide6.QtGui import QPixmap, QPalette, QBrush, QColor, QPainter, QImage, QIcon
 from ..core.project_manager_clean import ProjectManagerClean
+from ..core.config_manager import get_config
 
 
 class ProjectSelectionDialog(QDialog):
@@ -179,8 +180,8 @@ class ProjectSelectionDialog(QDialog):
             # Discover projects by looking for project directories
             # A project directory contains mus1.db file
             if location_choice == "shared":
-                # TODO: Get shared directory from config
-                base_dir = Path("./shared_projects")
+                shared_root = get_config("storage.shared_root", "/Volumes")
+                base_dir = Path(shared_root) / "Projects"
             else:
                 base_dir = self.project_root
 
@@ -225,8 +226,8 @@ class ProjectSelectionDialog(QDialog):
             # Choose Local or Shared base automatically
             location_choice = self.location_type_combo.currentText().lower()
             if location_choice == "shared":
-                # TODO: Get shared directory from config
-                base_path = Path("./shared_projects")
+                shared_root = get_config("storage.shared_root", "/Volumes")
+                base_path = Path(shared_root) / "Projects"
             else:
                 base_path = self.project_root
 

@@ -233,9 +233,8 @@ class MainWindow(QMainWindow):
                 # Initialize GUI services
                 self.gui_services = GUIServiceFactory(self.project_manager)
 
-                # TODO: Update ThemeManager to work with ConfigManager
-                # For now, create a simple placeholder
-                self.theme_manager = None
+                # Initialize ThemeManager with ConfigManager
+                self.theme_manager = ThemeManager()
 
                 # --- Project Loaded Successfully ---
                 self.selected_project_name = project_name
@@ -292,9 +291,8 @@ class MainWindow(QMainWindow):
             # Initialize GUI services
             self.gui_services = GUIServiceFactory(self.project_manager)
 
-            # TODO: Update ThemeManager to work with ConfigManager
-            # For now, create a simple placeholder
-            self.theme_manager = None
+            # Initialize ThemeManager with ConfigManager
+            self.theme_manager = ThemeManager()
 
             self.selected_project_name = project_name
             self.update_window_title()
@@ -390,7 +388,11 @@ class MainWindow(QMainWindow):
         """Handle theme changes and propagate to all views."""
         if self.theme_manager:
             # Update theme preference in config manager
-            self.theme_manager.config_manager.set("theme", theme_choice)
-            self.apply_theme()
+            effective_theme = self.theme_manager.change_theme(theme_choice)
+            # Apply the theme to the application
+            self.setProperty("theme", effective_theme)
+            self.style().unpolish(self)
+            self.style().polish(self)
+            self.propagate_theme_to_views(effective_theme)
 
     # Additional methods for hooking up signals, responding to user actions, etc.

@@ -9,7 +9,7 @@ from typing import Optional, List
 import json
 import logging
 
-from .metadata import ProjectConfig, Subject, Experiment, VideoFile
+from .metadata import ProjectConfig, Subject, Experiment, VideoFile, Colony
 from .repository import RepositoryFactory
 from .schema import Database
 
@@ -66,6 +66,11 @@ class ProjectManagerClean:
 
     def add_subject(self, subject: Subject) -> Subject:
         """Add a subject to the project."""
+        # Validate that the subject's colony exists
+        colony = self.get_colony(subject.colony_id)
+        if not colony:
+            raise ValueError(f"Colony {subject.colony_id} does not exist")
+
         logger.info(f"Adding subject {subject.id} to project {self.config.name}")
         saved_subject = self.repos.subjects.save(subject)
         logger.info(f"Subject {subject.id} added successfully")
@@ -213,6 +218,93 @@ class ProjectManagerClean:
         self._save_config(self.config)
 
     # ===========================================
+    # COLONY OPERATIONS
+    # ===========================================
+
+    def add_colony(self, colony: Colony) -> Colony:
+        """Add a colony to the project."""
+        # Validate that colony belongs to the same lab as the project
+        if self.config.lab_id and colony.lab_id != self.config.lab_id:
+            raise ValueError(f"Colony {colony.id} belongs to lab {colony.lab_id}, but project is associated with lab {self.config.lab_id}")
+
+        logger.info(f"Adding colony {colony.id} to project {self.config.name}")
+        saved_colony = self.repos.colonies.save(colony)
+        logger.info(f"Colony {colony.id} added successfully")
+        return saved_colony
+
+    def get_colony(self, colony_id: str) -> Optional[Colony]:
+        """Get colony by ID."""
+        return self.repos.colonies.find_by_id(colony_id)
+
+    def list_colonies(self) -> List[Colony]:
+        """List all colonies in the project."""
+        if self.config.lab_id:
+            # If project has a lab_id, only show colonies from that lab
+            return self.repos.colonies.find_by_lab(self.config.lab_id)
+        else:
+            # If no lab_id, show all colonies (for backward compatibility)
+            return self.repos.colonies.find_all()
+
+    def list_subjects_from_colony(self, colony_id: str) -> List[Subject]:
+        """List all subjects from a specific colony."""
+        return self.repos.subjects.find_by_colony(colony_id)
+
+    def import_subjects_from_colony(self, colony_id: str, subject_ids: Optional[List[str]] = None) -> List[Subject]:
+        """Import subjects from a colony into the project.
+
+        Args:
+            colony_id: The colony to import subjects from
+            subject_ids: Specific subject IDs to import (None = import all)
+
+        Returns:
+            List of imported subjects
+        """
+        # Validate that colony exists and belongs to the project's lab
+        colony = self.get_colony(colony_id)
+        if not colony:
+            raise ValueError(f"Colony {colony_id} does not exist")
+
+        if self.config.lab_id and colony.lab_id != self.config.lab_id:
+            raise ValueError(f"Colony {colony_id} belongs to lab {colony.lab_id}, but project is associated with lab {self.config.lab_id}")
+
+        # Get subjects from colony
+        colony_subjects = self.list_subjects_from_colony(colony_id)
+
+        # Filter by specific IDs if provided
+        if subject_ids:
+            subject_id_set = set(subject_ids)
+            colony_subjects = [s for s in colony_subjects if s.id in subject_id_set]
+
+        # Import subjects that don't already exist in the project
+        imported_subjects = []
+        for subject in colony_subjects:
+            if not self.get_subject(subject.id):
+                # Subject doesn't exist in project, add it
+                imported_subject = self.add_subject(subject)
+                imported_subjects.append(imported_subject)
+            else:
+                # Subject already exists, just add to imported list for return
+                imported_subjects.append(subject)
+
+        logger.info(f"Imported {len(imported_subjects)} subjects from colony {colony_id} into project {self.config.name}")
+        return imported_subjects
+
+    def remove_colony(self, colony_id: str) -> bool:
+        """Remove colony from project."""
+        logger.info(f"Removing colony {colony_id} from project {self.config.name}")
+
+        # Check if colony has subjects in this project
+        subjects = self.list_subjects_from_colony(colony_id)
+        if subjects:
+            logger.warning(f"Colony {colony_id} has {len(subjects)} subjects, cannot remove")
+            return False
+
+        success = self.repos.colonies.delete(colony_id)
+        if success:
+            logger.info(f"Colony {colony_id} removed successfully")
+        return success
+
+    # ===========================================
     # UTILITY METHODS
     # ===========================================
 
@@ -220,6 +312,7 @@ class ProjectManagerClean:
         """Get project statistics."""
         return {
             "name": self.config.name,
+            "colonies": len(self.list_colonies()),
             "subjects": len(self.list_subjects()),
             "experiments": len(self.list_experiments()),
             "videos": len(self.find_duplicate_videos()),  # This is approximate

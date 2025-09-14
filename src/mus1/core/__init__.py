@@ -6,7 +6,7 @@ Exposes simplified functionalities using the new architecture.
 # Import clean domain models and DTOs
 from .metadata import (
     # Enums
-    Sex, ProcessingStage, InheritancePattern, WorkerProvider, ScanTargetKind,
+    Sex, ProcessingStage, SubjectDesignation, InheritancePattern, WorkerProvider, ScanTargetKind,
     # Domain Models
     PluginMetadata, Subject, Experiment, VideoFile, Worker, ScanTarget,
     # DTOs
@@ -39,7 +39,7 @@ from .plugin_manager_clean import PluginManagerClean, PluginService
 
 __all__ = [
     # Enums
-    "Sex", "ProcessingStage", "InheritancePattern", "WorkerProvider", "ScanTargetKind",
+    "Sex", "ProcessingStage", "SubjectDesignation", "InheritancePattern", "WorkerProvider", "ScanTargetKind",
     # Domain Models
     "PluginMetadata", "Subject", "Experiment", "VideoFile", "Worker", "ScanTarget",
     # DTOs

@@ -7,7 +7,8 @@ This document describes the **new clean MUS1 architecture** that works today, ba
 ### Clean Architecture Components
 
 #### 1. Domain Models (`src/mus1/core/metadata.py`) ✅ WORKING
-- **Subject**: Pure business entity with age calculation
+- **Colony**: Lab colony entity with genotype of interest and common traits
+- **Subject**: Colony-based subject entity with colony relationships and age calculation
 - **Experiment**: Experiment entity with analysis readiness
 - **VideoFile**: Video file tracking with hash integrity
 - **Worker**: Compute worker configuration
@@ -15,31 +16,35 @@ This document describes the **new clean MUS1 architecture** that works today, ba
 - **Enums**: Clean Sex, ProcessingStage, WorkerProvider, ScanTargetKind
 
 #### 2. Data Transfer Objects (DTOs) ✅ WORKING
-- **SubjectDTO**: Input validation for subjects
+- **ColonyDTO**: Input validation for colonies
+- **SubjectDTO**: Input validation for colony-based subjects
 - **ExperimentDTO**: Input validation for experiments
 - **VideoFileDTO**: Input validation for videos
 - **WorkerDTO/ScanTargetDTO**: Input validation for infrastructure
 
 #### 3. SQLite Database Layer (`src/mus1/core/schema.py`) ✅ WORKING
-- **SubjectModel**: SQLAlchemy model with relationships
+- **ColonyModel**: SQLAlchemy model for colony entities
+- **SubjectModel**: SQLAlchemy model with colony relationships
 - **ExperimentModel**: SQLAlchemy model with foreign keys
 - **VideoModel**: SQLAlchemy model with integrity checks
 - **WorkerModel/ScanTargetModel**: Infrastructure persistence
 - **Database class**: Connection management and table creation
 
 #### 4. Repository Layer (`src/mus1/core/repository.py`) ✅ WORKING
-- **SubjectRepository**: CRUD operations with clean domain conversion
+- **ColonyRepository**: Colony CRUD operations and lab filtering
+- **SubjectRepository**: Colony-based subject operations with find_by_colony
 - **ExperimentRepository**: CRUD with relationship handling
 - **VideoRepository**: File integrity and duplicate detection
 - **RepositoryFactory**: Clean dependency injection
 
 #### 5. Project Manager (`src/mus1/core/project_manager_clean.py`) ✅ WORKING
-- **ProjectManagerClean**: Focused project operations
-- **Subject management**: Add, retrieve, list, remove
+- **ProjectManagerClean**: Focused project operations with lab-colony hierarchy
+- **Colony management**: Add, retrieve, list colonies for lab projects
+- **Subject management**: Colony-based subjects with import_from_colony
 - **Experiment management**: Add, retrieve, list, remove
 - **Video management**: Add with duplicate detection
 - **Worker/ScanTarget management**: Infrastructure configuration
-- **Statistics**: Project analytics and reporting
+- **Statistics**: Project analytics including colony counts
 
 #### 6. Simple CLI (`src/mus1/core/simple_cli.py`) ✅ WORKING
 - **init**: Create new projects with SQLite database
@@ -88,12 +93,25 @@ age = saved.age_days  # Automatic calculation
 
 ### Database Architecture
 ```sql
--- Clean relational schema
+-- Clean relational schema with lab-colony hierarchy
+CREATE TABLE colonies (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    lab_id TEXT NOT NULL,
+    genotype_of_interest TEXT,
+    background_strain TEXT,
+    common_traits TEXT DEFAULT '{}',
+    date_added DATETIME NOT NULL
+);
+
 CREATE TABLE subjects (
     id TEXT PRIMARY KEY,
+    colony_id TEXT NOT NULL REFERENCES colonies(id),
     sex TEXT NOT NULL,
+    designation TEXT,
     birth_date DATETIME,
-    genotype TEXT,
+    individual_genotype TEXT,
+    individual_treatment TEXT,
     date_added DATETIME NOT NULL
 );
 
@@ -124,11 +142,13 @@ CREATE TABLE experiments (
 
 ### Core Operations Working
 - Project creation with SQLite database
-- Subject CRUD (Create, Read, Update, Delete)
+- Colony management with lab associations
+- Colony-based subject CRUD (Create, Read, Update, Delete)
+- Subject import from colonies into projects
 - Experiment CRUD with subject relationships
 - Video file registration with hash integrity
 - Worker and scan target management
-- Project statistics and analytics
+- Project statistics and analytics including colonies
 - Duplicate video detection
 - Clean domain ↔ database ↔ domain conversion
 - Plugin discovery and registration
@@ -157,7 +177,32 @@ CREATE TABLE experiments (
 - Hierarchical settings (Runtime > Project > Lab > User > Install)
 - SQLite persistence with atomic operations
 
-### GUI Status ❌ NOT INTEGRATED
-- Old GUI still uses broken legacy models
-- Needs complete rewrite to use new clean architecture
+### GUI Status ⚠️ PARTIALLY INTEGRATED
+- MainWindow uses clean architecture components (ProjectManagerClean, logging_bus)
+- ProjectSelectionDialog needs config integration (TODO comments present)
+- Individual views may still need updates to use new domain models
+- GUI services layer exists but may need expansion
+
+## ⚠️ **CODE AUDIT FINDINGS**
+
+### Redundancies & Cleanup Needed
+- **Duplicate ColonyDTO**: Defined in both `setup_service.py` (dataclass) and `metadata.py` (Pydantic BaseModel)
+  - `metadata.py` version is more complete with validation and additional fields
+  - `setup_service.py` version should be removed
+- **Unused DTO Classes**: Several DTOs in `setup_service.py` appear unused:
+  - `UserProfileDTO`, `SharedStorageDTO`, `LabDTO`, `SetupWorkflowDTO`, `SetupStatusDTO`
+- **Demo Files**: May be temporary development artifacts
+  - `demo_clean_architecture.py`, `demo_plugin_architecture.py`
+- **Migration Script**: `migration_script.py` appears to be a one-time utility
+- **Import Inconsistencies**: `simple_cli.py` imports ColonyDTO from setup_service but it's also available in metadata
+
+### Code Quality Issues
+- ProjectSelectionDialog has TODO comments about config integration
+- Some diagnostic print statements remain in main.py entry point
+
+### Recent Cleanup (Completed)
+- ✅ Removed redundant `setup_wizard.py` (broken imports after DTO cleanup)
+- ✅ Removed unused DTO classes from `setup_service.py`
+- ✅ Fixed import inconsistencies in `simple_cli.py`
+- ✅ Fixed GUI launch command in `dev-launch.sh` (added `gui` subcommand detection)
 

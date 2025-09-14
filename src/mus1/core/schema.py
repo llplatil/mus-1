@@ -10,7 +10,7 @@ from sqlalchemy import create_engine, Column, Integer, String, DateTime, Float, 
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, sessionmaker
 from typing import List
-from .metadata import Sex, ProcessingStage, InheritancePattern, WorkerProvider, ScanTargetKind
+from .metadata import Sex, ProcessingStage, SubjectDesignation, InheritancePattern, WorkerProvider, ScanTargetKind
 
 Base = declarative_base()
 
@@ -18,20 +18,39 @@ Base = declarative_base()
 # DATABASE MODELS (SQLAlchemy)
 # ===========================================
 
+class ColonyModel(Base):
+    """Database model for colonies."""
+    __tablename__ = 'colonies'
+
+    id = Column(String, primary_key=True)
+    name = Column(String, nullable=False)
+    lab_id = Column(String, nullable=False)
+    genotype_of_interest = Column(String, nullable=True)
+    background_strain = Column(String, nullable=True)
+    common_traits = Column(Text, default="{}")  # JSON-encoded dict
+    notes = Column(Text, default="")
+    date_added = Column(DateTime, nullable=False)
+
+    # Relationships
+    subjects = relationship("SubjectModel", back_populates="colony")
+
 class SubjectModel(Base):
     """Database model for subjects."""
     __tablename__ = 'subjects'
 
     id = Column(String, primary_key=True)
+    colony_id = Column(String, ForeignKey('colonies.id'), nullable=False)
     sex = Column(SQLEnum(Sex), nullable=False)
+    designation = Column(SQLEnum(SubjectDesignation), nullable=True)
     birth_date = Column(DateTime, nullable=True)
     death_date = Column(DateTime, nullable=True)
-    genotype = Column(String, nullable=True)
-    treatment = Column(String, nullable=True)
+    individual_genotype = Column(String, nullable=True)
+    individual_treatment = Column(String, nullable=True)
     notes = Column(Text, default="")
     date_added = Column(DateTime, nullable=False)
 
     # Relationships
+    colony = relationship("ColonyModel", back_populates="subjects")
     experiments = relationship("ExperimentModel", back_populates="subject")
 
 class ExperimentModel(Base):
@@ -157,29 +176,60 @@ class Database:
 # DATA MAPPING FUNCTIONS
 # ===========================================
 
+def colony_to_model(colony) -> ColonyModel:
+    """Convert domain Colony to database model."""
+    return ColonyModel(
+        id=colony.id,
+        name=colony.name,
+        lab_id=colony.lab_id,
+        genotype_of_interest=colony.genotype_of_interest,
+        background_strain=colony.background_strain,
+        common_traits=json.dumps(colony.common_traits),
+        notes=colony.notes,
+        date_added=colony.date_added
+    )
+
+def model_to_colony(model) -> 'Colony':
+    """Convert database model to domain Colony."""
+    from .metadata import Colony
+    return Colony(
+        id=model.id,
+        name=model.name,
+        lab_id=model.lab_id,
+        genotype_of_interest=model.genotype_of_interest,
+        background_strain=model.background_strain,
+        common_traits=json.loads(model.common_traits) if model.common_traits else {},
+        notes=model.notes,
+        date_added=model.date_added
+    )
+
 def subject_to_model(subject) -> SubjectModel:
     """Convert domain Subject to database model."""
     return SubjectModel(
         id=subject.id,
+        colony_id=subject.colony_id,
         sex=subject.sex,
+        designation=subject.designation,
         birth_date=subject.birth_date,
         death_date=subject.death_date,
-        genotype=subject.genotype,
-        treatment=subject.treatment,
+        individual_genotype=subject.individual_genotype,
+        individual_treatment=subject.individual_treatment,
         notes=subject.notes,
         date_added=subject.date_added
     )
 
 def model_to_subject(model) -> 'Subject':
     """Convert database model to domain Subject."""
-    from .metadata import Subject
+    from .metadata import Subject, SubjectDesignation
     return Subject(
         id=model.id,
+        colony_id=model.colony_id,
         sex=model.sex,
+        designation=model.designation or SubjectDesignation.EXPERIMENTAL,  # Default for legacy databases
         birth_date=model.birth_date,
         death_date=model.death_date,
-        genotype=model.genotype,
-        treatment=model.treatment,
+        individual_genotype=model.individual_genotype,
+        individual_treatment=model.individual_treatment,
         notes=model.notes,
         date_added=model.date_added
     )

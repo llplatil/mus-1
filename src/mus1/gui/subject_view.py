@@ -78,7 +78,7 @@ class SubjectView(BaseView):
         self.subject_id_edit.setProperty("class", "mus1-text-input")
         self.sex_combo = QComboBox()
         self.sex_combo.setProperty("class", "mus1-combo-box")
-        self.sex_combo.addItems([Sex.M.value, Sex.F.value, Sex.UNKNOWN.value])
+        self.sex_combo.addItems([Sex.MALE.value, Sex.FEMALE.value, Sex.UNKNOWN.value])
         # Replace free-text genotype with combo box populated from active metadata
         self.genotype_combo = QComboBox()
         self.genotype_combo.setProperty("class", "mus1-combo-box")
@@ -216,37 +216,32 @@ class SubjectView(BaseView):
 
     def refresh_subject_list_display(self):
         """Refresh the list of all subjects in the project with full metadata details."""
-        if not self.project_manager:
+        if not self.subject_service:
             return
-        
+
         # Ensure the list widget exists before proceeding
         if not hasattr(self, 'subjects_list'):
             return
-        
+
         # Update the UI by clearing and repopulating the subjects list regardless of the current page
         self.subjects_list.clear()
-        all_subjects = self.project_manager.state_manager.get_sorted_subjects()
-        
+
+        # Get subjects using GUI services
+        subjects_display_dto = self.subject_service.get_subjects_for_display()
+
         # Log the refresh activity
-        self.log_bus.log(f"Refreshing subject list: {len(all_subjects)} subjects found", "info", "SubjectView")
-        
-        for subj in all_subjects:
-            birth_str = subj.birth_date.strftime('%Y-%m-%d %H:%M:%S') if subj.birth_date else 'N/A'
-            
+        self.log_bus.log(f"Refreshing subject list: {len(subjects_display_dto)} subjects found", "info", "SubjectView")
+
+        for subj_dto in subjects_display_dto:
+            birth_str = subj_dto.birth_date.strftime('%Y-%m-%d %H:%M:%S') if subj_dto.birth_date else 'N/A'
+
             # Create the basic details string
-            details = (f"ID: {subj.id} | Sex: {subj.sex.value} | Genotype: {subj.genotype or 'N/A'} "
-                      f"| Training: {subj.in_training_set}")
-            
-            # Add notes snippet if available
-            if subj.notes and subj.notes.strip():
-                # Get a truncated version of the notes
-                notes_snippet = subj.notes.strip()
-                if len(notes_snippet) > 30:
-                    notes_snippet = notes_snippet[:30] + "..."
-                
-                # Append notes to details string
-                details += f" | Notes: {notes_snippet}"
-            
+            details = (f"ID: {subj_dto.id} | Sex: {subj_dto.sex_display} | Genotype: {subj_dto.genotype or 'N/A'} "
+                      f"| Age: {subj_dto.age_display}")
+
+            # Add notes snippet if available (though Subject model may not have notes yet)
+            # details += f" | Notes: {subj_dto.notes or 'None'}"
+
             self.subjects_list.addItem(details)
 
     def refresh_experiment_list_by_subject_display(self):
@@ -368,17 +363,23 @@ class SubjectView(BaseView):
 
     def refresh_overview(self):
         """Refresh the Subjects Overview display using metadata_tree."""
-        # TODO: Update to use new architecture
-        if not self.project_manager or not self.state_manager:
-            # Clear the tree view if managers are not available
+        if not self.subject_service or not self.gui_services:
+            # Clear the tree view if services are not available
             if hasattr(self, 'metadata_tree'):
                 self.metadata_tree.clear()
             return
-        state = self.project_manager.state_manager.project_state
-        subjects = state.subjects          # Dictionary of subject metadata
-        experiments = state.experiments      # Dictionary of experiment metadata
+
+        # Get subjects and experiments using GUI services
+        subjects_dto = self.subject_service.get_subjects_for_display()
+        experiments_dto = self.gui_services.get_experiments_for_display()
+
+        # Convert DTOs to dictionaries for compatibility with metadata_tree
+        subjects_dict = {subj.id: subj for subj in subjects_dto}
+        experiments_dict = {exp.id: exp for exp in experiments_dto}
+
         # Populate the metadata tree view with subjects and their experiments
-        self.metadata_tree.populate_subjects_with_experiments(subjects, experiments, state_manager=self.state_manager)
+        # Note: This might need further adaptation based on what metadata_tree expects
+        self.metadata_tree.populate_subjects_with_experiments(subjects_dict, experiments_dict)
 
     def handle_edit_subject(self):
         """Handle editing of a selected subject."""
@@ -399,32 +400,32 @@ class SubjectView(BaseView):
         else:
             subject_id = id_part
         
-        # Get the subject from the state manager
-        subject = self.project_manager.state_manager.project_state.subjects.get(subject_id)
-        if not subject:
+        # Get the subject using GUI services
+        subject_dto = self.subject_service.get_subject_by_id(subject_id)
+        if not subject_dto:
             self.navigation_pane.add_log_message(f"Subject {subject_id} not found.", "error")
             return
         
         # Populate the form with subject data for editing
         self.subject_id_edit.setText(subject_id)
-        self.sex_combo.setCurrentText(subject.sex.value)
-        self.genotype_combo.setCurrentText(subject.genotype or "")
-        self.notes_edit.setText(subject.notes or "")
-        
-        if subject.birth_date:
-            self.birthdate_edit.setDateTime(QDateTime(subject.birth_date))
+        self.sex_combo.setCurrentText(subject_dto.sex_display)
+        self.genotype_combo.setCurrentText(subject_dto.genotype or "")
+        # self.notes_edit.setText(subject_dto.notes or "")  # Notes not in DTO yet
+
+        if subject_dto.birth_date:
+            self.birthdate_edit.setDateTime(QDateTime(subject_dto.birth_date))
         else:
             self.birthdate_edit.setDateTime(QDateTime.currentDateTime())
-        
-        self.training_set_check.setChecked(subject.in_training_set)
-        
-        # Enable death date if it exists
-        has_death_date = hasattr(subject, 'death_date') and subject.death_date is not None
-        self.death_check.setChecked(has_death_date)
-        if has_death_date:
-            self.deathdate_edit.setDateTime(QDateTime(subject.death_date))
-        else:
-            self.deathdate_edit.setDateTime(QDateTime.currentDateTime())
+
+        # self.training_set_check.setChecked(subject_dto.in_training_set)  # Not in DTO yet
+
+        # Enable death date if it exists (not in DTO yet)
+        # has_death_date = subject_dto.death_date is not None
+        # self.death_check.setChecked(has_death_date)
+        # if has_death_date:
+        #     self.deathdate_edit.setDateTime(QDateTime(subject_dto.death_date))
+        # else:
+        #     self.deathdate_edit.setDateTime(QDateTime.currentDateTime())
         
         # Change add button to update button
         self.add_subject_button.setText("Update Subject")
@@ -454,10 +455,10 @@ class SubjectView(BaseView):
 
         # Get other form values
         sex_value = self.sex_combo.currentText()
-        if sex_value == Sex.M.value:
-            sex_enum = Sex.M
-        elif sex_value == Sex.F.value:
-            sex_enum = Sex.F
+        if sex_value == Sex.MALE.value:
+            sex_enum = Sex.MALE
+        elif sex_value == Sex.FEMALE.value:
+            sex_enum = Sex.FEMALE
         else:
             sex_enum = Sex.UNKNOWN
 
@@ -529,37 +530,15 @@ class SubjectView(BaseView):
         else:
             subject_id = id_part
         
-        # Get the subject
-        subject = self.project_manager.state_manager.project_state.subjects.get(subject_id)
-        if not subject:
+        # Get the subject using GUI services
+        subject_dto = self.subject_service.get_subject_by_id(subject_id)
+        if not subject_dto:
             self.navigation_pane.add_log_message(f"Subject {subject_id} not found.", "error")
             return
-        
-        # If there are no notes, show a message
-        if not subject.notes or subject.notes.strip() == "":
-            self.navigation_pane.add_log_message(f"No notes for subject {subject_id}.", "info")
-            return
-        
-        # Create and show dialog with notes
-        from PySide6.QtWidgets import QDialog, QVBoxLayout, QTextEdit, QPushButton
-        
-        dialog = QDialog(self)
-        dialog.setWindowTitle(f"Notes for Subject {subject_id}")
-        dialog.setMinimumSize(400, 300)
-        
-        layout = QVBoxLayout(dialog)
-        
-        notes_display = QTextEdit()
-        notes_display.setReadOnly(True)
-        notes_display.setText(subject.notes)
-        
-        close_button = QPushButton("Close")
-        close_button.clicked.connect(dialog.accept)
-        
-        layout.addWidget(notes_display)
-        layout.addWidget(close_button)
-        
-        dialog.exec()
+
+        # Notes are not implemented in the current Subject model/DTO
+        # Show a message indicating this feature is not available yet
+        self.navigation_pane.add_log_message(f"Notes feature not yet implemented for subject {subject_id}.", "info")
 
     # New methods for Treatments and Genotypes management (naming now consistent with core modules)
     def handle_add_treatment(self):
@@ -598,18 +577,10 @@ class SubjectView(BaseView):
         if not selected_items:
             self.log_bus.log("No treatments selected to add to active.", "warning", "SubjectView")
             return
-        current_active = self.project_manager.state_manager.get_treatments().get("active", [])
-        for item in selected_items:
-            treatment = item.text().strip()
-            if treatment not in current_active:
-                current_active.append(treatment)
-        try:
-            self.project_manager.update_active_treatments(current_active)
-            self.refresh_treatments_lists()
-            self.refresh_active_metadata_dropdowns()
-            self.log_bus.log("Active treatments updated.", "success", "SubjectView")
-        except Exception as e:
-            self.log_bus.log(f"Error updating active treatments: {e}", "error", "SubjectView")
+
+        # Treatment management is not implemented in the new architecture yet
+        # This is a placeholder until treatment management is added to the clean architecture
+        self.log_bus.log("Treatment management not yet implemented in clean architecture.", "warning", "SubjectView")
 
     def handle_remove_active_treatments(self):
         """Removes selected treatments from the active treatments list."""
@@ -617,18 +588,9 @@ class SubjectView(BaseView):
         if not selected_items:
             self.log_bus.log("No active treatments selected for removal.", "warning", "SubjectView")
             return
-        current_active = self.project_manager.state_manager.get_treatments().get("active", [])
-        for item in selected_items:
-            treatment = item.text().strip()
-            if treatment in current_active:
-                current_active.remove(treatment)
-        try:
-            self.project_manager.update_active_treatments(current_active)
-            self.refresh_treatments_lists()
-            self.refresh_active_metadata_dropdowns()
-            self.log_bus.log("Active treatments updated after removal.", "success", "SubjectView")
-        except Exception as e:
-            self.log_bus.log(f"Error updating active treatments: {e}", "error", "SubjectView")
+
+        # Treatment management is not implemented in the new architecture yet
+        self.log_bus.log("Treatment management not yet implemented in clean architecture.", "warning", "SubjectView")
 
     def handle_add_to_active_genotypes(self):
         """Adds selected genotypes from the available list to active genotypes."""
@@ -636,18 +598,9 @@ class SubjectView(BaseView):
         if not selected_items:
             self.log_bus.log("No genotypes selected to add to active.", "warning", "SubjectView")
             return
-        current_active = self.project_manager.state_manager.get_genotypes().get("active", [])
-        for item in selected_items:
-            genotype = item.text().strip()
-            if genotype not in current_active:
-                current_active.append(genotype)
-        try:
-            self.project_manager.update_active_genotypes(current_active)
-            self.refresh_genotypes_lists()
-            self.refresh_active_metadata_dropdowns()
-            self.log_bus.log("Active genotypes updated.", "success", "SubjectView")
-        except Exception as e:
-            self.log_bus.log(f"Error updating active genotypes: {e}", "error", "SubjectView")
+
+        # Genotype management is not implemented in the new architecture yet
+        self.log_bus.log("Genotype management not yet implemented in clean architecture.", "warning", "SubjectView")
 
     def handle_remove_active_genotypes(self):
         """Removes selected genotypes from the active genotypes list."""
@@ -655,74 +608,45 @@ class SubjectView(BaseView):
         if not selected_items:
             self.log_bus.log("No active genotypes selected for removal.", "warning", "SubjectView")
             return
-        current_active = self.project_manager.state_manager.get_genotypes().get("active", [])
-        for item in selected_items:
-            genotype = item.text().strip()
-            if genotype in current_active:
-                current_active.remove(genotype)
-        try:
-            self.project_manager.update_active_genotypes(current_active)
-            self.refresh_genotypes_lists()
-            self.refresh_active_metadata_dropdowns()
-            self.log_bus.log("Active genotypes updated after removal.", "success", "SubjectView")
-        except Exception as e:
-            self.log_bus.log(f"Error updating active genotypes: {e}", "error", "SubjectView")
+
+        # Genotype management is not implemented in the new architecture yet
+        self.log_bus.log("Genotype management not yet implemented in clean architecture.", "warning", "SubjectView")
 
     def refresh_treatments_lists(self):
         """Refresh the available and active treatments list widgets."""
-        treatments = self.project_manager.state_manager.get_treatments()
-        self.all_treatments_list.clear()
-        self.current_treatments_list.clear()
-        for treatment in treatments.get("available", []):
-            if hasattr(treatment, "name"):
-                self.all_treatments_list.addItem(treatment.name)
-            else:
-                self.all_treatments_list.addItem(treatment)
-        for treatment in treatments.get("active", []):
-            if hasattr(treatment, "name"):
-                self.current_treatments_list.addItem(treatment.name)
-            else:
-                self.current_treatments_list.addItem(treatment)
+        # Treatment management is not implemented in the new architecture yet
+        # Clear lists and show placeholder
+        if hasattr(self, 'all_treatments_list'):
+            self.all_treatments_list.clear()
+            self.all_treatments_list.addItem("Treatment management not yet implemented")
+        if hasattr(self, 'current_treatments_list'):
+            self.current_treatments_list.clear()
+            self.current_treatments_list.addItem("Treatment management not yet implemented")
 
     def refresh_genotypes_lists(self):
         """Refresh the available and active genotypes list widgets."""
-        genotypes = self.project_manager.state_manager.get_genotypes()
-        self.all_genotypes_list.clear()
-        self.current_genotypes_list.clear()
-        for genotype in genotypes.get("available", []):
-            if hasattr(genotype, "name"):
-                self.all_genotypes_list.addItem(genotype.name)
-            else:
-                self.all_genotypes_list.addItem(genotype)
-        for genotype in genotypes.get("active", []):
-            if hasattr(genotype, "name"):
-                self.current_genotypes_list.addItem(genotype.name)
-            else:
-                self.current_genotypes_list.addItem(genotype)
+        # Genotype management is not implemented in the new architecture yet
+        # Clear lists and show placeholder
+        if hasattr(self, 'all_genotypes_list'):
+            self.all_genotypes_list.clear()
+            self.all_genotypes_list.addItem("Genotype management not yet implemented")
+        if hasattr(self, 'current_genotypes_list'):
+            self.current_genotypes_list.clear()
+            self.current_genotypes_list.addItem("Genotype management not yet implemented")
 
     def refresh_body_parts_page(self):
         """Refresh the body parts lists."""
         if not hasattr(self, 'all_bodyparts_list') or not hasattr(self, 'current_body_parts_list'):
             return
 
-        # TODO: Update to use new architecture
-        if not self.state_manager:
-            # Temporarily clear lists until new architecture is implemented
-            self.all_bodyparts_list.clear()
-            self.current_body_parts_list.clear()
-            return
-
-        # Get sorted body parts from state_manager
-        sorted_parts = self.state_manager.get_sorted_body_parts()
-        
+        # Body parts management is not implemented in the new architecture yet
+        # Clear lists and show placeholder
         self.all_bodyparts_list.clear()
-        for bp in sorted_parts["master"]:
-            self.all_bodyparts_list.addItem(self.format_item(bp))
-        
+        self.all_bodyparts_list.addItem("Body parts management not yet implemented")
+
         self.current_body_parts_list.clear()
-        for bp in sorted_parts["active"]:
-            self.current_body_parts_list.addItem(self.format_item(bp))
-        
+        self.current_body_parts_list.addItem("Body parts management not yet implemented")
+
         self.navigation_pane.add_log_message("Body parts lists refreshed.", "info")
 
     def refresh_objects_page(self):
@@ -1080,7 +1004,9 @@ class SubjectView(BaseView):
         for item in selected_items:
             obj_name = item.text()
             if obj_name not in master_names:
-                master_list.append(ObjectMetadata(name=obj_name))
+                # Object management is not implemented in the new architecture yet
+                # This would need to be updated when object management is added
+                pass
         self.window().project_manager.update_tracked_objects(active_list, list_type="active")
         self.window().project_manager.update_tracked_objects(master_list, list_type="master")
         self.navigation_pane.add_log_message(f"Moved {len(selected_items)} object(s) from Active to Master.", 'success')
@@ -1105,39 +1031,32 @@ class SubjectView(BaseView):
         # Clear list widgets if they exist
         if hasattr(self, 'all_objects_list'):
             self.all_objects_list.clear()
+            self.all_objects_list.addItem("Object management not yet implemented")
         if hasattr(self, 'current_objects_list'):
             self.current_objects_list.clear()
-        # Retrieve sorted objects via state_manager for consistency
-        master_list = self.state_manager.get_sorted_objects("master")
-        active_list = self.state_manager.get_sorted_objects("active")
-        for obj in master_list:
-            self.all_objects_list.addItem(self.format_item(obj))
-        for obj in active_list:
-            self.current_objects_list.addItem(self.format_item(obj))
+            self.current_objects_list.addItem("Object management not yet implemented")
 
     def _get_active_objects(self):
-        return self.state_manager.project_state.project_metadata.active_tracked_objects
+        # Object management is not implemented in the new architecture yet
+        return []
 
     def _get_master_objects(self):
-        return self.state_manager.project_state.project_metadata.master_tracked_objects
+        # Object management is not implemented in the new architecture yet
+        return []
 
     def refresh_active_metadata_dropdowns(self):
         """Populate the genotype and treatment dropdowns in the Add Subject page from the active lists."""
         self.genotype_combo.clear()
         self.treatment_combo.clear()
-        # Fetch updated active lists from state
-        active_genotypes = self.project_manager.state_manager.get_genotypes().get("active", [])
-        active_treatments = self.project_manager.state_manager.get_treatments().get("active", [])
-        for genotype in active_genotypes:
-            if hasattr(genotype, "name"):
-                self.genotype_combo.addItem(genotype.name)
-            else:
-                self.genotype_combo.addItem(genotype)
-        for treatment in active_treatments:
-            if hasattr(treatment, "name"):
-                self.treatment_combo.addItem(treatment.name)
-            else:
-                self.treatment_combo.addItem(treatment)
+
+        # For now, add some default genotypes since genotype/treatment management
+        # is not implemented in the new architecture yet
+        default_genotypes = ["WT", "HET", "KO", "ATP7B:WT", "ATP7B:HET", "ATP7B:KO"]
+        for genotype in default_genotypes:
+            self.genotype_combo.addItem(genotype)
+
+        # Treatment dropdown remains empty for now
+        self.treatment_combo.addItem("No treatments configured")
 
     def set_overview_edit_mode(self, checked):
         """Toggle inline editing of subject rows in the overview tree."""

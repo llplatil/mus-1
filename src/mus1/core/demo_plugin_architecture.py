@@ -15,7 +15,7 @@ import os
 
 from .plugin_manager_clean import PluginManagerClean, PluginService
 from .schema import Database
-from .metadata import Subject, Experiment, Sex, ProcessingStage, ProjectConfig
+from .metadata import Subject, Experiment, Sex, ProcessingStage, SubjectDesignation, ProjectConfig
 from .repository import RepositoryFactory
 from ..plugins.base_plugin import BasePlugin
 
@@ -113,6 +113,7 @@ def demo_plugin_architecture():
         subject1 = repos.subjects.save(Subject(
             id="SUB001",
             sex=Sex.MALE,
+            designation=SubjectDesignation.EXPERIMENTAL,
             genotype="ATP7B:WT",
             birth_date=datetime(2023, 6, 15),
             notes="Test subject for plugin demo",
@@ -122,6 +123,7 @@ def demo_plugin_architecture():
         subject2 = repos.subjects.save(Subject(
             id="SUB002",
             sex=Sex.FEMALE,
+            designation=SubjectDesignation.EXPERIMENTAL,
             genotype="ATP7B:KO",
             birth_date=datetime(2023, 6, 16),
             notes="Second test subject",

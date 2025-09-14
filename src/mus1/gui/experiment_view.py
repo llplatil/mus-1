@@ -701,21 +701,20 @@ class ExperimentView(BaseView):
 
     def setup_batch_creation(self):
         """Initialize the batch creation page with experiments grid."""
-        if not self.state_manager:
-            logger.warning("StateManager not available for batch creation setup.")
-            # Potentially disable parts of the UI or show an error
+        # Batch creation not yet implemented in clean architecture
+        logger.warning("Batch creation not yet implemented in clean architecture.")
+        # Disable batch creation UI elements for now
+        if hasattr(self, 'batchIdLineEdit'):
             self.batchIdLineEdit.setEnabled(False)
+        if hasattr(self, 'batchNameLineEdit'):
             self.batchNameLineEdit.setEnabled(False)
+        if hasattr(self, 'batchDescriptionTextEdit'):
             self.batchDescriptionTextEdit.setEnabled(False)
+        if hasattr(self, 'create_batch_button'):
             self.create_batch_button.setEnabled(False)
-            self.batch_experiment_grid.set_columns(["Error"])
-            self.batch_experiment_grid.populate_data([{"Error": "State Manager unavailable"}], ["Error"])
-            return
-        else:
-            # Re-enable fields if they were disabled
-            self.batchIdLineEdit.setEnabled(True)
-            self.batchNameLineEdit.setEnabled(True)
-            self.batchDescriptionTextEdit.setEnabled(True)
+        if hasattr(self, 'batch_experiment_grid'):
+            self.batch_experiment_grid.set_columns(["Status"])
+            self.batch_experiment_grid.populate_data([{"Status": "Batch creation not yet implemented"}], ["Status"])
 
         # Generate a unique suggested batch ID
         timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
@@ -736,66 +735,12 @@ class ExperimentView(BaseView):
 
     def update_experiment_grid(self):
         """Update the grid display with experiments for batch creation."""
-        if not self.state_manager:
-            logger.warning("StateManager not available, cannot update experiment grid.")
-            self.batch_experiment_grid.set_columns(["Error"])
-            self.batch_experiment_grid.populate_data([{"Error": "State Manager unavailable"}], ["Error"])
-            return
-
-        # Get experiments (already sorted by StateManager's default)
-        all_experiments = self.state_manager.get_sorted_list("experiments")
-        logger.debug(f"Populating batch grid with {len(all_experiments)} experiments.")
-
-        # Define columns matching MetadataGridDisplay's expectations
-        columns = ["Select", "ID", "Type", "Subject", "Date", "Stage"]
-
-        # Build experiment data including raw values for sorting
-        exp_data = []
-        for exp in all_experiments:
-            raw_date = getattr(exp, 'date_recorded', None)
-            raw_stage = getattr(exp, 'processing_stage', None)
-
-            # Format date string for display
-            date_str = "N/A"
-            if raw_date and isinstance(raw_date, datetime):
-                 date_str = raw_date.strftime("%Y-%m-%d")
-            elif raw_date:
-                 try:
-                     parsed_date = datetime.fromisoformat(str(raw_date))
-                     date_str = parsed_date.strftime("%Y-%m-%d")
-                     raw_date = parsed_date # Use the actual datetime object for sorting key
-                 except (ValueError, TypeError):
-                     logger.warning(f"Could not parse date '{raw_date}' for exp {exp.id}. Displaying N/A.")
-                     raw_date = None # Ensure raw_date is None if parsing fails
-
-            # Create dict for each experiment row
-            exp_dict = {
-                "Select": False,  # Checkbox state (initial state is unchecked)
-                "ID": getattr(exp, 'id', 'N/A'),
-                "Type": getattr(exp, 'type', 'N/A'),
-                "Subject": getattr(exp, 'subject_id', 'N/A'),
-                "Date": date_str,                 # Display string
-                "Stage": raw_stage or 'N/A',      # Display string
-                # Raw data for sorting keys used by SortableTableWidgetItem
-                "raw_date": raw_date,
-                "raw_stage": raw_stage
-            }
-            exp_data.append(exp_dict)
-
-        # Update the grid
-        # Disconnect previous signal connection to avoid duplicates
-        try:
-             self.batch_experiment_grid.selection_changed.disconnect(self.on_experiment_selection_changed)
-        except (RuntimeError, TypeError): pass # Ignore if not connected
-
-        # Populate grid with selectable checkboxes
-        self.batch_experiment_grid.set_columns(columns)
-        self.batch_experiment_grid.populate_data(exp_data, columns, selectable=True, checkbox_column="Select")
-
-        # Connect selection changed signal AFTER populating data
-        self.batch_experiment_grid.selection_changed.connect(self.on_experiment_selection_changed)
-        # Trigger initial update for button state and count label
-        self.on_experiment_selection_changed("", False)
+        # Experiment grid update not yet implemented in clean architecture
+        logger.warning("Experiment grid update not yet implemented in clean architecture.")
+        if hasattr(self, 'batch_experiment_grid'):
+            self.batch_experiment_grid.set_columns(["Status"])
+            self.batch_experiment_grid.populate_data([{"Status": "Experiment grid not yet implemented"}], ["Status"])
+        return
 
     def on_experiment_selection_changed(self, exp_id: str, is_selected: bool):
         """Handle experiment selection changes from the MetadataGridDisplay."""
@@ -921,17 +866,13 @@ class ExperimentView(BaseView):
         # Ensure plugin_manager is available
         if not self.plugin_manager:
             logger.warning("Plugin manager not available for discovery.")
-            # Attempt to re-acquire if needed (e.g., if view was initialized before project loaded fully)
-            if self.window() and hasattr(self.window(), 'project_manager') and self.window().project_manager:
-                 self.plugin_manager = self.window().project_manager.plugin_manager
-            if not self.plugin_manager:
-                 logger.error("Plugin manager still not available after re-check.")
-                 # Clear lists to avoid showing stale data
-                 self.importer_plugin_list.clear()
-                 self.analysis_plugin_list.clear()
-                 self.exporter_plugin_list.clear()
-                 self.clear_plugin_fields()
-                 return
+            # Plugin system integration pending in clean architecture
+            # For now, clear lists and show placeholder
+            self.importer_plugin_list.clear()
+            self.analysis_plugin_list.clear()
+            self.exporter_plugin_list.clear()
+            self.clear_plugin_fields()
+            return
 
         # Clear previous entries and parameter fields
         self.importer_plugin_list.clear()
@@ -1389,39 +1330,10 @@ class ExperimentView(BaseView):
 
     def _update_recording_info(self, exp_id: str):
         """Populate the recording info panel for the given experiment ID."""
-        if not self.state_manager:
-            self._clear_recording_info()
-            return
-
-        vids = []
-        for vm in self.state_manager.project_state.experiment_videos.values():
-            if exp_id in vm.experiment_ids:
-                vids.append(vm)
-
-        if not vids:
-            self._clear_recording_info()
-            self.rec_status_label.setText("Status: No video linked")
-            return
-
-        if len(vids) > 1:
-            self.rec_status_label.setText(f"Status: {len(vids)} videos linked ⚠️")
-        else:
-            self.rec_status_label.setText("Status: 1 video linked")
-
-        vm = vids[0]  # Show first for now
-        path_str = str(vm.path)
-        exists = vm.path.exists()
-        self.rec_path_label.setText(f"Path: {path_str}")
-        self.rec_size_label.setText(f"Size: {vm.size_bytes / (1024*1024):.2f} MB")
-        self.rec_hash_label.setText(f"Sample-hash: {vm.sample_hash}")
-        if exists:
-            self.rec_path_label.setProperty("missing", False)
-            self.rec_path_label.style().unpolish(self.rec_path_label)
-            self.rec_path_label.style().polish(self.rec_path_label)
-        else:
-            self.rec_path_label.setProperty("missing", True)
-            self.rec_path_label.style().unpolish(self.rec_path_label)
-            self.rec_path_label.style().polish(self.rec_path_label)
+        # Recording info update not yet implemented in clean architecture
+        self._clear_recording_info()
+        self.rec_status_label.setText("Status: Recording info not yet implemented")
+        return
 
     def _suggest_experiment_id(self, video_path_text):
         """
@@ -1475,18 +1387,14 @@ class ExperimentView(BaseView):
 
         # Subject combo
         subj_combo = QComboBox()
-        if self.state_manager:
-            subjects = self.state_manager.get_sorted_subjects()
-            for subj in subjects:
-                subj_combo.addItem(subj.id, subj.id)
+        subj_combo.addItem("Subject selection not yet implemented", None)
         self.multi_exp_table.setCellWidget(row, 1, subj_combo)
 
         # Type combo
         type_combo = QComboBox()
-        if self.state_manager:
-            types = self.state_manager.get_supported_experiment_types()
-            for t in types:
-                type_combo.addItem(t, t)
+        type_combo.addItem("OpenField", "OpenField")
+        type_combo.addItem("NOR", "NOR")
+        type_combo.addItem("Other", "Other")
         self.multi_exp_table.setCellWidget(row, 2, type_combo)
 
         # Date widget
@@ -1510,66 +1418,61 @@ class ExperimentView(BaseView):
 
     def _multi_save_experiments(self):
         """Iterate rows and save experiments via ProjectManager."""
-        if not self.project_manager or not self.state_manager:
-            QMessageBox.critical(self, "Error", "Core managers not available.")
-            return
+        # Multi-save experiments not yet implemented in clean architecture
+        QMessageBox.information(self, "Not Implemented", "Multi-save experiments not yet implemented in clean architecture.")
+        return
 
-        errors = []
-        added = 0
-        for row in range(self.multi_exp_table.rowCount()):
-            exp_id_widget = self.multi_exp_table.cellWidget(row, 0)
-            subj_widget = self.multi_exp_table.cellWidget(row, 1)
-            type_widget = self.multi_exp_table.cellWidget(row, 2)
-            date_widget = self.multi_exp_table.cellWidget(row, 3)
-            stage_widget = self.multi_exp_table.cellWidget(row, 4)
-            video_widget = self.multi_exp_table.cellWidget(row, 5)
+    def on_experiment_selection_changed(self, exp_id: str, is_selected: bool):
+        """Handle experiment selection changes from the MetadataGridDisplay."""
+        # Batch experiment selection not yet implemented in clean architecture
+        if hasattr(self, 'batch_experiment_grid'):
+            # Update the create button state based on the grid's current selection count
+            selected_ids = self.batch_experiment_grid.get_selected_items()
+            count = len(selected_ids)
+            if hasattr(self, 'create_batch_button'):
+                self.create_batch_button.setEnabled(count > 0)
+            if hasattr(self, 'batch_notification_label'):
+                self.batch_notification_label.setText(f"{count} experiment(s) selected")
+        return
 
-            exp_id = exp_id_widget.text().strip() if exp_id_widget else ""
-            subj_id = subj_widget.currentData() if subj_widget else None
-            exp_type = type_widget.currentData() if type_widget else None
-            qt_dt = date_widget.dateTime() if date_widget else QDateTime.currentDateTime()
-            try:
-                date_recorded = qt_dt.toPython()
-            except AttributeError:
-                date_recorded = qt_dt.toPyDateTime()
-            stage = stage_widget.currentText() if stage_widget else "planned"
+    def handle_create_batch(self):
+        """Create a new batch with the selected experiments."""
+        # Batch creation not yet implemented in clean architecture
+        QMessageBox.information(self, "Not Implemented", "Batch creation not yet implemented in clean architecture.")
+        return
 
-            if not exp_id or not subj_id or not exp_type:
-                errors.append(f"Row {row+1}: missing required fields.")
-                continue
+    def closeEvent(self, event):
+        """Handle cleanup when the experiment view is closed."""
+        # No special cleanup needed for clean architecture
+        event.accept()
 
-            try:
-                self.project_manager.add_experiment(
-                    experiment_id=exp_id,
-                    subject_id=subj_id,
-                    date_recorded=date_recorded,
-                    exp_type=exp_type,
-                    processing_stage=stage,
-                    associated_plugins=[],
-                    plugin_params={},
-                )
+    def update_theme(self, theme):
+        """Update the theme for this view and its components."""
+        # Theme propagation is handled by MainWindow
+        pass
 
-                # Link video if path provided
-                if video_widget:
-                    video_path_text = video_widget.text().strip()
-                    if video_path_text:
-                        path_obj = Path(video_path_text)
-                        try:
-                            self.project_manager.link_video_to_experiment(
-                                experiment_id=exp_id,
-                                video_path=path_obj,
-                                notes="Bulk import video link",
-                            )
-                        except Exception as e:
-                            errors.append(f"Row {row+1}: video link failed – {e}")
+    def _discover_plugins(self):
+        """
+        Discovers and updates the available data handler and analysis plugins
+        based on the selected experiment type.
+        Finds handlers based on 'load_tracking_data' capability.
+        Finds analysis plugins by listing those with capabilities beyond loading data
+        and matching the selected experiment type.
+        """
+        # Plugin discovery not yet implemented in clean architecture
+        if hasattr(self, 'importer_plugin_list'):
+            self.importer_plugin_list.clear()
+            self.importer_plugin_list.addItem("Plugin discovery not yet implemented")
+        if hasattr(self, 'analysis_plugin_list'):
+            self.analysis_plugin_list.clear()
+            self.analysis_plugin_list.addItem("Plugin discovery not yet implemented")
+        if hasattr(self, 'exporter_plugin_list'):
+            self.exporter_plugin_list.clear()
+            self.exporter_plugin_list.addItem("Plugin discovery not yet implemented")
+        self.clear_plugin_fields()
+        return
 
-                added += 1
-            except Exception as e:
-                errors.append(f"Row {row+1}: {e}")
-
-        if added:
-            QMessageBox.information(self, "Success", f"Added {added} experiments.")
-            self.multi_exp_table.setRowCount(0)  # Clear table
-            self.state_manager.notify_observers()
-        if errors:
-            QMessageBox.warning(self, "Completed with Issues", "\n".join(errors[:10])) 
+    def _get_selected_plugins(self) -> List['BasePlugin']:
+        """Get the currently selected plugins."""
+        # Plugin selection not yet implemented in clean architecture
+        return []

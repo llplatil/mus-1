@@ -3,6 +3,7 @@
 This roadmap reflects how the code works today and what is planned next. It avoids dates and versions; items are prioritized by impact and risk.
 
 ## What works today (observed in code)
+- **Lab-Colony-Subject Hierarchy**: Complete colony-based subject management with genotype of interest, colony import functionality, and lab-level organization
 - **Unified Configuration System**: SQLite-based ConfigManager with hierarchical precedence (Runtime > Project > Lab > User > Install) and automatic migration from old YAML/JSON files
 - Project lifecycle and persistence via `ProjectManager`; projects root resolved via ConfigManager
 - Shared projects directory resolved via ConfigManager; saves use advisory `.mus1-lock` and atomic writes
@@ -54,6 +55,23 @@ This roadmap reflects how the code works today and what is planned next. It avoi
 - Windows/Linux scanners currently use the base scanner; OS-specific exclusions and removable drive handling are not implemented.
 - Legacy GUI components still use old project manager pattern; requires complete GUI rewrite to use clean architecture.
 - Existing analysis plugins need migration to new `PluginService` pattern (interface ready, implementation pending).
+
+## 🧹 **CODE CLEANUP & AUDIT PRIORITIES**
+
+### High Priority Cleanup (Code Quality)
+1. **Remove Redundant DTOs**: ColonyDTO is defined in both `setup_service.py` and `metadata.py`
+   - Keep the Pydantic BaseModel version in `metadata.py` (more complete)
+   - Remove the dataclass version from `setup_service.py`
+2. **Remove Unused Code**: Several DTO classes in `setup_service.py` appear unused
+   - `UserProfileDTO`, `SharedStorageDTO`, `LabDTO`, `SetupWorkflowDTO`, `SetupStatusDTO`
+3. **Fix Import Inconsistencies**: `simple_cli.py` imports ColonyDTO from wrong location
+4. **Address TODO Comments**: ProjectSelectionDialog has config integration TODOs
+
+### Medium Priority Cleanup (Development Hygiene)
+1. **Review Demo Files**: Evaluate if demo files are still needed
+   - `demo_clean_architecture.py`, `demo_plugin_architecture.py`
+2. **Archive Migration Script**: `migration_script.py` appears to be one-time utility
+3. **Clean Diagnostic Code**: Remove debug print statements from `main.py`
 
 ## Next Priority Tasks (Post-Configuration Refactoring)
 
@@ -166,24 +184,53 @@ Follow-up documentation tasks (post immediate work)
 ## ✅ **COMPLETED MAJOR REFACTORING - CLEAN ARCHITECTURE**
 
 ### **Clean Architecture Implementation** ✅ **COMPLETED & TESTED**
-- **Domain Models**: Pure business logic entities (Subject, Experiment, VideoFile, etc.) with clean separation
-- **DTOs**: Data Transfer Objects for API validation (SubjectDTO, ExperimentDTO, etc.) with Pydantic
-- **Repository Layer**: Clean data access with SQLAlchemy (SubjectRepository, ExperimentRepository, etc.)
-- **SQLite Backend**: Proper relational database with foreign keys and constraints
-- **Project Manager**: Focused project operations (CRUD for subjects/experiments/videos/workers/targets)
+- **Domain Models**: Pure business logic entities (Colony, Subject, Experiment, VideoFile, etc.) with clean separation
+- **Lab-Colony Hierarchy**: Colony-based subject management with genotype of interest and common traits
+- **DTOs**: Data Transfer Objects for API validation (ColonyDTO, SubjectDTO, ExperimentDTO, etc.) with Pydantic
+- **Repository Layer**: Clean data access with SQLAlchemy (ColonyRepository, SubjectRepository, ExperimentRepository, etc.)
+- **SQLite Backend**: Proper relational database with foreign keys and constraints supporting lab-colony-subject hierarchy
+- **Project Manager**: Focused project operations with colony management (CRUD for colonies, subjects/experiments/videos/workers/targets)
 - **Simple CLI**: Clean command interface (init, add-subject, add-experiment, list, scan, status)
 - **Configuration System**: SQLite-based hierarchical configuration persistence
 
 ### **Tested Working Components** ✅ **VERIFIED FUNCTIONAL**
 - ✅ Project creation with SQLite database initialization
-- ✅ Subject CRUD operations with validation and business logic (age calculation)
+- ✅ Colony management with lab associations and genotype of interest
+- ✅ Colony-based subject CRUD operations with validation and business logic (age calculation)
+- ✅ Subject import from colonies into projects with lab validation
 - ✅ Experiment CRUD with subject relationships and processing stages
 - ✅ Video file registration with hash integrity and duplicate detection
 - ✅ Worker and scan target management for distributed processing
-- ✅ Project statistics and analytics with real data
+- ✅ Project statistics and analytics with real data including colony counts
 - ✅ Clean domain ↔ database ↔ domain data flow without corruption
 - ✅ Repository pattern with proper separation of concerns
 - ✅ Configuration system with atomic operations and hierarchy
+
+## ✅ **COMPLETED - COLONY ARCHITECTURE IMPLEMENTATION**
+
+### **Lab-Colony-Subject Hierarchy** ✅ **FULLY IMPLEMENTED & TESTED**
+- **Colony Domain Model**: Entity representing lab colonies with genotype of interest, background strain, and common traits
+- **Colony-Based Subjects**: Subjects now belong to colonies instead of having direct genotype/treatment fields
+- **Subject Import Functionality**: Projects can import subjects from specific colonies with lab validation
+- **Database Schema**: Proper foreign key relationships (colonies → subjects → experiments)
+- **Repository Pattern**: ColonyRepository and updated SubjectRepository with colony operations
+- **Project Manager Integration**: Colony management methods and import_subjects_from_colony functionality
+
+### **Key Features Implemented** ✅ **VERIFIED WORKING**
+- ✅ Colony CRUD operations with lab associations
+- ✅ Subject-colony relationships with proper validation
+- ✅ Project-level colony filtering (only shows colonies from project's lab)
+- ✅ Subject import from colonies with duplicate prevention
+- ✅ Colony-based subject queries and statistics
+- ✅ Full demo implementation showing end-to-end colony workflow
+- ✅ Clean data flow: Colony DTO → Domain → Database → Domain
+
+### **Architecture Benefits** 🎯 **ACHIEVED**
+- **Proper Lab Organization**: Subjects are organized by colonies within labs
+- **Genotype Management**: Colonies track genotype of interest and common traits
+- **Data Consistency**: Prevents duplicate subjects across projects within the same lab
+- **Scalability**: Clean foundation for multi-lab, multi-colony research management
+- **Research Workflow**: Projects can easily pull from established colony subject pools
 
 ### **Legacy Components Status** ❌ **BROKEN/DEPRECATED**
 - ❌ **Old CLI** (`cli_ty.py`): 2910-line bloated interface ❌ BROKEN (import errors)
@@ -349,6 +396,7 @@ Risks/Notes
 - GUI: subject grid gains sort-key aware sorting; basic Analysis tab for capability selection and status.
 
 ## Long-term direction
+- **Colony-Based Research Management**: Multi-lab, multi-colony research workflows with genotype tracking and subject pool management
 - Robust multimodal workflows (video, MoSeq2 syllables, Rotarod, biochemical CSVs) via dedicated handler/analysis/viewer plugins.
 - Optional remote orchestration plugin (SSH/Slurm) for MoSeq2 and heavy jobs; job status and minimal log tailing in CLI/GUI.
 - Better distribution: portable builds and UV-based reproducible environments.

@@ -4,12 +4,14 @@ from pathlib import Path
 import os
 import logging
 import re
+from typing import Optional
+from .config_manager import ConfigManager
 
 logger = logging.getLogger("mus1.core.theme_manager")
 
 class ThemeManager:
-    def __init__(self, state_manager):
-        self.state_manager = state_manager
+    def __init__(self, config_manager: Optional[ConfigManager] = None):
+        self.config_manager = config_manager or ConfigManager()
         self.base_dir = Path(os.path.dirname(__file__)).parent
         self.base_qss_path = self.base_dir / "themes" / "mus1.qss"
         
@@ -165,8 +167,8 @@ class ThemeManager:
         }
 
     def get_effective_theme(self):
-        """Determine the effective theme based on the state_manager's theme preference."""
-        theme_pref = self.state_manager.get_theme_preference()
+        """Determine the effective theme based on the config_manager's theme preference."""
+        theme_pref = self.config_manager.get("ui.theme", "dark")
         if not theme_pref:  # default to dark if no preference set
             theme_pref = "dark"
         if theme_pref == "os":
@@ -307,14 +309,14 @@ class ThemeManager:
         logger.info("Applied minimal fallback stylesheet")
 
     def change_theme(self, theme_choice):
-        """Change the theme; updates the state_manager and reapplies the theme."""
+        """Change the theme; updates the config_manager and reapplies the theme."""
         logger.info(f"Changing theme to: {theme_choice}")
-        self.state_manager.set_theme_preference(theme_choice)
+        self.config_manager.set("ui.theme", theme_choice)
         app = QApplication.instance()
         # Force reprocessing of stylesheet by clearing cache for the new theme
         effective_theme_to_apply = self.get_effective_theme()
         if effective_theme_to_apply in self.processed_stylesheets:
              del self.processed_stylesheets[effective_theme_to_apply]
-             
+
         effective_theme = self.apply_theme(app)
         return effective_theme

@@ -3,15 +3,6 @@ import sys
 from pathlib import Path
 import logging.handlers  # Import the handlers module
 
-# --- Add diagnostic prints ---
-import os
-print(f"Current Working Directory: {os.getcwd()}")
-print(f"Python Executable: {sys.executable}")
-print("--- sys.path ---")
-for p in sys.path:
-    print(p)
-print("----------------")
-# --- End diagnostic prints ---
 
 
 # --- Configure RotatingFileHandler ---
@@ -56,27 +47,20 @@ except Exception as e:
 # --- End Logging Configuration ---
 
 
-from PySide6.QtWidgets import QApplication, QSplashScreen, QDialog
-from PySide6.QtGui import QPixmap, QIcon
-from PySide6.QtTest import QTest
+from PySide6.QtWidgets import QApplication
+from PySide6.QtGui import QIcon
 
-# 1) Bring in unified initializer and GUI-specific imports
-print("Attempting to import from core...") # Add print right before import
-from .core import initialize_mus1_app
-from .gui.project_selection_dialog import ProjectSelectionDialog
+# Core components
+from .core.logging_bus import LoggingEventBus
+from .core.config_manager import ConfigManager
+from .core.theme_manager import ThemeManager
 
 def main():
-    # Use unified MUS1 application initialization
-    # Note: initialize_mus1_app now returns different components due to clean architecture
-    managers = initialize_mus1_app()
-    log_bus = managers[-2] if len(managers) >= 2 else None
-    plugin_manager = managers[-1] if len(managers) >= 1 else None
-
-    # For now, create dummy managers for compatibility
-    state_manager = None
-    data_manager = None
-    project_manager = None
-    theme_manager = None
+    """MUS1 GUI Application Entry Point"""
+    # Initialize core components
+    log_bus = LoggingEventBus.get_instance()
+    config_manager = ConfigManager()
+    theme_manager = ThemeManager(config_manager)
 
     logger = logging.getLogger('mus1')
     logger.info("Launching MUS1 GUI...")
@@ -85,61 +69,39 @@ def main():
 
     # Set application icon
     app_icon = QIcon()
-    # Ensure paths are correct and use Path objects
     icon_dir = Path(__file__).parent / "themes"
-    app_icon.addFile(str(icon_dir / "m1logo.ico"))  # For Windows
-    app_icon.addFile(str(icon_dir / "m1logo no background for big sur.icns"))  # For macOS
-    app_icon.addFile(str(icon_dir / "m1logo no background.png"))  # For Linux/general
+    app_icon.addFile(str(icon_dir / "m1logo.ico"))  # Windows
+    app_icon.addFile(str(icon_dir / "m1logo no background for big sur.icns"))  # macOS
+    app_icon.addFile(str(icon_dir / "m1logo no background.png"))  # Linux
     app.setWindowIcon(app_icon)
 
-    # Determine and apply the theme *before* showing any UI that depends on it
-    effective_theme = theme_manager.get_effective_theme()
-    # Validate theme preference before applying
-    if effective_theme not in ["light", "dark", "os"]: # Include 'os' if it's a valid direct choice
-        log_bus.log(f"Invalid theme preference '{effective_theme}' detected. Defaulting to dark.", "warning", "Main")
-        effective_theme = "dark"
-        # If defaulting, update the state manager preference if necessary
-        if state_manager.get_theme_preference() != effective_theme:
-             state_manager.set_theme_preference(effective_theme)
-             # Re-get effective theme in case 'os' resolved differently
-             effective_theme = theme_manager.get_effective_theme()
+    # Apply theme
+    effective_theme = theme_manager.apply_theme(app)
+    logger.info(f"Theme applied: {effective_theme}")
 
-    # Apply the theme to the application instance
-    theme_manager.apply_theme(app)
-    logger.info(f"Initial theme '{effective_theme}' applied.")
-    # --- END THEME APPLICATION ---
+    # Check setup status and show setup wizard if needed
+    from .core.setup_service import get_setup_service
+    setup_service = get_setup_service()
 
-    logger.info("Core managers created. Launching Project Selection Dialog.")
+    if not setup_service.is_user_configured():
+        logger.info("First-time setup required")
+        from .gui.setup_wizard import show_setup_wizard
+        setup_wizard = show_setup_wizard()
+        if setup_wizard is None:
+            logger.info("Setup cancelled by user")
+            return  # User cancelled setup
+        logger.info("Setup wizard completed")
 
-    # Show the project selection dialog (now styled correctly)
-    dialog = ProjectSelectionDialog(project_manager)
-    if dialog.exec() != QDialog.Accepted:
-        logger.info("Project selection was cancelled. Exiting application.")
-        sys.exit(0)
-
-    logger.info("Project selected: {}".format(getattr(dialog, 'selected_project_name', 'Unknown')))
-
-    # Create and launch our MainWindow after project selection
+    # Show project selection dialog
     from .gui.main_window import MainWindow
-    selected_project = getattr(dialog, 'selected_project_name', None)
 
-    # Configure project-specific logging if a project was selected
-    if selected_project:
-        project_path = Path(selected_project)
-        if project_path.exists() and project_path.is_dir():
-            log_bus.configure_default_file_handler(project_path)
-            logger.info(f"Switched to project-specific logging at {project_path}/mus1.log")
-
-    main_window = MainWindow(
-        state_manager=state_manager,
-        data_manager=data_manager,
-        project_manager=project_manager,
-        plugin_manager=plugin_manager,
-        selected_project=selected_project
-    )
+    # TODO: Implement proper project selection workflow
+    # For now, create MainWindow with no selected project
+    main_window = MainWindow(selected_project=None)
+    main_window.apply_theme()
     main_window.show()
 
-    logger.info("MUS1 init complete. Starting application event loop.")
+    logger.info("MUS1 GUI started successfully")
     sys.exit(app.exec())
 
 if __name__ == "__main__":

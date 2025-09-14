@@ -1,20 +1,21 @@
-# Public developer plugins for MUS1 (entry-point discovery)
+# OPTIONAL: Public developer plugins for MUS1 (entry-point discovery)
+# These plugins are under development and not required for basic MUS1 functionality
 # Install with:  pip install -r requirements-plugins.public.txt
 
 # Public assembly skeleton (entry point: mus1.plugins → AssemblySkeleton)
--e git+https://github.com/llplatil/mus1-assembly-skeleton.git@main#egg=mus1-assembly-skeleton
+# -e git+https://github.com/llplatil/mus1-assembly-skeleton.git@main#egg=mus1-assembly-skeleton
 
 # DeepLabCut handler (public scaffold)
--e git+https://github.com/llplatil/mus1-plugin-deeplabcut-handler.git@dev#egg=mus1-plugin-deeplabcut-handler
+# -e git+https://github.com/llplatil/mus1-plugin-deeplabcut-handler.git@dev#egg=mus1-plugin-deeplabcut-handler
 
 # DLC project importer (public scaffold)
--e git+https://github.com/llplatil/mus1-plugin-dlc-importer.git@dev#egg=mus1-plugin-dlc-importer
+# -e git+https://github.com/llplatil/mus1-plugin-dlc-importer.git@dev#egg=mus1-plugin-dlc-importer
 
 # Tracking analysis (public scaffold)
--e git+https://github.com/llplatil/mus1-plugin-tracking-analysis.git@dev#egg=mus1-plugin-tracking-analysis
+# -e git+https://github.com/llplatil/mus1-plugin-tracking-analysis.git@dev#egg=mus1-plugin-tracking-analysis
 
 # MoSeq2 importer (public scaffold)
--e git+https://github.com/llplatil/mus1-plugin-moseq2-importer.git@dev#egg=mus1-plugin-moseq2-importer
+# -e git+https://github.com/llplatil/mus1-plugin-moseq2-importer.git@dev#egg=mus1-plugin-moseq2-importer
 
 # Local Copperlab Assembly plugin (editable install)
--e file:///workspace/.plugins/mus1-assembly-plugin-copperlab
+# -e file:///workspace/.plugins/mus1-assembly-plugin-copperlab

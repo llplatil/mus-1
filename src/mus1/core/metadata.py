@@ -36,6 +36,13 @@ class ProcessingStage(str, Enum):
     TRACKED = "tracked"
     INTERPRETED = "interpreted"
 
+
+class SubjectDesignation(str, Enum):
+    """Subject designation for colony management vs experimental use."""
+    EXPERIMENTAL = "experimental"
+    BREEDING = "breeding"
+    CULLED = "culled"
+
 class InheritancePattern(str, Enum):
     """Genotype inheritance patterns."""
     DOMINANT = "Dominant"
@@ -79,16 +86,51 @@ class PluginMetadata:
     analysis_capabilities: List[str] = field(default_factory=list)
 
 @dataclass
+class Colony:
+    """Core colony entity representing a group of subjects with shared characteristics."""
+    id: str
+    name: str
+    lab_id: str
+    genotype_of_interest: Optional[str] = None
+    background_strain: Optional[str] = None
+    common_traits: Dict[str, Any] = field(default_factory=dict)
+    notes: str = ""
+    date_added: datetime = field(default_factory=datetime.now)
+
+    @property
+    def full_description(self) -> str:
+        """Get a full description of the colony."""
+        desc_parts = [self.name]
+        if self.genotype_of_interest:
+            desc_parts.append(f"({self.genotype_of_interest})")
+        if self.background_strain:
+            desc_parts.append(f"on {self.background_strain}")
+        return " ".join(desc_parts)
+
+
+@dataclass
 class Subject:
     """Core subject entity."""
     id: str
+    colony_id: str
     sex: Sex = Sex.UNKNOWN
+    designation: SubjectDesignation = SubjectDesignation.EXPERIMENTAL
     birth_date: Optional[datetime] = None
     death_date: Optional[datetime] = None
-    genotype: Optional[str] = None
-    treatment: Optional[str] = None
+    individual_genotype: Optional[str] = None  # Individual-specific genotype if different from colony
+    individual_treatment: Optional[str] = None  # Individual-specific treatment if different from colony
     notes: str = ""
     date_added: datetime = field(default_factory=datetime.now)
+
+    @property
+    def genotype(self) -> Optional[str]:
+        """Get the effective genotype (individual or colony default)."""
+        return self.individual_genotype  # For now, we'll handle colony genotype in repository queries
+
+    @property
+    def treatment(self) -> Optional[str]:
+        """Get the effective treatment (individual or colony default)."""
+        return self.individual_treatment  # For now, we'll handle colony treatment in repository queries
 
     @property
     def age_days(self) -> Optional[int]:
@@ -147,14 +189,40 @@ class ScanTarget:
 # DATA TRANSFER OBJECTS (DTOs)
 # ===========================================
 
+class ColonyDTO(BaseModel):
+    """Data transfer object for colony data."""
+    id: str
+    name: str
+    lab_id: str
+    genotype_of_interest: Optional[str] = None
+    background_strain: Optional[str] = None
+    common_traits: Dict[str, Any] = Field(default_factory=dict)
+    notes: str = ""
+    date_added: datetime = Field(default_factory=datetime.now)
+
+    @validator("id")
+    def validate_id(cls, v: str) -> str:
+        if not v or len(v.strip()) < 3:
+            raise ValueError("Colony ID must be at least 3 characters")
+        return v.strip()
+
+    @validator("name")
+    def validate_name(cls, v: str) -> str:
+        if not v or len(v.strip()) < 3:
+            raise ValueError("Colony name must be at least 3 characters")
+        return v.strip()
+
+
 class SubjectDTO(BaseModel):
     """Data transfer object for subject data."""
     id: str
+    colony_id: str
     sex: Sex = Sex.UNKNOWN
+    designation: SubjectDesignation = SubjectDesignation.EXPERIMENTAL
     birth_date: Optional[datetime] = None
     death_date: Optional[datetime] = None
-    genotype: Optional[str] = None
-    treatment: Optional[str] = None
+    individual_genotype: Optional[str] = None
+    individual_treatment: Optional[str] = None
     notes: str = ""
     date_added: datetime = Field(default_factory=datetime.now)
 

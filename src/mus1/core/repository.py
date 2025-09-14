@@ -10,9 +10,10 @@ from sqlalchemy.orm import Session
 from .metadata import Subject, Experiment, VideoFile, Worker, ScanTarget
 from .schema import (
     Database, SubjectModel, ExperimentModel, VideoModel,
-    WorkerModel, ScanTargetModel, ProjectModel,
+    WorkerModel, ScanTargetModel, ProjectModel, ColonyModel,
     subject_to_model, model_to_subject,
-    experiment_to_model, model_to_experiment
+    experiment_to_model, model_to_experiment,
+    colony_to_model, model_to_colony
 )
 
 class BaseRepository:
@@ -24,6 +25,56 @@ class BaseRepository:
     def _get_session(self) -> Session:
         """Get database session."""
         return self.db.get_session()
+
+class ColonyRepository(BaseRepository):
+    """Repository for colony operations."""
+
+    def save(self, colony) -> 'Colony':
+        """Save a colony."""
+        from .metadata import Colony
+        db_colony = colony_to_model(colony)
+        with self._get_session() as session:
+            merged = session.merge(db_colony)  # merge handles both insert and update
+            session.commit()
+            return model_to_colony(merged)
+
+    def find_by_id(self, colony_id: str) -> Optional['Colony']:
+        """Find colony by ID."""
+        with self._get_session() as session:
+            db_colony = session.query(ColonyModel).filter(
+                ColonyModel.id == colony_id
+            ).first()
+            return model_to_colony(db_colony) if db_colony else None
+
+    def find_by_lab(self, lab_id: str) -> List['Colony']:
+        """Find colonies by lab ID."""
+        with self._get_session() as session:
+            db_colonies = session.query(ColonyModel).filter(
+                ColonyModel.lab_id == lab_id
+            ).all()
+            return [model_to_colony(db_colony) for db_colony in db_colonies]
+
+    def find_all(self) -> List['Colony']:
+        """Find all colonies."""
+        with self._get_session() as session:
+            db_colonies = session.query(ColonyModel).all()
+            return [model_to_colony(db_colony) for db_colony in db_colonies]
+
+    def delete(self, colony_id: str) -> bool:
+        """Delete colony by ID."""
+        with self._get_session() as session:
+            # Check if colony has subjects
+            subject_count = session.query(SubjectModel).filter(
+                SubjectModel.colony_id == colony_id
+            ).count()
+            if subject_count > 0:
+                return False  # Cannot delete colony with subjects
+
+            result = session.query(ColonyModel).filter(
+                ColonyModel.id == colony_id
+            ).delete()
+            session.commit()
+            return result > 0
 
 class SubjectRepository(BaseRepository):
     """Repository for subject operations."""
@@ -91,6 +142,57 @@ class ExperimentRepository(BaseRepository):
         with self._get_session() as session:
             db_experiments = session.query(ExperimentModel).all()
             return [model_to_experiment(db_exp) for db_exp in db_experiments]
+
+    def delete(self, experiment_id: str) -> bool:
+        """Delete experiment by ID."""
+        with self._get_session() as session:
+            result = session.query(ExperimentModel).filter(
+                ExperimentModel.id == experiment_id
+            ).delete()
+            session.commit()
+            return result > 0
+
+class SubjectRepository(BaseRepository):
+    """Repository for subject operations."""
+
+    def save(self, subject: Subject) -> Subject:
+        """Save a subject."""
+        db_subject = subject_to_model(subject)
+        with self._get_session() as session:
+            merged = session.merge(db_subject)  # merge handles both insert and update
+            session.commit()
+            return model_to_subject(merged)
+
+    def find_by_id(self, subject_id: str) -> Optional[Subject]:
+        """Find subject by ID."""
+        with self._get_session() as session:
+            db_subject = session.query(SubjectModel).filter(
+                SubjectModel.id == subject_id
+            ).first()
+            return model_to_subject(db_subject) if db_subject else None
+
+    def find_all(self) -> List[Subject]:
+        """Find all subjects."""
+        with self._get_session() as session:
+            db_subjects = session.query(SubjectModel).all()
+            return [model_to_subject(db_subject) for db_subject in db_subjects]
+
+    def delete(self, subject_id: str) -> bool:
+        """Delete subject by ID."""
+        with self._get_session() as session:
+            result = session.query(SubjectModel).filter(
+                SubjectModel.id == subject_id
+            ).delete()
+            session.commit()
+            return result > 0
+
+    def find_by_colony(self, colony_id: str) -> List[Subject]:
+        """Find subjects by colony ID."""
+        with self._get_session() as session:
+            db_subjects = session.query(SubjectModel).filter(
+                SubjectModel.colony_id == colony_id
+            ).all()
+            return [model_to_subject(db_subject) for db_subject in db_subjects]
 
     def delete(self, experiment_id: str) -> bool:
         """Delete experiment by ID."""
@@ -292,11 +394,18 @@ class RepositoryFactory:
 
     def __init__(self, db: Database):
         self.db = db
+        self._colonies: Optional[ColonyRepository] = None
         self._subjects: Optional[SubjectRepository] = None
         self._experiments: Optional[ExperimentRepository] = None
         self._videos: Optional[VideoRepository] = None
         self._workers: Optional[WorkerRepository] = None
         self._scan_targets: Optional[ScanTargetRepository] = None
+
+    @property
+    def colonies(self) -> ColonyRepository:
+        if self._colonies is None:
+            self._colonies = ColonyRepository(self.db)
+        return self._colonies
 
     @property
     def subjects(self) -> SubjectRepository:
