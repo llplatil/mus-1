@@ -3,51 +3,53 @@ import sys
 from pathlib import Path
 import logging.handlers  # Import the handlers module
 
+# ===========================================
+# DETERMINISTIC MUS1 ROOT & LOGGING SETUP
+# ===========================================
 
+# First, resolve MUS1 root deterministically
+from .core.config_manager import resolve_mus1_root
+mus1_root = resolve_mus1_root()
+logs_dir = mus1_root / "logs"
+logs_dir.mkdir(exist_ok=True)
 
-# --- Configure RotatingFileHandler ---
-# Get the specific logger used by LoggingEventBus and other parts of the app
+# Configure logging to use MUS1 logs directory
 logger = logging.getLogger('mus1')
-logger.setLevel(logging.DEBUG) # Set the desired minimum level for this logger
-
-# Prevent logs from propagating to the root logger if it has other handlers
+logger.setLevel(logging.DEBUG)
 logger.propagate = False
 
-# Create formatter - consistent with CLI formatter for unified logging
 formatter = logging.Formatter(
     '%(asctime)s [%(levelname)s] %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 
-# Configure RotatingFileHandler
-# Use a default log file location that will be updated when a project is selected
-# For now, use the same directory as main.py for consistency
-default_log_file = Path(__file__).parent / "mus1.log"
-
-# Rotate log when it reaches 5MB, keep 3 backup logs. Adjust as needed.
-max_bytes = 5 * 1024 * 1024 # 5 MB
+# Use MUS1 logs directory for log files
+log_file = logs_dir / "mus1.log"
+max_bytes = 5 * 1024 * 1024  # 5 MB
 backup_count = 3
+
 try:
-    # Make sure any existing handlers are removed before adding new ones
-    # This prevents duplicate logs if the script is re-run or setup is complex
+    # Clean up any existing handlers
     for handler in logger.handlers[:]:
         logger.removeHandler(handler)
-        handler.close() # Close the handler properly
+        handler.close()
 
     file_handler = logging.handlers.RotatingFileHandler(
-        str(default_log_file), maxBytes=max_bytes, backupCount=backup_count, encoding='utf-8'
+        str(log_file), maxBytes=max_bytes, backupCount=backup_count, encoding='utf-8'
     )
-    # file_handler level is not explicitly set, so it inherits INFO from the logger
     file_handler.setFormatter(formatter)
     logger.addHandler(file_handler)
+
+    logger.info(f"MUS1 logging initialized - logs at: {log_file}")
+    logger.info(f"MUS1 root directory: {mus1_root}")
+
 except Exception as e:
-    # Fallback to basic console logging if file handler setup fails
+    # Fallback to console logging
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s - %(message)s")
-    logging.error(f"Failed to set up rotating file log handler: {e}. Falling back to basic config.", exc_info=True)
-# --- End Logging Configuration ---
+    logging.error(f"Failed to set up log handler: {e}. Falling back to console.", exc_info=True)
 
 
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QMessageBox
 from PySide6.QtGui import QIcon
 
 # Core components
@@ -85,13 +87,25 @@ def main():
     setup_completed = False
 
     if not setup_service.is_user_configured():
-        logger.info("First-time setup required")
+        logger.info("First-time setup required - showing setup wizard")
         from .gui.setup_wizard import show_setup_wizard
         setup_wizard = show_setup_wizard()
+
         if setup_wizard is None:
             logger.info("Setup cancelled by user")
-            return  # User cancelled setup
-        logger.info("Setup wizard completed")
+            reply = QMessageBox.question(
+                None, "Setup Required",
+                "MUS1 requires initial setup to continue. Would you like to run setup again?",
+                QMessageBox.Yes | QMessageBox.No
+            )
+            if reply == QMessageBox.Yes:
+                setup_wizard = show_setup_wizard()
+                if setup_wizard is None:
+                    sys.exit(0)  # User cancelled again - exit cleanly
+            else:
+                sys.exit(0)  # User doesn't want to setup - exit cleanly
+
+        logger.info("Setup wizard completed successfully")
         setup_completed = True
 
     # Show project selection dialog

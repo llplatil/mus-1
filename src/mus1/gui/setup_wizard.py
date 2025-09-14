@@ -79,7 +79,7 @@ class SetupWorker(QObject):
 
             # Step 4: Lab
             if self.workflow_dto.lab:
-                self.progress.emit("Creating lab...")
+                self.progress.emit(f"Creating lab '{self.workflow_dto.lab.name}'...")
                 result = self.setup_service.create_lab(self.workflow_dto.lab)
                 if not result["success"]:
                     self.error.emit(f"Lab creation failed: {result['message']}")
@@ -455,7 +455,8 @@ class LabSetupPage(QWizardPage):
         lab_layout = QFormLayout()
 
         self.lab_id_edit = QLineEdit()
-        self.lab_id_edit.setPlaceholderText("e.g., copperlab, neurology_lab")
+        self.lab_id_edit.setPlaceholderText("Auto-generated from lab name (optional)")
+        self.lab_id_edit.setEnabled(False)  # Make it read-only since we'll auto-generate
         lab_layout.addRow("Lab ID:", self.lab_id_edit)
 
         self.lab_name_edit = QLineEdit()
@@ -475,6 +476,7 @@ class LabSetupPage(QWizardPage):
 
         # Connect signals
         self.create_checkbox.toggled.connect(self.toggle_lab_config)
+        self.lab_name_edit.textChanged.connect(self.update_lab_id)
 
         self.setLayout(layout)
 
@@ -482,20 +484,38 @@ class LabSetupPage(QWizardPage):
         """Enable/disable lab configuration based on checkbox."""
         self.lab_group.setEnabled(checked)
 
+    def update_lab_id(self, text: str):
+        """Auto-generate lab ID from lab name."""
+        if text.strip():
+            # Create a clean lab ID from the lab name
+            lab_id = text.strip().lower()
+            lab_id = ''.join(c for c in lab_id if c.isalnum() or c in ' _-')
+            lab_id = lab_id.replace(' ', '_')
+            self.lab_id_edit.setText(lab_id)
+        else:
+            self.lab_id_edit.clear()
+
     def validatePage(self) -> bool:
         """Validate lab configuration."""
         if not self.create_checkbox.isChecked():
             return True  # Skip validation if not creating lab
 
-        lab_id = self.lab_id_edit.text().strip()
         lab_name = self.lab_name_edit.text().strip()
 
-        if not lab_id or len(lab_id) < 3:
-            QMessageBox.warning(self, "Validation Error", "Lab ID must be at least 3 characters")
-            return False
-
+        # Ensure lab name is provided
         if not lab_name or len(lab_name) < 3:
             QMessageBox.warning(self, "Validation Error", "Lab name must be at least 3 characters")
+            return False
+
+        # Auto-generate lab ID if needed
+        if not self.lab_id_edit.text().strip():
+            self.update_lab_id(lab_name)
+
+        lab_id = self.lab_id_edit.text().strip()
+
+        # Ensure lab ID is valid
+        if not lab_id or len(lab_id) < 3:
+            QMessageBox.warning(self, "Validation Error", "Could not generate valid lab ID. Please enter a lab name first.")
             return False
 
         return True
@@ -620,7 +640,7 @@ class MUS1SetupWizard(QWizard):
 
     def on_page_changed(self, page_id: int):
         """Handle page changes."""
-        if page_id == 4:  # Conclusion page
+        if page_id == 5:  # Conclusion page (index 5, not 4)
             # Collect data from pages before initializing conclusion page
             self.collect_setup_data()
             self.run_setup()
@@ -644,7 +664,7 @@ class MUS1SetupWizard(QWizard):
         self.worker.progress.connect(self.on_setup_progress)
 
         # Show progress on conclusion page
-        conclusion_page = self.page(4)
+        conclusion_page = self.page(5)  # Conclusion page is at index 5
         progress_label = QLabel("Running setup...")
         conclusion_page.layout().addWidget(progress_label)
 
@@ -653,15 +673,14 @@ class MUS1SetupWizard(QWizard):
 
     def collect_setup_data(self):
         """Collect setup data from wizard pages."""
-        # MUS1 Root Location
-        root_page = self.page(1)  # MUS1RootLocationPage
-        selected_path = root_page.get_selected_path()
-        copy_config = root_page.copy_config_checkbox.isChecked() if hasattr(root_page, 'copy_config_checkbox') else False
+        # MUS1 Root Location - use deterministic resolution
+        from ..core.config_manager import resolve_mus1_root
+        mus1_root = resolve_mus1_root()
 
         self.mus1_root_dto = MUS1RootLocationDTO(
-            path=selected_path,
+            path=mus1_root,
             create_if_missing=True,
-            copy_existing_config=copy_config
+            copy_existing_config=False  # No complex copying needed
         )
 
         # User profile
@@ -688,13 +707,17 @@ class MUS1SetupWizard(QWizard):
         # Lab
         lab_page = self.page(4)  # LabSetupPage
         if lab_page.create_checkbox.isChecked():
+            lab_id = lab_page.lab_id_edit.text().strip()
+            lab_name = lab_page.lab_name_edit.text().strip()
             self.lab_dto = LabDTO(
-                id=lab_page.lab_id_edit.text().strip(),
-                name=lab_page.lab_name_edit.text().strip(),
+                id=lab_id,
+                name=lab_name,
                 institution=lab_page.institution_edit.text().strip() or "",
                 pi_name=lab_page.pi_edit.text().strip() or "",
                 description=f"Research lab at {lab_page.institution_edit.text().strip() or 'Unknown'}"
             )
+        else:
+            self.lab_dto = None
 
     def on_setup_finished(self, result: dict):
         """Handle successful setup completion."""

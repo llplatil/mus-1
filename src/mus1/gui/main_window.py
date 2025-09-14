@@ -222,192 +222,99 @@ class MainWindow(QMainWindow):
 
     def load_project(self, project_name):
         """
-        Loads a project by name, updates UI including title, initializes views,
-        and refreshes data. This is the central method for loading projects.
+        Loads a project by name using simplified discovery and initialization.
         """
-        self.log_bus.log(f"Attempting to load project: {project_name}", "info", "MainWindow")
+        self.log_bus.log(f"Loading project: {project_name}", "info", "MainWindow")
 
-        # For now, assume project path is based on project name
-        # TODO: This should be updated to use proper project discovery
-        project_path = Path(f"./projects/{project_name}")
+        # Find project path using simplified discovery
+        from ..core.project_discovery_service import get_project_discovery_service
+        discovery_service = get_project_discovery_service()
+        project_path = discovery_service.find_project_path(project_name)
 
-        if project_path.exists():
-            try:
-                # Initialize the clean project manager
-                self.project_manager = ProjectManagerClean(project_path)
+        if not project_path or not project_path.exists():
+            self.log_bus.log(f"Project '{project_name}' not found at {project_path}", "error", "MainWindow")
+            self._reset_project_state()
+            return False
 
-                # Add a minimal state_manager stub to prevent GUI errors
-                if not hasattr(self.project_manager, 'state_manager'):
-                    # Create a minimal state manager stub
-                    class MinimalStateManager:
-                        def __init__(self):
-                            self.project_state = type('ProjectState', (), {})()
-                            self.project_state.shared_root = None
-                            self.project_state.scan_targets = []
-                            self.project_state.workers = []
-                            self.global_settings = {}
-                            self._observers = []
+        try:
+            # Initialize project manager
+            self.project_manager = ProjectManagerClean(project_path)
+            self.gui_services = GUIServiceFactory(self.project_manager)
+            self.theme_manager = ThemeManager()
 
-                        def subscribe(self, observer):
-                            self._observers.append(observer)
+            # Update UI state
+            self.selected_project_name = project_name
+            self.update_window_title()
 
-                        def unsubscribe(self, observer):
-                            if observer in self._observers:
-                                self._observers.remove(observer)
+            # Initialize views
+            self.project_view.set_initial_project(project_name)
 
-                        def notify_observers(self):
-                            for observer in self._observers:
-                                try:
-                                    observer()
-                                except Exception as e:
-                                    print(f"Error notifying observer: {e}")
+            # Set services on views
+            if hasattr(self.experiment_view, 'set_gui_services'):
+                self.experiment_view.set_gui_services(self.gui_services.create_experiment_service())
+            if hasattr(self.subject_view, 'set_gui_services'):
+                self.subject_view.set_gui_services(self.gui_services.create_subject_service())
+            if hasattr(self.project_view, 'set_gui_services'):
+                self.project_view.set_gui_services(self.gui_services.create_project_service())
 
-                        def update_project_settings(self, settings):
-                            pass
+            # Refresh and apply theme
+            self.refresh_all_views()
+            self.apply_theme()
 
-                        def get_experiment_by_id(self, exp_id):
-                            return None
+            self.log_bus.log(f"Project '{project_name}' loaded successfully", "success", "MainWindow")
+            return True
 
-                        def get_recording_count_for_experiment(self, exp_id):
-                            return 0
+        except Exception as e:
+            self.log_bus.log(f"Error loading project '{project_name}': {e}", "error", "MainWindow")
+            self._reset_project_state()
+            return False
 
-                        def get_sorted_list(self, list_type):
-                            return []
-
-                        def get_supported_experiment_subtypes(self, exp_type):
-                            return []
-
-                    self.project_manager.state_manager = MinimalStateManager()
-
-                # Initialize GUI services
-                self.gui_services = GUIServiceFactory(self.project_manager)
-
-                # Initialize ThemeManager with ConfigManager
-                self.theme_manager = ThemeManager()
-
-                # --- Project Loaded Successfully ---
-                self.selected_project_name = project_name
-                self.update_window_title() # Update the window title
-
-                # Notify views of the newly loaded project
-                self.project_view.set_initial_project(project_name)
-
-                # Set GUI services on views
-                experiment_service = self.gui_services.create_experiment_service()
-                subject_service = self.gui_services.create_subject_service()
-                project_service = self.gui_services.create_project_service()
-
-                if hasattr(self.experiment_view, 'set_gui_services'):
-                    self.experiment_view.set_gui_services(experiment_service)
-                if hasattr(self.subject_view, 'set_gui_services'):
-                    self.subject_view.set_gui_services(subject_service)
-                if hasattr(self.project_view, 'set_gui_services'):
-                    self.project_view.set_gui_services(project_service)
-
-                self.log_bus.log(f"Project '{project_name}' loaded successfully.", "success", "MainWindow")
-
-                # Refresh data across all views
-                self.refresh_all_views()
-
-                # Re-apply theme in case project settings affect it
-                self.apply_theme()
-
-            except Exception as e:
-                self.log_bus.log(f"Error loading project '{project_name}': {e}", "error", "MainWindow")
-                # Reset state on error
-                self.selected_project_name = None
-                self.project_manager = None
-                self.gui_services = None
-                self.update_window_title() # Update title to 'No Project Loaded'
-                # Optionally, show an error dialog to the user here
-        else:
-            self.log_bus.log(f"Could not find project path for '{project_name}': {project_path}", "error", "MainWindow")
-            # Reset state if project not found
-            self.selected_project_name = None
-            self.project_manager = None
-            self.gui_services = None
-            self.update_window_title() # Update title to 'No Project Loaded'
-            # Optionally, show an error dialog
+    def _reset_project_state(self):
+        """Reset project-related state variables."""
+        self.selected_project_name = None
+        self.project_manager = None
+        self.gui_services = None
+        self.update_window_title()
 
     def load_project_path(self, project_path: Path):
-        """Loads a project directly from a full path, then updates UI."""
+        """Loads a project directly from a full path."""
+        if not project_path.exists() or not (project_path / "mus1.db").exists():
+            self.log_bus.log(f"Invalid project path: {project_path}", "error", "MainWindow")
+            self.show_project_selection_dialog()
+            return
+
         try:
             project_name = project_path.name
 
-            # Initialize the clean project manager
+            # Initialize project components
             self.project_manager = ProjectManagerClean(project_path)
-
-            # Add a minimal state_manager stub to prevent GUI errors
-            if not hasattr(self.project_manager, 'state_manager'):
-                # Create a minimal state manager stub
-                class MinimalStateManager:
-                    def __init__(self):
-                        self.project_state = type('ProjectState', (), {})()
-                        self.project_state.shared_root = None
-                        self.project_state.scan_targets = []
-                        self.project_state.workers = []
-                        self.global_settings = {}
-                        self._observers = []
-
-                    def subscribe(self, observer):
-                        self._observers.append(observer)
-
-                    def unsubscribe(self, observer):
-                        if observer in self._observers:
-                            self._observers.remove(observer)
-
-                    def notify_observers(self):
-                        for observer in self._observers:
-                            try:
-                                observer()
-                            except Exception as e:
-                                print(f"Error notifying observer: {e}")
-
-                    def update_project_settings(self, settings):
-                        pass
-
-                    def get_experiment_by_id(self, exp_id):
-                        return None
-
-                    def get_recording_count_for_experiment(self, exp_id):
-                        return 0
-
-                    def get_sorted_list(self, list_type):
-                        return []
-
-                    def get_supported_experiment_subtypes(self, exp_type):
-                        return []
-
-                self.project_manager.state_manager = MinimalStateManager()
-
-            # Initialize GUI services
             self.gui_services = GUIServiceFactory(self.project_manager)
-
-            # Initialize ThemeManager with ConfigManager
             self.theme_manager = ThemeManager()
 
+            # Update UI state
             self.selected_project_name = project_name
             self.update_window_title()
+
+            # Initialize views
             self.project_view.set_initial_project(project_name)
 
-            # Set GUI services on views
-            experiment_service = self.gui_services.create_experiment_service()
-            subject_service = self.gui_services.create_subject_service()
-            project_service = self.gui_services.create_project_service()
-
+            # Set services on views
             if hasattr(self.experiment_view, 'set_gui_services'):
-                self.experiment_view.set_gui_services(experiment_service)
+                self.experiment_view.set_gui_services(self.gui_services.create_experiment_service())
             if hasattr(self.subject_view, 'set_gui_services'):
-                self.subject_view.set_gui_services(subject_service)
+                self.subject_view.set_gui_services(self.gui_services.create_subject_service())
             if hasattr(self.project_view, 'set_gui_services'):
-                self.project_view.set_gui_services(project_service)
+                self.project_view.set_gui_services(self.gui_services.create_project_service())
 
+            # Refresh and apply theme
             self.refresh_all_views()
             self.apply_theme()
-            self.log_bus.log(f"Project '{project_name}' loaded successfully from path.", "success", "MainWindow")
+
+            self.log_bus.log(f"Project '{project_name}' loaded successfully", "success", "MainWindow")
+
         except Exception as e:
             self.log_bus.log(f"Error loading project from '{project_path}': {e}", "error", "MainWindow")
-            # On error, show project selection dialog instead of crashing
+            self._reset_project_state()
             self.show_project_selection_dialog()
 
     def refresh_all_views(self):
@@ -493,7 +400,12 @@ class MainWindow(QMainWindow):
             self.show_project_selection_dialog()
         elif choice == "open":
             # Show project selection but focus on existing projects
-            dialog = ProjectSelectionDialog(project_root="./projects", parent=self)
+            from ..core.project_discovery_service import get_project_discovery_service
+
+            discovery_service = get_project_discovery_service()
+            project_root = discovery_service.get_project_root_for_dialog()
+
+            dialog = ProjectSelectionDialog(project_root=str(project_root), parent=self)
             # Could set dialog to show existing projects tab by default
             if dialog.exec() == QDialog.Accepted:
                 chosen_project = getattr(dialog, 'selected_project_name', None)
@@ -512,35 +424,20 @@ class MainWindow(QMainWindow):
 
     def discover_existing_projects(self):
         """Discover existing projects from configured locations."""
-        from ..core.config_manager import get_config
-        from pathlib import Path
+        from ..core.project_discovery_service import get_project_discovery_service
 
-        projects = []
+        discovery_service = get_project_discovery_service()
+        return discovery_service.discover_existing_projects()
 
-        # Check default projects directory
-        default_dir = get_config("user.default_projects_dir", str(Path.home() / "Documents" / "MUS1" / "Projects"))
-        if default_dir:
-            projects_dir = Path(default_dir)
-            if projects_dir.exists():
-                for item in projects_dir.iterdir():
-                    if item.is_dir() and (item / "mus1.db").exists():
-                        projects.append(item)
-
-        # Check shared storage
-        shared_root = get_config("storage.shared_root")
-        if shared_root:
-            shared_projects_dir = Path(shared_root) / "Projects"
-            if shared_projects_dir.exists():
-                for item in shared_projects_dir.iterdir():
-                    if item.is_dir() and (item / "mus1.db").exists():
-                        projects.append(item)
-
-        return projects
 
     def show_project_selection_dialog(self):
         """Show dialog for selecting a project."""
-        # TODO: Get project root from config
-        dialog = ProjectSelectionDialog(project_root="./projects", parent=self)
+        from ..core.project_discovery_service import get_project_discovery_service
+
+        discovery_service = get_project_discovery_service()
+        project_root = discovery_service.get_project_root_for_dialog()
+
+        dialog = ProjectSelectionDialog(project_root=str(project_root), parent=self)
 
         if dialog.exec() == QDialog.Accepted:
             chosen_project = getattr(dialog, 'selected_project_name', None)

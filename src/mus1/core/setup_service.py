@@ -196,11 +196,13 @@ class SetupService:
         for subdir in subdirs:
             (root_dto.path / subdir).mkdir(exist_ok=True)
 
-        # If copying existing config, move the config database
-        if root_dto.copy_existing_config:
-            self._move_config_to_new_location(root_dto.path)
+        # For custom locations, we need to set the MUS1_ROOT environment variable
+        # so future processes know where to find the configuration
+        if root_dto.path != self._get_default_mus1_root():
+            import os
+            os.environ["MUS1_ROOT"] = str(root_dto.path)
 
-        # Save configuration
+        # Save configuration (this will now be stored in the correct location)
         set_config("mus1.root_path", str(root_dto.path), scope="install")
         set_config("mus1.root_setup_date", datetime.now().isoformat(), scope="install")
 
@@ -211,47 +213,10 @@ class SetupService:
             "config_path": str(self.config_manager.db_path)
         }
 
-    def _move_config_to_new_location(self, new_root: Path):
-        """
-        Move existing configuration to new MUS1 root location.
-        This is called when user chooses a custom location.
-        """
-        try:
-            # Create temporary config file for bootstrapping
-            temp_config = Path.home() / ".mus1_root"
-            with open(temp_config, 'w') as f:
-                f.write(str(new_root))
-
-            # Get current config database path
-            current_db_path = self.config_manager.db_path
-
-            # Create new config directory in MUS1 root
-            new_config_dir = new_root / "config"
-            new_config_dir.mkdir(exist_ok=True)
-
-            # Copy config database to new location
-            import shutil
-            new_db_path = new_config_dir / current_db_path.name
-
-            if current_db_path.exists():
-                shutil.copy2(current_db_path, new_db_path)
-
-                # Update the config manager to use the new database path
-                # This requires reinitializing the config manager with the new path
-                from .config_manager import init_config_manager
-                init_config_manager(new_db_path)
-
-        except Exception as e:
-            # If moving fails, continue with setup but log the error
-            print(f"Warning: Could not move config to new location: {e}")
-        finally:
-            # Clean up temporary config file
-            try:
-                temp_config = Path.home() / ".mus1_root"
-                if temp_config.exists():
-                    temp_config.unlink()
-            except Exception:
-                pass
+    def _get_default_mus1_root(self) -> Path:
+        """Get the platform default MUS1 root location."""
+        from .config_manager import _get_platform_default_mus1_root
+        return _get_platform_default_mus1_root()
 
     # ===========================================
     # USER PROFILE MANAGEMENT

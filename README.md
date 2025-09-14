@@ -1,92 +1,108 @@
-# MUS1: Clean Video Analysis System
+# MUS1: Video Analysis System
 
-A clean, SQLite-based system for organizing and analyzing animal behavior videos with a simple, focused architecture.
+A SQLite-based system for organizing and analyzing animal behavior videos with a clean architecture and lab-colony hierarchy.
 
-## 🚀 **Quick Start**
+## Installation
 
-### **First Time Setup**
+### Production Users
 ```bash
-# 1. Clone and setup environment
+pip install mus1
+```
+
+### Developers
+```bash
 git clone <repository-url>
 cd mus1
 ./setup.sh
+```
 
-# 2. Launch MUS1 (setup wizard appears automatically)
+## Quick Start
+
+### GUI Mode (Recommended)
+```bash
+# Production
+mus1-gui
+
+# Development
 ./dev-launch.sh gui
 ```
 
-That's it! The setup wizard will guide you through configuration.
-
-## 📋 **Usage**
-
-### **Launch MUS1**
+### CLI Mode
 ```bash
-# GUI mode (recommended)
-./dev-launch.sh gui
+# Production
+mus1 --help
 
-# CLI mode
-./dev-launch.sh [command]
+# Development
+./dev-launch.sh --help
 ```
 
-### **Common Commands**
+## Usage Examples
+
+### Project Management
 ```bash
-# Projects
-./dev-launch.sh project list
-./dev-launch.sh project init "My Project"
+# List projects
+mus1 project list
 
-# Data management
-./dev-launch.sh add-subject <id>
-./dev-launch.sh add-experiment <id> <subject_id>
+# Create project
+mus1 project init "My Project" --lab mylab
 
-# Configuration
-./dev-launch.sh setup status
+# Check status
+mus1 project status
 ```
 
-## 🏗️ **Architecture**
-
-MUS1 uses clean architecture principles with clear separation of concerns:
-- **Domain Models**: Pure business logic entities
-- **Service Layer**: Business logic and validation
-- **Repository Pattern**: Clean data access
-- **SQLite Backend**: Relational database with constraints
-
-## 🎯 **Core Features**
-
-- **Project Management**: SQLite-backed projects with automatic setup
-- **Subject & Experiment Tracking**: Full lifecycle management
-- **Video Organization**: Hash-based integrity checking
-- **Plugin System**: Extensible analysis capabilities
-- **Lab Management**: Multi-lab research organization
-- **Shared Storage**: Collaborative project support
-- **Clean CLI**: Focused command-line interface
-- **Setup Wizard**: Guided first-time configuration
-
-## 📋 **Requirements**
-
-- **Python**: 3.10 or higher
-- **Operating System**: macOS, Linux, or Windows
-- **Storage**: SQLite (built-in), optional shared storage
-- **GUI**: PySide6 (automatically installed)
-
-## 🔧 **Troubleshooting**
-
-### **Common Issues**
-- **GUI won't start**: Ensure you're in a graphical environment
-- **Permission errors**: Check shared storage permissions
-- **Setup issues**: Run `./dev-launch.sh setup user --force`
-
-### **Getting Help**
+### Data Management
 ```bash
-./dev-launch.sh --help          # See all commands
-./dev-launch.sh setup status    # Check configuration
+# Add subject
+mus1 add-subject SUB001 --sex M --designation experimental
+
+# Add experiment
+mus1 add-experiment EXP001 SUB001 "Open Field Test" --date 2024-01-15
+
+# List data
+mus1 list-subjects
+mus1 list-experiments
 ```
 
-## 📚 **Documentation**
+### Lab and Colony Management
+```bash
+# Create lab
+mus1 lab create mylab "My Laboratory"
 
-- **[LAUNCH.md](LAUNCH.md)**: Detailed launch architecture and development guide
-- **Setup Scripts**: `./setup.sh --help` for environment setup
-- **CLI Commands**: `./dev-launch.sh --help` for available commands
+# Add colony
+mus1 lab add-colony mylab colony1 "Treatment Group" --genotype "GENE:WT"
 
-## 📄 **License**
+# List labs
+mus1 lab list
+```
 
-MUS1 is open source software for research purposes.
+## Requirements
+
+- Python 3.10+
+- macOS, Linux, or Windows
+- PySide6 (installed automatically)
+
+## Troubleshooting
+
+### Fresh Start
+```bash
+# Remove configuration to start over
+rm -rf ~/Library/Application\ Support/MUS1/  # macOS
+rm -rf ~/.config/mus1/                       # Linux
+rm -rf "$APPDATA/MUS1/"                      # Windows
+```
+
+### Check Status
+```bash
+mus1 setup status
+```
+
+### Override Configuration Location
+```bash
+export MUS1_ROOT="/custom/path"
+mus1-gui
+```
+
+## Documentation
+
+- [docs/dev/ARCHITECTURE_CURRENT.md](docs/dev/ARCHITECTURE_CURRENT.md) - Architecture details
+- [docs/dev/ROADMAP.md](docs/dev/ROADMAP.md) - Development roadmap

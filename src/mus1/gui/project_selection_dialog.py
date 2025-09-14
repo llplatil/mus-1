@@ -170,81 +170,51 @@ class ProjectSelectionDialog(QDialog):
             self.location_line.setText(directory)
     
     def refresh_projects_list(self):
-        """Refresh the list of existing projects."""
+        """Refresh the list of existing projects using simplified discovery."""
         self.projects_list.clear()
+
         try:
-            # Get setup service for better project discovery
-            setup_service = get_setup_service()
-            labs = setup_service.get_labs()
+            # Use simplified project discovery service
+            from ..core.project_discovery_service import get_project_discovery_service
+            discovery_service = get_project_discovery_service()
+            project_paths = discovery_service.discover_existing_projects()
 
-            # Determine source: Local or Shared
-            location_choice = None
-            if hasattr(self, 'existing_location_combo'):
-                location_choice = self.existing_location_combo.currentText().lower()
+            # Get lab information for display
+            labs = get_config("labs", scope="user") or {}
 
-            projects = []
+            for project_path in project_paths:
+                project_name = project_path.name
 
-            # Discover projects from labs (preferred method)
-            for lab_id, lab_config in labs.items():
-                lab_projects = lab_config.get("projects", [])
-                for project in lab_projects:
-                    project_path = Path(project["path"])
-                    if project_path.exists() and (project_path / "mus1.db").exists():
-                        projects.append({
-                            "path": project_path,
-                            "name": project["name"],
-                            "lab": lab_id,
-                            "source": "lab_config"
-                        })
+                # Find which lab this project belongs to
+                lab_name = "Unknown"
+                for lab_config in labs.values():
+                    lab_projects = lab_config.get("projects", [])
+                    for lab_project in lab_projects:
+                        if Path(lab_project["path"]) == project_path:
+                            lab_name = lab_config.get("name", "Unknown")
+                            break
+                    if lab_name != "Unknown":
+                        break
 
-            # Also discover projects from filesystem (fallback)
-            if location_choice == "shared":
-                shared_root = get_config("storage.shared_root", "/Volumes")
-                base_dir = Path(shared_root) / "Projects"
-            else:
-                base_dir = self.project_root
+                # Create display name
+                display_name = project_name
+                if lab_name != "Unknown":
+                    display_name += f" (Lab: {lab_name})"
 
-            if base_dir.exists():
-                for item in base_dir.iterdir():
-                    if item.is_dir() and (item / "mus1.db").exists():
-                        # Check if already found in lab config
-                        already_found = any(p["path"] == item for p in projects)
-                        if not already_found:
-                            projects.append({
-                                "path": item,
-                                "name": item.name,
-                                "lab": "Unknown",
-                                "source": "filesystem"
-                            })
+                item = QListWidgetItem(display_name)
+                item.setData(Qt.UserRole, str(project_path))
+                item.setData(Qt.UserRole + 1, project_name)
+                self.projects_list.addItem(item)
 
         except Exception as e:
             print(f"Error listing projects: {e}")
-            projects = []
-
-        # Add projects to list with lab information
-        for project in projects:
-            display_name = f"{project['name']}"
-            if project['lab'] != "Unknown":
-                display_name += f" (Lab: {project['lab']})"
-
-            item = QListWidgetItem(display_name)
-            # Store both name and full path
-            item.setData(Qt.UserRole, str(project['path']))
-            item.setData(Qt.UserRole + 1, project['name'])  # Store clean name separately
-            self.projects_list.addItem(item)
 
         # Show helpful message if no projects found
-        if not projects:
-            if setup_service.is_user_configured():
-                empty_item = QListWidgetItem("No projects found. Create your first project!")
-                empty_item.setFlags(empty_item.flags() & ~Qt.ItemIsSelectable)
-                empty_item.setForeground(QColor("gray"))
-                self.projects_list.addItem(empty_item)
-            else:
-                empty_item = QListWidgetItem("Complete setup first to create projects")
-                empty_item.setFlags(empty_item.flags() & ~Qt.ItemIsSelectable)
-                empty_item.setForeground(QColor("gray"))
-                self.projects_list.addItem(empty_item)
+        if self.projects_list.count() == 0:
+            empty_item = QListWidgetItem("No projects found. Create your first project!")
+            empty_item.setFlags(empty_item.flags() & ~Qt.ItemIsSelectable)
+            empty_item.setForeground(QColor("gray"))
+            self.projects_list.addItem(empty_item)
     
     def create_new_project(self):
         """Create a new project with the given name."""
@@ -272,26 +242,53 @@ class ProjectSelectionDialog(QDialog):
             # Choose Local or Shared base automatically
             location_choice = self.location_type_combo.currentText().lower()
             if location_choice == "shared":
-                shared_root = get_config("storage.shared_root", "/Volumes")
-                base_path = Path(shared_root) / "Projects"
+                shared_root = get_config("storage.shared_root")
+                if shared_root:
+                    base_path = Path(shared_root) / "Projects"
+                else:
+                    print("Shared storage not configured")
+                    return
             else:
-                base_path = self.project_root
+                # Use simplified project discovery to get default location
+                from ..core.project_discovery_service import get_project_discovery_service
+                discovery_service = get_project_discovery_service()
+                base_path = discovery_service.get_project_root_for_dialog()
 
         # Create the full project directory path
         project_root = base_path / project_name
 
         try:
+            # Check if project already exists
+            if (project_root / "mus1.db").exists():
+                print(f"Project '{project_name}' already exists")
+                return
+
             # Create project directory
-            project_root.mkdir(parents=True, exist_ok=False)
+            project_root.mkdir(parents=True, exist_ok=True)
 
             # Initialize the project with ProjectManagerClean
             project_manager = ProjectManagerClean(project_root)
 
+            # Register project with lab if labs are configured
+            labs = get_config("labs", scope="user") or {}
+            if labs:
+                # Use the first lab as default
+                lab_id = list(labs.keys())[0]
+                lab_config = labs[lab_id]
+                projects = lab_config.get("projects", [])
+                projects.append({
+                    "name": project_name,
+                    "path": str(project_root)
+                })
+                lab_config["projects"] = projects
+                labs[lab_id] = lab_config
+                set_config("labs", labs, scope="user")
+
             self.selected_project_name = project_name
             self.selected_project_path = str(project_root)
             self.accept()  # Close dialog with "accept" result
+
         except Exception as e:
-            # Handle errors (e.g., project already exists)
             print(f"Error creating project: {str(e)}")
     
     def select_project(self):

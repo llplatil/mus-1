@@ -30,6 +30,92 @@ import hashlib
 logger = logging.getLogger("mus1.core.config_manager")
 
 
+# ===========================================
+# MUS1 ROOT RESOLUTION - SIMPLE & DETERMINISTIC
+# ===========================================
+
+def resolve_mus1_root() -> Path:
+    """
+    Deterministically resolve MUS1 root directory.
+
+    Priority (highest to lowest):
+    1. MUS1_ROOT environment variable (if set and valid)
+    2. Existing MUS1 root in platform default location
+    3. Create/use platform default location
+
+    Returns:
+        Path to MUS1 root directory (guaranteed to exist)
+    """
+    # Priority 1: Environment variable
+    env_root = os.environ.get("MUS1_ROOT")
+    if env_root:
+        root_path = Path(env_root).expanduser().resolve()
+        if _is_valid_mus1_root(root_path):
+            return root_path
+        logger.warning(f"MUS1_ROOT environment variable points to invalid location: {root_path}")
+
+    # Priority 2: Platform default with existing config
+    default_root = _get_platform_default_mus1_root()
+    if _is_valid_mus1_root(default_root):
+        return default_root
+
+    # Priority 3: Create platform default
+    return _create_mus1_root(default_root)
+
+
+def _get_platform_default_mus1_root() -> Path:
+    """Get platform-specific default MUS1 root location."""
+    if platform.system() == "Darwin":  # macOS
+        return Path.home() / "Library" / "Application Support" / "MUS1"
+    elif platform.system() == "Windows":
+        appdata = os.environ.get("APPDATA", str(Path.home() / "AppData/Roaming"))
+        return Path(appdata) / "MUS1"
+    else:  # Linux/Unix
+        xdg_config = os.environ.get("XDG_CONFIG_HOME", str(Path.home() / ".config"))
+        return Path(xdg_config) / "mus1"
+
+
+def _is_valid_mus1_root(path: Path) -> bool:
+    """Check if path is a valid MUS1 root directory."""
+    if not path.exists() or not path.is_dir():
+        return False
+
+    # Check for config directory and database
+    config_dir = path / "config"
+    if not config_dir.exists():
+        return False
+
+    db_path = config_dir / "config.db"
+    return db_path.exists() and db_path.is_file()
+
+
+def _create_mus1_root(root_path: Path) -> Path:
+    """Create MUS1 root directory structure."""
+    try:
+        # Create main directory
+        root_path.mkdir(parents=True, exist_ok=True)
+
+        # Create subdirectories
+        subdirs = ["config", "logs", "cache", "temp"]
+        for subdir in subdirs:
+            (root_path / subdir).mkdir(exist_ok=True)
+
+        logger.info(f"Created MUS1 root directory at: {root_path}")
+        return root_path
+
+    except Exception as e:
+        # Fallback to current working directory if creation fails
+        fallback_root = Path.cwd() / ".mus1"
+        fallback_root.mkdir(parents=True, exist_ok=True)
+        logger.warning(f"Failed to create default MUS1 root, using fallback: {fallback_root} ({e})")
+        return fallback_root
+
+
+# ===========================================
+# CONFIG MANAGER (SIMPLIFIED)
+# ===========================================
+
+
 @dataclass
 class ConfigScope:
     """Represents a configuration scope in the hierarchy."""
@@ -58,10 +144,17 @@ class ConfigManager:
         Initialize the configuration manager.
 
         Args:
-            db_path: Path to SQLite database. If None, uses default location.
+            db_path: Path to SQLite database. If None, uses MUS1 root resolution.
         """
-        self.db_path = db_path or self._get_default_db_path()
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        # Use deterministic MUS1 root resolution if no explicit path provided
+        if db_path is None:
+            mus1_root = resolve_mus1_root()
+            config_dir = mus1_root / "config"
+            config_dir.mkdir(parents=True, exist_ok=True)
+            self.db_path = config_dir / "config.db"
+        else:
+            self.db_path = db_path
+            self.db_path.parent.mkdir(parents=True, exist_ok=True)
 
         self._connection: Optional[sqlite3.Connection] = None
         self._scopes: Dict[str, ConfigScope] = {}
@@ -73,51 +166,6 @@ class ConfigManager:
         self._init_scopes()
 
         logger.info(f"ConfigManager initialized with database at {self.db_path}")
-
-    def _get_default_db_path(self) -> Path:
-        """Get the default database path."""
-        # First check if MUS1 root is configured
-        mus1_root = self._get_mus1_root_path()
-        if mus1_root:
-            config_dir = mus1_root / "config"
-            config_dir.mkdir(parents=True, exist_ok=True)
-            return config_dir / "config.db"
-
-        # Fall back to platform-specific defaults
-        if os.name == "nt":  # Windows
-            appdata = os.environ.get("APPDATA", str(Path.home() / "AppData/Roaming"))
-            config_dir = Path(appdata) / "mus1"
-        elif os.name == "posix":  # macOS/Linux
-            if platform.system() == "Darwin":
-                config_dir = Path.home() / "Library/Application Support/mus1"
-            else:
-                xdg_config = os.environ.get("XDG_CONFIG_HOME", str(Path.home() / ".config"))
-                config_dir = Path(xdg_config) / "mus1"
-        else:
-            config_dir = Path.home() / ".mus1"
-
-        config_dir.mkdir(parents=True, exist_ok=True)
-        return config_dir / "config.db"
-
-    def _get_mus1_root_path(self) -> Optional[Path]:
-        """Get the configured MUS1 root path."""
-        # Try to read from environment variable first
-        env_root = os.environ.get("MUS1_ROOT")
-        if env_root:
-            return Path(env_root)
-
-        # Try to read from a temporary config file (for bootstrapping)
-        temp_config = Path.home() / ".mus1_root"
-        if temp_config.exists():
-            try:
-                with open(temp_config, 'r') as f:
-                    path_str = f.read().strip()
-                    if path_str:
-                        return Path(path_str)
-            except Exception:
-                pass
-
-        return None
 
     @contextmanager
     def _get_connection(self):
