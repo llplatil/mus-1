@@ -6,6 +6,7 @@ from pathlib import Path
 from .metadata import ProjectState, SubjectMetadata, ExperimentMetadata, PluginMetadata, SortMode
 from .sort_manager import sort_items
 from .logging_bus import LoggingEventBus
+from .config_manager import get_config_manager
 
 logger = logging.getLogger("mus1.core.state_manager")
 
@@ -17,17 +18,22 @@ class StateManager:
     def __init__(self, project_state: Optional[ProjectState] = None):
         self._project_state = project_state or ProjectState()
         self._observers: List[Callable[[], None]] = []  # Added list to track observer callbacks
+        self._config_manager = get_config_manager()
         self.log_bus = LoggingEventBus.get_instance()
-        self.log_bus.log("StateManager initialized", "info", "StateManager")
+        self.log_bus.log("StateManager initialized with ConfigManager", "info", "StateManager")
 
     def __getstate__(self):
         """Prepare object for pickling."""
         state = self.__dict__.copy()
+        # Don't pickle the config manager - it will be recreated
+        state['_config_manager'] = None
         return state
 
     def __setstate__(self, state):
         """Restore object from pickle."""
         self.__dict__.update(state)
+        # Recreate config manager
+        self._config_manager = get_config_manager()
         # Reinitialize the logging bus after unpickling
         self.log_bus = LoggingEventBus.get_instance()
 
@@ -224,12 +230,19 @@ class StateManager:
 
     @property
     def global_settings(self) -> dict:
-        """Returns a dictionary of global settings from the current project state."""
+        """Returns a dictionary of global settings using ConfigManager with fallbacks."""
         settings_dict = {}
+
+        # Get settings from ConfigManager first (new approach)
+        settings_dict["global_sort_mode"] = self._config_manager.get("ui.sort_mode", "Natural Order (Numbers as Numbers)")
+        settings_dict["global_frame_rate"] = self._config_manager.get("processing.frame_rate", 60)
+        settings_dict["global_frame_rate_enabled"] = self._config_manager.get("processing.frame_rate_enabled", False)
+
+        # Theme setting
+        settings_dict["theme_mode"] = self._config_manager.get("ui.theme", "dark")
+
+        # Fallback to project state for project-specific settings
         if self._project_state.project_metadata is not None:
-            settings_dict["global_sort_mode"] = self._project_state.project_metadata.global_sort_mode
-            settings_dict["global_frame_rate"] = self._project_state.project_metadata.global_frame_rate
-            settings_dict["global_frame_rate_enabled"] = self._project_state.project_metadata.global_frame_rate_enabled
             settings_dict["master_body_parts"] = self._project_state.project_metadata.master_body_parts
             settings_dict["active_body_parts"] = self._project_state.project_metadata.active_body_parts
             settings_dict["master_tracked_objects"] = self._project_state.project_metadata.master_tracked_objects
@@ -239,9 +252,7 @@ class StateManager:
             settings_dict["master_genotypes"] = self._project_state.project_metadata.master_genotypes
             settings_dict["active_genotypes"] = self._project_state.project_metadata.active_genotypes
         else:
-            settings_dict["global_sort_mode"] = self._project_state.settings.get("global_sort_mode", "Lexicographical Order (Numbers as Characters)")
-            settings_dict["global_frame_rate"] = self._project_state.settings.get("global_frame_rate", 60)
-            settings_dict["global_frame_rate_enabled"] = self._project_state.settings.get("global_frame_rate_enabled", False)
+            # Legacy fallback
             settings_dict["master_body_parts"] = self._project_state.settings.get("body_parts", [])
             settings_dict["active_body_parts"] = self._project_state.settings.get("active_body_parts", [])
             settings_dict["master_tracked_objects"] = self._project_state.settings.get("master_tracked_objects", [])
@@ -250,6 +261,7 @@ class StateManager:
             settings_dict["active_treatments"] = self._project_state.settings.get("treatments", {}).get("active", [])
             settings_dict["master_genotypes"] = self._project_state.settings.get("genotypes", {}).get("available", [])
             settings_dict["active_genotypes"] = self._project_state.settings.get("genotypes", {}).get("active", [])
+
         return settings_dict
 
     def get_treatments(self) -> dict:
@@ -611,16 +623,27 @@ class StateManager:
             self._observers.remove(callback)
 
     def get_theme_preference(self) -> str:
-        """Retrieve the user's theme preference."""
+        """Retrieve the user's theme preference using ConfigManager."""
+        # Check ConfigManager first (new approach)
+        theme = self._config_manager.get("ui.theme")
+        if theme:
+            return theme
+
+        # Fallback to project state if ConfigManager not available
         if self.project_state and self.project_state.project_metadata:
             return self.project_state.project_metadata.theme_mode
         return "dark"  # default fallback
 
     def set_theme_preference(self, theme_choice: str) -> None:
-        """Store the user's theme preference."""
+        """Store the user's theme preference using ConfigManager."""
+        # Store in ConfigManager (new approach)
+        self._config_manager.set("ui.theme", theme_choice, scope="user")
+
+        # Also update project state for backward compatibility
         if self.project_state and self.project_state.project_metadata:
             self.project_state.project_metadata.theme_mode = theme_choice
-            self.notify_observers()
+
+        self.notify_observers()
 
     def set_plugin_styling_preferences(self, styling_preferences: Dict[str, Dict[str, Any]]) -> None:
         """Store plugin styling preferences."""
@@ -667,6 +690,8 @@ class StateManager:
             # Update theme if provided
             if "theme_mode" in settings:
                 self._project_state.project_metadata.theme_mode = settings["theme_mode"]
+                # Also store in ConfigManager
+                self._config_manager.set("ui.theme", settings["theme_mode"], scope="user")
         
         # Always update settings dictionary as well (keeping the string value here is fine)
         self._project_state.settings.update(settings)

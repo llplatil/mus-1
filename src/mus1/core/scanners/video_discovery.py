@@ -2,20 +2,10 @@ import platform
 from pathlib import Path
 from typing import Iterable
 from .base_scanner import BaseScanner
-from .macos_scanner import MacOSVideoScanner
-from .windows_scanner import WindowsVideoScanner
-from .linux_scanner import LinuxVideoScanner
 
 def get_scanner() -> BaseScanner:
-    system = platform.system().lower()
-    if system == 'darwin':
-        return MacOSVideoScanner()
-    elif system == 'windows':
-        return WindowsVideoScanner()
-    elif system == 'linux':
-        return LinuxVideoScanner()
-    else:
-        return BaseScanner()
+    """Get a unified scanner that handles platform differences internally."""
+    return BaseScanner()
 
 
 def default_roots_if_missing(roots: Iterable[str | Path] | None) -> list[Path]:

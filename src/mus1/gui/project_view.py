@@ -10,7 +10,7 @@ from ..core import ObjectMetadata, BodyPartMetadata, PluginManager
 from ..core.data_manager import FrameRateResolutionError
 from ..plugins.base_plugin import BasePlugin
 from typing import Dict, Any
-from ..core.remote_scanner import collect_from_targets
+from ..core.scanners.remote import collect_from_targets
 
 
 class NotesBox(QGroupBox):

@@ -29,7 +29,7 @@ import yaml
 from .core.metadata import WorkerEntry, ScanTarget
 from .core.job_provider import run_on_worker
 from .core.credentials import load_credentials, set_credential, remove_credential
-from .core.master_media import load_master_index, save_master_index, add_or_update_master_item
+# Removed imports of deprecated master_media methods
 from .core.lab_manager import LabManager, LabConfig
 import re
 import importlib.metadata as importlib_metadata
@@ -160,13 +160,12 @@ def system_status():
     print("\nSystem Ready for Operations!")
 
 
-@app.command("clear-state", help="Clear persistent CLI application state")
+@app.command("clear-state", help="Clear cached CLI application state")
 def clear_state():
-    """Clear the persistent state file, forcing fresh initialization on next command."""
-    _clear_persistent_state()
+    """Clear the cached state, forcing fresh initialization on next command."""
     global _managers_cache
     _managers_cache = None
-    print("Persistent state cleared")
+    print("Cached state cleared")
     print("Next CLI command will re-initialize the application state")
 
 
@@ -181,103 +180,32 @@ def scan_help():
 ###############################################################################
 
 
-# Global cache for initialized managers
+# Global cache for initialized managers (simple in-memory cache)
 _managers_cache = None
-_lab_manager_cache = None
-
-def _get_state_file() -> Path:
-    """Get the path to the persistent state file."""
-    if sys.platform == "darwin":
-        state_dir = Path.home() / "Library/Application Support/mus1"
-    elif os.name == "nt":
-        appdata = os.environ.get("APPDATA") or str(Path.home() / "AppData/Roaming")
-        state_dir = Path(appdata) / "mus1"
-    else:
-        xdg = os.environ.get("XDG_CONFIG_HOME") or str(Path.home() / ".config")
-        state_dir = Path(xdg) / "mus1"
-    state_dir.mkdir(parents=True, exist_ok=True)
-    return state_dir / "cli_state.pickle"
-
-def _save_managers_state():
-    """Save manager state to disk for persistence between CLI commands."""
-    if _managers_cache is not None:
-        try:
-            import pickle
-            state_file = _get_state_file()
-            # Save both managers and lab manager
-            state = {
-                'managers': _managers_cache,
-                'lab_manager': _lab_manager_cache
-            }
-            with open(state_file, "wb") as f:
-                pickle.dump(state, f)
-        except Exception:
-            # Silently fail if we can't save state
-            pass
-
-def _save_state_after_change():
-    """Save state after any change that affects managers."""
-    _save_managers_state()
-    print("State updated and saved")
-
-def _clear_persistent_state():
-    """Clear the persistent state file."""
-    try:
-        state_file = _get_state_file()
-        if state_file.exists():
-            state_file.unlink()
-    except Exception:
-        pass
-
-def _load_managers_state():
-    """Load manager state from disk if available."""
-    global _lab_manager_cache
-    try:
-        import pickle
-        state_file = _get_state_file()
-        if state_file.exists():
-            with open(state_file, "rb") as f:
-                state = pickle.load(f)
-                # Handle both old format (just managers) and new format (dict with managers and lab_manager)
-                if isinstance(state, dict):
-                    managers = state.get('managers')
-                    lab_manager = state.get('lab_manager')
-                    if lab_manager:
-                        _lab_manager_cache = lab_manager
-                    return managers, lab_manager
-                else:
-                    # Old format - just managers tuple
-                    return state, None
-    except Exception:
-        # Silently fail if we can't load state
-        pass
-    return None, None
 
 def _get_managers() -> tuple[StateManager, PluginManager, DataManager, ProjectManager]:
     """
-    Get initialized managers with TRUE persistence that survives between CLI commands.
+    Get initialized managers for CLI commands.
 
-    This ensures CLI commands maintain the same application state as the GUI,
-    creating a unified experience across different user interfaces.
+    This ensures CLI commands use the same application state as the GUI,
+    with proper plugin discovery handled by the core initialization.
     """
-    global _managers_cache, _lab_manager_cache
+    global _managers_cache
 
-    # First try to load from persistent storage
-    if _managers_cache is None:
-        _managers_cache, _lab_manager_cache = _load_managers_state()
-
-    # If no persistent state, initialize fresh (same as GUI!)
+    # If managers not yet initialized, do fresh initialization
     if _managers_cache is None:
         print("Initializing MUS1 core application state...")
         state_manager, plugin_manager, data_manager, project_manager, theme_manager, log_bus = initialize_mus1_app()
         _managers_cache = (state_manager, plugin_manager, data_manager, project_manager)
-        print("MUS1 core initialized and ready")
 
-        # Save state for future CLI commands
-        _save_managers_state()
-        print("Application state saved - will persist for future CLI commands")
+        # Log plugin discovery results
+        plugins = plugin_manager.get_plugins_with_project_actions()
+        print(f"MUS1 core initialized with {len(plugins)} plugin(s)")
+        if plugins:
+            plugin_names = [p.plugin_self_metadata().name for p in plugins]
+            print(f"Available plugins: {', '.join(plugin_names)}")
     else:
-        print("Loaded persistent MUS1 application state")
+        print("Using cached MUS1 application state")
 
     return _managers_cache
 
@@ -1914,10 +1842,12 @@ def setup_shared(
     path: Optional[Path] = typer.Option(None, "--path", "-p", help="Writable shared root directory"),
     create: bool = typer.Option(False, help="Create the directory if it does not exist"),
 ):
-    """Persist a per-user config pointing to your shared projects directory.
+    """Configure your per-user shared projects directory using ConfigManager.
 
-    This is stored in your OS user config dir and used when MUS1_SHARED_DIR is not set.
+    This is stored in the unified configuration system and used when MUS1_SHARED_DIR is not set.
     """
+    from .core.config_manager import get_config_manager
+
     # Determine target path
     if path is None:
         path = Path(typer.prompt("Enter shared root path (must be writable)"))
@@ -1939,34 +1869,23 @@ def setup_shared(
     except Exception as e:
         raise typer.BadParameter(f"Path is not writable: {path} ({e})")
 
-    # Compute per-OS user config dir
-    config_dir: Path
-    if sys.platform == "darwin":
-        config_dir = Path.home() / "Library/Application Support/mus1"
-    elif os.name == "nt":
-        appdata = os.environ.get("APPDATA") or str(Path.home() / "AppData/Roaming")
-        config_dir = Path(appdata) / "mus1"
-    else:
-        xdg = os.environ.get("XDG_CONFIG_HOME") or str(Path.home() / ".config")
-        config_dir = Path(xdg) / "mus1"
-    config_dir.mkdir(parents=True, exist_ok=True)
+    # Save to ConfigManager
+    config_manager = get_config_manager()
+    config_manager.set("paths.shared_root", str(path), scope="user")
 
-    config_path = config_dir / "config.yaml"
-    data = {"shared_root": str(path)}
-    with open(config_path, "w", encoding="utf-8") as f:
-        yaml.safe_dump(data, f)
-
-    print(f"Saved shared root to {config_path}\nShared projects will default to: {path}")
+    print(f"Saved shared root to ConfigManager\nShared projects will default to: {path}")
 
 @setup_app.command("labs", help="Configure your per-user labs root directory.")
 def setup_labs(
     path: Optional[Path] = typer.Option(None, "--path", "-p", help="Writable labs root directory"),
     create: bool = typer.Option(False, help="Create the directory if it does not exist"),
 ):
-    """Persist a per-user config pointing to your labs directory.
+    """Configure your per-user labs directory using ConfigManager.
 
-    This is stored in your OS user config dir and used when MUS1_LABS_DIR is not set.
+    This is stored in the unified configuration system and used when MUS1_LABS_DIR is not set.
     """
+    from .core.config_manager import get_config_manager
+
     # Determine target path
     if path is None:
         path = Path(typer.prompt("Enter labs root path (must be writable)"))
@@ -1988,41 +1907,23 @@ def setup_labs(
     except Exception as e:
         raise typer.BadParameter(f"Path is not writable: {path} ({e})")
 
-    # Compute per-OS user config dir
-    config_dir: Path
-    if sys.platform == "darwin":
-        config_dir = Path.home() / "Library/Application Support/mus1"
-    elif os.name == "nt":
-        appdata = os.environ.get("APPDATA") or str(Path.home() / "AppData/Roaming")
-        config_dir = Path(appdata) / "mus1"
-    else:
-        xdg = os.environ.get("XDG_CONFIG_HOME") or str(Path.home() / ".config")
-        config_dir = Path(xdg) / "mus1"
-    config_dir.mkdir(parents=True, exist_ok=True)
+    # Save to ConfigManager
+    config_manager = get_config_manager()
+    config_manager.set("paths.labs_root", str(path), scope="user")
 
-    config_path = config_dir / "config.yaml"
-    data = {}
-    if config_path.exists():
-        try:
-            with open(config_path, "r", encoding="utf-8") as f:
-                data = yaml.safe_load(f) or {}
-        except Exception:
-            data = {}
-    data["labs_root"] = str(path)
-    with open(config_path, "w", encoding="utf-8") as f:
-        yaml.safe_dump(data, f)
-
-    print(f"Saved labs root to {config_path}\nLab configurations will default to: {path}")
+    print(f"Saved labs root to ConfigManager\nLab configurations will default to: {path}")
 
 @setup_app.command("projects", help="Configure your per-user local projects root (non-shared).")
 def setup_projects(
     path: Optional[Path] = typer.Option(None, "--path", "-p", help="Writable local projects root directory"),
     create: bool = typer.Option(False, help="Create the directory if it does not exist"),
 ):
-    """Persist a per-user config pointing to your local projects directory.
+    """Configure your per-user local projects directory using ConfigManager.
 
     Used when MUS1_PROJECTS_DIR is not set.
     """
+    from .core.config_manager import get_config_manager
+
     if path is None:
         path = Path(typer.prompt("Enter local projects root path (must be writable)"))
     path = path.expanduser().resolve()
@@ -2042,37 +1943,19 @@ def setup_projects(
     except Exception as e:
         raise typer.BadParameter(f"Path is not writable: {path} ({e})")
 
-    # Same config dir scheme as setup_shared
-    if sys.platform == "darwin":
-        config_dir = Path.home() / "Library/Application Support/mus1"
-    elif os.name == "nt":
-        appdata = os.environ.get("APPDATA") or str(Path.home() / "AppData/Roaming")
-        config_dir = Path(appdata) / "mus1"
-    else:
-        xdg = os.environ.get("XDG_CONFIG_HOME") or str(Path.home() / ".config")
-        config_dir = Path(xdg) / "mus1"
-    config_dir.mkdir(parents=True, exist_ok=True)
+    # Save to ConfigManager
+    config_manager = get_config_manager()
+    config_manager.set("paths.projects_root", str(path), scope="user")
 
-    # Merge with existing config.yaml if present
-    config_path = config_dir / "config.yaml"
-    data = {}
-    if config_path.exists():
-        try:
-            with open(config_path, "r", encoding="utf-8") as f:
-                loaded = yaml.safe_load(f) or {}
-                if isinstance(loaded, dict):
-                    data.update(loaded)
-        except Exception:
-            pass
-    data["projects_root"] = str(path)
-    with open(config_path, "w", encoding="utf-8") as f:
-        yaml.safe_dump(data, f)
-    print(f"Saved local projects root to {config_path}\nLocal projects will default to: {path}")
+    print(f"Saved local projects root to ConfigManager\nLocal projects will default to: {path}")
 
 ###############################################################################
 # lab management (lab-level shared configuration)
 ###############################################################################
 
+
+# Global cache for lab manager
+_lab_manager_cache = None
 
 def _get_lab_manager() -> LabManager:
     """Get or create a lab manager instance."""

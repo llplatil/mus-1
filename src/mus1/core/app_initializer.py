@@ -18,6 +18,8 @@ from .data_manager import DataManager
 from .project_manager import ProjectManager
 from .theme_manager import ThemeManager
 from .logging_bus import LoggingEventBus
+from .config_manager import init_config_manager, get_config_manager
+from .config_migration import ConfigMigrationManager
 
 
 class MUS1AppInitializer:
@@ -114,6 +116,59 @@ class MUS1AppInitializer:
         self._managers = (state_manager, plugin_manager, data_manager, project_manager, theme_manager)
         return self._managers
 
+    def initialize_config_system(self):
+        """Initialize the unified configuration system."""
+        try:
+            # Initialize ConfigManager
+            init_config_manager()
+            config_manager = get_config_manager()
+
+            # Run configuration migration if needed
+            migration_manager = ConfigMigrationManager(config_manager)
+            migration_result = migration_manager.migrate_all()
+
+            if not migration_result.success:
+                self.logger.warning(f"Configuration migration had issues: {migration_result.errors}")
+            else:
+                self.logger.info(f"Configuration migration completed: {migration_result.migrated_keys} keys migrated")
+
+            # Set default configuration values if not already set
+            self._set_default_config_values()
+
+            self.logger.info("Configuration system initialized")
+
+        except Exception as e:
+            self.logger.error(f"Failed to initialize configuration system: {e}", exc_info=True)
+            # Continue with basic defaults
+            pass
+
+    def _set_default_config_values(self):
+        """Set default configuration values."""
+        config_manager = get_config_manager()
+
+        # Set default paths
+        if not config_manager.get("paths.projects_root"):
+            if sys.platform == "win32":
+                default_projects = Path.home() / "MUS1" / "projects"
+            else:
+                default_projects = Path.home() / "MUS1" / "projects"
+            config_manager.set("paths.projects_root", str(default_projects), scope="install")
+
+        # Set default theme
+        if not config_manager.get("ui.theme"):
+            config_manager.set("ui.theme", "dark", scope="user")
+
+        # Set default frame rate settings
+        if not config_manager.get("processing.frame_rate"):
+            config_manager.set("processing.frame_rate", 60, scope="install")
+
+        if not config_manager.get("processing.frame_rate_enabled"):
+            config_manager.set("processing.frame_rate_enabled", False, scope="user")
+
+        # Set default sort mode
+        if not config_manager.get("ui.sort_mode"):
+            config_manager.set("ui.sort_mode", "Natural Order (Numbers as Numbers)", scope="user")
+
     def initialize_logging_bus(self) -> LoggingEventBus:
         """Initialize the logging event bus."""
         log_bus = LoggingEventBus.get_instance()
@@ -136,10 +191,13 @@ class MUS1AppInitializer:
             self.logger.error("Application initialization failed: metadata setup unsuccessful")
             sys.exit(1)
 
-        # Step 3: Initialize logging event bus
+        # Step 3: Initialize unified configuration system
+        self.initialize_config_system()
+
+        # Step 4: Initialize logging event bus
         log_bus = self.initialize_logging_bus()
 
-        # Step 4: Initialize all core managers
+        # Step 5: Initialize all core managers
         state_manager, plugin_manager, data_manager, project_manager, theme_manager = self.initialize_core_managers()
 
         self.logger.info("MUS1 core initialization complete")

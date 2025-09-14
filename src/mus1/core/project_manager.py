@@ -21,6 +21,7 @@ from ..plugins.base_plugin import BasePlugin
 from .logging_bus import LoggingEventBus
 from .data_manager import DataManager # Assuming DataManager might be used internally later
 from .lab_manager import LabManager
+from .config_manager import get_config_manager
 from pydantic import ValidationError
 
 logger = logging.getLogger("mus1.core.project_manager")
@@ -39,17 +40,22 @@ class ProjectManager:
         self.data_manager = data_manager
         self.lab_manager = lab_manager
         self._current_project_root: Path | None = None
+        self._config_manager = get_config_manager()
         self.log_bus = LoggingEventBus.get_instance()
-        self.log_bus.log("ProjectManager initialized with shared managers", "info", "ProjectManager")
+        self.log_bus.log("ProjectManager initialized with shared managers and ConfigManager", "info", "ProjectManager")
 
     def __getstate__(self):
         """Prepare object for pickling."""
         state = self.__dict__.copy()
+        # Don't pickle the config manager - it will be recreated
+        state['_config_manager'] = None
         return state
 
     def __setstate__(self, state):
         """Restore object from pickle."""
         self.__dict__.update(state)
+        # Recreate config manager
+        self._config_manager = get_config_manager()
         # Reinitialize the logging bus after unpickling
         self.log_bus = LoggingEventBus.get_instance()
         
@@ -65,14 +71,13 @@ class ProjectManager:
         # Decoupled plugin UI state from current state; not syncing plugin data into StateManager
 
     def get_projects_directory(self, custom_base: Path | None = None) -> Path:
-        """Return the directory where MUS1 projects are stored.
+        """Return the directory where MUS1 projects are stored using ConfigManager.
 
         Precedence for the base directory is:
         1. *custom_base* argument (used by CLI `--base-dir` or tests).
         2. Shared storage if lab is activated and shared storage is available.
-        3. Environment variable ``MUS1_PROJECTS_DIR`` if set.
-        4. Per-user config file (same location as shared) key `projects_root`.
-        5. User home default: ``~/MUS1/projects`` (consistent local location).
+        3. ConfigManager setting.
+        4. User home default: ``~/MUS1/projects`` (consistent local location).
 
         The returned directory is created if it does not exist so callers can
         rely on its presence.
@@ -96,39 +101,13 @@ class ProjectManager:
                     # Fall back to local storage if shared storage fails
                     pass
 
-            # Fall back to original logic
-            env_dir = os.environ.get("MUS1_PROJECTS_DIR")
-            if env_dir:
-                base_dir = Path(env_dir).expanduser().resolve()
+            # Check ConfigManager for projects directory
+            config_projects_dir = self._config_manager.get("paths.projects_root")
+            if config_projects_dir:
+                base_dir = Path(config_projects_dir).expanduser().resolve()
             else:
-                # Fallback to per-user config (same scheme as get_shared_directory)
-                try:
-                    if platform.system() == "Darwin":
-                        config_dir = Path.home() / "Library/Application Support/mus1"
-                    elif os.name == "nt":
-                        appdata = os.environ.get("APPDATA") or str(Path.home() / "AppData/Roaming")
-                        config_dir = Path(appdata) / "mus1"
-                    else:
-                        xdg = os.environ.get("XDG_CONFIG_HOME") or str(Path.home() / ".config")
-                        config_dir = Path(xdg) / "mus1"
-                    yaml_path = config_dir / "config.yaml"
-                    proj_root = None
-                    if yaml_path.exists():
-                        try:
-                            with open(yaml_path, "r", encoding="utf-8") as f:
-                                data = yaml.safe_load(f) or {}
-                                pr = data.get("projects_root")
-                                if pr:
-                                    proj_root = Path(str(pr)).expanduser()
-                        except Exception:
-                            proj_root = None
-                    if proj_root:
-                        base_dir = Path(proj_root).expanduser().resolve()
-                    else:
-                        # Default to consistent user-local location
-                        base_dir = (Path.home() / "MUS1" / "projects").expanduser().resolve()
-                except Exception:
-                    base_dir = (Path.home() / "MUS1" / "projects").expanduser().resolve()
+                # Default to consistent user-local location
+                base_dir = (Path.home() / "MUS1" / "projects").expanduser().resolve()
 
         # Ensure existence
         base_dir.mkdir(parents=True, exist_ok=True)
@@ -241,12 +220,13 @@ class ProjectManager:
         self.state_manager.sync_plugin_metadatas(self.plugin_manager)
 
     def get_shared_directory(self, custom_root: Path | None = None) -> Path:
-        """Return the directory for shared MUS1 projects.
+        """Return the directory for shared MUS1 projects using ConfigManager.
 
         Precedence for the base directory is:
         1. custom_root argument (explicit override from caller/UI)
         2. Environment variable MUS1_SHARED_DIR
-        3. Per-user config file in OS config dir (config.yaml with key 'shared_root')
+        3. ConfigManager setting
+        4. Error if not configured
 
         The returned directory is created if it does not exist.
         """
@@ -257,29 +237,12 @@ class ProjectManager:
             if env_dir:
                 base_dir = Path(env_dir).expanduser().resolve()
             else:
-                # Fallback to per-user config
-                if platform.system() == "Darwin":
-                    config_dir = Path.home() / "Library/Application Support/mus1"
-                elif os.name == "nt":
-                    appdata = os.environ.get("APPDATA") or str(Path.home() / "AppData/Roaming")
-                    config_dir = Path(appdata) / "mus1"
+                # Check ConfigManager for shared directory
+                config_shared_dir = self._config_manager.get("paths.shared_root")
+                if config_shared_dir:
+                    base_dir = Path(config_shared_dir).expanduser().resolve()
                 else:
-                    xdg = os.environ.get("XDG_CONFIG_HOME") or str(Path.home() / ".config")
-                    config_dir = Path(xdg) / "mus1"
-                yaml_path = config_dir / "config.yaml"
-                shared_root = None
-                if yaml_path.exists():
-                    try:
-                        with open(yaml_path, "r", encoding="utf-8") as f:
-                            data = yaml.safe_load(f) or {}
-                            sr = data.get("shared_root")
-                            if sr:
-                                shared_root = Path(str(sr)).expanduser()
-                    except Exception:
-                        shared_root = None
-                if not shared_root:
-                    raise EnvironmentError("Shared root not configured. Set MUS1_SHARED_DIR or run 'mus1 setup shared'.")
-                base_dir = Path(shared_root).expanduser().resolve()
+                    raise EnvironmentError("Shared root not configured. Set MUS1_SHARED_DIR or configure in ConfigManager.")
 
         base_dir.mkdir(parents=True, exist_ok=True)
         return base_dir
@@ -306,16 +269,16 @@ class ProjectManager:
         logger.info(f"Created project directory at {project_root}")
         self.log_bus.log(f"Created project directory at {project_root}", "info", "ProjectManager")
 
-        # 3) (Optional) Create subfolders for organization
-        #    You can remove these if you do not need subfolders by default
-        (project_root / "subjects").mkdir()
-        (project_root / "experiments").mkdir()
-        (project_root / "batches").mkdir()
-        (project_root / "data").mkdir()
-        (project_root / "media").mkdir()
-        (project_root / "external_configs").mkdir()
-        (project_root / "project_notes").mkdir()
-        logger.info("Created standard subfolders: subjects, experiments, batches, data, media, external_configs, project_notes")
+        # 3) Create subfolders for organization
+        subfolders = ["subjects", "experiments", "batches", "data", "media", "external_configs", "project_notes"]
+        for folder in subfolders:
+            (project_root / folder).mkdir()
+        logger.info(f"Created standard subfolders: {', '.join(subfolders)}")
+
+        # Store project path in ConfigManager
+        self._config_manager.set_scope_path("project", project_root)
+        self._config_manager.set("project.metadata.name", project_name, scope="project")
+        self._config_manager.set("project.metadata.created_at", datetime.now(), scope="project")
 
         # 4) Create an empty (or minimal) ProjectState
         #    Here we attach a ProjectMetadata with the supplied name
@@ -465,6 +428,9 @@ class ProjectManager:
             self.state_manager.project_state.host_os = sysname
         except Exception:
             pass
+        # Store project path in ConfigManager
+        self._config_manager.set_scope_path("project", project_root)
+
         logger.info("Project loaded and ready in memory.")
 
         # Sync plugins into the loaded state
@@ -499,6 +465,9 @@ class ProjectManager:
             # Update project metadata to reference the lab
             if self.state_manager.project_state.project_metadata:
                 self.state_manager.project_state.project_metadata.lab_id = lab_id
+
+            # Store lab association in ConfigManager
+            self._config_manager.set("project.metadata.lab_id", lab_id, scope="project")
 
             self.save_project()
             self.log_bus.log(f"Associated project with lab '{lab_config.metadata.name}'", "success", "ProjectManager")
@@ -535,6 +504,12 @@ class ProjectManager:
 
     def get_lab_id(self) -> str | None:
         """Get the lab ID associated with the current project."""
+        # First check ConfigManager (new approach)
+        lab_id = self._config_manager.get("project.metadata.lab_id")
+        if lab_id:
+            return lab_id
+
+        # Fallback to project state (legacy support)
         if self.state_manager.project_state.project_metadata:
             return getattr(self.state_manager.project_state.project_metadata, 'lab_id', None)
         return None
