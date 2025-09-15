@@ -81,8 +81,24 @@ class ProjectManagerClean:
         return self.repos.subjects.find_by_id(subject_id)
 
     def list_subjects(self) -> List[Subject]:
-        """List all subjects."""
-        return self.repos.subjects.find_all()
+        """List all subjects with sorting from project config."""
+        # Get sort mode from project config, default to date_added desc
+        sort_mode = self.config.settings.get("global_sort_mode", "date_added")
+        sort_order = "desc"  # Default to descending for most sorts
+
+        # For subjects, we need to map the sort mode to appropriate field
+        if sort_mode == "Natural Order (Numbers as Numbers)":
+            sort_by = "id"  # Sort by ID which handles numbers naturally
+        elif sort_mode == "Lexicographical Order (Numbers as Characters)":
+            sort_by = "id"  # Same field, but could be handled differently in repo
+        elif sort_mode == "Date Added":
+            sort_by = "date_added"
+        elif sort_mode == "By ID":
+            sort_by = "id"
+        else:
+            sort_by = "date_added"
+
+        return self.repos.subjects.find_all(sort_by=sort_by, sort_order=sort_order)
 
     def remove_subject(self, subject_id: str) -> bool:
         """Remove subject from project."""
@@ -120,8 +136,24 @@ class ProjectManagerClean:
         return self.repos.experiments.find_by_id(experiment_id)
 
     def list_experiments(self) -> List[Experiment]:
-        """List all experiments."""
-        return self.repos.experiments.find_all()
+        """List all experiments with sorting from project config."""
+        # Get sort mode from project config, default to date_recorded desc
+        sort_mode = self.config.settings.get("global_sort_mode", "date_added")
+        sort_order = "desc"  # Default to descending for most sorts
+
+        # For experiments, we need to map the sort mode to appropriate field
+        if sort_mode == "Natural Order (Numbers as Numbers)":
+            sort_by = "date_recorded"  # Sort by date recorded for experiments
+        elif sort_mode == "Lexicographical Order (Numbers as Characters)":
+            sort_by = "experiment_type"  # Sort by experiment type
+        elif sort_mode == "Date Added":
+            sort_by = "date_added"
+        elif sort_mode == "By ID":
+            sort_by = "date_recorded"  # Use date recorded as primary sort
+        else:
+            sort_by = "date_recorded"
+
+        return self.repos.experiments.find_all(sort_by=sort_by, sort_order=sort_order)
 
     def list_experiments_for_subject(self, subject_id: str) -> List[Experiment]:
         """List experiments for a specific subject."""
@@ -325,6 +357,98 @@ class ProjectManagerClean:
     def list_videos(self) -> List[VideoFile]:
         """List all videos in the project."""
         return self.repos.videos.find_all()
+
+    def save_project(self):
+        """Save project configuration and state."""
+        try:
+            self._save_config(self.config)
+            logger.info(f"Project {self.config.name} saved successfully")
+        except Exception as e:
+            logger.error(f"Failed to save project {self.config.name}: {e}")
+            raise
+
+    def rename_project(self, new_name: str) -> bool:
+        """Rename the project."""
+        try:
+            if not new_name or len(new_name.strip()) < 3:
+                raise ValueError("Project name must be at least 3 characters")
+
+            old_name = self.config.name
+            self.config.name = new_name.strip()
+
+            # Rename the project directory
+            parent_dir = self.project_path.parent
+            new_path = parent_dir / new_name
+
+            if new_path.exists():
+                raise ValueError(f"Directory {new_path} already exists")
+
+            import shutil
+            shutil.move(str(self.project_path), str(new_path))
+
+            # Update our internal path
+            self.project_path = new_path
+            self.config_path = new_path / "project.json"
+            self.db_path = new_path / "mus1.db"
+
+            # Save the updated config
+            self.save_project()
+
+            logger.info(f"Project renamed from '{old_name}' to '{new_name}'")
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to rename project: {e}")
+            raise
+
+    def move_project_to_directory(self, destination: Path) -> Path:
+        """Move project to a new directory."""
+        try:
+            if not destination.exists():
+                destination.mkdir(parents=True, exist_ok=True)
+
+            new_project_path = destination / self.config.name
+
+            if new_project_path.exists():
+                raise ValueError(f"Project directory {new_project_path} already exists")
+
+            import shutil
+            shutil.move(str(self.project_path), str(new_project_path))
+
+            # Update our internal path
+            self.project_path = new_project_path
+            self.config_path = new_project_path / "project.json"
+            self.db_path = new_project_path / "mus1.db"
+
+            # Save the updated config
+            self.save_project()
+
+            logger.info(f"Project moved to {new_project_path}")
+            return new_project_path
+
+        except Exception as e:
+            logger.error(f"Failed to move project: {e}")
+            raise
+
+    def register_unlinked_videos(self, videos_iter) -> int:
+        """Register videos that are not yet linked to experiments."""
+        try:
+            count = 0
+            for video in videos_iter:
+                # Assuming video is a tuple (path, hash, timestamp)
+                if len(video) >= 2:
+                    path, hash_value = video[0], video[1]
+                    # Create VideoFile entity and save it
+                    video_file = VideoFile(path=Path(path), hash=hash_value)
+                    self.repos.videos.save(video_file)
+                    count += 1
+
+            logger.info(f"Registered {count} unlinked videos")
+            return count
+
+        except Exception as e:
+            logger.error(f"Failed to register unlinked videos: {e}")
+            return 0
 
     def cleanup(self):
         """Clean up resources."""

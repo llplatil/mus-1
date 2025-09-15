@@ -74,6 +74,44 @@ class ScanTargetKind(str, Enum):
 # ===========================================
 
 @dataclass
+class User:
+    """Core user entity for application-level user management."""
+    id: str  # User key/identifier
+    name: str
+    email: str
+    organization: Optional[str] = None
+    default_projects_dir: Optional[Path] = None
+    default_shared_dir: Optional[Path] = None
+    created_at: datetime = field(default_factory=datetime.now)
+    updated_at: datetime = field(default_factory=datetime.now)
+
+@dataclass
+class Lab:
+    """Core lab entity for research group management."""
+    id: str
+    name: str
+    creator_id: str  # Reference to creating user
+    institution: Optional[str] = None
+    pi_name: Optional[str] = None
+    created_at: datetime = field(default_factory=datetime.now)
+
+@dataclass
+class Workgroup:
+    """Core workgroup entity for collaborative research."""
+    id: str
+    name: str
+    share_key_hash: str  # Salted hash of shareable key
+    created_at: datetime = field(default_factory=datetime.now)
+
+@dataclass
+class WorkgroupMember:
+    """Workgroup membership entity."""
+    workgroup_id: str
+    member_email: str
+    role: str = "member"  # 'admin', 'member', etc.
+    added_at: datetime = field(default_factory=datetime.now)
+
+@dataclass
 class PluginMetadata:
     """Plugin metadata structure."""
     name: str
@@ -188,6 +226,33 @@ class ScanTarget:
 # ===========================================
 # DATA TRANSFER OBJECTS (DTOs)
 # ===========================================
+
+class UserDTO(BaseModel):
+    """Data transfer object for user data."""
+    id: str
+    name: str
+    email: str
+    organization: Optional[str] = None
+    default_projects_dir: Optional[str] = None
+    default_shared_dir: Optional[str] = None
+    created_at: datetime = Field(default_factory=datetime.now)
+    updated_at: datetime = Field(default_factory=datetime.now)
+
+class LabDTO(BaseModel):
+    """Data transfer object for lab data."""
+    id: str
+    name: str
+    creator_id: str
+    institution: Optional[str] = None
+    pi_name: Optional[str] = None
+    created_at: datetime = Field(default_factory=datetime.now)
+
+class WorkgroupDTO(BaseModel):
+    """Data transfer object for workgroup data."""
+    id: str
+    name: str
+    share_key_hash: str
+    created_at: datetime = Field(default_factory=datetime.now)
 
 class ColonyDTO(BaseModel):
     """Data transfer object for colony data."""

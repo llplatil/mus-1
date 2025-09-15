@@ -14,6 +14,7 @@ import platform
 
 from .config_manager import get_config_manager, set_config, get_config
 from .metadata import Colony, Subject, Experiment, Worker, ScanTarget, WorkerProvider, ScanTargetKind
+from .schema import model_to_colony
 
 
 # ===========================================
@@ -57,9 +58,10 @@ class LabDTO:
     """Data transfer object for lab creation."""
     id: str
     name: str
-    description: Optional[str] = None
+    creator_id: str
     institution: Optional[str] = None
     pi_name: Optional[str] = None
+    created_at: Optional[datetime] = None
 
     def __post_init__(self):
         """Validate lab data."""
@@ -67,6 +69,8 @@ class LabDTO:
             raise ValueError("Lab ID must be at least 3 characters")
         if not self.name or len(self.name.strip()) < 3:
             raise ValueError("Lab name must be at least 3 characters")
+        if not self.creator_id:
+            raise ValueError("Creator ID is required")
 
 
 @dataclass
@@ -143,7 +147,9 @@ class SetupService:
     """
 
     def __init__(self):
-        self.config_manager = get_config_manager()
+        # Don't cache config_manager - fetch fresh instance for each operation
+        # This allows proper re-initialization after MUS1 root changes
+        pass
 
     # ===========================================
     # MUS1 ROOT LOCATION MANAGEMENT
@@ -210,7 +216,7 @@ class SetupService:
             "success": True,
             "message": "MUS1 root location configured successfully",
             "path": root_dto.path,
-            "config_path": str(self.config_manager.db_path)
+            "config_path": str(get_config_manager().db_path)
         }
 
     def _get_default_mus1_root(self) -> Path:
@@ -261,7 +267,34 @@ class SetupService:
             if not user_dto.default_projects_dir:
                 user_dto.default_projects_dir = Path.home() / "mus1-projects"
 
-        # Save configuration
+        # Generate user ID from email (this replaces the "dumbass lab ID" concept)
+        user_id = user_dto.email.lower().replace("@", "_").replace(".", "_")
+
+        # Create User entity in SQL database
+        from .metadata import User
+        from .repository import get_repository_factory
+        from .config_manager import get_config_manager
+
+        user_entity = User(
+            id=user_id,
+            name=user_dto.name,
+            email=user_dto.email,
+            organization=user_dto.organization,
+            default_projects_dir=user_dto.default_projects_dir,
+            default_shared_dir=user_dto.default_shared_dir,
+            created_at=datetime.now(),
+            updated_at=datetime.now()
+        )
+
+        # Save user to SQL database
+        from .schema import Database
+        config_manager = get_config_manager()
+        db = Database(str(config_manager.db_path))
+        repo_factory = get_repository_factory(db)
+        saved_user = repo_factory.users.save(user_entity)
+
+        # Save configuration (legacy support)
+        set_config("user.id", user_id, scope="user")
         set_config("user.name", user_dto.name, scope="user")
         set_config("user.email", user_dto.email, scope="user")
         set_config("user.organization", user_dto.organization, scope="user")
@@ -276,8 +309,9 @@ class SetupService:
         return {
             "success": True,
             "message": "User profile configured successfully",
-            "user": user_dto,
-            "config_path": str(self.config_manager.db_path)
+            "user": saved_user,
+            "user_id": user_id,
+            "config_path": str(get_config_manager().db_path)
         }
 
     # ===========================================
@@ -346,7 +380,7 @@ class SetupService:
             "success": True,
             "message": "Shared storage configured successfully",
             "path": storage_dto.path,
-            "config_path": str(self.config_manager.db_path)
+            "config_path": str(get_config_manager().db_path)
         }
 
     # ===========================================
@@ -355,12 +389,51 @@ class SetupService:
 
     def get_labs(self) -> Dict[str, Dict[str, Any]]:
         """Get all configured labs."""
-        return get_config("labs", scope="user") or {}
+        from .schema import Database
+        from .repository import get_repository_factory
+
+        config_manager = get_config_manager()
+        db = Database(str(config_manager.db_path))
+        repo_factory = get_repository_factory(db)
+
+        # Get current user ID to filter labs by creator
+        user_id = get_config("user.id", scope="user")
+        if user_id:
+            labs = repo_factory.labs.find_by_creator(user_id)
+            # Convert to dict format for backward compatibility
+            return {lab.id: {
+                "id": lab.id,
+                "name": lab.name,
+                "institution": lab.institution,
+                "pi_name": lab.pi_name,
+                "created_at": lab.created_at.isoformat(),
+                "projects": repo_factory.labs.get_projects(lab.id),
+                "colonies": [model_to_colony(c).__dict__ for c in repo_factory.colonies.find_by_lab(lab.id)]
+            } for lab in labs}
+        else:
+            # Fallback to all labs if no user context
+            labs = repo_factory.labs.find_all()
+            return {lab.id: {
+                "id": lab.id,
+                "name": lab.name,
+                "institution": lab.institution,
+                "pi_name": lab.pi_name,
+                "created_at": lab.created_at.isoformat(),
+                "projects": repo_factory.labs.get_projects(lab.id),
+                "colonies": [model_to_colony(c).__dict__ for c in repo_factory.colonies.find_by_lab(lab.id)]
+            } for lab in labs}
 
     def lab_exists(self, lab_id: str) -> bool:
         """Check if lab exists."""
-        labs = self.get_labs()
-        return lab_id in labs
+        from .schema import Database
+        from .repository import get_repository_factory
+
+        config_manager = get_config_manager()
+        db = Database(str(config_manager.db_path))
+        repo_factory = get_repository_factory(db)
+
+        lab = repo_factory.labs.find_by_id(lab_id)
+        return lab is not None
 
     def create_lab(self, lab_dto: LabDTO) -> Dict[str, Any]:
         """
@@ -378,27 +451,30 @@ class SetupService:
                 "message": f"Lab '{lab_dto.id}' already exists"
             }
 
-        # Create lab configuration
-        lab_config = {
-            "id": lab_dto.id,
-            "name": lab_dto.name,
-            "description": lab_dto.description or "",
-            "institution": lab_dto.institution or "",
-            "pi_name": lab_dto.pi_name or "",
-            "created_date": datetime.now().isoformat(),
-            "colonies": [],
-            "projects": []
-        }
+        # Create Lab entity in SQL database
+        from .metadata import Lab
+        from .schema import Database
+        from .repository import get_repository_factory
 
-        # Save to user config
-        labs = self.get_labs()
-        labs[lab_dto.id] = lab_config
-        set_config("labs", labs, scope="user")
+        lab_entity = Lab(
+            id=lab_dto.id,
+            name=lab_dto.name,
+            institution=lab_dto.institution,
+            pi_name=lab_dto.pi_name,
+            creator_id=lab_dto.creator_id,
+            created_at=lab_dto.created_at or datetime.now()
+        )
+
+        # Save lab to SQL database
+        config_manager = get_config_manager()
+        db = Database(str(config_manager.db_path))
+        repo_factory = get_repository_factory(db)
+        saved_lab = repo_factory.labs.save(lab_entity)
 
         return {
             "success": True,
             "message": "Lab created successfully",
-            "lab": lab_config
+            "lab": saved_lab
         }
 
     def add_colony_to_lab(self, colony_dto: ColonyDTO) -> Dict[str, Any]:
@@ -417,38 +493,38 @@ class SetupService:
                 "message": f"Lab '{colony_dto.lab_id}' not found"
             }
 
-        labs = self.get_labs()
-        lab_config = labs[colony_dto.lab_id]
-        colonies = lab_config.get("colonies", [])
+        # Check if colony already exists in SQL database
+        from .schema import Database
+        from .repository import get_repository_factory
 
-        # Check if colony already exists
-        existing_colony_ids = [c.get("id") for c in colonies]
-        if colony_dto.id in existing_colony_ids:
+        config_manager = get_config_manager()
+        db = Database(str(config_manager.db_path))
+        repo_factory = get_repository_factory(db)
+
+        existing_colony = repo_factory.colonies.find_by_id(colony_dto.id)
+        if existing_colony:
             return {
                 "success": False,
-                "message": f"Colony '{colony_dto.id}' already exists in lab '{colony_dto.lab_id}'"
+                "message": f"Colony '{colony_dto.id}' already exists"
             }
 
-        # Create colony configuration
-        colony_config = {
-            "id": colony_dto.id,
-            "name": colony_dto.name,
-            "genotype_of_interest": colony_dto.genotype_of_interest or "",
-            "background_strain": colony_dto.background_strain or "",
-            "created_date": datetime.now().isoformat(),
-            "subjects": []
-        }
+        # Create Colony entity in SQL database
+        from .metadata import Colony
+        colony_entity = Colony(
+            id=colony_dto.id,
+            name=colony_dto.name,
+            lab_id=colony_dto.lab_id,
+            genotype_of_interest=colony_dto.genotype_of_interest,
+            background_strain=colony_dto.background_strain,
+            date_added=datetime.now()
+        )
 
-        # Add to lab
-        colonies.append(colony_config)
-        lab_config["colonies"] = colonies
-        labs[colony_dto.lab_id] = lab_config
-        set_config("labs", labs, scope="user")
+        saved_colony = repo_factory.colonies.save(colony_entity)
 
         return {
             "success": True,
             "message": "Colony added to lab successfully",
-            "colony": colony_config,
+            "colony": saved_colony,
             "lab": colony_dto.lab_id
         }
 
@@ -470,7 +546,7 @@ class SetupService:
             shared_storage_path=get_config("storage.shared_root"),
             labs_count=len(labs),
             projects_count=projects_count,
-            config_database_path=str(self.config_manager.db_path)
+            config_database_path=str(get_config_manager().db_path)
         )
 
     def run_setup_workflow(self, workflow_dto: SetupWorkflowDTO) -> Dict[str, Any]:

@@ -145,6 +145,15 @@ class GUIExperimentService:
             self.log_bus.log(f"Error loading experiments: {e}", "error", "GUIExperimentService")
             return []
 
+    def get_subjects_for_display(self) -> List[SubjectDisplayDTO]:
+        """Get all subjects formatted for GUI display (needed for experiment subject selection)."""
+        try:
+            subjects = self.project_manager.list_subjects()
+            return [SubjectDisplayDTO(sub) for sub in subjects]
+        except Exception as e:
+            self.log_bus.log(f"Error loading subjects: {e}", "error", "GUIExperimentService")
+            return []
+
     def add_experiment(self, experiment_id: str, subject_id: str, experiment_type: str,
                       date_recorded: datetime, processing_stage: str = "planned") -> Optional[Experiment]:
         """Add a new experiment via GUI."""

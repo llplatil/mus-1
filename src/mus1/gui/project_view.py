@@ -6,11 +6,6 @@ from PySide6.QtWidgets import (
 from pathlib import Path
 from .base_view import BaseView
 from PySide6.QtCore import Qt, Signal
-# TODO: Update to use new clean architecture models
-# from ..core import ObjectMetadata, BodyPartMetadata, PluginManager
-# TODO: Update to use new clean architecture
-# from ..core.data_manager import FrameRateResolutionError
-from ..plugins.base_plugin import BasePlugin
 from typing import Dict, Any
 from ..core.scanners.remote import collect_from_targets
 from .gui_services import GUIProjectService
@@ -84,11 +79,9 @@ class ProjectView(BaseView):
         self.setup_project_settings_page()
         self.setup_general_settings_page()
         self.setup_scan_ingest_page()
-        self.setup_workers_page()
         self.setup_targets_page()
         # Add navigation buttons for newly added pages to keep nav and pages aligned
         self.add_navigation_button("Scan & Ingest")
-        self.add_navigation_button("Workers")
         self.add_navigation_button("Targets")
         self.change_page(0)
 
@@ -96,6 +89,13 @@ class ProjectView(BaseView):
         """Set the GUI services when a project is loaded."""
         self.gui_services = gui_services
         self.project_service = gui_services  # GUIProjectService is the service itself
+        # Ensure project_manager is wired from MainWindow for actions that require it
+        try:
+            main_window = self.window()
+            if main_window and getattr(main_window, 'project_manager', None):
+                self.project_manager = main_window.project_manager
+        except Exception:
+            pass
 
     def format_item(self, item):
         """Utility to return the proper display string for an item."""
@@ -424,14 +424,10 @@ class ProjectView(BaseView):
             self.rename_line_edit.setText(project_name)
 
         # Load project notes (still relevant here)
-        if hasattr(self, 'project_notes_box') and self.window().project_manager.state_manager:
-            state = self.window().project_manager.state_manager.project_state
-            # Check if project_metadata exists before accessing settings through it
-            if state.project_metadata:
-                 notes = state.settings.get("project_notes", "") # Still access notes via settings for now
-                 self.project_notes_box.set_text(notes)
-            else:
-                 self.project_notes_box.set_text("") # Clear notes if no project loaded
+        if hasattr(self, 'project_notes_box') and self.window().project_manager:
+            pm = self.window().project_manager
+            notes = pm.config.settings.get("project_notes", "")
+            self.project_notes_box.set_text(notes)
 
         # Update UI settings from the loaded project state
         self.update_frame_rate_from_state()
@@ -473,12 +469,11 @@ class ProjectView(BaseView):
             "global_frame_rate": frame_rate
         }
         
-        # Update settings using the unified method
-        if self.state_manager:
-            self.state_manager.update_project_settings(settings)
-            
+        # Update settings using project config
+        if self.project_manager:
+            self.project_manager.config.settings.update(settings)
             # Save the project to persist these settings
-            self.window().project_manager.save_project()
+            self.project_manager.save_project()
             
             # Call through MainWindow to propagate theme changes across the application
             self.window().change_theme(theme_choice)
@@ -496,32 +491,28 @@ class ProjectView(BaseView):
             "global_frame_rate": frame_rate
         }
         
-        # Update settings using the unified method
-        if self.state_manager:
-            self.state_manager.update_project_settings(settings)
-            
+        # Update settings using project config
+        if self.project_manager:
+            self.project_manager.config.settings.update(settings)
             # Save project to persist changes
-            self.window().project_manager.save_project()
+            self.project_manager.save_project()
             
         self.navigation_pane.add_log_message(f"Applied frame rate settings: {'Enabled' if frame_rate_enabled else 'Disabled'}, {frame_rate} fps", "success")
    
     def on_sort_mode_changed(self, new_sort_mode: str):
-        """Update the project state's global_sort_mode using the unified settings method."""
-        if self.state_manager:
-            # Update sort mode using the unified method
-            self.state_manager.update_project_settings({"global_sort_mode": new_sort_mode})
-            
+        """Update the project config's global_sort_mode and refresh data."""
+        if self.project_manager:
+            # Update sort mode using project config
+            self.project_manager.config.settings["global_sort_mode"] = new_sort_mode
             # Save project to persist changes
-            self.window().project_manager.save_project()
-            
-            # Refresh lists to show new sorting (e.g., project list if sorting applies)
+            self.project_manager.save_project()
+
+            # Refresh lists to show new sorting (repositories will use the updated sort mode)
             self.refresh_lists()
 
     def closeEvent(self, event):
         """Handle clean up when the view is closed."""
-        # Unsubscribe from state manager to prevent memory leaks
-        if hasattr(self, 'state_manager') and self.state_manager:
-            self.state_manager.unsubscribe(self.refresh_lists)
+        # Clean up resources
         super().closeEvent(event)
 
     def handle_change_theme(self, theme_choice: str):
@@ -558,10 +549,8 @@ class ProjectView(BaseView):
     def update_likelihood_filter_from_state(self):
         """Update likelihood filter settings from the current state."""
         pm = self.window().project_manager
-        if not pm or not pm.state_manager:
+        if not pm:
             return
-        
-        state = pm.state_manager.project_state
         
         # Check if we have the likelihood filter components
         # These components might not exist yet in the current version
@@ -777,8 +766,10 @@ class ProjectView(BaseView):
 
         # Pre-fill from state if available
         try:
-            if self.state_manager and self.state_manager.project_state.shared_root:
-                self.shared_root_line.setText(str(self.state_manager.project_state.shared_root))
+            if hasattr(self, 'project_service') and self.project_service:
+                project_info = self.project_service.get_project_info()
+                if project_info.get('shared_root'):
+                    self.shared_root_line.setText(project_info['shared_root'])
         except Exception:
             pass
 
@@ -805,17 +796,14 @@ class ProjectView(BaseView):
             
         notes = self.project_notes_box.get_text()
         try:
-            # Ensure project_manager and state_manager are available
-            if not self.project_manager or not self.project_manager.state_manager:
-                 self.navigation_pane.add_log_message("Cannot save notes: Project or State manager not available.", 'error')
+            # Ensure project_manager is available
+            if not self.project_manager:
+                 self.navigation_pane.add_log_message("Cannot save notes: Project manager not available.", 'error')
                  return
 
-            # Get the current project state
-            state = self.project_manager.state_manager.project_state
-            # Update the notes in the state
-            state.settings["project_notes"] = notes
-            # Update internal state and persist changes to disk
-            self.project_manager.state_manager.notify_observers()
+            # Update notes in project config settings
+            self.project_manager.config.settings["project_notes"] = notes
+            # Save the project to persist changes
             self.project_manager.save_project()
             
             self.navigation_pane.add_log_message("Project notes saved successfully.", 'success')
@@ -846,8 +834,7 @@ class ProjectView(BaseView):
                     sr.mkdir(parents=True, exist_ok=True)
                 else:
                     return
-            state = self.window().project_manager.state_manager.project_state
-            state.shared_root = sr
+            self.window().project_manager.set_shared_root(sr)
             self.window().project_manager.save_project()
             self.navigation_pane.add_log_message(f"Shared root set to {sr}", "success")
         except Exception as e:
@@ -856,8 +843,7 @@ class ProjectView(BaseView):
     def handle_move_project_to_shared(self):
         try:
             pm = self.window().project_manager
-            state = pm.state_manager.project_state
-            sr = state.shared_root
+            sr = pm.config.shared_root
             if not sr:
                 QMessageBox.warning(self, "Shared Root", "Set a shared root first.")
                 return
@@ -881,10 +867,6 @@ class ProjectView(BaseView):
         self.update_sort_mode_from_state()
         self.update_theme_dropdown_from_state()
         # Refresh new admin lists
-        try:
-            self.refresh_workers_list()
-        except Exception:
-            pass
         try:
             self.refresh_targets_admin_list()
             self.refresh_targets_list()
@@ -976,7 +958,7 @@ class ProjectView(BaseView):
             return
         self.targets_list.clear()
         try:
-            targets = list(self.state_manager.project_state.scan_targets or [])
+            targets = list(self.project_manager.config.settings.get('scan_targets', []) or [])
         except Exception:
             targets = []
         for t in targets:
@@ -987,7 +969,7 @@ class ProjectView(BaseView):
 
     def handle_scan_targets(self):
         try:
-            sr = self.state_manager.project_state.shared_root
+            sr = self.project_manager.config.shared_root
             selected_names = []
             for i in range(self.targets_list.count()):
                 it = self.targets_list.item(i)
@@ -1005,7 +987,7 @@ class ProjectView(BaseView):
             non_recursive = self.non_recursive_check.isChecked()
 
             # Resolve targets
-            all_targets = list(self.state_manager.project_state.scan_targets or [])
+            all_targets = list(self.project_manager.config.settings.get('scan_targets', []) or [])
             targets = [t for t in all_targets if t.name in set(selected_names)]
             if not targets:
                 QMessageBox.warning(self, "Scan", "No matching targets found.")
@@ -1018,9 +1000,11 @@ class ProjectView(BaseView):
                     val = max(0, min(100, int(done * 100 / total)))
                     self.scan_progress.setValue(val)
 
-            # Collect and dedup
-            items = collect_from_targets(self.state_manager, self.data_manager, targets, extensions=extensions, exclude_dirs=excludes, non_recursive=non_recursive)
-            dedup = list(self.data_manager.deduplicate_video_list(items, progress_cb=_cb))
+            # Collect and dedup - TODO: Integrate with clean architecture
+            # items = collect_from_targets(self.state_manager, self.data_manager, targets, extensions=extensions, exclude_dirs=excludes, non_recursive=non_recursive)
+            items = []  # Placeholder until integration is complete
+            # dedup = list(self.data_manager.deduplicate_video_list(items, progress_cb=_cb))
+            dedup = []  # Placeholder until integration is complete
 
             # Partition by shared root
             self._dedup_results = dedup
@@ -1057,7 +1041,7 @@ class ProjectView(BaseView):
             if not self._off_shared:
                 QMessageBox.information(self, "Stage", "No off-shared items to stage.")
                 return
-            sr = self.state_manager.project_state.shared_root
+            sr = self.project_manager.config.shared_root
             if not sr:
                 QMessageBox.warning(self, "Stage", "Set shared root first in Project Settings.")
                 return
@@ -1076,121 +1060,18 @@ class ProjectView(BaseView):
                 if total > 0:
                     self.scan_progress.setValue(max(0, min(100, int(done * 100 / total))))
 
-            staged_iter = self.data_manager.stage_files_to_shared(
-                src_with_hashes,
-                shared_root=Path(sr),
-                dest_base=dest_base,
-                overwrite=False,
-                progress_cb=_cb,
-            )
+            # staged_iter = self.data_manager.stage_files_to_shared(
+            #     src_with_hashes,
+            #     shared_root=Path(sr),
+            #     dest_base=dest_base,
+            #     overwrite=False,
+            #     progress_cb=_cb,
+            # )
+            staged_iter = []  # Placeholder until integration is complete
             added = self.project_manager.register_unlinked_videos(staged_iter)
             QMessageBox.information(self, "Stage", f"Staged and added {added} videos.")
         except Exception as e:
             self.navigation_pane.add_log_message(f"Stage failed: {e}", "error")
-
-    def setup_workers_page(self):
-        """Setup Workers management page (typed workers CRUD)."""
-        self.workers_page = QWidget()
-        layout = QVBoxLayout(self.workers_page)
-        layout.setSpacing(self.SECTION_SPACING)
-
-        # List existing workers
-        list_group, list_layout = self.create_form_section("Workers", layout)
-        row = self.create_form_row(list_layout)
-        self.workers_list = QListWidget()
-        self.workers_list.setProperty("class", "mus1-list-widget")
-        row.addWidget(self.workers_list, 1)
-
-        # Add form
-        form_group, form_layout = self.create_form_section("Add Worker", layout)
-        r1 = self.create_form_row(form_layout)
-        self.worker_name_edit = QLineEdit()
-        self.worker_name_edit.setProperty("class", "mus1-text-input")
-        self.worker_ssh_alias_edit = QLineEdit()
-        self.worker_ssh_alias_edit.setProperty("class", "mus1-text-input")
-        self.worker_role_edit = QLineEdit()
-        self.worker_role_edit.setProperty("class", "mus1-text-input")
-        self.worker_provider_combo = QComboBox()
-        self.worker_provider_combo.setProperty("class", "mus1-combo-box")
-        self.worker_provider_combo.addItems(["ssh", "wsl"])
-        r1.addWidget(self.create_form_label("Name:"))
-        r1.addWidget(self.worker_name_edit)
-        r1.addWidget(self.create_form_label("SSH Alias:"))
-        r1.addWidget(self.worker_ssh_alias_edit)
-        r2 = self.create_form_row(form_layout)
-        r2.addWidget(self.create_form_label("Role:"))
-        r2.addWidget(self.worker_role_edit)
-        r2.addWidget(self.create_form_label("Provider:"))
-        r2.addWidget(self.worker_provider_combo)
-
-        btn_row = self.create_button_row(layout)
-        add_btn = QPushButton("Add Worker")
-        add_btn.setProperty("class", "mus1-primary-button")
-        add_btn.clicked.connect(self.handle_add_worker)
-        rem_btn = QPushButton("Remove Selected Worker")
-        rem_btn.setProperty("class", "mus1-secondary-button")
-        rem_btn.clicked.connect(self.handle_remove_worker)
-        btn_row.addWidget(add_btn)
-        btn_row.addWidget(rem_btn)
-
-        layout.addStretch(1)
-        self.add_page(self.workers_page, "Workers")
-
-        self.refresh_workers_list()
-
-    def refresh_workers_list(self):
-        if not hasattr(self, 'workers_list'):
-            return
-        self.workers_list.clear()
-        try:
-            workers = list(self.state_manager.project_state.workers or [])
-        except Exception:
-            workers = []
-        for w in workers:
-            item = QListWidgetItem(f"{w.name}  alias={w.ssh_alias}  role={w.role or ''}  provider={w.provider}")
-            item.setData(Qt.UserRole, w.name)
-            self.workers_list.addItem(item)
-
-    def handle_add_worker(self):
-        try:
-            name = self.worker_name_edit.text().strip()
-            alias = self.worker_ssh_alias_edit.text().strip()
-            role = self.worker_role_edit.text().strip() or None
-            provider = self.worker_provider_combo.currentText().strip()
-            if not name or not alias:
-                QMessageBox.warning(self, "Workers", "Name and SSH alias are required.")
-                return
-            ws = self.state_manager.project_state.workers
-            if any(w.name == name for w in ws):
-                QMessageBox.warning(self, "Workers", f"Worker '{name}' already exists.")
-                return
-            from ..core.metadata import WorkerEntry
-            ws.append(WorkerEntry(name=name, ssh_alias=alias, role=role, provider=provider))
-            self.window().project_manager.save_project()
-            self.refresh_workers_list()
-            self.navigation_pane.add_log_message(f"Added worker {name}", "success")
-        except Exception as e:
-            self.navigation_pane.add_log_message(f"Add worker failed: {e}", "error")
-
-    def handle_remove_worker(self):
-        try:
-            item = self.workers_list.currentItem()
-            if not item:
-                QMessageBox.information(self, "Workers", "Select a worker to remove.")
-                return
-            name = item.data(Qt.UserRole)
-            ws = self.state_manager.project_state.workers
-            before = len(ws)
-            ws = [w for w in ws if w.name != name]
-            self.state_manager.project_state.workers = ws
-            if len(ws) == before:
-                QMessageBox.information(self, "Workers", f"No worker named '{name}' found.")
-                return
-            self.window().project_manager.save_project()
-            self.refresh_workers_list()
-            self.navigation_pane.add_log_message(f"Removed worker {name}", "success")
-        except Exception as e:
-            self.navigation_pane.add_log_message(f"Remove worker failed: {e}", "error")
 
     def setup_targets_page(self):
         """Setup Targets management page (typed scan targets CRUD)."""
@@ -1247,14 +1128,14 @@ class ProjectView(BaseView):
             return
         self.targets_admin_list.clear()
         try:
-            targets = list(self.state_manager.project_state.scan_targets or [])
+            targets = self.project_manager.config.settings.get('scan_targets', [])
         except Exception:
             targets = []
         for t in targets:
-            roots_str = ", ".join(str(r) for r in t.roots)
-            alias = t.ssh_alias or ''
-            item = QListWidgetItem(f"{t.name}  kind={t.kind}  alias={alias}  roots=[{roots_str}]")
-            item.setData(Qt.UserRole, t.name)
+            roots_str = ", ".join(str(r) for r in t.get('roots', []))
+            alias = t.get('ssh_alias', '') or ''
+            item = QListWidgetItem(f"{t.get('name', '')}  kind={t.get('kind', '')}  alias={alias}  roots=[{roots_str}]")
+            item.setData(Qt.UserRole, t.get('name', ''))
             self.targets_admin_list.addItem(item)
 
     def handle_add_target(self):
@@ -1278,13 +1159,19 @@ class ProjectView(BaseView):
             if not roots:
                 QMessageBox.warning(self, "Targets", "At least one root path is required.")
                 return
-            ts = self.state_manager.project_state.scan_targets
-            if any(t.name == name for t in ts):
+            targets = self.project_manager.config.settings.get('scan_targets', [])
+            if any(t.get('name') == name for t in targets):
                 QMessageBox.warning(self, "Targets", f"Target '{name}' already exists.")
                 return
-            from ..core.metadata import ScanTarget
-            ts.append(ScanTarget(name=name, kind=kind, roots=roots, ssh_alias=ssh_alias))
-            self.window().project_manager.save_project()
+            target_dict = {
+                'name': name,
+                'kind': kind,
+                'roots': roots,
+                'ssh_alias': ssh_alias
+            }
+            targets.append(target_dict)
+            self.project_manager.config.settings['scan_targets'] = targets
+            self.project_manager.save_project()
             self.refresh_targets_admin_list()
             self.refresh_targets_list()
             self.navigation_pane.add_log_message(f"Added target {name}", "success")
@@ -1298,11 +1185,11 @@ class ProjectView(BaseView):
                 QMessageBox.information(self, "Targets", "Select a target to remove.")
                 return
             name = item.data(Qt.UserRole)
-            ts = self.state_manager.project_state.scan_targets
-            before = len(ts)
-            ts = [t for t in ts if t.name != name]
-            self.state_manager.project_state.scan_targets = ts
-            if len(ts) == before:
+            targets = self.project_manager.config.settings.get('scan_targets', [])
+            before = len(targets)
+            targets = [t for t in targets if t.get('name') != name]
+            self.project_manager.config.settings['scan_targets'] = targets
+            if len(targets) == before:
                 QMessageBox.information(self, "Targets", f"No target named '{name}' found.")
                 return
             self.window().project_manager.save_project()

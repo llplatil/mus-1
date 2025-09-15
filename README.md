@@ -1,6 +1,6 @@
 # MUS1: Video Analysis System
 
-A SQLite-based system for organizing and analyzing animal behavior videos with a clean architecture and lab-colony hierarchy.
+A SQLite-based system for organizing and analyzing animal behavior videos with clean architecture, application-level user management, and complete lab-colony-project hierarchy.
 
 ## Installation
 
@@ -35,6 +35,32 @@ mus1 --help
 # Development
 ./dev-launch.sh --help
 ```
+
+## Features
+
+### 🎯 **Application-Level User & Lab Management**
+- User profiles with email-based identification (replaces fragile ID systems)
+- Lab management with proper relational database storage
+- Project association with labs for organized research workflows
+- Settings tab for centralized user, lab, and worker configuration
+
+### 🏗️ **Clean Architecture**
+- Complete user-lab-project-workgroup hierarchy in SQL
+- Repository pattern for data access
+- Service layer for business logic
+- Proper separation of concerns across all layers
+
+### 🎨 **Organized GUI**
+- **Project Tab**: Focused on project-specific operations
+- **Subjects Tab**: Subject and colony management
+- **Experiments Tab**: Experiment tracking and analysis
+- **Settings Tab**: User settings, lab management, worker configuration
+
+### 🔧 **Robust Setup & Configuration**
+- Deterministic MUS1 root resolution with user override capability
+- Asynchronous setup workflow with proper error handling
+- ConfigManager re-initialization for correct database targeting
+- Platform-specific defaults (macOS, Linux, Windows)
 
 ## Usage Examples
 

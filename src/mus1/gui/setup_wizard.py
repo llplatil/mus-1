@@ -30,6 +30,8 @@ from ..core.setup_service import (
     SetupService, UserProfileDTO, SharedStorageDTO, LabDTO, ColonyDTO,
     SetupWorkflowDTO, SetupStatusDTO, get_setup_service, MUS1RootLocationDTO
 )
+from ..core.config_manager import resolve_mus1_root
+from ..core.config_manager import init_config_manager
 
 
 # ===========================================
@@ -49,55 +51,53 @@ class SetupWorker(QObject):
         self.setup_service = get_setup_service()
 
     def run(self):
-        """Run the setup workflow in background thread."""
+        """Run the setup workflow in background thread with proper state management."""
         try:
             self.progress.emit("Starting MUS1 setup...")
 
-            # Step 1: MUS1 Root Location
+            # Step 1: Handle MUS1 root location FIRST (critical for config re-initialization)
             if self.workflow_dto.mus1_root_location:
                 self.progress.emit("Setting up MUS1 root location...")
-                result = self.setup_service.setup_mus1_root_location(self.workflow_dto.mus1_root_location)
-                if not result["success"]:
-                    self.error.emit(f"MUS1 root location setup failed: {result['message']}")
+                root_result = self.setup_service.setup_mus1_root_location(self.workflow_dto.mus1_root_location)
+
+                if not root_result["success"]:
+                    self.error.emit(f"MUS1 root setup failed: {root_result['message']}")
                     return
 
-            # Step 2: User Profile
-            if self.workflow_dto.user_profile:
-                self.progress.emit("Setting up user profile...")
-                result = self.setup_service.setup_user_profile(self.workflow_dto.user_profile)
-                if not result["success"]:
-                    self.error.emit(f"User profile setup failed: {result['message']}")
-                    return
+                # CRITICAL: Re-initialize ConfigManager immediately after root setup succeeds
+                config_db_path = self.workflow_dto.mus1_root_location.path / "config" / "config.db"
+                init_config_manager(config_db_path)
 
-            # Step 3: Shared Storage
-            if self.workflow_dto.shared_storage:
-                self.progress.emit("Configuring shared storage...")
-                result = self.setup_service.setup_shared_storage(self.workflow_dto.shared_storage)
-                if not result["success"]:
-                    self.error.emit(f"Shared storage setup failed: {result['message']}")
-                    return
+                # Re-create SetupService so it uses the new ConfigManager
+                self.setup_service = get_setup_service()
 
-            # Step 4: Lab
-            if self.workflow_dto.lab:
-                self.progress.emit(f"Creating lab '{self.workflow_dto.lab.name}'...")
-                result = self.setup_service.create_lab(self.workflow_dto.lab)
-                if not result["success"]:
-                    self.error.emit(f"Lab creation failed: {result['message']}")
-                    return
+                self.progress.emit("MUS1 root location configured successfully")
 
-            # Step 5: Colony
-            if self.workflow_dto.colony:
-                self.progress.emit("Adding colony...")
-                result = self.setup_service.add_colony_to_lab(self.workflow_dto.colony)
-                if not result["success"]:
-                    self.error.emit(f"Colony creation failed: {result['message']}")
-                    return
+            # Step 2: Continue with unified workflow for remaining steps
+            result = self._run_remaining_workflow()
 
-            self.progress.emit("Setup completed successfully!")
-            self.finished.emit({"success": True, "message": "MUS1 setup completed successfully!"})
+            if result["success"]:
+                self.progress.emit("Setup completed successfully!")
+                self.finished.emit(result)
+            else:
+                error_msg = "; ".join(result.get("errors", ["Unknown error"]))
+                self.error.emit(f"Setup failed: {error_msg}")
 
         except Exception as e:
             self.error.emit(f"Setup failed: {str(e)}")
+
+    def _run_remaining_workflow(self) -> Dict[str, Any]:
+        """Run the remaining setup steps (user profile, storage, lab) using unified workflow."""
+        # Create a workflow DTO without the MUS1 root (already handled)
+        remaining_workflow = SetupWorkflowDTO(
+            mus1_root_location=None,  # Already handled above
+            user_profile=self.workflow_dto.user_profile,
+            shared_storage=self.workflow_dto.shared_storage,
+            lab=self.workflow_dto.lab,
+            colony=self.workflow_dto.colony
+        )
+
+        return self.setup_service.run_setup_workflow(remaining_workflow)
 
 
 # ===========================================
@@ -454,9 +454,9 @@ class LabSetupPage(QWizardPage):
         self.lab_group = QGroupBox("Lab Configuration")
         lab_layout = QFormLayout()
 
+        # Lab ID is auto-generated from name, so we hide it to reduce UI clutter
         self.lab_id_edit = QLineEdit()
-        self.lab_id_edit.setPlaceholderText("Auto-generated from lab name (optional)")
-        self.lab_id_edit.setEnabled(False)  # Make it read-only since we'll auto-generate
+        self.lab_id_edit.setVisible(False)  # Hidden since auto-generated
         lab_layout.addRow("Lab ID:", self.lab_id_edit)
 
         self.lab_name_edit = QLineEdit()
@@ -549,11 +549,43 @@ class ConclusionPage(QWizardPage):
         self.setLayout(layout)
 
     def initializePage(self):
-        """Initialize the conclusion page with setup results."""
+        """Initialize the conclusion page - setup is running asynchronously."""
+        # Show initial status - setup is in progress
+        self.show_setup_in_progress()
+
+        # Connect to setup completion signal to update when done
+        wizard = self.wizard()
+        if hasattr(wizard, 'setup_completed'):
+            wizard.setup_completed.connect(self.on_setup_completed)
+
+    def show_setup_in_progress(self):
+        """Show that setup is currently in progress."""
+        summary = "<h3>MUS1 Setup in Progress</h3><br>"
+        summary += "<p>Please wait while MUS1 is being configured...</p>"
+        summary += "<table border='1' cellpadding='5'>"
+        summary += "<tr><th>Component</th><th>Status</th></tr>"
+        summary += "<tr><td>MUS1 Root</td><td>⟳ Configuring...</td></tr>"
+        summary += "<tr><td>User Profile</td><td>⟳ Configuring...</td></tr>"
+        summary += "<tr><td>Shared Storage</td><td>⟳ Checking...</td></tr>"
+        summary += "<tr><td>Lab</td><td>⟳ Checking...</td></tr>"
+        summary += "<tr><td>Projects</td><td>ℹ Ready when setup completes</td></tr>"
+        summary += "</table>"
+
+        self.summary_text.setHtml(summary)
+        self.next_steps_text.setText("<p>Setup will complete shortly...</p>")
+
+    def on_setup_completed(self, result: dict):
+        """Handle setup completion and update the summary."""
         wizard = self.wizard()
 
-        # Build summary
-        summary = "<h3>MUS1 Setup Summary</h3><br>"
+        if result.get("success"):
+            self.show_setup_success(wizard)
+        else:
+            self.show_setup_error(result)
+
+    def show_setup_success(self, wizard):
+        """Show successful setup completion."""
+        summary = "<h3>MUS1 Setup Complete</h3><br>"
         summary += "<table border='1' cellpadding='5'>"
         summary += "<tr><th>Component</th><th>Status</th><th>Details</th></tr>"
 
@@ -561,27 +593,25 @@ class ConclusionPage(QWizardPage):
         if hasattr(wizard, 'mus1_root_dto') and wizard.mus1_root_dto:
             summary += f"<tr><td>MUS1 Root</td><td>✓ Configured</td><td>{wizard.mus1_root_dto.path}</td></tr>"
         else:
-            summary += "<tr><td>MUS1 Root</td><td>⚠ Not configured</td><td>Will use default location</td></tr>"
+            summary += "<tr><td>MUS1 Root</td><td>✓ Configured</td><td>Using default location</td></tr>"
 
         # User Profile
         if hasattr(wizard, 'user_dto') and wizard.user_dto:
-            summary += f"<tr><td>User Profile</td><td>✓ Configured</td><td>Name: {wizard.user_dto.name}</td></tr>"
-            summary += f"<tr><td>Email</td><td>✓ Configured</td><td>{wizard.user_dto.email}</td></tr>"
-            summary += f"<tr><td>Organization</td><td>✓ Configured</td><td>{wizard.user_dto.organization}</td></tr>"
+            summary += f"<tr><td>User Profile</td><td>✓ Configured</td><td>{wizard.user_dto.name}</td></tr>"
         else:
-            summary += "<tr><td>User Profile</td><td>⚠ Not configured</td><td>Will be configured during setup</td></tr>"
+            summary += "<tr><td>User Profile</td><td>⚠ Skipped</td><td>Not configured</td></tr>"
 
         # Shared Storage
         if hasattr(wizard, 'shared_dto') and wizard.shared_dto:
             summary += f"<tr><td>Shared Storage</td><td>✓ Configured</td><td>{wizard.shared_dto.path}</td></tr>"
         else:
-            summary += "<tr><td>Shared Storage</td><td>⚠ Not configured</td><td>Run setup wizard later</td></tr>"
+            summary += "<tr><td>Shared Storage</td><td>⚠ Skipped</td><td>Not configured</td></tr>"
 
         # Lab
         if hasattr(wizard, 'lab_dto') and wizard.lab_dto:
-            summary += f"<tr><td>Lab</td><td>✓ Created</td><td>{wizard.lab_dto.id}</td></tr>"
+            summary += f"<tr><td>Lab</td><td>✓ Created</td><td>{wizard.lab_dto.name}</td></tr>"
         else:
-            summary += "<tr><td>Lab</td><td>⚠ Not created</td><td>Create lab manually</td></tr>"
+            summary += "<tr><td>Lab</td><td>⚠ Skipped</td><td>Not created</td></tr>"
 
         summary += "<tr><td>Projects</td><td>ℹ Ready</td><td>Create projects in GUI</td></tr>"
         summary += "</table>"
@@ -590,15 +620,20 @@ class ConclusionPage(QWizardPage):
 
         # Next steps
         next_steps = "<ul>"
-        if not (hasattr(wizard, 'lab_dto') and wizard.lab_dto):
-            next_steps += "<li>Create a lab in the GUI</li>"
-        if not (hasattr(wizard, 'shared_dto') and wizard.shared_dto):
-            next_steps += "<li>Configure shared storage in settings</li>"
         next_steps += "<li>Create your first project</li>"
         next_steps += "<li>Add subjects and experiments</li>"
+        if not (hasattr(wizard, 'shared_dto') and wizard.shared_dto):
+            next_steps += "<li>Configure shared storage if needed</li>"
         next_steps += "</ul>"
 
         self.next_steps_text.setText(next_steps)
+
+    def show_setup_error(self, result: dict):
+        """Show setup error."""
+        error_msg = result.get("message", "Unknown error")
+        summary = f"<h3>MUS1 Setup Failed</h3><br><p>Error: {error_msg}</p>"
+        self.summary_text.setHtml(summary)
+        self.next_steps_text.setText("<p>Please try again or contact support.</p>")
 
 
 # ===========================================
@@ -659,29 +694,47 @@ class MUS1SetupWizard(QWizard):
 
         # Run setup in background thread
         self.worker = SetupWorker(workflow_dto)
+        self.thread = QThread(self)
+        self.worker.moveToThread(self.thread)
+        self.thread.started.connect(self.worker.run)
         self.worker.finished.connect(self.on_setup_finished)
         self.worker.error.connect(self.on_setup_error)
         self.worker.progress.connect(self.on_setup_progress)
+        # Ensure thread cleanup
+        self.worker.finished.connect(self.thread.quit)
+        self.worker.error.connect(self.thread.quit)
+
+        # Connect the wizard's setup_completed signal to update conclusion page
+        self.setup_completed.connect(self.update_conclusion_page)
 
         # Show progress on conclusion page
         conclusion_page = self.page(5)  # Conclusion page is at index 5
         progress_label = QLabel("Running setup...")
         conclusion_page.layout().addWidget(progress_label)
 
-        # Start the worker
-        self.worker.run()
+        # Start the worker thread
+        self.thread.start()
 
     def collect_setup_data(self):
         """Collect setup data from wizard pages."""
-        # MUS1 Root Location - use deterministic resolution
-        from ..core.config_manager import resolve_mus1_root
-        mus1_root = resolve_mus1_root()
-
-        self.mus1_root_dto = MUS1RootLocationDTO(
-            path=mus1_root,
-            create_if_missing=True,
-            copy_existing_config=False  # No complex copying needed
-        )
+        # MUS1 Root Location - use user's selection from the wizard page
+        root_page = self.page(1)  # MUS1RootLocationPage
+        if hasattr(root_page, 'get_selected_path'):
+            selected_root = root_page.get_selected_path()
+            copy_existing = getattr(root_page, 'copy_config_checkbox', None)
+            self.mus1_root_dto = MUS1RootLocationDTO(
+                path=selected_root,
+                create_if_missing=True,
+                copy_existing_config=copy_existing.isChecked() if copy_existing else False
+            )
+        else:
+            # Fallback to deterministic resolution if page not available
+            mus1_root = resolve_mus1_root()
+            self.mus1_root_dto = MUS1RootLocationDTO(
+                path=mus1_root,
+                create_if_missing=True,
+                copy_existing_config=False
+            )
 
         # User profile
         user_page = self.page(2)  # UserProfilePage
@@ -709,18 +762,22 @@ class MUS1SetupWizard(QWizard):
         if lab_page.create_checkbox.isChecked():
             lab_id = lab_page.lab_id_edit.text().strip()
             lab_name = lab_page.lab_name_edit.text().strip()
+            # Generate creator_id from user email (same logic as in setup_service)
+            user_email = user_page.field("user_email").strip()
+            creator_id = user_email.lower().replace("@", "_").replace(".", "_")
             self.lab_dto = LabDTO(
                 id=lab_id,
                 name=lab_name,
                 institution=lab_page.institution_edit.text().strip() or "",
                 pi_name=lab_page.pi_edit.text().strip() or "",
-                description=f"Research lab at {lab_page.institution_edit.text().strip() or 'Unknown'}"
+                creator_id=creator_id
             )
         else:
             self.lab_dto = None
 
     def on_setup_finished(self, result: dict):
         """Handle successful setup completion."""
+        # ConfigManager is already re-initialized in the worker thread after root setup
         self.setup_completed.emit(result)
         QMessageBox.information(
             self, "Setup Complete",
@@ -731,11 +788,24 @@ class MUS1SetupWizard(QWizard):
     def on_setup_error(self, error_msg: str):
         """Handle setup error."""
         QMessageBox.critical(self, "Setup Error", f"Setup failed:\n\n{error_msg}")
+        # Propagate to conclusion page
+        try:
+            self.setup_completed.emit({"success": False, "message": error_msg})
+        except Exception:
+            pass
 
     def on_setup_progress(self, message: str):
         """Handle setup progress updates."""
         # Could update progress bar here
         print(f"Setup progress: {message}")
+
+    def update_conclusion_page(self, result: dict):
+        """Update the conclusion page when setup completes."""
+        conclusion_page = self.page(5)  # Conclusion page is at index 5
+        if result.get("success"):
+            conclusion_page.show_setup_success(self)
+        else:
+            conclusion_page.show_setup_error(result)
 
 
 # ===========================================

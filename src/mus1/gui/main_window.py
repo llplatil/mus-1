@@ -3,6 +3,7 @@ from PySide6.QtGui import QAction, QIcon, QPixmap
 from .project_view import ProjectView
 from .subject_view import SubjectView
 from .experiment_view import ExperimentView
+from .settings_view import SettingsView
 from .project_selection_dialog import ProjectSelectionDialog
 from .gui_services import GUIServiceFactory
 from ..core.logging_bus import LoggingEventBus
@@ -147,6 +148,7 @@ class MainWindow(QMainWindow):
         self.project_view = ProjectView(self)
         self.subject_view = SubjectView(self)
         self.experiment_view = ExperimentView(self)
+        self.settings_view = SettingsView(self)
 
         # Connect the rename signal from ProjectView
         if hasattr(self.project_view, 'project_renamed'):
@@ -158,6 +160,7 @@ class MainWindow(QMainWindow):
         self.tab_widget.addTab(self.project_view, "Project")
         self.tab_widget.addTab(self.subject_view, "Subjects")
         self.tab_widget.addTab(self.experiment_view, "Experiments")
+        self.tab_widget.addTab(self.settings_view, "Settings")
 
         # Register navigation panes with log_bus for message display
         self.register_log_observers()
@@ -169,8 +172,8 @@ class MainWindow(QMainWindow):
     def register_log_observers(self):
         """Register all navigation panes as log observers."""
         # Each view has a navigation pane that can display logs
-        views = [self.project_view, self.subject_view, self.experiment_view]
-        
+        views = [self.project_view, self.subject_view, self.experiment_view, self.settings_view]
+
         for view in views:
             if hasattr(view, 'navigation_pane'):
                 self.log_bus.add_observer(view.navigation_pane)
@@ -181,7 +184,7 @@ class MainWindow(QMainWindow):
         Handle tab change events.
         Updates active log observers and refreshes the current view if needed.
         """
-        tab_names = ["Project", "Subjects", "Experiments"]
+        tab_names = ["Project", "Subjects", "Experiments", "Settings"]
         current_tab_name = tab_names[index] if index < len(tab_names) else "Unknown"
         
         # Log the tab change
@@ -331,6 +334,9 @@ class MainWindow(QMainWindow):
             # ProjectView refresh might be implicitly handled by set_initial_project
             # but calling it ensures consistency if other lists are added later.
             self.project_view.refresh_lists()
+
+        if getattr(self.settings_view, 'refresh_lists', None):
+            self.settings_view.refresh_lists()
         self.log_bus.log("View refresh complete.", "info", "MainWindow")
 
     def show_welcome_dialog(self):
@@ -482,7 +488,7 @@ class MainWindow(QMainWindow):
 
     def propagate_theme_to_views(self, theme):
         """Propagate theme changes to all views."""
-        for view in [self.project_view, self.subject_view, self.experiment_view]:
+        for view in [self.project_view, self.subject_view, self.experiment_view, self.settings_view]:
             if view and hasattr(view, 'update_theme'):
                 view.update_theme(theme)
 

@@ -34,8 +34,8 @@ from .config_manager import (
 from .config_migration import ConfigMigrationManager
 from .theme_manager import ThemeManager
 
-# Clean plugin system
-from .plugin_manager_clean import PluginManagerClean, PluginService
+# Clean plugin system (imported separately to avoid circular imports)
+# from .plugin_manager_clean import PluginManagerClean, PluginService
 
 __all__ = [
     # Enums
@@ -56,6 +56,6 @@ __all__ = [
     "get_config", "set_config", "delete_config", "ConfigMigrationManager",
     # Theme system
     "ThemeManager",
-    # Clean plugin system
-    "PluginManagerClean", "PluginService"
+    # Clean plugin system (commented out to avoid circular imports)
+    # "PluginManagerClean", "PluginService"
 ] 

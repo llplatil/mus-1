@@ -2,8 +2,8 @@ from datetime import datetime
 import logging
 import os
 from pathlib import Path
-from typing import List, Callable, Protocol, Optional
-# Import the handler for type checking if needed, though not strictly necessary here
+from typing import List, Callable, Protocol, Optional, Dict
+import weakref
 from logging.handlers import RotatingFileHandler 
 
 class LogObserver(Protocol):
@@ -36,7 +36,9 @@ class LoggingEventBus:
         if LoggingEventBus._instance is not None:
             raise RuntimeError("LoggingEventBus is a singleton! Use LoggingEventBus.get_instance() instead.")
         
-        self._observers: List[LogObserver] = []
+        # Use weak references to avoid memory leaks when observers (e.g., Qt widgets)
+        # are destroyed. Map observer id() to weakref for O(1) de-dup and cleanup.
+        self._observers: Dict[int, weakref.ReferenceType] = {}
         self.logger = logging.getLogger("mus1")
         # Ensure we have at least a console handler for quick dev output
         if not self.logger.handlers:
@@ -90,14 +92,26 @@ class LoggingEventBus:
     # Removed _rotate_log_file method
         
     def add_observer(self, observer: LogObserver) -> None:
-        """Add an observer to receive log events."""
-        if observer not in self._observers:
-            self._observers.append(observer)
+        """Add an observer to receive log events.
+
+        Observers are stored as weak references, so they will be automatically
+        removed when garbage collected without requiring explicit unsubscribe.
+        Duplicate registrations are ignored by identity.
+        """
+        key = id(observer)
+        if key in self._observers:
+            return
+        try:
+            self._observers[key] = weakref.ref(observer, lambda _r, k=key: self._observers.pop(k, None))
+        except TypeError:
+            # If the object cannot be weak-referenced, prefer safety: do not retain
+            # a strong ref to avoid leaks; log a warning to surface the issue.
+            self.logger.warning("Observer %r is not weak-referenceable; skipping registration", observer)
         
     def remove_observer(self, observer: LogObserver) -> None:
         """Remove an observer from receiving log events."""
-        if observer in self._observers:
-            self._observers.remove(observer)
+        key = id(observer)
+        self._observers.pop(key, None)
             
     def log(self, message: str, level: str = 'info', source: str = '') -> None:
         """
@@ -127,7 +141,9 @@ class LoggingEventBus:
         # Create timestamp
         timestamp = datetime.now()
         
-        # Notify all observers synchronously
-        for observer in self._observers:
-            # Pass the original message and source to observers
-            observer.on_log_event(message, level, source, timestamp) 
+        # Notify all observers synchronously (skip dead weakrefs)
+        for ref in list(self._observers.values()):
+            target = ref()
+            if target is None:
+                continue
+            target.on_log_event(message, level, source, timestamp) 

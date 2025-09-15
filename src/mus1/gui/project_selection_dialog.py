@@ -9,7 +9,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QSize, Signal
 from PySide6.QtGui import QPixmap, QPalette, QBrush, QColor, QPainter, QImage, QIcon
 from ..core.project_manager_clean import ProjectManagerClean
-from ..core.config_manager import get_config
+from ..core.config_manager import get_config, set_config
 from ..core.setup_service import get_setup_service
 
 
@@ -269,20 +269,37 @@ class ProjectSelectionDialog(QDialog):
             # Initialize the project with ProjectManagerClean
             project_manager = ProjectManagerClean(project_root)
 
-            # Register project with lab if labs are configured
-            labs = get_config("labs", scope="user") or {}
+            # Attempt to associate project with a lab if one exists
+            from ..core.setup_service import get_setup_service
+            setup_service = get_setup_service()
+            labs = setup_service.get_labs()  # Now uses SQL data
+            chosen_lab_id = None
             if labs:
-                # Use the first lab as default
-                lab_id = list(labs.keys())[0]
-                lab_config = labs[lab_id]
-                projects = lab_config.get("projects", [])
-                projects.append({
-                    "name": project_name,
-                    "path": str(project_root)
-                })
-                lab_config["projects"] = projects
-                labs[lab_id] = lab_config
-                set_config("labs", labs, scope="user")
+                # Pick the only lab if there is exactly one; otherwise leave unassigned
+                if len(labs) == 1:
+                    chosen_lab_id = next(iter(labs.keys()))
+                # If a lab was chosen, set lab_id in project and register in SQL database
+                if chosen_lab_id:
+                    try:
+                        project_manager.set_lab_id(chosen_lab_id)
+                        # Add project to lab using SQL repository
+                        from ..core.schema import Database
+                        from ..core.repository import get_repository_factory
+                        from ..core.config_manager import get_config_manager
+
+                        config_manager = get_config_manager()
+                        db = Database(str(config_manager.db_path))
+                        repo_factory = get_repository_factory(db)
+                        repo_factory.labs.add_project(
+                            lab_id=chosen_lab_id,
+                            project_name=project_name,
+                            project_path=project_root,
+                            created_date=project_manager.config.date_created
+                        )
+                    except Exception:
+                        pass
+
+            # Project creation complete - lab association handled by ProjectManagerClean
 
             self.selected_project_name = project_name
             self.selected_project_path = str(project_root)

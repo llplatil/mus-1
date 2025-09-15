@@ -29,7 +29,9 @@ class ProjectDiscoveryService:
             Path to the project directory, or None if not found
         """
         # Priority 1: Lab configurations (single source of truth)
-        labs = get_config("labs", scope="user") or {}
+        from .setup_service import get_setup_service
+        setup_service = get_setup_service()
+        labs = setup_service.get_labs()  # Now uses SQL data
         for lab_config in labs.values():
             projects = lab_config.get("projects", [])
             for project in projects:
@@ -83,7 +85,9 @@ class ProjectDiscoveryService:
         projects = []
 
         # Check lab configurations first
-        labs = get_config("labs", scope="user") or {}
+        from .setup_service import get_setup_service
+        setup_service = get_setup_service()
+        labs = setup_service.get_labs()  # Now uses SQL data
         for lab_config in labs.values():
             lab_projects = lab_config.get("projects", [])
             for project in lab_projects:

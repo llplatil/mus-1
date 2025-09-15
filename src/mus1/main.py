@@ -1,52 +1,6 @@
 import logging
 import sys
 from pathlib import Path
-import logging.handlers  # Import the handlers module
-
-# ===========================================
-# DETERMINISTIC MUS1 ROOT & LOGGING SETUP
-# ===========================================
-
-# First, resolve MUS1 root deterministically
-from .core.config_manager import resolve_mus1_root
-mus1_root = resolve_mus1_root()
-logs_dir = mus1_root / "logs"
-logs_dir.mkdir(exist_ok=True)
-
-# Configure logging to use MUS1 logs directory
-logger = logging.getLogger('mus1')
-logger.setLevel(logging.DEBUG)
-logger.propagate = False
-
-formatter = logging.Formatter(
-    '%(asctime)s [%(levelname)s] %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
-
-# Use MUS1 logs directory for log files
-log_file = logs_dir / "mus1.log"
-max_bytes = 5 * 1024 * 1024  # 5 MB
-backup_count = 3
-
-try:
-    # Clean up any existing handlers
-    for handler in logger.handlers[:]:
-        logger.removeHandler(handler)
-        handler.close()
-
-    file_handler = logging.handlers.RotatingFileHandler(
-        str(log_file), maxBytes=max_bytes, backupCount=backup_count, encoding='utf-8'
-    )
-    file_handler.setFormatter(formatter)
-    logger.addHandler(file_handler)
-
-    logger.info(f"MUS1 logging initialized - logs at: {log_file}")
-    logger.info(f"MUS1 root directory: {mus1_root}")
-
-except Exception as e:
-    # Fallback to console logging
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s - %(message)s")
-    logging.error(f"Failed to set up log handler: {e}. Falling back to console.", exc_info=True)
 
 
 from PySide6.QtWidgets import QApplication, QMessageBox
@@ -54,13 +8,17 @@ from PySide6.QtGui import QIcon
 
 # Core components
 from .core.logging_bus import LoggingEventBus
-from .core.config_manager import ConfigManager
+from .core.config_manager import ConfigManager, resolve_mus1_root
 from .core.theme_manager import ThemeManager
 
 def main():
     """MUS1 GUI Application Entry Point"""
     # Initialize core components
     log_bus = LoggingEventBus.get_instance()
+    # Configure a single rotating file handler under the resolved MUS1 root
+    mus1_root = resolve_mus1_root()
+    (mus1_root / "logs").mkdir(exist_ok=True)
+    log_bus.configure_default_file_handler(mus1_root / "logs", max_size=5 * 1024 * 1024, backups=3)
     config_manager = ConfigManager()
     theme_manager = ThemeManager(config_manager)
 

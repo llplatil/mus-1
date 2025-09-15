@@ -11,7 +11,7 @@ Configuration Hierarchy (highest to lowest precedence):
 4. User Profile
 5. Installation Defaults
 
-Author: Assistant
+
 Date: 2025-09-14
 """
 

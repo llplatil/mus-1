@@ -175,7 +175,50 @@ DISPLAY=":0"                          # Linux display
 
 ### Database Architecture
 ```sql
--- Clean relational schema with lab-colony hierarchy
+-- Complete relational schema with user-lab-project hierarchy
+CREATE TABLE users (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    email TEXT NOT NULL UNIQUE,
+    organization TEXT,
+    default_projects_dir TEXT,
+    default_shared_dir TEXT,
+    created_at DATETIME NOT NULL,
+    updated_at DATETIME NOT NULL
+);
+
+CREATE TABLE labs (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    institution TEXT,
+    pi_name TEXT,
+    creator_id TEXT NOT NULL REFERENCES users(id),
+    created_at DATETIME NOT NULL
+);
+
+CREATE TABLE lab_projects (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    lab_id TEXT NOT NULL REFERENCES labs(id),
+    name TEXT NOT NULL,
+    path TEXT NOT NULL,
+    created_date DATETIME NOT NULL
+);
+
+CREATE TABLE workgroups (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    share_key_hash TEXT NOT NULL,
+    created_at DATETIME NOT NULL
+);
+
+CREATE TABLE workgroup_members (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    workgroup_id TEXT NOT NULL REFERENCES workgroups(id),
+    member_email TEXT NOT NULL,
+    role TEXT DEFAULT 'member',
+    added_at DATETIME NOT NULL
+);
+
 CREATE TABLE colonies (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
@@ -210,6 +253,10 @@ CREATE TABLE experiments (
 ## Current Status
 
 ### Working Components
+- **Application-level user and lab management**: SQL-based user/lab entities with proper relationships
+- **Complete user-lab-project-workgroup hierarchy**: Full relational schema with foreign keys
+- **Clean setup workflow**: Proper ConfigManager re-initialization after MUS1 root selection
+- **Organized GUI architecture**: Settings tab with User Settings, Lab Settings, and Workers
 - SQLite-based domain models with lab-colony hierarchy
 - Repository pattern for data access
 - Clean project management with colony relationships
@@ -218,9 +265,53 @@ CREATE TABLE experiments (
 - Simple CLI interface
 
 ### Known Limitations
-- GUI components need migration to clean architecture
 - Some plugins require updates for new service pattern
 - Windows/Linux video scanners lack OS-specific optimizations
+- Workgroup features partially implemented (models exist, UI integration pending)
+
+## Findings from Initial Setup and Project Creation Audit (2025-09)
+
+This section documents concrete gaps discovered during the "user → lab setup → drive selection → project creation" flow and the corrections applied.
+
+### ✅ **FIXED: MUS1 Root Selection Ignored in GUI Wizard**
+- Problem: `MUS1SetupWizard.collect_setup_data()` previously ignored the MUS1 Root page and always used `resolve_mus1_root()`.
+- Impact: User drive/root selection in the wizard had no effect.
+- Status: **Fixed**. The wizard now reads the selected path and initializes `MUS1RootLocationDTO` accordingly. On success, `ConfigManager` is re-initialized to `<selected_root>/config/config.db`.
+
+### ✅ **FIXED: Setup Worker Not Asynchronous; Errors Didn't Update Conclusion Page**
+- Problem: `SetupWorker.run()` was invoked on the GUI thread; failure paths didn't update the conclusion page.
+- Impact: Potential UI freezes; conclusion page stuck on "in progress" after errors.
+- Status: **Fixed**. Worker runs in a `QThread`, and both success and error paths emit through `setup_completed`.
+
+### ✅ **FIXED: ProjectView Not Wired to Active ProjectManagerClean**
+- Problem: Methods referenced `self.project_manager` which wasn't set; some other places used `self.window().project_manager`.
+- Impact: Rename/settings/admin actions failed silently.
+- Status: **Fixed**. `set_gui_services` now also wires `self.project_manager = self.window().project_manager` when available.
+
+### ✅ **FIXED: New Projects Not Registered Under Labs**
+- Problem: Project creation didn't append to `labs[lab_id].projects` and didn't set `lab_id` in project config.
+- Impact: Discovery (which prioritizes labs) missed new projects; lab linkage broken.
+- Status: **Fixed**. When exactly one lab exists, the dialog associates the project via `ProjectManagerClean.set_lab_id()` and appends to the lab's `projects` list.
+
+### ✅ **FIXED: ConfigManager Instancing**
+- Problem: `SetupService` cached ConfigManager instance, preventing proper re-initialization after MUS1 root changes.
+- Impact: Setup writes went to wrong database when custom root was selected.
+- Status: **Fixed**. `SetupService` now fetches fresh ConfigManager instances for each operation, allowing proper re-initialization.
+
+### ✅ **IMPLEMENTED: Application-Level User and Lab Management**
+- Problem: Labs stored as JSON blobs in config; no proper user management or relational structure.
+- Impact: Difficult to manage users across projects, no proper lab relationships.
+- Status: **Implemented**. Added SQL schema with `UserModel`, `LabModel`, `LabProjectModel` tables. Created repositories and updated setup to store users/labs in SQL database with proper relationships.
+
+### ✅ **IMPLEMENTED: GUI Tab Reorganization**
+- Problem: Workers mixed with project settings; unclear separation of concerns.
+- Impact: Confusing user experience with settings scattered across different views.
+- Status: **Implemented**. Created `SettingsView` with User Settings, Lab Settings, and Workers pages. Moved Workers functionality from `ProjectView` to `SettingsView`. Project tab now focused on project-specific operations.
+
+### Reinforced Design Principles
+- Deterministic root resolution is the baseline; explicit GUI selection must override it and re-bind the config database path.
+- Project discovery priority: lab config → user default projects dir → shared storage `Projects/`. New projects should be registered into lab config when lab is known.
+- Views should act through services and the `ProjectManagerClean` held by `MainWindow` to avoid split state.
 
 ## Key Features
 

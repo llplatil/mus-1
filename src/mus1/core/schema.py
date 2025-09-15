@@ -149,6 +149,75 @@ class PluginResultModel(Base):
     created_at = Column(DateTime, nullable=False)
     completed_at = Column(DateTime, nullable=True)
 
+class UserModel(Base):
+    """Database model for users."""
+    __tablename__ = 'users'
+
+    id = Column(String, primary_key=True)  # User key/identifier
+    name = Column(String, nullable=False)
+    email = Column(String, nullable=False, unique=True)
+    organization = Column(String, nullable=True)
+    default_projects_dir = Column(String, nullable=True)
+    default_shared_dir = Column(String, nullable=True)
+    created_at = Column(DateTime, nullable=False)
+    updated_at = Column(DateTime, nullable=False)
+
+    # Relationships
+    labs = relationship("LabModel", back_populates="creator")
+
+class LabModel(Base):
+    """Database model for labs."""
+    __tablename__ = 'labs'
+
+    id = Column(String, primary_key=True)
+    name = Column(String, nullable=False)
+    institution = Column(String, nullable=True)
+    pi_name = Column(String, nullable=True)
+    creator_id = Column(String, ForeignKey('users.id'), nullable=False)
+    created_at = Column(DateTime, nullable=False)
+
+    # Relationships
+    creator = relationship("UserModel", back_populates="labs")
+    projects = relationship("LabProjectModel", back_populates="lab")
+
+class LabProjectModel(Base):
+    """Database model for lab-project associations."""
+    __tablename__ = 'lab_projects'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    lab_id = Column(String, ForeignKey('labs.id'), nullable=False)
+    name = Column(String, nullable=False)
+    path = Column(String, nullable=False)
+    created_date = Column(DateTime, nullable=False)
+
+    # Relationships
+    lab = relationship("LabModel", back_populates="projects")
+
+class WorkgroupModel(Base):
+    """Database model for workgroups."""
+    __tablename__ = 'workgroups'
+
+    id = Column(String, primary_key=True)
+    name = Column(String, nullable=False)
+    share_key_hash = Column(String, nullable=False)  # Salted hash of shareable key
+    created_at = Column(DateTime, nullable=False)
+
+    # Relationships
+    members = relationship("WorkgroupMemberModel", back_populates="workgroup")
+
+class WorkgroupMemberModel(Base):
+    """Database model for workgroup membership."""
+    __tablename__ = 'workgroup_members'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    workgroup_id = Column(String, ForeignKey('workgroups.id'), nullable=False)
+    member_email = Column(String, nullable=False)
+    role = Column(String, default="member")  # 'admin', 'member', etc.
+    added_at = Column(DateTime, nullable=False)
+
+    # Relationships
+    workgroup = relationship("WorkgroupModel", back_populates="members")
+
 # ===========================================
 # DATABASE UTILITIES
 # ===========================================
@@ -309,4 +378,78 @@ def model_to_plugin_result(model) -> 'PluginResult':
         output_files=json.loads(model.output_files) if model.output_files else [],
         created_at=model.created_at,
         completed_at=model.completed_at
+    )
+
+# ===========================================
+# USER AND LAB MAPPING FUNCTIONS
+# ===========================================
+
+def user_to_model(user) -> UserModel:
+    """Convert domain User to database model."""
+    return UserModel(
+        id=user.id,
+        name=user.name,
+        email=user.email,
+        organization=user.organization,
+        default_projects_dir=str(user.default_projects_dir) if user.default_projects_dir else None,
+        default_shared_dir=str(user.default_shared_dir) if user.default_shared_dir else None,
+        created_at=user.created_at,
+        updated_at=user.updated_at
+    )
+
+def model_to_user(model) -> 'User':
+    """Convert database model to domain User."""
+    from .metadata import User
+    from pathlib import Path
+    return User(
+        id=model.id,
+        name=model.name,
+        email=model.email,
+        organization=model.organization,
+        default_projects_dir=Path(model.default_projects_dir) if model.default_projects_dir else None,
+        default_shared_dir=Path(model.default_shared_dir) if model.default_shared_dir else None,
+        created_at=model.created_at,
+        updated_at=model.updated_at
+    )
+
+def lab_to_model(lab) -> LabModel:
+    """Convert domain Lab to database model."""
+    return LabModel(
+        id=lab.id,
+        name=lab.name,
+        institution=lab.institution,
+        pi_name=lab.pi_name,
+        creator_id=lab.creator_id,
+        created_at=lab.created_at
+    )
+
+def model_to_lab(model) -> 'Lab':
+    """Convert database model to domain Lab."""
+    from .metadata import Lab
+    return Lab(
+        id=model.id,
+        name=model.name,
+        institution=model.institution,
+        pi_name=model.pi_name,
+        creator_id=model.creator_id,
+        created_at=model.created_at
+    )
+
+def workgroup_to_model(workgroup) -> WorkgroupModel:
+    """Convert domain Workgroup to database model."""
+    return WorkgroupModel(
+        id=workgroup.id,
+        name=workgroup.name,
+        share_key_hash=workgroup.share_key_hash,
+        created_at=workgroup.created_at
+    )
+
+def model_to_workgroup(model) -> 'Workgroup':
+    """Convert database model to domain Workgroup."""
+    from .metadata import Workgroup
+    return Workgroup(
+        id=model.id,
+        name=model.name,
+        share_key_hash=model.share_key_hash,
+        created_at=model.created_at
     )
