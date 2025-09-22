@@ -151,6 +151,21 @@ class SetupService:
         # This allows proper re-initialization after MUS1 root changes
         pass
 
+    def _get_database(self):
+        """Get the config database with ensured schema.
+
+        The config database (config.db) also stores domain tables for users,
+        labs, colonies, etc. Ensure those SQLAlchemy tables exist before any
+        repository operations to avoid 'no such table' errors.
+        """
+        from .schema import Database
+        from .config_manager import get_config_manager
+
+        config_manager = get_config_manager()
+        db = Database(str(config_manager.db_path))
+        db.create_tables()
+        return db
+
     # ===========================================
     # MUS1 ROOT LOCATION MANAGEMENT
     # ===========================================
@@ -212,6 +227,19 @@ class SetupService:
         set_config("mus1.root_path", str(root_dto.path), scope="install")
         set_config("mus1.root_setup_date", datetime.now().isoformat(), scope="install")
 
+        # Write a stable root pointer file under platform default so future processes can rediscover
+        try:
+            from .config_manager import _get_platform_default_mus1_root
+            default_root = _get_platform_default_mus1_root()
+            pointer_dir = default_root / "config"
+            pointer_dir.mkdir(parents=True, exist_ok=True)
+            pointer_path = pointer_dir / "root_pointer.json"
+            with open(pointer_path, "w") as f:
+                import json
+                json.dump({"root": str(root_dto.path), "updated_at": datetime.now().isoformat()}, f)
+        except Exception:
+            pass
+
         return {
             "success": True,
             "message": "MUS1 root location configured successfully",
@@ -229,21 +257,75 @@ class SetupService:
     # ===========================================
 
     def is_user_configured(self) -> bool:
-        """Check if user profile is already configured."""
-        return bool(get_config("user.name"))
+        """Check if user profile is already configured.
+
+        Configuration is considered present if an active user id is set in
+        ConfigManager and a corresponding user exists in the SQL users table.
+        """
+        from .repository import get_repository_factory
+
+        user_id = get_config("user.id", scope="user")
+        if not user_id:
+            return False
+
+        db = self._get_database()
+        repo_factory = get_repository_factory(db)
+        return repo_factory.users.find_by_id(user_id) is not None
 
     def get_user_profile(self) -> Optional[UserProfileDTO]:
-        """Get current user profile if configured."""
+        """Get current user profile from SQL if configured."""
         if not self.is_user_configured():
             return None
 
+        from .repository import get_repository_factory
+
+        user_id = get_config("user.id", scope="user")
+        db = self._get_database()
+        repo_factory = get_repository_factory(db)
+        user = repo_factory.users.find_by_id(user_id)
+        if not user:
+            return None
+
         return UserProfileDTO(
-            name=get_config("user.name"),
-            email=get_config("user.email"),
-            organization=get_config("user.organization"),
-            default_projects_dir=Path(get_config("user.default_projects_dir", "")) if get_config("user.default_projects_dir") else None,
-            default_shared_dir=Path(get_config("user.default_shared_dir", "")) if get_config("user.default_shared_dir") else None
+            name=user.name,
+            email=user.email,
+            organization=user.organization or "",
+            default_projects_dir=user.default_projects_dir,
+            default_shared_dir=user.default_shared_dir
         )
+
+    def update_user_profile(self, name: Optional[str] = None, organization: Optional[str] = None,
+                            default_projects_dir: Optional[Path] = None,
+                            default_shared_dir: Optional[Path] = None) -> Dict[str, Any]:
+        """Update current user's profile fields in SQL.
+
+        Email-derived user id is treated as stable; email changes are not applied here.
+        """
+        if not self.is_user_configured():
+            return {"success": False, "message": "No active user configured"}
+
+        from .repository import get_repository_factory
+
+        user_id = get_config("user.id", scope="user")
+        db = self._get_database()
+        repo_factory = get_repository_factory(db)
+        user = repo_factory.users.find_by_id(user_id)
+        if not user:
+            return {"success": False, "message": "Active user not found"}
+
+        # Apply updates
+        if name is not None:
+            user.name = name
+        if organization is not None:
+            user.organization = organization
+        if default_projects_dir is not None:
+            user.default_projects_dir = default_projects_dir
+        if default_shared_dir is not None:
+            user.default_shared_dir = default_shared_dir
+        user.updated_at = datetime.now()
+
+        saved = repo_factory.users.save(user)
+        return {"success": True, "user": saved}
 
     def setup_user_profile(self, user_dto: UserProfileDTO, force: bool = False) -> Dict[str, Any]:
         """
@@ -287,20 +369,12 @@ class SetupService:
         )
 
         # Save user to SQL database
-        from .schema import Database
-        config_manager = get_config_manager()
-        db = Database(str(config_manager.db_path))
+        db = self._get_database()
         repo_factory = get_repository_factory(db)
         saved_user = repo_factory.users.save(user_entity)
 
-        # Save configuration (legacy support)
+        # Save configuration: only the active user id is persisted in ConfigManager
         set_config("user.id", user_id, scope="user")
-        set_config("user.name", user_dto.name, scope="user")
-        set_config("user.email", user_dto.email, scope="user")
-        set_config("user.organization", user_dto.organization, scope="user")
-        set_config("user.default_projects_dir", str(user_dto.default_projects_dir), scope="user")
-        set_config("user.default_shared_dir", str(user_dto.default_shared_dir) if user_dto.default_shared_dir else None, scope="user")
-        set_config("user.setup_date", datetime.now().isoformat(), scope="user")
 
         # Create default directories
         if user_dto.default_projects_dir:
@@ -389,47 +463,33 @@ class SetupService:
 
     def get_labs(self) -> Dict[str, Dict[str, Any]]:
         """Get all configured labs."""
-        from .schema import Database
         from .repository import get_repository_factory
 
-        config_manager = get_config_manager()
-        db = Database(str(config_manager.db_path))
+        db = self._get_database()
         repo_factory = get_repository_factory(db)
 
         # Get current user ID to filter labs by creator
         user_id = get_config("user.id", scope="user")
         if user_id:
-            labs = repo_factory.labs.find_by_creator(user_id)
-            # Convert to dict format for backward compatibility
-            return {lab.id: {
-                "id": lab.id,
-                "name": lab.name,
-                "institution": lab.institution,
-                "pi_name": lab.pi_name,
-                "created_at": lab.created_at.isoformat(),
-                "projects": repo_factory.labs.get_projects(lab.id),
-                "colonies": [model_to_colony(c).__dict__ for c in repo_factory.colonies.find_by_lab(lab.id)]
-            } for lab in labs}
+            labs = repo_factory.labs.find_for_user(user_id)
         else:
-            # Fallback to all labs if no user context
             labs = repo_factory.labs.find_all()
-            return {lab.id: {
-                "id": lab.id,
-                "name": lab.name,
-                "institution": lab.institution,
-                "pi_name": lab.pi_name,
-                "created_at": lab.created_at.isoformat(),
-                "projects": repo_factory.labs.get_projects(lab.id),
-                "colonies": [model_to_colony(c).__dict__ for c in repo_factory.colonies.find_by_lab(lab.id)]
-            } for lab in labs}
+
+        return {lab.id: {
+            "id": lab.id,
+            "name": lab.name,
+            "institution": lab.institution,
+            "pi_name": lab.pi_name,
+            "created_at": lab.created_at.isoformat(),
+            "projects": repo_factory.labs.get_projects(lab.id),
+            "colonies": [model_to_colony(c).__dict__ for c in repo_factory.colonies.find_by_lab(lab.id)]
+        } for lab in labs}
 
     def lab_exists(self, lab_id: str) -> bool:
         """Check if lab exists."""
-        from .schema import Database
         from .repository import get_repository_factory
 
-        config_manager = get_config_manager()
-        db = Database(str(config_manager.db_path))
+        db = self._get_database()
         repo_factory = get_repository_factory(db)
 
         lab = repo_factory.labs.find_by_id(lab_id)
@@ -465,11 +525,14 @@ class SetupService:
             created_at=lab_dto.created_at or datetime.now()
         )
 
-        # Save lab to SQL database
-        config_manager = get_config_manager()
-        db = Database(str(config_manager.db_path))
+        # Save lab to SQL database and add creator membership (admin)
+        db = self._get_database()
         repo_factory = get_repository_factory(db)
         saved_lab = repo_factory.labs.save(lab_entity)
+        try:
+            repo_factory.labs.add_member(lab_dto.id, lab_dto.creator_id, role="admin")
+        except Exception:
+            pass
 
         return {
             "success": True,
@@ -494,11 +557,9 @@ class SetupService:
             }
 
         # Check if colony already exists in SQL database
-        from .schema import Database
         from .repository import get_repository_factory
 
-        config_manager = get_config_manager()
-        db = Database(str(config_manager.db_path))
+        db = self._get_database()
         repo_factory = get_repository_factory(db)
 
         existing_colony = repo_factory.colonies.find_by_id(colony_dto.id)
@@ -537,11 +598,17 @@ class SetupService:
         labs = self.get_labs()
         projects_count = sum(len(lab.get("projects", [])) for lab in labs.values())
 
+        # Resolve user name from SQL when configured
+        user_name = None
+        if self.is_user_configured():
+            profile = self.get_user_profile()
+            user_name = profile.name if profile else None
+
         return SetupStatusDTO(
             mus1_root_configured=self.is_mus1_root_configured(),
             mus1_root_path=get_config("mus1.root_path"),
-            user_configured=self.is_user_configured(),
-            user_name=get_config("user.name"),
+            user_configured=user_name is not None,
+            user_name=user_name,
             shared_storage_configured=self.is_shared_storage_configured(),
             shared_storage_path=get_config("storage.shared_root"),
             labs_count=len(labs),

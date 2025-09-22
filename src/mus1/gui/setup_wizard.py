@@ -148,6 +148,29 @@ class MUS1RootLocationPage(QWizardPage):
 
         layout = QVBoxLayout()
 
+        # Detected configuration (if any)
+        from ..core.config_manager import resolve_mus1_root
+        detected_root = resolve_mus1_root()
+        detected_valid = (detected_root / "config" / "config.db").exists()
+
+        # Mode selection
+        mode_group = QGroupBox("Configuration Source")
+        mode_layout = QVBoxLayout()
+        self.mode_use_detected = QRadioButton("Use detected configuration" + (f" at {detected_root}" if detected_valid else " (none detected)"))
+        self.mode_use_detected.setEnabled(detected_valid)
+        self.mode_use_detected.setChecked(detected_valid)
+
+        self.mode_locate_existing = QRadioButton("Locate existing configuration…")
+        self.mode_create_new = QRadioButton("Create new configuration at selected location")
+        if not detected_valid:
+            self.mode_create_new.setChecked(True)
+
+        mode_layout.addWidget(self.mode_use_detected)
+        mode_layout.addWidget(self.mode_locate_existing)
+        mode_layout.addWidget(self.mode_create_new)
+        mode_group.setLayout(mode_layout)
+        layout.addWidget(mode_group)
+
         # Description
         desc_label = QLabel(
             "MUS1 needs a directory to store its configuration, logs, and other data.\n\n"
@@ -174,7 +197,7 @@ class MUS1RootLocationPage(QWizardPage):
         current_location_group.setLayout(current_layout)
         layout.addWidget(current_location_group)
 
-        # Custom location option
+        # Custom location option (used when creating new)
         custom_location_group = QGroupBox("Choose Custom Location")
         custom_layout = QVBoxLayout()
 
@@ -214,6 +237,22 @@ class MUS1RootLocationPage(QWizardPage):
         custom_location_group.setLayout(custom_layout)
         layout.addWidget(custom_location_group)
 
+        # Locate existing configuration option
+        locate_group = QGroupBox("Locate Existing Configuration")
+        locate_layout = QVBoxLayout()
+        locate_desc = QLabel("Select a directory that contains config/config.db (the MUS1 configuration database).")
+        locate_desc.setWordWrap(True)
+        locate_layout.addWidget(locate_desc)
+        locate_path_layout = QHBoxLayout()
+        self.locate_path_edit = QLineEdit()
+        self.locate_browse_button = QPushButton("Browse…")
+        self.locate_browse_button.clicked.connect(self.browse_locate_path)
+        locate_path_layout.addWidget(self.locate_path_edit)
+        locate_path_layout.addWidget(self.locate_browse_button)
+        locate_layout.addLayout(locate_path_layout)
+        locate_group.setLayout(locate_layout)
+        layout.addWidget(locate_group)
+
         # Copy existing config option
         self.copy_config_checkbox = QCheckBox(
             "Copy existing configuration (if any) to new location"
@@ -226,6 +265,11 @@ class MUS1RootLocationPage(QWizardPage):
 
         # Connect signals
         self.use_current_checkbox = use_current_checkbox
+        # Toggle visibility/enabled fields based on mode
+        self.mode_use_detected.toggled.connect(self._on_mode_changed)
+        self.mode_locate_existing.toggled.connect(self._on_mode_changed)
+        self.mode_create_new.toggled.connect(self._on_mode_changed)
+        self._on_mode_changed()
 
     def on_use_current_toggled(self, checked: bool):
         """Handle toggling between current and custom location."""
@@ -236,6 +280,20 @@ class MUS1RootLocationPage(QWizardPage):
         if checked:
             self.copy_config_checkbox.setChecked(False)
 
+    def _on_mode_changed(self):
+        is_create = self.mode_create_new.isChecked()
+        is_locate = self.mode_locate_existing.isChecked()
+        # New config controls
+        self.use_current_checkbox.setEnabled(is_create)
+        self.custom_path_edit.setEnabled(is_create and not self.use_current_checkbox.isChecked())
+        self.browse_button.setEnabled(is_create and not self.use_current_checkbox.isChecked())
+        self.copy_config_checkbox.setEnabled(is_create and not self.use_current_checkbox.isChecked())
+        if is_create and self.use_current_checkbox.isChecked():
+            self.copy_config_checkbox.setChecked(False)
+        # Locate controls
+        self.locate_path_edit.setEnabled(is_locate)
+        self.locate_browse_button.setEnabled(is_locate)
+
     def browse_custom_path(self):
         """Browse for custom MUS1 root path."""
         path = QFileDialog.getExistingDirectory(
@@ -245,8 +303,33 @@ class MUS1RootLocationPage(QWizardPage):
         if path:
             self.custom_path_edit.setText(path)
 
+    def browse_locate_path(self):
+        """Browse for an existing MUS1 config root (expects config/config.db inside)."""
+        path = QFileDialog.getExistingDirectory(
+            self, "Select MUS1 Configuration Root",
+            self.locate_path_edit.text() or str(Path.home())
+        )
+        if path:
+            self.locate_path_edit.setText(path)
+
     def validatePage(self) -> bool:
         """Validate MUS1 root location selection."""
+        # If using detected, accept
+        if self.mode_use_detected.isChecked():
+            return True
+
+        if self.mode_locate_existing.isChecked():
+            root_str = self.locate_path_edit.text().strip()
+            if not root_str:
+                QMessageBox.warning(self, "Validation Error", "Please select a configuration root directory")
+                return False
+            root = Path(root_str)
+            if not (root / "config" / "config.db").exists():
+                QMessageBox.warning(self, "Validation Error", "Selected directory does not contain config/config.db")
+                return False
+            return True
+
+        # Creating new configuration
         if self.use_current_checkbox.isChecked():
             return True  # Current location is always valid
 
@@ -265,6 +348,11 @@ class MUS1RootLocationPage(QWizardPage):
 
     def get_selected_path(self) -> Path:
         """Get the selected MUS1 root path."""
+        if self.mode_use_detected.isChecked():
+            from ..core.config_manager import resolve_mus1_root
+            return resolve_mus1_root()
+        if self.mode_locate_existing.isChecked():
+            return Path(self.locate_path_edit.text().strip())
         if self.use_current_checkbox.isChecked():
             return Path.cwd()
         else:

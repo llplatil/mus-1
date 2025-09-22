@@ -7,9 +7,7 @@ This roadmap shows current status and planned development priorities. Items are 
 - Legacy GUI components need migration to clean architecture
 - Windows/Linux video scanners lack OS-specific optimizations
 - Some plugins need migration to new service pattern
-- Setup Wizard writes user/lab/storage to the wrong config DB until after completion
-- No first-class workgroup model or shareable key in SQL backend
-- Labs stored as JSON in config entries (not normalized SQL); no membership
+- User profile fields duplicated between ConfigManager and SQL `users` table; risk of drift
 - Wizard lacks explicit default projects directory chooser and app preferences page
 - Modal popups used during setup; prefer in-app log/status per development guidelines
 
@@ -66,7 +64,29 @@ This roadmap shows current status and planned development priorities. Items are 
    - Add an `App Preferences` page (theme, global sort mode, optional telemetry) and persist via `ConfigManager` under `user.*`
    - Update `src/mus1/gui/setup_wizard.py` to remove `QMessageBox` info/critical usage in dev; surface messages via the navigation/status pane
 
-9. **Config Root Usage Consistency**
+9. **Config Root Usage Consistency & Locator**
+   - Implement root pointer file at platform default path to rediscover chosen MUS1 root across launches/reinstalls
+   - Startup resolution order: env var → pointer → platform default → create default
+   - Wizard updates pointer after root selection; app rebinds ConfigManager immediately
+11. **Lab-Centric Sharing (Planned)**
+   - Normalize shared resources under the lab and expose retrieval by lab membership
+   - Schema additions:
+     - `lab_members(lab_id, user_id, role, joined_at, PRIMARY KEY(lab_id,user_id))`
+     - `lab_workers(lab_id, worker_id, permissions, tags, PRIMARY KEY(lab_id,worker_id))`
+     - `lab_scan_targets(lab_id, scan_target_id, PRIMARY KEY(lab_id,scan_target_id))`
+   - Repository APIs:
+     - `LabRepository.find_for_user(user_id)`
+     - `LabRepository.get_workers(lab_id)`, `get_scan_targets(lab_id)`
+     - Membership CRUD: `add_member`, `remove_member`, `list_members`
+     - Association CRUD: `attach_worker`, `detach_worker`, `attach_scan_target`, `detach_scan_target`
+   - GUI/CLI:
+     - Project selection: separate Shared (by labs) vs Local sections
+     - Settings → Lab Settings: members/workers/scan targets management
+     - CLI parity: `mus1 lab members|workers|targets ...`
+   - Migration:
+     - Backfill membership for lab creators as `admin`
+     - Attach existing workers/scan targets to selected lab without data duplication
+
    - In `src/mus1/main.py`, when configuring logs, prefer configured `get_config("mus1.root_path")` when present; fall back to `resolve_mus1_root()` only if unset
    - Audit imports using `resolve_mus1_root()` and switch to configuration value post-setup where appropriate
 
@@ -74,6 +94,14 @@ This roadmap shows current status and planned development priorities. Items are 
 1. **Scanner Improvements**: OS-specific video scanners for Windows/Linux
 2. **Remote Processing**: SSH-based worker execution and scanning
 3. **Advanced Features**: Distributed processing and job orchestration
+
+10. **Persistent User Profile — Single Source of Truth**
+   - Make the SQL `users` table authoritative for user profile persistence
+   - Store only `user.id` in `ConfigManager` as the active-user pointer
+   - Update `SetupService.is_user_configured()` and `get_user_profile()` to query repositories
+   - Add `UserService` with `get_current_user()`, `set_current_user_by_email()`, `update_profile()`, `delete_profile()`
+   - One-time migration: if legacy config keys `user.name/email/organization` exist and SQL has no user, seed `users` and remove those keys
+   - Decide on stable `User.id` (UUID recommended) and handle email change/migration if using email-derived IDs
 
 ## Intended Setup/Project Logic (Authoritative)
 
@@ -83,8 +111,9 @@ This roadmap shows current status and planned development priorities. Items are 
 - After choosing root, the config DB is `<root>/config/config.db` and must be re-initialized immediately before subsequent steps
 
 2) User Profile
-- Store `user.name`, `user.email`, `user.organization`
-- `user.default_projects_dir` set per-platform; ensure directory exists
+- Persist user fields in SQL `users` table (authoritative)
+- In config, store only `user.id` (active user)
+- `user.default_projects_dir` set per-platform in SQL profile; ensure directory exists
 
 3) Shared Storage (Optional)
 - `storage.shared_root` stored and validated; verify write permissions if requested

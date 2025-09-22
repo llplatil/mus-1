@@ -8,7 +8,7 @@ from PySide6.QtGui import QIcon
 
 # Core components
 from .core.logging_bus import LoggingEventBus
-from .core.config_manager import ConfigManager, resolve_mus1_root
+from .core.config_manager import ConfigManager, resolve_mus1_root, get_root_pointer_info
 from .core.theme_manager import ThemeManager
 
 def main():
@@ -16,6 +16,23 @@ def main():
     # Initialize core components
     log_bus = LoggingEventBus.get_instance()
     # Configure a single rotating file handler under the resolved MUS1 root
+    info = get_root_pointer_info()
+    if info.get("exists") and info.get("target") and not info.get("valid"):
+        # Pointer exists but target is missing/unavailable; prompt user
+        reply = QMessageBox.question(
+            None,
+            "Configuration Not Found",
+            f"The configured MUS1 root at '{info['target']}' is unavailable.\n"
+            "Would you like to locate an existing configuration?",
+            QMessageBox.Yes | QMessageBox.No
+        )
+        if reply == QMessageBox.Yes:
+            from PySide6.QtWidgets import QFileDialog
+            selected = QFileDialog.getExistingDirectory(None, "Select MUS1 Configuration Root")
+            if selected:
+                from .core.config_manager import set_root_pointer
+                set_root_pointer(Path(selected))
+        # Proceed with normal resolution after any update
     mus1_root = resolve_mus1_root()
     (mus1_root / "logs").mkdir(exist_ok=True)
     log_bus.configure_default_file_handler(mus1_root / "logs", max_size=5 * 1024 * 1024, backups=3)

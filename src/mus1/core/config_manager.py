@@ -34,6 +34,50 @@ logger = logging.getLogger("mus1.core.config_manager")
 # MUS1 ROOT RESOLUTION - SIMPLE & DETERMINISTIC
 # ===========================================
 
+def _get_root_pointer_path(default_root: Path) -> Path:
+    """Return the path to the root pointer file stored in platform-default location.
+
+    We use a JSON file to avoid env var dependence across reinstalls.
+    """
+    return (default_root / "config" / "root_pointer.json")
+
+def get_root_pointer_info() -> Dict[str, Any]:
+    """Return information about the root pointer status.
+
+    Returns dict with keys: pointer_path (Path), exists (bool), target (Path|None), valid (bool)
+    """
+    default_root = _get_platform_default_mus1_root()
+    pointer_path = _get_root_pointer_path(default_root)
+    info: Dict[str, Any] = {
+        "pointer_path": pointer_path,
+        "exists": pointer_path.exists(),
+        "target": None,
+        "valid": False,
+    }
+    if pointer_path.exists():
+        try:
+            with open(pointer_path, "r") as f:
+                data = json.load(f)
+            target = Path(data.get("root", "")).expanduser().resolve()
+            info["target"] = target
+            info["valid"] = _is_valid_mus1_root(target)
+        except Exception as e:
+            logger.warning(f"Failed to read root pointer: {e}")
+    return info
+
+def set_root_pointer(root_path: Path) -> None:
+    """Write/update the root pointer file to point at the provided root path."""
+    default_root = _get_platform_default_mus1_root()
+    pointer_dir = default_root / "config"
+    pointer_dir.mkdir(parents=True, exist_ok=True)
+    pointer_path = pointer_dir / "root_pointer.json"
+    try:
+        with open(pointer_path, "w") as f:
+            json.dump({"root": str(root_path), "updated_at": datetime.now().isoformat()}, f)
+    except Exception as e:
+        logger.warning(f"Failed to write root pointer: {e}")
+
+
 def resolve_mus1_root() -> Path:
     """
     Deterministically resolve MUS1 root directory.
@@ -54,12 +98,25 @@ def resolve_mus1_root() -> Path:
             return root_path
         logger.warning(f"MUS1_ROOT environment variable points to invalid location: {root_path}")
 
-    # Priority 2: Platform default with existing config
+    # Priority 2: Root pointer file stored under platform default
     default_root = _get_platform_default_mus1_root()
+    pointer_path = _get_root_pointer_path(default_root)
+    if pointer_path.exists():
+        try:
+            with open(pointer_path, "r") as f:
+                data = json.load(f)
+            pointed = Path(data.get("root", "")).expanduser().resolve()
+            if _is_valid_mus1_root(pointed):
+                return pointed
+            logger.warning(f"Root pointer invalid, ignoring: {pointed}")
+        except Exception as e:
+            logger.warning(f"Failed to read root pointer: {e}")
+
+    # Priority 3: Platform default with existing config
     if _is_valid_mus1_root(default_root):
         return default_root
 
-    # Priority 3: Create platform default
+    # Priority 4: Create platform default
     return _create_mus1_root(default_root)
 
 
@@ -157,6 +214,9 @@ class ConfigManager:
             self.db_path.parent.mkdir(parents=True, exist_ok=True)
 
         self._connection: Optional[sqlite3.Connection] = None
+        # Use thread-local storage to avoid cross-thread sqlite usage
+        import threading
+        self._local = threading.local()
         self._scopes: Dict[str, ConfigScope] = {}
         self._cache: Dict[str, Any] = {}
         self._cache_dirty = False
@@ -170,20 +230,25 @@ class ConfigManager:
     @contextmanager
     def _get_connection(self):
         """Get a database connection with proper cleanup."""
-        if self._connection is None:
-            self._connection = sqlite3.connect(str(self.db_path))
-            self._connection.execute("PRAGMA foreign_keys = ON")
-            self._connection.row_factory = sqlite3.Row
+        # Create or reuse a connection bound to the current thread
+        conn = getattr(self._local, "conn", None)
+        if conn is None:
+            conn = sqlite3.connect(str(self.db_path))
+            conn.execute("PRAGMA foreign_keys = ON")
+            conn.row_factory = sqlite3.Row
+            self._local.conn = conn
 
         try:
-            yield self._connection
+            yield conn
         except Exception as e:
             logger.error(f"Database operation failed: {e}")
-            if self._connection:
-                self._connection.rollback()
+            try:
+                conn.rollback()
+            except Exception:
+                pass
             raise
         finally:
-            # Keep connection alive for performance
+            # Keep thread-local connection alive for performance within the same thread
             pass
 
     def _init_database(self):

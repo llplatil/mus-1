@@ -14,6 +14,7 @@ set -euo pipefail
 VENV_DIR=".venv"
 PYPROJECT_FILE="pyproject.toml"
 HASH_FILE="$VENV_DIR/.pyproject.sha256"
+ROOT_HINT_FILE=".mus1_root"
 
 ###############################################################################
 # Helper Functions
@@ -48,6 +49,15 @@ setup_venv() {
     echo "✅ Environment ready"
 }
 
+load_root_hint() {
+    if [ -f "$ROOT_HINT_FILE" ]; then
+        MUS1_ROOT_PATH=$(cat "$ROOT_HINT_FILE" | tr -d '\n')
+        if [ -n "$MUS1_ROOT_PATH" ] && [ -d "$MUS1_ROOT_PATH" ]; then
+            export MUS1_ROOT="$MUS1_ROOT_PATH"
+        fi
+    fi
+}
+
 ###############################################################################
 # Main Logic
 ###############################################################################
@@ -65,8 +75,23 @@ ensure_venv
 # shellcheck source=/dev/null
 source "$VENV_DIR/bin/activate"
 
+# Ensure dev imports work reliably with editable install
+export PYTHONPATH="$(pwd)/src:${PYTHONPATH:-}"
+
+# Load MUS1 root hint if present to avoid re-running setup wizard
+load_root_hint
+
 # Launch appropriate mode
-if [ "${1:-}" = "gui" ]; then
+if [ "${1:-}" = "set-root" ]; then
+    # Persist a MUS1 root hint for dev launches
+    if [ -z "${2:-}" ]; then
+        echo "❌ Usage: ./dev-launch.sh set-root /path/to/MUS1_ROOT"
+        exit 1
+    fi
+    echo "$2" > "$ROOT_HINT_FILE"
+    echo "✅ Saved MUS1 root to $ROOT_HINT_FILE"
+    exit 0
+elif [ "${1:-}" = "gui" ]; then
     echo "🚀 Launching MUS1 GUI..."
 
     # Configure Qt for macOS

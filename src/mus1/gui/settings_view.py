@@ -202,12 +202,15 @@ class SettingsView(BaseView):
     def load_user_settings(self):
         """Load current user settings."""
         try:
-            from ..core.config_manager import get_config
-            self.user_name_edit.setText(get_config("user.name", ""))
-            self.user_email_edit.setText(get_config("user.email", ""))
-            self.user_org_edit.setText(get_config("user.organization", ""))
-            self.projects_dir_edit.setText(get_config("user.default_projects_dir", ""))
-            self.shared_dir_edit.setText(get_config("user.default_shared_dir", ""))
+            from ..core.setup_service import get_setup_service
+            svc = get_setup_service()
+            profile = svc.get_user_profile()
+            if profile:
+                self.user_name_edit.setText(profile.name or "")
+                self.user_email_edit.setText(profile.email or "")
+                self.user_org_edit.setText(profile.organization or "")
+                self.projects_dir_edit.setText(str(profile.default_projects_dir or ""))
+                self.shared_dir_edit.setText(str(profile.default_shared_dir or ""))
         except Exception as e:
             self.navigation_pane.add_log_message(f"Error loading user settings: {e}", "error")
 
@@ -260,13 +263,19 @@ class SettingsView(BaseView):
     def handle_save_user_settings(self):
         """Save user settings."""
         try:
-            from ..core.config_manager import set_config
-            set_config("user.name", self.user_name_edit.text().strip(), "user")
-            set_config("user.email", self.user_email_edit.text().strip(), "user")
-            set_config("user.organization", self.user_org_edit.text().strip(), "user")
-            set_config("user.default_projects_dir", self.projects_dir_edit.text().strip(), "user")
-            set_config("user.default_shared_dir", self.shared_dir_edit.text().strip(), "user")
-            self.navigation_pane.add_log_message("User settings saved successfully", "success")
+            from pathlib import Path
+            from ..core.setup_service import get_setup_service
+            svc = get_setup_service()
+            result = svc.update_user_profile(
+                name=self.user_name_edit.text().strip() or None,
+                organization=self.user_org_edit.text().strip() or None,
+                default_projects_dir=Path(self.projects_dir_edit.text().strip()) if self.projects_dir_edit.text().strip() else None,
+                default_shared_dir=Path(self.shared_dir_edit.text().strip()) if self.shared_dir_edit.text().strip() else None,
+            )
+            if result.get("success"):
+                self.navigation_pane.add_log_message("User settings saved successfully", "success")
+            else:
+                self.navigation_pane.add_log_message(result.get("message", "Failed to save user settings"), "error")
         except Exception as e:
             self.navigation_pane.add_log_message(f"Error saving user settings: {e}", "error")
 

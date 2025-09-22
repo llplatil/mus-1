@@ -101,6 +101,7 @@ if ! $QUIET; then
     echo ""
     echo "🚀 Launch MUS1:"
     echo "   ./dev-launch.sh gui     # GUI mode (recommended)"
+    echo "   ./dev-launch.sh set-root /path/to/mus1-root  # Persist MUS1 root hint for dev launches"
     echo "   ./dev-launch.sh --help  # CLI commands"
     echo ""
     echo "📚 For Production Users:"

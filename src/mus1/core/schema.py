@@ -193,6 +193,31 @@ class LabProjectModel(Base):
     # Relationships
     lab = relationship("LabModel", back_populates="projects")
 
+class LabMemberModel(Base):
+    """Database model for lab membership (user belongs to lab)."""
+    __tablename__ = 'lab_members'
+
+    lab_id = Column(String, ForeignKey('labs.id'), primary_key=True)
+    user_id = Column(String, ForeignKey('users.id'), primary_key=True)
+    role = Column(String, default="member")
+    joined_at = Column(DateTime, nullable=False)
+
+class LabWorkerModel(Base):
+    """Association between labs and workers (many-to-many)."""
+    __tablename__ = 'lab_workers'
+
+    lab_id = Column(String, ForeignKey('labs.id'), primary_key=True)
+    worker_id = Column(Integer, ForeignKey('workers.id'), primary_key=True)
+    permissions = Column(String, nullable=True)
+    tags = Column(Text, default="[]")  # JSON-encoded list of tags
+
+class LabScanTargetModel(Base):
+    """Association between labs and scan targets (many-to-many)."""
+    __tablename__ = 'lab_scan_targets'
+
+    lab_id = Column(String, ForeignKey('labs.id'), primary_key=True)
+    scan_target_id = Column(Integer, ForeignKey('scan_targets.id'), primary_key=True)
+
 class WorkgroupModel(Base):
     """Database model for workgroups."""
     __tablename__ = 'workgroups'

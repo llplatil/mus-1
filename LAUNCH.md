@@ -24,6 +24,7 @@ mus1 project list           # CLI commands
 #### **Development Users**
 ```bash
 ./setup.sh                  # One-time environment setup
+./dev-launch.sh set-root ~/Library/Application\ Support/MUS1   # Persist MUS1 root for dev launches
 ./dev-launch.sh gui         # GUI mode (recommended)
 ./dev-launch.sh --help      # CLI help
 ./dev-launch.sh project list # CLI commands
@@ -68,6 +69,18 @@ mus1-gui
    - First lab creation (optional)
 3. **Configuration Persistence**: All preferences saved to SQLite
 4. **Project Selection**: Welcome dialog guides first project creation
+
+#### **External Configuration Roots (Best Practices)**
+- You can choose any location for the MUS1 root in the Setup Wizard (including external drives like `/Volumes/CuSSD3`).
+- MUS1 writes a small locator at the platform default path to rediscover your chosen root across reinstalls/shells:
+  - macOS: `~/Library/Application Support/MUS1/config/root_pointer.json`
+  - Contents: `{ "root": "/absolute/path", "updated_at": "ISO8601" }`
+- On startup, MUS1 resolves the configuration root in this order: `MUS1_ROOT` env → locator file → platform default → create default.
+- If the external drive is temporarily unavailable, MUS1 will prompt you to:
+  - Retry later
+  - Locate an existing configuration (browse to the root that contains `config/config.db`)
+  - Create a new configuration (optionally copy later)
+- This pattern avoids dev-only helpers and ensures production launches remain consistent.
 
 ### **Subsequent Launches**
 ```bash
@@ -175,6 +188,10 @@ mus1-gui                    # Production
 mus1-gui                    # Loads last project automatically
 ./dev-launch.sh project list # Same CLI commands work everywhere
 ```
+
+### **Preferences & Recents**
+- MUS1 persists user profile and lab information in the configuration database (SQL) at the chosen root.
+- The last opened project is stored in SQL under the user scope and used to streamline subsequent launches.
 
 ### **Smart Features**
 - ✅ **Automatic Setup Detection**: First-time users get guided wizard

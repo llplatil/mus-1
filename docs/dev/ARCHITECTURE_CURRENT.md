@@ -173,6 +173,17 @@ QT_QPA_PLATFORM_PLUGIN_PATH="..."     # Custom Qt plugins
 DISPLAY=":0"                          # Linux display
 ```
 
+### Root Pointer Locator (persistent discovery)
+- MUS1 uses a small locator file at the platform default path to rediscover the chosen configuration root across reinstalls, different shells, and environments.
+- File: `~/Library/Application Support/MUS1/config/root_pointer.json` on macOS (platform-appropriate on Linux/Windows)
+- Contents: `{ "root": "/absolute/path/to/MUS1_ROOT", "updated_at": "ISO8601" }`
+- Startup resolution order:
+  1. `MUS1_ROOT` environment variable (if set and valid)
+  2. Root pointer file (if present and valid) → becomes the canonical MUS1 root
+  3. Platform default if it already contains a valid MUS1 config
+  4. Create platform default if nothing else exists
+- The locator stores no user data; it only points to the authoritative root.
+
 ### Database Architecture
 ```sql
 -- Complete relational schema with user-lab-project hierarchy
@@ -249,6 +260,20 @@ CREATE TABLE experiments (
     date_added DATETIME NOT NULL
 );
 ```
+
+### User Profile Persistence — Single Source of Truth
+- The SQL `users` table is authoritative for all user profile fields (name, email, organization, default directories)
+- `ConfigManager` stores only `user.id` to indicate the active user
+- Services fetch user details via repositories using the active `user.id`
+- Migration: on first run, if legacy config keys `user.name/email/organization` exist without a SQL user, seed the `users` table and remove those keys
+
+### Wizard Behavior and Reinstall Experience
+- Wizard offers three options when a config is detected:
+  - Use existing configuration at the discovered root (default)
+  - Locate existing configuration... (browse to a `config.db` to switch roots)
+  - Set up new configuration (with optional “copy existing config to new location”)
+- After choosing a root, the wizard writes/updates the root pointer and rebinds the ConfigManager to `<root>/config/config.db`.
+- If the root (e.g., external drive) is temporarily unavailable, startup prompts to retry/locate/create, without losing the pointer.
 
 ## Current Status
 

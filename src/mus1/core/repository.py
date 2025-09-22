@@ -492,6 +492,137 @@ class LabRepository(BaseRepository):
                 'created_date': p.created_date
             } for p in db_projects]
 
+    # ---------- Membership APIs ----------
+    def add_member(self, lab_id: str, user_id: str, role: str = "member", joined_at=None) -> None:
+        """Add a user as a member of the lab."""
+        from .schema import LabMemberModel
+        from datetime import datetime
+        with self._get_session() as session:
+            record = LabMemberModel(
+                lab_id=lab_id,
+                user_id=user_id,
+                role=role,
+                joined_at=joined_at or datetime.now()
+            )
+            session.merge(record)
+            session.commit()
+
+    def remove_member(self, lab_id: str, user_id: str) -> bool:
+        """Remove a user from the lab."""
+        from .schema import LabMemberModel
+        with self._get_session() as session:
+            result = session.query(LabMemberModel).filter(
+                LabMemberModel.lab_id == lab_id,
+                LabMemberModel.user_id == user_id
+            ).delete()
+            session.commit()
+            return result > 0
+
+    def list_members(self, lab_id: str) -> List[Dict[str, Any]]:
+        """List members of the lab with roles."""
+        from .schema import LabMemberModel
+        with self._get_session() as session:
+            rows = session.query(LabMemberModel).filter(
+                LabMemberModel.lab_id == lab_id
+            ).all()
+            return [{
+                'user_id': r.user_id,
+                'role': r.role,
+                'joined_at': r.joined_at
+            } for r in rows]
+
+    def find_for_user(self, user_id: str) -> List['Lab']:
+        """Find labs where the user is a member or creator."""
+        from .schema import LabModel, LabMemberModel
+        from .schema import model_to_lab
+        with self._get_session() as session:
+            # Labs where user is creator
+            created_labs = session.query(LabModel).filter(LabModel.creator_id == user_id)
+            # Labs where user is a member
+            member_lab_ids = session.query(LabMemberModel.lab_id).filter(LabMemberModel.user_id == user_id)
+            labs = session.query(LabModel).filter(
+                (LabModel.creator_id == user_id) | (LabModel.id.in_(member_lab_ids))
+            ).all()
+            return [model_to_lab(l) for l in labs]
+
+    # ---------- Worker/ScanTarget Associations ----------
+    def attach_worker(self, lab_id: str, worker_id: int, permissions: Optional[str] = None, tags: Optional[List[str]] = None) -> None:
+        from .schema import LabWorkerModel
+        import json
+        with self._get_session() as session:
+            record = LabWorkerModel(
+                lab_id=lab_id,
+                worker_id=worker_id,
+                permissions=permissions,
+                tags=json.dumps(tags or [])
+            )
+            session.merge(record)
+            session.commit()
+
+    def detach_worker(self, lab_id: str, worker_id: int) -> bool:
+        from .schema import LabWorkerModel
+        with self._get_session() as session:
+            result = session.query(LabWorkerModel).filter(
+                LabWorkerModel.lab_id == lab_id,
+                LabWorkerModel.worker_id == worker_id
+            ).delete()
+            session.commit()
+            return result > 0
+
+    def get_workers(self, lab_id: str) -> List['Worker']:
+        from .schema import LabWorkerModel, WorkerModel
+        from .metadata import Worker, WorkerProvider
+        with self._get_session() as session:
+            rows = session.query(WorkerModel).join(
+                LabWorkerModel, LabWorkerModel.worker_id == WorkerModel.id
+            ).filter(LabWorkerModel.lab_id == lab_id).all()
+            workers = []
+            for w in rows:
+                workers.append(Worker(
+                    name=w.name,
+                    ssh_alias=w.ssh_alias,
+                    role=w.role,
+                    provider=WorkerProvider(w.provider),
+                    os_type=w.os_type
+                ))
+            return workers
+
+    def attach_scan_target(self, lab_id: str, scan_target_id: int) -> None:
+        from .schema import LabScanTargetModel
+        with self._get_session() as session:
+            record = LabScanTargetModel(lab_id=lab_id, scan_target_id=scan_target_id)
+            session.merge(record)
+            session.commit()
+
+    def detach_scan_target(self, lab_id: str, scan_target_id: int) -> bool:
+        from .schema import LabScanTargetModel
+        with self._get_session() as session:
+            result = session.query(LabScanTargetModel).filter(
+                LabScanTargetModel.lab_id == lab_id,
+                LabScanTargetModel.scan_target_id == scan_target_id
+            ).delete()
+            session.commit()
+            return result > 0
+
+    def get_scan_targets(self, lab_id: str) -> List['ScanTarget']:
+        from .schema import LabScanTargetModel, ScanTargetModel
+        from .metadata import ScanTarget, ScanTargetKind
+        import json
+        from pathlib import Path
+        with self._get_session() as session:
+            rows = session.query(ScanTargetModel).join(
+                LabScanTargetModel, LabScanTargetModel.scan_target_id == ScanTargetModel.id
+            ).filter(LabScanTargetModel.lab_id == lab_id).all()
+            targets = []
+            for t in rows:
+                targets.append(ScanTarget(
+                    name=t.name,
+                    kind=ScanTargetKind(t.kind),
+                    roots=[Path(p) for p in json.loads(t.roots)],
+                    ssh_alias=t.ssh_alias
+                ))
+            return targets
+
 # ===========================================
 # REPOSITORY FACTORY
 # ===========================================
@@ -557,3 +688,13 @@ class RepositoryFactory:
         if self._scan_targets is None:
             self._scan_targets = ScanTargetRepository(self.db)
         return self._scan_targets
+
+# Convenience function expected by callers
+def get_repository_factory(db: Database) -> "RepositoryFactory":
+    """Return a repository factory bound to the provided database.
+
+    This helper preserves existing import style in services and GUI
+    modules that do:
+        from .repository import get_repository_factory
+    """
+    return RepositoryFactory(db)

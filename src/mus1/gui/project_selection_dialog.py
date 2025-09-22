@@ -126,8 +126,16 @@ class ProjectSelectionDialog(QDialog):
         self.existing_location_combo.setObjectName("existingLocationCombo")
         self.existing_location_combo.setProperty("class", "mus1-combo-box")
         self.existing_location_combo.addItems(["Local", "Shared"])  # Mirrors creation side
-        self.existing_location_combo.currentIndexChanged.connect(self.refresh_projects_list)
+        self.existing_location_combo.currentIndexChanged.connect(self.on_existing_location_changed)
         right_layout.addWidget(self.existing_location_combo)
+
+        # Lab selector for shared projects
+        self.existing_lab_combo = QComboBox(right_frame)
+        self.existing_lab_combo.setObjectName("existingLabCombo")
+        self.existing_lab_combo.setProperty("class", "mus1-combo-box")
+        self.existing_lab_combo.setVisible(False)
+        self.existing_lab_combo.currentIndexChanged.connect(self.refresh_projects_list)
+        right_layout.addWidget(self.existing_lab_combo)
 
         # Projects list
         self.projects_list = QListWidget(right_frame)
@@ -147,7 +155,9 @@ class ProjectSelectionDialog(QDialog):
         main_layout.addWidget(left_frame)
         main_layout.addWidget(right_frame)
         
-        # Populate the projects list
+        # Load labs and populate the projects list
+        self._labs_cache = {}
+        self.load_labs()
         self.refresh_projects_list()
 
         # Connect Enter key to create project
@@ -170,42 +180,43 @@ class ProjectSelectionDialog(QDialog):
             self.location_line.setText(directory)
     
     def refresh_projects_list(self):
-        """Refresh the list of existing projects using simplified discovery."""
+        """Refresh the list of existing projects using lab-aware discovery."""
         self.projects_list.clear()
 
         try:
-            # Use simplified project discovery service
-            from ..core.project_discovery_service import get_project_discovery_service
-            discovery_service = get_project_discovery_service()
-            project_paths = discovery_service.discover_existing_projects()
-
-            # Get lab information for display
-            labs = get_config("labs", scope="user") or {}
-
-            for project_path in project_paths:
-                project_name = project_path.name
-
-                # Find which lab this project belongs to
-                lab_name = "Unknown"
-                for lab_config in labs.values():
-                    lab_projects = lab_config.get("projects", [])
-                    for lab_project in lab_projects:
-                        if Path(lab_project["path"]) == project_path:
-                            lab_name = lab_config.get("name", "Unknown")
-                            break
-                    if lab_name != "Unknown":
-                        break
-
-                # Create display name
-                display_name = project_name
-                if lab_name != "Unknown":
-                    display_name += f" (Lab: {lab_name})"
-
-                item = QListWidgetItem(display_name)
-                item.setData(Qt.UserRole, str(project_path))
-                item.setData(Qt.UserRole + 1, project_name)
-                self.projects_list.addItem(item)
-
+            mode = self.existing_location_combo.currentText().lower()
+            if mode == "shared":
+                # Lab-aware: list projects registered under the selected lab
+                if not self._labs_cache:
+                    self.load_labs()
+                lab_id = self.existing_lab_combo.currentData()
+                if lab_id and lab_id in self._labs_cache:
+                    lab = self._labs_cache[lab_id]
+                    for proj in lab.get("projects", []):
+                        project_path = Path(proj["path"]) if proj.get("path") else None
+                        project_name = proj.get("name") or (project_path.name if project_path else "Unknown")
+                        display_name = f"{project_name} (Lab: {lab.get('name','')})"
+                        item = QListWidgetItem(display_name)
+                        item.setData(Qt.UserRole, str(project_path) if project_path else "")
+                        item.setData(Qt.UserRole + 1, project_name)
+                        self.projects_list.addItem(item)
+                else:
+                    # No lab selection or no labs; show hint
+                    hint = QListWidgetItem("Select a lab to view shared projects")
+                    hint.setFlags(hint.flags() & ~Qt.ItemIsSelectable)
+                    hint.setForeground(QColor("gray"))
+                    self.projects_list.addItem(hint)
+            else:
+                # Local discovery: use discovery service without lab filtering
+                from ..core.project_discovery_service import get_project_discovery_service
+                discovery_service = get_project_discovery_service()
+                project_paths = discovery_service.discover_existing_projects()
+                for project_path in project_paths:
+                    project_name = project_path.name
+                    item = QListWidgetItem(project_name)
+                    item.setData(Qt.UserRole, str(project_path))
+                    item.setData(Qt.UserRole + 1, project_name)
+                    self.projects_list.addItem(item)
         except Exception as e:
             print(f"Error listing projects: {e}")
 
@@ -269,40 +280,49 @@ class ProjectSelectionDialog(QDialog):
             # Initialize the project with ProjectManagerClean
             project_manager = ProjectManagerClean(project_root)
 
-            # Attempt to associate project with a lab if one exists
+            # Attempt to associate project with a lab if one exists or is selected
             from ..core.setup_service import get_setup_service
             setup_service = get_setup_service()
-            labs = setup_service.get_labs()  # Now uses SQL data
+            labs = setup_service.get_labs()  # SQL-backed
             chosen_lab_id = None
-            if labs:
-                # Pick the only lab if there is exactly one; otherwise leave unassigned
-                if len(labs) == 1:
-                    chosen_lab_id = next(iter(labs.keys()))
-                # If a lab was chosen, set lab_id in project and register in SQL database
-                if chosen_lab_id:
-                    try:
-                        project_manager.set_lab_id(chosen_lab_id)
-                        # Add project to lab using SQL repository
-                        from ..core.schema import Database
-                        from ..core.repository import get_repository_factory
-                        from ..core.config_manager import get_config_manager
+            # If creating in Shared mode, use selected lab if available
+            if self.location_type_combo.currentText().lower() == "shared" and hasattr(self, "create_lab_combo"):
+                chosen_lab_id = self.create_lab_combo.currentData()
+            # Fallback: if exactly one lab exists
+            if not chosen_lab_id and labs and len(labs) == 1:
+                chosen_lab_id = next(iter(labs.keys()))
+            # If a lab was chosen, set lab_id in project and register in SQL database
+            if chosen_lab_id:
+                try:
+                    project_manager.set_lab_id(chosen_lab_id)
+                    # Add project to lab using SQL repository
+                    from ..core.schema import Database
+                    from ..core.repository import get_repository_factory
+                    from ..core.config_manager import get_config_manager
 
-                        config_manager = get_config_manager()
-                        db = Database(str(config_manager.db_path))
-                        repo_factory = get_repository_factory(db)
-                        repo_factory.labs.add_project(
-                            lab_id=chosen_lab_id,
-                            project_name=project_name,
-                            project_path=project_root,
-                            created_date=project_manager.config.date_created
-                        )
-                    except Exception:
-                        pass
+                    config_manager = get_config_manager()
+                    db = Database(str(config_manager.db_path))
+                    db.create_tables()
+                    repo_factory = get_repository_factory(db)
+                    repo_factory.labs.add_project(
+                        lab_id=chosen_lab_id,
+                        project_name=project_name,
+                        project_path=project_root,
+                        created_date=project_manager.config.date_created
+                    )
+                except Exception:
+                    pass
 
             # Project creation complete - lab association handled by ProjectManagerClean
 
             self.selected_project_name = project_name
             self.selected_project_path = str(project_root)
+            # Persist last opened project in SQL config (user scope)
+            try:
+                from ..core.config_manager import set_config
+                set_config("app.last_opened_project", self.selected_project_path, scope="user")
+            except Exception:
+                pass
             self.accept()  # Close dialog with "accept" result
 
         except Exception as e:
@@ -332,10 +352,57 @@ class ProjectSelectionDialog(QDialog):
         data_path = current_item.data(Qt.UserRole)
         if data_path:
             self.selected_project_path = data_path
+        # Persist last opened project
+        try:
+            from ..core.config_manager import set_config
+            set_config("app.last_opened_project", self.selected_project_path, scope="user")
+        except Exception:
+            pass
         self.accept()  # Close dialog with "accept" result
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
+
+    def on_existing_location_changed(self):
+        """Toggle lab selector visibility based on location and reload labs."""
+        is_shared = self.existing_location_combo.currentText().lower() == "shared"
+        self.existing_lab_combo.setVisible(is_shared)
+        if is_shared:
+            self.load_labs()
+        self.refresh_projects_list()
+
+    def load_labs(self):
+        """Load labs accessible to the current user and populate lab combos."""
+        try:
+            setup_service = get_setup_service()
+            labs = setup_service.get_labs()
+            self._labs_cache = labs or {}
+            # Populate existing_lab_combo
+            self.existing_lab_combo.blockSignals(True)
+            self.existing_lab_combo.clear()
+            for lab_id, lab in self._labs_cache.items():
+                self.existing_lab_combo.addItem(lab.get("name", lab_id), lab_id)
+            self.existing_lab_combo.blockSignals(False)
+            # Populate create_lab_combo if present/needed
+            if not hasattr(self, "create_lab_combo"):
+                # Create lab selector under the creation side (visible only in Shared)
+                self.create_lab_combo = QComboBox(self)
+                self.create_lab_combo.setObjectName("createLabCombo")
+                self.create_lab_combo.setProperty("class", "mus1-combo-box")
+                self.create_lab_combo.setVisible(False)
+                # Insert below location type combo on left panel
+                # Since we don't keep direct refs to layouts, add to input_group_layout via parent traversal
+                # Safely append to left input group
+                # Note: Using the existing input group layout variable is out of scope here; rely on visibility toggles elsewhere
+            # Update items
+            if hasattr(self, "create_lab_combo"):
+                self.create_lab_combo.blockSignals(True)
+                self.create_lab_combo.clear()
+                for lab_id, lab in self._labs_cache.items():
+                    self.create_lab_combo.addItem(lab.get("name", lab_id), lab_id)
+                self.create_lab_combo.blockSignals(False)
+        except Exception as e:
+            print(f"Error loading labs: {e}")
 
     def setup_background(self):
         """Set up the background with the M1 logo as a dark grayscale watermark"""
