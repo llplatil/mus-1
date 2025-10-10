@@ -4,7 +4,7 @@ dynamic = ["version"]
 description = "MUS1 Behavior Analysis Tool"
 requires-python = ">=3.10"
 dependencies = [
-  "PySide6>=6.5.2",
+  "PyQt6>=6.5.0",
   "qt-material>=2.14.0",
   "pydantic>=1.9.0",
   "pandas>=1.5.0",

@@ -1,6 +1,18 @@
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QPushButton, QButtonGroup, QListWidget, QListWidgetItem, QSizePolicy, QTextEdit, QLabel, QScrollArea, QFrame
-from PySide6.QtCore import Signal, Qt
-from PySide6.QtGui import QColor, QTextCharFormat, QFont, QTextOption
+# Qt imports - platform-specific handling
+try:
+    from PyQt6.QtWidgets import QWidget, QVBoxLayout, QPushButton, QButtonGroup, QListWidget, QListWidgetItem, QSizePolicy, QTextEdit, QLabel, QScrollArea, QFrame
+    from PyQt6.QtCore import Qt, pyqtSignal as Signal
+    from PyQt6.QtGui import QColor, QTextCharFormat, QFont, QTextOption
+    QT_BACKEND = "PyQt6"
+except ImportError:
+    try:
+        from PySide6.QtWidgets import QWidget, QVBoxLayout, QPushButton, QButtonGroup, QListWidget, QListWidgetItem, QSizePolicy, QTextEdit, QLabel, QScrollArea, QFrame
+        from PySide6.QtCore import Signal, Qt
+        from PySide6.QtGui import QColor, QTextCharFormat, QFont, QTextOption
+        QT_BACKEND = "PySide6"
+    except ImportError:
+        raise ImportError("Neither PyQt6 nor PySide6 is available. Please install a Qt Python binding.")
+
 from datetime import datetime
 import logging
 
@@ -57,7 +69,7 @@ class NavigationPane(QWidget):
         
         # Create a container for the log section to group label and display
         self.log_container = QFrame()
-        self.log_container.setFrameShape(QFrame.NoFrame)
+        self.log_container.setFrameShape(QFrame.Shape.NoFrame)
         self.log_container.setObjectName("logContainer")
         self.log_container.setProperty("class", "mus1-log-container")
         
@@ -68,7 +80,7 @@ class NavigationPane(QWidget):
         
         # Create log display label inside the container
         self.log_label = QLabel("Log Messages")
-        self.log_label.setAlignment(Qt.AlignLeft)
+        self.log_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
         self.log_label.setObjectName("logLabel")
         self.log_label.setProperty("class", "mus1-log-label")
         log_container_layout.addWidget(self.log_label)
@@ -82,9 +94,9 @@ class NavigationPane(QWidget):
         self.log_display.setMinimumHeight(self.MIN_LOG_HEIGHT)
         
         # Setup log display properties
-        self.log_display.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.log_display.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.log_display.document().setMaximumBlockCount(100)  # Keep up to 100 log messages
-        self.log_display.setLineWrapMode(QTextEdit.WidgetWidth)
+        self.log_display.setLineWrapMode(QTextEdit.LineWrapMode.WidgetWidth)
         
         # Add the log display to the container layout
         log_container_layout.addWidget(self.log_display, 1)  # Give it stretch to fill the container
@@ -115,7 +127,7 @@ class NavigationPane(QWidget):
         fmt = QTextCharFormat()
         fmt.setForeground(color)
         font = QFont()
-        font.setWeight(QFont.Normal)
+        font.setWeight(QFont.Weight.Normal)
         fmt.setFont(font)
         return fmt
 
@@ -129,7 +141,7 @@ class NavigationPane(QWidget):
         button.clicked.connect(lambda _, idx=index: self.button_clicked.emit(idx))
         
         # Set button size policy and fixed height for consistency
-        button_policy = QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        button_policy = QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         button.setSizePolicy(button_policy)
         button.setFixedHeight(self.BUTTON_HEIGHT)
         
@@ -302,7 +314,7 @@ class NavigationPane(QWidget):
         self.log_display.verticalScrollBar().setValue(self.log_display.verticalScrollBar().maximum())
         
         # Ensure word wrap is enabled - this is now consistent with the WidgetWidth line wrap mode
-        self.log_display.setWordWrapMode(QTextOption.WordWrap)
+        self.log_display.setWordWrapMode(QTextOption.WrapMode.WordWrap)
         
     def clear_log(self):
         """Clear all log messages"""

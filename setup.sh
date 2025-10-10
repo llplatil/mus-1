@@ -95,6 +95,21 @@ else
     python -m pip install -e .
 fi
 
+# Platform-specific Qt setup
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    info "macOS detected - ensuring Qt platform support..."
+
+    # Check if PyQt6 is available and working
+    if python3 -c "import PyQt6.QtWidgets; import sys; app = PyQt6.QtWidgets.QApplication(sys.argv); print('PyQt6 OK')" 2>/dev/null; then
+        info "PyQt6 is working correctly on macOS"
+    elif python3 -c "import PySide6.QtWidgets; import sys; app = PySide6.QtWidgets.QApplication(sys.argv); print('PySide6 OK')" 2>/dev/null; then
+        warning "PyQt6 failed, but PySide6 appears to work - you may experience GUI issues"
+    else
+        warning "Neither PyQt6 nor PySide6 can initialize QApplication on macOS"
+        warning "GUI may not work - try: brew install qt6 && pip install PyQt6 --force-reinstall"
+    fi
+fi
+
 success "MUS1 installation complete!"
 
 if ! $QUIET; then

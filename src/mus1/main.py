@@ -2,48 +2,68 @@ import logging
 import sys
 from pathlib import Path
 
-
-from PySide6.QtWidgets import QApplication, QMessageBox
-from PySide6.QtGui import QIcon
-
 # Core components
 from .core.logging_bus import LoggingEventBus
-from .core.config_manager import ConfigManager, resolve_mus1_root, get_root_pointer_info
+from .core.config_manager import ConfigManager, resolve_mus1_root, get_root_pointer_info, get_config
 from .core.theme_manager import ThemeManager
+
+# Qt imports - platform-specific handling
+try:
+    from PyQt6.QtWidgets import QApplication
+    from PyQt6.QtGui import QIcon
+    QT_BACKEND = "PyQt6"
+except ImportError:
+    try:
+        from PySide6.QtWidgets import QApplication
+        from PySide6.QtGui import QIcon
+        QT_BACKEND = "PySide6"
+    except ImportError:
+        raise ImportError("Neither PyQt6 nor PySide6 is available. Please install a Qt Python binding.")
 
 def main():
     """MUS1 GUI Application Entry Point"""
+    # Create QApplication FIRST before any widgets/dialogs are constructed
+    app = QApplication(sys.argv)
+
     # Initialize core components
     log_bus = LoggingEventBus.get_instance()
-    # Configure a single rotating file handler under the resolved MUS1 root
+
+    # If a root pointer exists but is invalid, prompt user to locate a valid root
     info = get_root_pointer_info()
     if info.get("exists") and info.get("target") and not info.get("valid"):
-        # Pointer exists but target is missing/unavailable; prompt user
         reply = QMessageBox.question(
             None,
             "Configuration Not Found",
             f"The configured MUS1 root at '{info['target']}' is unavailable.\n"
             "Would you like to locate an existing configuration?",
-            QMessageBox.Yes | QMessageBox.No
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
-        if reply == QMessageBox.Yes:
-            from PySide6.QtWidgets import QFileDialog
+        if reply == QMessageBox.StandardButton.Yes:
+            from PyQt6.QtWidgets import QFileDialog
             selected = QFileDialog.getExistingDirectory(None, "Select MUS1 Configuration Root")
             if selected:
                 from .core.config_manager import set_root_pointer
                 set_root_pointer(Path(selected))
         # Proceed with normal resolution after any update
-    mus1_root = resolve_mus1_root()
+
+    # Configure a single rotating file handler under the resolved MUS1 root
+    # Prefer configured MUS1 root when present; fall back to deterministic resolution
+    configured_root = get_config("mus1.root_path")
+    mus1_root = Path(configured_root) if configured_root else resolve_mus1_root()
     (mus1_root / "logs").mkdir(exist_ok=True)
     log_bus.configure_default_file_handler(mus1_root / "logs", max_size=5 * 1024 * 1024, backups=3)
+
     config_manager = ConfigManager()
+    # One-time migration: move legacy user profile keys to SQL if present
+    try:
+        from .core.setup_service import get_setup_service
+        get_setup_service().migrate_legacy_user_profile_if_needed()
+    except Exception:
+        pass
     theme_manager = ThemeManager(config_manager)
 
     logger = logging.getLogger('mus1')
     logger.info("Launching MUS1 GUI...")
-
-    app = QApplication(sys.argv)
-
     # Set application icon
     app_icon = QIcon()
     icon_dir = Path(__file__).parent / "themes"
@@ -71,9 +91,9 @@ def main():
             reply = QMessageBox.question(
                 None, "Setup Required",
                 "MUS1 requires initial setup to continue. Would you like to run setup again?",
-                QMessageBox.Yes | QMessageBox.No
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
             )
-            if reply == QMessageBox.Yes:
+            if reply == QMessageBox.StandardButton.Yes:
                 setup_wizard = show_setup_wizard()
                 if setup_wizard is None:
                     sys.exit(0)  # User cancelled again - exit cleanly

@@ -1,14 +1,22 @@
-from PySide6.QtWidgets import (
-    QWidget, QHBoxLayout, QVBoxLayout, QStackedWidget, QListWidget,
-    QGroupBox, QFormLayout, QLineEdit, QComboBox, QTextEdit, QPushButton, QLabel, QDateTimeEdit, QCheckBox,
-    QSpinBox, QDoubleSpinBox, QSlider, QFileDialog, QAbstractItemView
-)
+# Qt imports - platform-specific handling
+try:
+    from PyQt6.QtWidgets import *
+    from PyQt6.QtCore import *
+    from PyQt6.QtGui import *
+    QT_BACKEND = "PyQt6"
+except ImportError:
+    try:
+        from PySide6.QtWidgets import *
+        from PySide6.QtCore import *
+        from PySide6.QtGui import *
+        QT_BACKEND = "PySide6"
+    except ImportError:
+        raise ImportError("Neither PyQt6 nor PySide6 is available. Please install a Qt Python binding.")
+
 from ..core.metadata import Sex
 from .navigation_pane import NavigationPane  
 from .base_view import BaseView
-from PySide6.QtCore import QDateTime
 from ..core.logging_bus import LoggingEventBus
-from PySide6.QtCore import Qt
 from .metadata_display import MetadataTreeView  # Import for overview display
 from pathlib import Path
 from .gui_services import GUISubjectService
@@ -128,14 +136,14 @@ class SubjectView(BaseView):
         
         # Add notification label for status messages
         self.subject_notification_label = QLabel("")
-        self.subject_notification_label.setAlignment(Qt.AlignCenter)
+        self.subject_notification_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         add_layout.addWidget(self.subject_notification_label)
         
         # Create a list widget for displaying all subjects
         subjects_group, subjects_layout = self.create_form_section("All Subjects", add_layout)
         self.subjects_list = QListWidget()
         self.subjects_list.setProperty("class", "mus1-list-widget")
-        self.subjects_list.setSelectionMode(QListWidget.SingleSelection)
+        self.subjects_list.setSelectionMode(QListWidget.SelectionMode.SingleSelection)
         subjects_layout.addWidget(self.subjects_list)
         
         # Add buttons for subject operations
@@ -692,7 +700,7 @@ class SubjectView(BaseView):
         available_genotype_col, available_genotype_layout = self.create_form_section("Available Genotypes:", None, is_subgroup=True)
         self.all_genotypes_list = QListWidget()
         self.all_genotypes_list.setProperty("class", "mus1-list-widget")
-        self.all_genotypes_list.setSelectionMode(QListWidget.ExtendedSelection)
+        self.all_genotypes_list.setSelectionMode(QListWidget.SelectionMode.ExtendedSelection)
         available_genotype_layout.addWidget(self.all_genotypes_list)
         available_genotype_buttons = self.create_button_row(available_genotype_layout, True)
         add_to_active_genotype_button = QPushButton("Add Selected to Active →")
@@ -703,7 +711,7 @@ class SubjectView(BaseView):
         active_genotype_col, active_genotype_layout = self.create_form_section("Active Genotypes:", None, is_subgroup=True)
         self.current_genotypes_list = QListWidget()
         self.current_genotypes_list.setProperty("class", "mus1-list-widget")
-        self.current_genotypes_list.setSelectionMode(QListWidget.ExtendedSelection)
+        self.current_genotypes_list.setSelectionMode(QListWidget.SelectionMode.ExtendedSelection)
         active_genotype_layout.addWidget(self.current_genotypes_list)
         active_genotype_buttons = self.create_button_row(active_genotype_layout, True)
         remove_genotype_button = QPushButton("← Remove Selected")
@@ -747,7 +755,7 @@ class SubjectView(BaseView):
         available_treatment_col, available_treatment_layout = self.create_form_section("Available Treatments:", None, is_subgroup=True)
         self.all_treatments_list = QListWidget()
         self.all_treatments_list.setProperty("class", "mus1-list-widget")
-        self.all_treatments_list.setSelectionMode(QListWidget.ExtendedSelection)
+        self.all_treatments_list.setSelectionMode(QListWidget.SelectionMode.ExtendedSelection)
         available_treatment_layout.addWidget(self.all_treatments_list)
         available_treatment_buttons = self.create_button_row(available_treatment_layout, True)
         add_to_active_treatment_button = QPushButton("Add Selected to Active →")
@@ -758,7 +766,7 @@ class SubjectView(BaseView):
         active_treatment_col, active_treatment_layout = self.create_form_section("Active Treatments:", None, is_subgroup=True)
         self.current_treatments_list = QListWidget()
         self.current_treatments_list.setProperty("class", "mus1-list-widget")
-        self.current_treatments_list.setSelectionMode(QListWidget.ExtendedSelection)
+        self.current_treatments_list.setSelectionMode(QListWidget.SelectionMode.ExtendedSelection)
         active_treatment_layout.addWidget(self.current_treatments_list)
         active_treatment_buttons = self.create_button_row(active_treatment_layout, True)
         remove_treatment_button = QPushButton("← Remove Selected")
@@ -791,7 +799,7 @@ class SubjectView(BaseView):
 
         self.all_bodyparts_list = QListWidget()
         self.all_bodyparts_list.setProperty("class", "mus1-list-widget")
-        self.all_bodyparts_list.setSelectionMode(QListWidget.ExtendedSelection)
+        self.all_bodyparts_list.setSelectionMode(QListWidget.SelectionMode.ExtendedSelection)
         master_layout.addWidget(self.all_bodyparts_list)
 
         master_buttons_row = self.create_button_row(master_layout) # Keep this row
@@ -814,7 +822,7 @@ class SubjectView(BaseView):
 
         self.current_body_parts_list = QListWidget()
         self.current_body_parts_list.setProperty("class", "mus1-list-widget")
-        self.current_body_parts_list.setSelectionMode(QListWidget.ExtendedSelection)
+        self.current_body_parts_list.setSelectionMode(QListWidget.SelectionMode.ExtendedSelection)
         active_layout.addWidget(self.current_body_parts_list)
 
         active_buttons_row = self.create_button_row(active_layout) # Keep this row
@@ -926,7 +934,7 @@ class SubjectView(BaseView):
         available_column, available_layout = self.create_form_section("Available Objects:", None, is_subgroup=True)
         self.all_objects_list = QListWidget()
         self.all_objects_list.setProperty("class", "mus1-list-widget")
-        self.all_objects_list.setSelectionMode(QListWidget.ExtendedSelection)
+        self.all_objects_list.setSelectionMode(QListWidget.SelectionMode.ExtendedSelection)
         available_layout.addWidget(self.all_objects_list)
         
         # Button row for available (master) objects
@@ -944,7 +952,7 @@ class SubjectView(BaseView):
         active_column, active_layout = self.create_form_section("Active Objects:", None, is_subgroup=True)
         self.current_objects_list = QListWidget()
         self.current_objects_list.setProperty("class", "mus1-list-widget")
-        self.current_objects_list.setSelectionMode(QListWidget.ExtendedSelection)
+        self.current_objects_list.setSelectionMode(QListWidget.SelectionMode.ExtendedSelection)
         active_layout.addWidget(self.current_objects_list)
         
         # Button row for active objects with a "move back" button
@@ -1061,7 +1069,7 @@ class SubjectView(BaseView):
     def set_overview_edit_mode(self, checked):
         """Toggle inline editing of subject rows in the overview tree."""
         # Adjust edit triggers
-        triggers = QAbstractItemView.AllEditTriggers if checked else QAbstractItemView.NoEditTriggers
+        triggers = QAbstractItemView.EditTrigger.AllEditTriggers if checked else QAbstractItemView.EditTrigger.NoEditTriggers
         self.metadata_tree.setEditTriggers(triggers)
 
         # Connect or disconnect itemChanged handler

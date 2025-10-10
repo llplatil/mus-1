@@ -60,17 +60,20 @@ class ProjectDiscoveryService:
         """
         Get the appropriate project root directory for project selection dialogs.
 
+        This is used as a hint for where to start browsing, but the dialog
+        discovers projects from all configured locations.
+
         Returns:
             Path to use as the root for project dialogs
         """
-        # Priority: user-configured default, then shared storage, then fallback
+        # Priority: user-configured default, then shared storage root, then local projects
         default_dir = get_config("user.default_projects_dir")
         if default_dir:
             return Path(default_dir)
 
         shared_root = get_config("storage.shared_root")
         if shared_root:
-            return Path(shared_root) / "Projects"
+            return Path(shared_root)  # Return shared root directly, not Projects subdirectory
 
         # Fallback to current directory
         return Path.cwd() / "projects"
@@ -79,12 +82,17 @@ class ProjectDiscoveryService:
         """
         Discover all existing projects from configured locations.
 
+        Priority:
+        1. Lab-registered projects (most authoritative)
+        2. Filesystem scan of user default directory
+        3. Filesystem scan of shared storage root (not Projects subdirectory)
+
         Returns:
             List of project directory paths
         """
         projects = []
 
-        # Check lab configurations first
+        # Priority 1: Lab configurations (single source of truth)
         from .setup_service import get_setup_service
         setup_service = get_setup_service()
         labs = setup_service.get_labs()  # Now uses SQL data
@@ -97,16 +105,15 @@ class ProjectDiscoveryService:
                     (project_path / "mus1.db").exists()):
                     projects.append(project_path)
 
-        # Check user default directory
+        # Priority 2: User default directory
         default_dir = get_config("user.default_projects_dir")
         if default_dir:
             self._discover_projects_in_directory(Path(default_dir), projects)
 
-        # Check shared storage
+        # Priority 3: Shared storage root (scan entire shared root, not just Projects/)
         shared_root = get_config("storage.shared_root")
         if shared_root:
-            shared_projects_dir = Path(shared_root) / "Projects"
-            self._discover_projects_in_directory(shared_projects_dir, projects)
+            self._discover_projects_in_directory(Path(shared_root), projects)
 
         return projects
 

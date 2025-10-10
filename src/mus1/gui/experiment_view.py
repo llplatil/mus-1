@@ -1,8 +1,21 @@
-from PySide6.QtWidgets import (QWidget, QVBoxLayout, QFormLayout, QLabel, QLineEdit,
-                         QComboBox, QDateTimeEdit, QPushButton, QGroupBox, QScrollArea,
-                         QCheckBox, QMessageBox, QListWidget, QListWidgetItem, QTextEdit, QHBoxLayout,
-                         QFileDialog, QTableWidget, QTableWidgetItem, QHeaderView, QSpinBox, QDoubleSpinBox, QAbstractItemView, QStackedWidget, QLayout)
-from PySide6.QtCore import QTimer, Qt, QDateTime
+# Qt imports - platform-specific handling
+try:
+    from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QFormLayout, QLabel, QLineEdit,
+                            QComboBox, QDateTimeEdit, QPushButton, QGroupBox, QScrollArea,
+                            QCheckBox, QMessageBox, QListWidget, QListWidgetItem, QTextEdit, QHBoxLayout,
+                            QFileDialog, QTableWidget, QTableWidgetItem, QHeaderView, QSpinBox, QDoubleSpinBox, QAbstractItemView, QStackedWidget, QLayout)
+    from PyQt6.QtCore import QTimer, Qt, QDateTime
+    QT_BACKEND = "PyQt6"
+except ImportError:
+    try:
+        from PySide6.QtWidgets import (QWidget, QVBoxLayout, QFormLayout, QLabel, QLineEdit,
+                                QComboBox, QDateTimeEdit, QPushButton, QGroupBox, QScrollArea,
+                                QCheckBox, QMessageBox, QListWidget, QListWidgetItem, QTextEdit, QHBoxLayout,
+                                QFileDialog, QTableWidget, QTableWidgetItem, QHeaderView, QSpinBox, QDoubleSpinBox, QAbstractItemView, QStackedWidget, QLayout)
+        from PySide6.QtCore import QTimer, Qt, QDateTime
+        QT_BACKEND = "PySide6"
+    except ImportError:
+        raise ImportError("Neither PyQt6 nor PySide6 is available. Please install a Qt Python binding.")
 from datetime import datetime
 from .navigation_pane import NavigationPane
 from .base_view import BaseView
@@ -74,7 +87,7 @@ class ExperimentView(BaseView):
 
         # Layout for the inner widget
         page_layout = QVBoxLayout(page_widget)
-        page_layout.setAlignment(Qt.AlignTop)
+        page_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         page_layout.setSpacing(self.SECTION_SPACING)
 
         # --- 1. Recording Details (placed first) ---
@@ -189,7 +202,7 @@ class ExperimentView(BaseView):
         # Importer Plugins (includes handler-type plugins)
         importer_group, importer_layout = self.create_form_section("Importer Plugins", page_layout)
         self.importer_plugin_list = QListWidget()
-        self.importer_plugin_list.setSelectionMode(QAbstractItemView.MultiSelection)
+        self.importer_plugin_list.setSelectionMode(QAbstractItemView.SelectionMode.MultiSelection)
         self.importer_plugin_list.itemSelectionChanged.connect(self._update_add_button_state)
         self.importer_plugin_list.itemSelectionChanged.connect(self._on_plugin_selection_changed)
         importer_layout.addWidget(self.importer_plugin_list)
@@ -200,7 +213,7 @@ class ExperimentView(BaseView):
         # Analysis Plugins
         analysis_group, analysis_layout = self.create_form_section("Analysis Plugins", page_layout)
         self.analysis_plugin_list = QListWidget()
-        self.analysis_plugin_list.setSelectionMode(QAbstractItemView.MultiSelection)
+        self.analysis_plugin_list.setSelectionMode(QAbstractItemView.SelectionMode.MultiSelection)
         self.analysis_plugin_list.itemSelectionChanged.connect(self._update_add_button_state)
         self.analysis_plugin_list.itemSelectionChanged.connect(self._on_plugin_selection_changed)
         analysis_layout.addWidget(self.analysis_plugin_list)
@@ -208,7 +221,7 @@ class ExperimentView(BaseView):
         # Exporter Plugins
         exporter_group, exporter_layout = self.create_form_section("Exporter Plugins", page_layout)
         self.exporter_plugin_list = QListWidget()
-        self.exporter_plugin_list.setSelectionMode(QAbstractItemView.MultiSelection)
+        self.exporter_plugin_list.setSelectionMode(QAbstractItemView.SelectionMode.MultiSelection)
         self.exporter_plugin_list.itemSelectionChanged.connect(self._update_add_button_state)
         self.exporter_plugin_list.itemSelectionChanged.connect(self._on_plugin_selection_changed)
         exporter_layout.addWidget(self.exporter_plugin_list)
@@ -258,7 +271,7 @@ class ExperimentView(BaseView):
         self.multi_exp_table = QTableWidget(0, 6)
         self.multi_exp_table.setHorizontalHeaderLabels(["Experiment ID", "Subject", "Type", "Date", "Stage", "Video Path"])
         self.multi_exp_table.horizontalHeader().setStretchLastSection(True)
-        self.multi_exp_table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.multi_exp_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         page_layout.addWidget(self.multi_exp_table)
 
         # Buttons row
@@ -391,7 +404,7 @@ class ExperimentView(BaseView):
         
         # Notification Label
         self.batch_notification_label = QLabel("")
-        self.batch_notification_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.batch_notification_label.setAlignment(Qt.AlignmentFlag.AlignmentFlag.AlignCenter)
         batch_layout.addWidget(self.batch_notification_label)
 
         # Add stretch to keep elements at the top
@@ -1057,11 +1070,11 @@ class ExperimentView(BaseView):
                 row_item = self.plugin_fields_layout.takeAt(0)
                 if row_item:
                     # Remove label if it exists
-                    label_item = self.plugin_fields_layout.itemAt(0, QFormLayout.LabelRole)
+                    label_item = self.plugin_fields_layout.itemAt(0, QFormLayout.ItemRole.LabelRole)
                     if label_item and label_item.widget():
                         label_item.widget().deleteLater()
                     # Remove field widget/layout if it exists
-                    field_item = self.plugin_fields_layout.itemAt(0, QFormLayout.FieldRole)
+                    field_item = self.plugin_fields_layout.itemAt(0, QFormLayout.ItemRole.FieldRole)
                     if field_item:
                         if field_item.widget():
                              field_item.widget().deleteLater()

@@ -1,9 +1,17 @@
-from PySide6.QtWidgets import (
-    QTreeWidget, QTreeWidgetItem, QWidget, QVBoxLayout, 
-    QLabel, QFrame, QTableWidget, QTableWidgetItem, QHeaderView, QCheckBox, QSizePolicy, QHBoxLayout,
-    QAbstractItemView
-)
-from PySide6.QtCore import Qt, Signal
+# Qt imports - platform-specific handling
+try:
+    from PyQt6.QtWidgets import *
+    from PyQt6.QtCore import pyqtSignal as Signal
+    from PyQt6.QtGui import *
+    QT_BACKEND = "PyQt6"
+except ImportError:
+    try:
+        from PySide6.QtWidgets import *
+        from PySide6.QtCore import Signal
+        from PySide6.QtGui import *
+        QT_BACKEND = "PySide6"
+    except ImportError:
+        raise ImportError("Neither PyQt6 nor PySide6 is available. Please install a Qt Python binding.")
 from datetime import datetime
 from typing import Any, Union
 
@@ -74,14 +82,14 @@ class MetadataTreeView(QTreeWidget):
         # Set up tree view appearance
         self.setHeaderHidden(False)
         self.setAlternatingRowColors(True)
-        self.setSelectionMode(QTreeWidget.SingleSelection)
-        self.setSelectionBehavior(QTreeWidget.SelectRows)
+        self.setSelectionMode(QTreeWidget.SelectionMode.SingleSelection)
+        self.setSelectionBehavior(QTreeWidget.SelectionBehavior.SelectRows)
         # Disable inline editing by default – SubjectView toggles this
-        self.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         
         # Configure sizing
         self.setMinimumHeight(200)
-        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         
         # Enable clickable header sorting
         header = self.header()
@@ -101,7 +109,7 @@ class MetadataTreeView(QTreeWidget):
         for subject_id, subject in subjects_dict.items():
             item = SubjectTreeWidgetItem(self)
             # Allow editing (SubjectView guards commit handling)
-            item.setFlags(item.flags() | Qt.ItemIsEditable)
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
             item.setText(0, subject_id)
             item.setText(1, subject.sex.value if hasattr(subject.sex, 'value') else str(subject.sex))
             # Safely handle missing genotype values
@@ -359,7 +367,7 @@ class MetadataGridDisplay(QWidget):
                     cell_widget = QWidget()
                     layout = QHBoxLayout(cell_widget)
                     layout.addWidget(checkbox)
-                    layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                    layout.setAlignment(Qt.AlignmentFlag.AlignmentFlag.AlignCenter)
                     layout.setContentsMargins(0,0,0,0)
                     self.table.setCellWidget(row, col, cell_widget)
 
@@ -395,7 +403,7 @@ class MetadataGridDisplay(QWidget):
 
                 # Common alignment for non-checkbox cells
                 if not (selectable and key == checkbox_column):
-                    self.table.item(row, col).setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+                    self.table.item(row, col).setTextAlignment(Qt.AlignmentFlag.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignmentFlag.AlignVCenter)
                 
         self.table.resizeRowsToContents()
         self.table.setSortingEnabled(True) # Re-enable sorting

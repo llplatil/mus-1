@@ -1,5 +1,15 @@
-from PySide6.QtWidgets import QMainWindow, QTabWidget, QDialog, QMenu, QMenuBar, QApplication
-from PySide6.QtGui import QAction, QIcon, QPixmap
+# Qt imports - platform-specific handling
+try:
+    from PyQt6.QtWidgets import QMainWindow, QTabWidget, QDialog, QMenu, QMenuBar, QApplication
+    from PyQt6.QtGui import QAction, QIcon, QPixmap
+    QT_BACKEND = "PyQt6"
+except ImportError:
+    try:
+        from PySide6.QtWidgets import QMainWindow, QTabWidget, QDialog, QMenu, QMenuBar, QApplication
+        from PySide6.QtGui import QAction, QIcon, QPixmap
+        QT_BACKEND = "PySide6"
+    except ImportError:
+        raise ImportError("Neither PyQt6 nor PySide6 is available. Please install a Qt Python binding.")
 from .project_view import ProjectView
 from .subject_view import SubjectView
 from .experiment_view import ExperimentView
@@ -12,7 +22,6 @@ from ..core import ThemeManager
 import logging
 import sys
 from pathlib import Path
-from PySide6.QtCore import Qt, Signal
 
 logger = logging.getLogger("mus1.gui.main_window")
 
@@ -58,7 +67,7 @@ class MainWindow(QMainWindow):
         self.tab_widget = QTabWidget(self)
         self.tab_widget.setObjectName("mainTabs")
         self.tab_widget.setProperty("class", "mus1-tab-widget")
-        self.tab_widget.setTabPosition(QTabWidget.North)
+        self.tab_widget.setTabPosition(QTabWidget.TabPosition.North)
         self.tab_widget.setContentsMargins(0, 0, 0, 0)
         self.setCentralWidget(self.tab_widget)
 
@@ -358,13 +367,13 @@ class MainWindow(QMainWindow):
         # Welcome message
         welcome_label = QLabel("Welcome to MUS1!")
         welcome_label.setStyleSheet("font-size: 18px; font-weight: bold; color: #2e7d32;")
-        welcome_label.setAlignment(Qt.AlignCenter)
+        welcome_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(welcome_label)
 
         # Setup completion message
         setup_msg = QLabel("Your MUS1 setup is complete! Now let's get you started with your first project.")
         setup_msg.setWordWrap(True)
-        setup_msg.setAlignment(Qt.AlignCenter)
+        setup_msg.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(setup_msg)
 
         layout.addStretch()
@@ -393,7 +402,7 @@ class MainWindow(QMainWindow):
         if existing_projects:
             count_label = QLabel(f"You have {len(existing_projects)} existing project(s) configured.")
             count_label.setStyleSheet("color: gray; font-size: 11px;")
-            count_label.setAlignment(Qt.AlignCenter)
+            count_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             layout.addWidget(count_label)
 
         dialog.exec()

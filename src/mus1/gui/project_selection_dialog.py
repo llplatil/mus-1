@@ -1,13 +1,28 @@
 from pathlib import Path
 import os
 
-from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QPushButton, QLineEdit, QMessageBox,
-    QGridLayout, QFrame, QListWidget, QListWidgetItem, QFileDialog, QCheckBox, QWidget,
-    QApplication
-)
-from PySide6.QtCore import Qt, QSize, Signal
-from PySide6.QtGui import QPixmap, QPalette, QBrush, QColor, QPainter, QImage, QIcon
+# Qt imports - platform-specific handling
+try:
+    from PyQt6.QtWidgets import (
+        QDialog, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QPushButton, QLineEdit, QMessageBox,
+        QGridLayout, QFrame, QListWidget, QListWidgetItem, QFileDialog, QCheckBox, QWidget,
+        QApplication
+    )
+    from PyQt6.QtCore import Qt, QSize, pyqtSignal as Signal
+    from PyQt6.QtGui import QPixmap, QPalette, QBrush, QColor, QPainter, QImage, QIcon
+    QT_BACKEND = "PyQt6"
+except ImportError:
+    try:
+        from PySide6.QtWidgets import (
+            QDialog, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QPushButton, QLineEdit, QMessageBox,
+            QGridLayout, QFrame, QListWidget, QListWidgetItem, QFileDialog, QCheckBox, QWidget,
+            QApplication
+        )
+        from PySide6.QtCore import Qt, QSize, Signal
+        from PySide6.QtGui import QPixmap, QPalette, QBrush, QColor, QPainter, QImage, QIcon
+        QT_BACKEND = "PySide6"
+    except ImportError:
+        raise ImportError("Neither PyQt6 nor PySide6 is available. Please install a Qt Python binding.")
 from ..core.project_manager_clean import ProjectManagerClean
 from ..core.config_manager import get_config, set_config
 from ..core.setup_service import get_setup_service
@@ -41,7 +56,7 @@ class ProjectSelectionDialog(QDialog):
         left_frame = QFrame(self)
         left_frame.setObjectName("newProjectPanel")
         left_frame.setProperty("class", "mus1-panel")
-        left_frame.setFrameStyle(QFrame.Box | QFrame.Plain)
+        left_frame.setFrameStyle(QFrame.Shape.Box | QFrame.Shadow.Plain)
         left_layout = QVBoxLayout(left_frame)
         left_layout.setContentsMargins(20, 20, 20, 20)
         left_layout.setSpacing(5)
@@ -50,7 +65,7 @@ class ProjectSelectionDialog(QDialog):
         new_project_title = QLabel("Create New Project", left_frame)
         new_project_title.setObjectName("newProjectTitle")
         new_project_title.setProperty("class", "mus1-title")
-        new_project_title.setAlignment(Qt.AlignHCenter)
+        new_project_title.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         left_layout.addWidget(new_project_title)
         
         # Input group for project name and optional location
@@ -109,7 +124,7 @@ class ProjectSelectionDialog(QDialog):
         right_frame = QFrame(self)
         right_frame.setObjectName("existingProjectsPanel")
         right_frame.setProperty("class", "mus1-panel")
-        right_frame.setFrameStyle(QFrame.Box | QFrame.Plain)
+        right_frame.setFrameStyle(QFrame.Shape.Box | QFrame.Shadow.Plain)
         right_layout = QVBoxLayout(right_frame)
         right_layout.setContentsMargins(20, 20, 20, 20)
         right_layout.setSpacing(5)
@@ -118,7 +133,7 @@ class ProjectSelectionDialog(QDialog):
         existing_title = QLabel("Existing Projects", right_frame)
         existing_title.setObjectName("existingProjectsTitle")
         existing_title.setProperty("class", "mus1-title")
-        existing_title.setAlignment(Qt.AlignHCenter)
+        existing_title.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         right_layout.addWidget(existing_title)
         
         # Location selector for existing projects
@@ -197,13 +212,13 @@ class ProjectSelectionDialog(QDialog):
                         project_name = proj.get("name") or (project_path.name if project_path else "Unknown")
                         display_name = f"{project_name} (Lab: {lab.get('name','')})"
                         item = QListWidgetItem(display_name)
-                        item.setData(Qt.UserRole, str(project_path) if project_path else "")
-                        item.setData(Qt.UserRole + 1, project_name)
+                        item.setData(Qt.ItemDataRole.UserRole, str(project_path) if project_path else "")
+                        item.setData(Qt.ItemDataRole.UserRole + 1, project_name)
                         self.projects_list.addItem(item)
                 else:
                     # No lab selection or no labs; show hint
                     hint = QListWidgetItem("Select a lab to view shared projects")
-                    hint.setFlags(hint.flags() & ~Qt.ItemIsSelectable)
+                    hint.setFlags(hint.flags() & ~Qt.ItemFlag.ItemIsSelectable)
                     hint.setForeground(QColor("gray"))
                     self.projects_list.addItem(hint)
             else:
@@ -214,8 +229,8 @@ class ProjectSelectionDialog(QDialog):
                 for project_path in project_paths:
                     project_name = project_path.name
                     item = QListWidgetItem(project_name)
-                    item.setData(Qt.UserRole, str(project_path))
-                    item.setData(Qt.UserRole + 1, project_name)
+                    item.setData(Qt.ItemDataRole.UserRole, str(project_path))
+                    item.setData(Qt.ItemDataRole.UserRole + 1, project_name)
                     self.projects_list.addItem(item)
         except Exception as e:
             print(f"Error listing projects: {e}")
@@ -223,7 +238,7 @@ class ProjectSelectionDialog(QDialog):
         # Show helpful message if no projects found
         if self.projects_list.count() == 0:
             empty_item = QListWidgetItem("No projects found. Create your first project!")
-            empty_item.setFlags(empty_item.flags() & ~Qt.ItemIsSelectable)
+            empty_item.setFlags(empty_item.flags() & ~Qt.ItemFlag.ItemIsSelectable)
             empty_item.setForeground(QColor("gray"))
             self.projects_list.addItem(empty_item)
     
@@ -337,7 +352,7 @@ class ProjectSelectionDialog(QDialog):
             return
 
         # Get clean project name (stored separately to avoid lab info in name)
-        clean_name = current_item.data(Qt.UserRole + 1)
+        clean_name = current_item.data(Qt.ItemDataRole.UserRole + 1)
         if clean_name:
             self.selected_project_name = clean_name
         else:
@@ -349,7 +364,7 @@ class ProjectSelectionDialog(QDialog):
                 self.selected_project_name = text
 
         # Capture full path from user data
-        data_path = current_item.data(Qt.UserRole)
+        data_path = current_item.data(Qt.ItemDataRole.UserRole)
         if data_path:
             self.selected_project_path = data_path
         # Persist last opened project
@@ -436,13 +451,13 @@ class ProjectSelectionDialog(QDialog):
             # Scale the logo to fill the entire dialog background using KeepAspectRatioByExpanding
             scaled_pixmap = darkened_pixmap.scaled(
                 self.size(),
-                Qt.KeepAspectRatioByExpanding,
-                Qt.SmoothTransformation
+                Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+                Qt.TransformationMode.SmoothTransformation
             )
                 
             # Create a semi-transparent version of the logo
             transparent_pixmap = QPixmap(self.size())
-            transparent_pixmap.fill(Qt.transparent)
+            transparent_pixmap.fill(Qt.GlobalColor.transparent)
             
             # Center the image in the pixmap
             painter = QPainter(transparent_pixmap)

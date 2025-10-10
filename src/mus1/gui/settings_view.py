@@ -1,3 +1,17 @@
+# Qt imports - platform-specific handling
+try:
+    from PyQt6.QtWidgets import *
+    from PyQt6.QtCore import *
+    from PyQt6.QtGui import *
+    QT_BACKEND = "PyQt6"
+except ImportError:
+    try:
+        from PySide6.QtWidgets import *
+        from PySide6.QtCore import *
+        from PySide6.QtGui import *
+        QT_BACKEND = "PySide6"
+    except ImportError:
+        raise ImportError("Neither PyQt6 nor PySide6 is available. Please install a Qt Python binding.")
 """
 Settings View - GUI for application-wide settings including users, labs, and workers.
 
@@ -7,12 +21,6 @@ This view provides centralized management for:
 - Worker configuration for distributed processing
 """
 
-from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, QLineEdit,
-    QComboBox, QPushButton, QListWidget, QLabel, QFileDialog,
-    QCheckBox, QSpinBox, QDoubleSpinBox, QSlider, QMessageBox,
-    QListWidgetItem, QProgressBar, QFormLayout, QTextEdit
-)
 from pathlib import Path
 from .base_view import BaseView
 from typing import Dict, Any

@@ -217,6 +217,34 @@ class SetupService:
         for subdir in subdirs:
             (root_dto.path / subdir).mkdir(exist_ok=True)
 
+        # Optionally copy existing configuration into the new root
+        # Only copy if requested and a valid source exists (has config/config.db)
+        if root_dto.copy_existing_config:
+            try:
+                # Determine a candidate source to copy from: prefer currently bound config DB
+                current_db_path = get_config_manager().db_path
+                current_root = Path(current_db_path).parent.parent if current_db_path else None
+                source_root_candidates = []
+                if current_root and (current_root / "config" / "config.db").exists():
+                    source_root_candidates.append(current_root)
+                # Also consider the platform default if valid
+                from .config_manager import _get_platform_default_mus1_root
+                default_root = _get_platform_default_mus1_root()
+                if (default_root / "config" / "config.db").exists():
+                    source_root_candidates.append(default_root)
+
+                # Pick the first existing candidate that is not the same as destination
+                source_root = next((sr for sr in source_root_candidates if sr != root_dto.path), None)
+                if source_root:
+                    src_db = source_root / "config" / "config.db"
+                    dst_db = root_dto.path / "config" / "config.db"
+                    if src_db.exists() and not dst_db.exists():
+                        import shutil
+                        shutil.copy2(src_db, dst_db)
+            except Exception:
+                # Non-fatal; copying config is best-effort
+                pass
+
         # For custom locations, we need to set the MUS1_ROOT environment variable
         # so future processes know where to find the configuration
         if root_dto.path != self._get_default_mus1_root():
@@ -226,6 +254,15 @@ class SetupService:
         # Save configuration (this will now be stored in the correct location)
         set_config("mus1.root_path", str(root_dto.path), scope="install")
         set_config("mus1.root_setup_date", datetime.now().isoformat(), scope="install")
+
+        # Reinitialize the global ConfigManager to point at the new root immediately
+        try:
+            from .config_manager import init_config_manager
+            new_db_path = root_dto.path / "config" / "config.db"
+            init_config_manager(new_db_path)
+        except Exception:
+            # Non-fatal; subsequent operations may recreate as needed
+            pass
 
         # Write a stable root pointer file under platform default so future processes can rediscover
         try:
@@ -251,6 +288,82 @@ class SetupService:
         """Get the platform default MUS1 root location."""
         from .config_manager import _get_platform_default_mus1_root
         return _get_platform_default_mus1_root()
+
+    # ===========================================
+    # LEGACY USER PROFILE MIGRATION
+    # ===========================================
+
+    def migrate_legacy_user_profile_if_needed(self) -> Dict[str, Any]:
+        """Migrate legacy user profile keys from ConfigManager to SQL and clear duplicates.
+
+        Behavior:
+        - If ConfigManager has legacy keys (user.name/email/organization/default dirs),
+          create the SQL user if missing and set ConfigManager user.id.
+        - Remove the legacy keys from ConfigManager to avoid drift.
+        - No-op if no legacy keys are present or SQL user already exists.
+        """
+        try:
+            name = get_config("user.name", scope="user")
+            email = get_config("user.email", scope="user")
+            organization = get_config("user.organization", scope="user")
+            default_projects_dir = get_config("user.default_projects_dir", scope="user")
+            default_shared_dir = get_config("user.default_shared_dir", scope="user")
+
+            has_legacy = any([name, email, organization, default_projects_dir, default_shared_dir])
+            if not has_legacy:
+                return {"changed": False, "message": "No legacy user keys found"}
+
+            if not email or "@" not in str(email):
+                return {"changed": False, "message": "Legacy keys present but email missing; skipping"}
+
+            # Check if SQL user exists
+            db = self._get_database()
+            from .repository import get_repository_factory
+            repos = get_repository_factory(db)
+            existing = repos.users.find_by_email(email)
+
+            # Ensure directories are Paths
+            from pathlib import Path as _Path
+            proj_dir_path = _Path(default_projects_dir) if default_projects_dir else None
+            shared_dir_path = _Path(default_shared_dir) if default_shared_dir else None
+
+            if not existing:
+                # Create SQL user from legacy keys
+                from .metadata import User
+                user_id = str(email).lower().replace("@", "_").replace(".", "_")
+                user_entity = User(
+                    id=user_id,
+                    name=name or "",
+                    email=email,
+                    organization=organization or None,
+                    default_projects_dir=proj_dir_path,
+                    default_shared_dir=shared_dir_path,
+                    created_at=datetime.now(),
+                    updated_at=datetime.now()
+                )
+                repos.users.save(user_entity)
+                # Set active user id
+                set_config("user.id", user_id, scope="user")
+
+                # Create default directories if provided
+                try:
+                    if proj_dir_path:
+                        proj_dir_path.mkdir(parents=True, exist_ok=True)
+                except Exception:
+                    pass
+
+            # Remove legacy keys from ConfigManager
+            try:
+                from .config_manager import delete_config
+                for key in ["user.name", "user.email", "user.organization", "user.default_projects_dir", "user.default_shared_dir"]:
+                    delete_config(key, scope="user")
+            except Exception:
+                pass
+
+            return {"changed": True, "message": "Legacy user keys migrated to SQL and cleared"}
+
+        except Exception as e:
+            return {"changed": False, "error": str(e)}
 
     # ===========================================
     # USER PROFILE MANAGEMENT

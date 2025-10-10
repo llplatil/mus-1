@@ -1,5 +1,44 @@
-from PySide6.QtGui import QPalette, QColor
-from PySide6.QtWidgets import QApplication
+# Qt imports - platform-specific handling
+try:
+    from PyQt6.QtGui import QPalette, QColor
+    from PyQt6.QtWidgets import QApplication
+    QT_BACKEND = "PyQt6"
+
+    # PyQt6 uses enum values
+    PALETTE_WINDOW = QPalette.ColorRole.Window
+    PALETTE_WINDOW_TEXT = QPalette.ColorRole.WindowText
+    PALETTE_BASE = QPalette.ColorRole.Base
+    PALETTE_ALTERNATE_BASE = QPalette.ColorRole.AlternateBase
+    PALETTE_TOOLTIP_BASE = QPalette.ColorRole.ToolTipBase
+    PALETTE_TOOLTIP_TEXT = QPalette.ColorRole.ToolTipText
+    PALETTE_TEXT = QPalette.ColorRole.Text
+    PALETTE_BUTTON = QPalette.ColorRole.Button
+    PALETTE_BUTTON_TEXT = QPalette.ColorRole.ButtonText
+    PALETTE_BRIGHT_TEXT = QPalette.ColorRole.BrightText
+    PALETTE_HIGHLIGHT = QPalette.ColorRole.Highlight
+    PALETTE_HIGHLIGHTED_TEXT = QPalette.ColorRole.HighlightedText
+
+except ImportError:
+    try:
+        from PySide6.QtGui import QPalette, QColor
+        from PySide6.QtWidgets import QApplication
+        QT_BACKEND = "PySide6"
+
+        # PySide6 uses direct enum values
+        PALETTE_WINDOW = PALETTE_WINDOW
+        PALETTE_WINDOW_TEXT = PALETTE_WINDOWText
+        PALETTE_BASE = QPalette.Base
+        PALETTE_ALTERNATE_BASE = QPalette.AlternateBase
+        PALETTE_TOOLTIP_BASE = QPalette.ToolTipBase
+        PALETTE_TOOLTIP_TEXT = QPalette.ToolTipText
+        PALETTE_TEXT = QPalette.Text
+        PALETTE_BUTTON = QPalette.Button
+        PALETTE_BUTTON_TEXT = QPalette.ButtonText
+        PALETTE_BRIGHT_TEXT = QPalette.BrightText
+        PALETTE_HIGHLIGHT = QPalette.Highlight
+        PALETTE_HIGHLIGHTED_TEXT = QPalette.HighlightedText
+    except ImportError:
+        raise ImportError("Neither PyQt6 nor PySide6 is available. Please install a Qt Python binding.")
 from pathlib import Path
 import os
 import logging
@@ -174,7 +213,7 @@ class ThemeManager:
         if theme_pref == "os":
             app = QApplication.instance()
             palette = app.palette()
-            window_color = palette.color(QPalette.Window)
+            window_color = palette.color(PALETTE_WINDOW)
             return "dark" if window_color.lightness() < 128 else "light"
         return theme_pref
 
@@ -190,29 +229,35 @@ class ThemeManager:
         palette = QPalette()
         try:
             # Use variables from the 'colors' dictionary - THESE ARE HEX CODES
-            palette.setColor(QPalette.Window, QColor(colors.get("$BACKGROUND_COLOR", "#FFFFFF")))
-            palette.setColor(QPalette.WindowText, QColor(colors.get("$TEXT_COLOR", "#000000")))
-            palette.setColor(QPalette.Base, QColor(colors.get("$CONTENT_BG", "#FFFFFF")))
-            palette.setColor(QPalette.AlternateBase, QColor(colors.get("$INPUT_BG", "#F0F0F0")))
-            palette.setColor(QPalette.ToolTipBase, QColor(colors.get("$WIDGET_BOX_BG", "#FFFFE0")))
-            palette.setColor(QPalette.ToolTipText, QColor(colors.get("$TEXT_COLOR", "#000000")))
-            palette.setColor(QPalette.Text, QColor(colors.get("$TEXT_COLOR", "#000000")))
-            palette.setColor(QPalette.Button, QColor(colors.get("$SECONDARY_BUTTON_BG", "#F0F0F0")))
-            palette.setColor(QPalette.ButtonText, QColor(colors.get("$SECONDARY_BUTTON_TEXT", "#000000")))
-            palette.setColor(QPalette.BrightText, QColor(colors.get("$PRIMARY_BUTTON_TEXT", "#FFFFFF")))
-            palette.setColor(QPalette.Highlight, QColor(colors.get("$SELECTION_BG", "#0078D7")))
-            palette.setColor(QPalette.HighlightedText, QColor(colors.get("$SELECTION_TEXT", "#FFFFFF")))
+            palette.setColor(PALETTE_WINDOW, QColor(colors.get("$BACKGROUND_COLOR", "#FFFFFF")))
+            palette.setColor(PALETTE_WINDOW_TEXT, QColor(colors.get("$TEXT_COLOR", "#000000")))
+            palette.setColor(PALETTE_BASE, QColor(colors.get("$CONTENT_BG", "#FFFFFF")))
+            palette.setColor(PALETTE_ALTERNATE_BASE, QColor(colors.get("$INPUT_BG", "#F0F0F0")))
+            palette.setColor(PALETTE_TOOLTIP_BASE, QColor(colors.get("$WIDGET_BOX_BG", "#FFFFE0")))
+            palette.setColor(PALETTE_TOOLTIP_TEXT, QColor(colors.get("$TEXT_COLOR", "#000000")))
+            palette.setColor(PALETTE_TEXT, QColor(colors.get("$TEXT_COLOR", "#000000")))
+            palette.setColor(PALETTE_BUTTON, QColor(colors.get("$SECONDARY_BUTTON_BG", "#F0F0F0")))
+            palette.setColor(PALETTE_BUTTON_TEXT, QColor(colors.get("$SECONDARY_BUTTON_TEXT", "#000000")))
+            palette.setColor(PALETTE_BRIGHT_TEXT, QColor(colors.get("$PRIMARY_BUTTON_TEXT", "#FFFFFF")))
+            palette.setColor(PALETTE_HIGHLIGHT, QColor(colors.get("$SELECTION_BG", "#0078D7")))
+            palette.setColor(PALETTE_HIGHLIGHTED_TEXT, QColor(colors.get("$SELECTION_TEXT", "#FFFFFF")))
 
             # Handle disabled state colors (can derive or use defaults)
-            palette.setColor(QPalette.Disabled, QPalette.Text, QColor(colors.get("$BORDER_COLOR", "#A0A0A0")))
-            palette.setColor(QPalette.Disabled, QPalette.ButtonText, QColor(colors.get("$BORDER_COLOR", "#A0A0A0")))
+            if QT_BACKEND == "PyQt6":
+                # PyQt6 syntax for disabled colors
+                palette.setColor(QPalette.ColorGroup.Disabled, PALETTE_TEXT, QColor(colors.get("$BORDER_COLOR", "#A0A0A0")))
+                palette.setColor(QPalette.ColorGroup.Disabled, PALETTE_BUTTON_TEXT, QColor(colors.get("$BORDER_COLOR", "#A0A0A0")))
+            else:
+                # PySide6 syntax
+                palette.setColor(QPalette.Disabled, PALETTE_TEXT, QColor(colors.get("$BORDER_COLOR", "#A0A0A0")))
+                palette.setColor(QPalette.Disabled, PALETTE_BUTTON_TEXT, QColor(colors.get("$BORDER_COLOR", "#A0A0A0")))
 
         except KeyError as e:
              logger.error(f"Missing color variable for QPalette setup: {e}. Using fallback defaults.")
              # Apply very basic defaults if a key is missing
              if effective_theme == "dark":
-                 palette.setColor(QPalette.Window, QColor("#121212"))
-                 palette.setColor(QPalette.WindowText, QColor("#FFFFFF")) # Use hex code instead of "white"
+                 palette.setColor(PALETTE_WINDOW, QColor("#121212"))
+                 palette.setColor(PALETTE_WINDOWText, QColor("#FFFFFF")) # Use hex code instead of "white"
              else:
                  palette = app.style().standardPalette() # Fallback to system style standard palette
 

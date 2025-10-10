@@ -94,9 +94,17 @@ if [ "${1:-}" = "set-root" ]; then
 elif [ "${1:-}" = "gui" ]; then
     echo "🚀 Launching MUS1 GUI..."
 
-    # Configure Qt for macOS
+    # Configure Qt for macOS - try PyQt6 first, fallback to PySide6
     if [[ "$OSTYPE" == "darwin"* ]]; then
-        export QT_QPA_PLATFORM_PLUGIN_PATH="$VENV_DIR/lib/python3.*/site-packages/PySide6/Qt6/plugins/platforms"
+        PYTHON_VERSION=$(python3 -c "import sys; print(f'python{sys.version_info.major}.{sys.version_info.minor}')")
+
+        # Try PyQt6 first (more reliable on macOS)
+        if python3 -c "import PyQt6" 2>/dev/null; then
+            export QT_QPA_PLATFORM_PLUGIN_PATH="$VENV_DIR/lib/$PYTHON_VERSION/site-packages/PyQt6/Qt6/plugins/platforms"
+        elif python3 -c "import PySide6" 2>/dev/null; then
+            export QT_QPA_PLATFORM_PLUGIN_PATH="$VENV_DIR/lib/$PYTHON_VERSION/site-packages/PySide6/Qt/plugins/platforms"
+        fi
+
         export QT_QPA_PLATFORM="cocoa"
     fi
 

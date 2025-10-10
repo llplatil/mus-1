@@ -31,7 +31,6 @@ from .config_manager import (
     set_config,
     delete_config
 )
-from .config_migration import ConfigMigrationManager
 from .theme_manager import ThemeManager
 
 # Clean plugin system (imported separately to avoid circular imports)
@@ -53,7 +52,7 @@ __all__ = [
     "SubjectService", "ExperimentService",
     # Config system
     "ConfigManager", "get_config_manager", "init_config_manager",
-    "get_config", "set_config", "delete_config", "ConfigMigrationManager",
+    "get_config", "set_config", "delete_config",
     # Theme system
     "ThemeManager",
     # Clean plugin system (commented out to avoid circular imports)

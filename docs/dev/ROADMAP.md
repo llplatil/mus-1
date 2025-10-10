@@ -7,7 +7,7 @@ This roadmap shows current status and planned development priorities. Items are 
 - Legacy GUI components need migration to clean architecture
 - Windows/Linux video scanners lack OS-specific optimizations
 - Some plugins need migration to new service pattern
-- User profile fields duplicated between ConfigManager and SQL `users` table; risk of drift
+- User profile fields duplicated between ConfigManager and SQL `users` table (via legacy CLI); risk of drift
 - Wizard lacks explicit default projects directory chooser and app preferences page
 - Modal popups used during setup; prefer in-app log/status per development guidelines
 
@@ -18,30 +18,31 @@ This roadmap shows current status and planned development priorities. Items are 
 2. **Plugin Migration**: Migrate existing plugins to new service pattern
 3. **Code Cleanup**: Remove redundant DTOs and unused code
 
-4. **✅ COMPLETED: Authoritative Setup & Project Flow**
+4. **✅/🔄 COMPLETED/PARTIAL: Authoritative Setup & Project Flow**
    - **✅ Make MUS1 root selection in GUI wizard authoritative**:
      - Use page-selected root to construct `MUS1RootLocationDTO`
      - Immediately re-initialize `ConfigManager` to `<root>/config/config.db` after MUS1 root step succeeds (before saving user/storage/lab)
        - **✅ In `src/mus1/gui/setup_wizard.py`**: after calling `setup_service.setup_mus1_root_location`, call `init_config_manager(<root>/config/config.db)` and re-create the `SetupService` so subsequent `set_config` writes target the new DB
        - **✅ In `src/mus1/core/setup_service.py`**: stop caching `config_manager` at construction; fetch via `get_config_manager()` inside each operation or provide a `rebind_config_manager()` used right after root commit
        - **✅ Ensure `run_setup_workflow` executes MUS1 root first, checks success, then proceeds; short-circuit and surface error state if root fails
-   - **✅ Ensure setup workflow runs async and conclusion page reflects errors**
+   - **✅ Ensure setup workflow runs async**
+   - **🔄 Conclusion page per-step rendering pending**
      - In `ConclusionPage`, render per-step statuses from `result["steps_completed"]` and `result["errors"]`; remove generic success text when errors exist
    - **✅ Wire `ProjectView` to active `ProjectManagerClean` from `MainWindow`**
    - **✅ Register newly created projects under labs**:
      - Set `lab_id` in project config when lab is known/selected
      - Append to `labs[lab_id].projects` with name/path/created_date
-   - Replace modal popups during setup with navigation/status log output for development builds (follow project logging bus guidelines)
+   - Replace modal popups during setup with navigation/status log output for development builds (follow project logging bus guidelines) — 🔄 pending
 
 5. **🔄 PARTIALLY COMPLETED: Workgroup Model with Shareable Key (SQL, not JSON)**
    - **✅ Add normalized tables in the configuration database for collaborative grouping**:
      - **✅ In `src/mus1/core/schema.py` (config DB context), create `WorkgroupModel(id, name, share_key_hash, created_at)` and `WorkgroupMemberModel(workgroup_id, member_email, role, added_at)`**
      - Store only a salted hash of the shareable key; never persist the raw key
      - Provide key generation/rotation and join-by-key verification utilities in `src/mus1/core/setup_service.py`
-   - Wizard integration:
+  - Wizard integration — 🔄 pending:
      - Add a `Workgroup` page to create a workgroup (name) and generate a one-time display shareable key; allow joining an existing workgroup via key
      - Persist membership using the current `user.email`; link selected `lab` records to `workgroup_id` when applicable
-   - CLI parity:
+  - CLI parity — 🔄 pending:
      - Expose `mus1 setup workgroup create`, `mus1 setup workgroup rotate-key`, and `mus1 setup workgroup join --key` with clear `--help` entries
 
 6. **✅ COMPLETED: Normalize Labs to SQL (avoid JSON in config entries)**
@@ -65,9 +66,11 @@ This roadmap shows current status and planned development priorities. Items are 
    - Update `src/mus1/gui/setup_wizard.py` to remove `QMessageBox` info/critical usage in dev; surface messages via the navigation/status pane
 
 9. **Config Root Usage Consistency & Locator**
-   - Implement root pointer file at platform default path to rediscover chosen MUS1 root across launches/reinstalls
-   - Startup resolution order: env var → pointer → platform default → create default
-   - Wizard updates pointer after root selection; app rebinds ConfigManager immediately
+   - Implement root pointer file at platform default path to rediscover chosen MUS1 root across launches/reinstalls — ✅ implemented
+   - Startup resolution order: env var → pointer → platform default → create default — ✅ implemented
+   - Wizard updates pointer after root selection; app rebinds ConfigManager immediately — ✅ implemented
+   - In `src/mus1/main.py`, prefer configured `get_config("mus1.root_path")` for logs when present; fall back to `resolve_mus1_root()` only if unset — 🔄 pending
+   - Implement optional "Copy existing configuration to new location" when creating a new root — 🔄 pending (wizard collects flag; service does not copy)
 11. **Lab-Centric Sharing (Planned)**
    - Normalize shared resources under the lab and expose retrieval by lab membership
    - Schema additions:
@@ -87,8 +90,8 @@ This roadmap shows current status and planned development priorities. Items are 
      - Backfill membership for lab creators as `admin`
      - Attach existing workers/scan targets to selected lab without data duplication
 
-   - In `src/mus1/main.py`, when configuring logs, prefer configured `get_config("mus1.root_path")` when present; fall back to `resolve_mus1_root()` only if unset
-   - Audit imports using `resolve_mus1_root()` and switch to configuration value post-setup where appropriate
+  - In `src/mus1/main.py`, when configuring logs, prefer configured `get_config("mus1.root_path")` when present; fall back to `resolve_mus1_root()` only if unset — 🔄 pending
+  - Audit imports using `resolve_mus1_root()` and switch to configuration value post-setup where appropriate — 🔄 pending
 
 ### Medium Priority
 1. **Scanner Improvements**: OS-specific video scanners for Windows/Linux
@@ -97,10 +100,10 @@ This roadmap shows current status and planned development priorities. Items are 
 
 10. **Persistent User Profile — Single Source of Truth**
    - Make the SQL `users` table authoritative for user profile persistence
-   - Store only `user.id` in `ConfigManager` as the active-user pointer
-   - Update `SetupService.is_user_configured()` and `get_user_profile()` to query repositories
+   - Store only `user.id` in `ConfigManager` as the active-user pointer — ✅ in services; 🔄 legacy CLI writes duplicate user fields
+   - Update `SetupService.is_user_configured()` and `get_user_profile()` to query repositories — ✅ implemented
    - Add `UserService` with `get_current_user()`, `set_current_user_by_email()`, `update_profile()`, `delete_profile()`
-   - One-time migration: if legacy config keys `user.name/email/organization` exist and SQL has no user, seed `users` and remove those keys
+   - One-time migration: if legacy config keys `user.name/email/organization` exist and SQL has no user, seed `users` and remove those keys — 🔄 migration module present; not wired at startup
    - Decide on stable `User.id` (UUID recommended) and handle email change/migration if using email-derived IDs
 
 ## Intended Setup/Project Logic (Authoritative)
@@ -109,11 +112,13 @@ This roadmap shows current status and planned development priorities. Items are 
 - Default: `resolve_mus1_root()` determines a valid root
 - Wizard: If user selects a different root, that selection overrides defaults
 - After choosing root, the config DB is `<root>/config/config.db` and must be re-initialized immediately before subsequent steps
+ - Optional: If the wizard's copy flag is enabled, copy an existing configuration into the new root — 🔄 pending in service layer
 
 2) User Profile
 - Persist user fields in SQL `users` table (authoritative)
 - In config, store only `user.id` (active user)
 - `user.default_projects_dir` set per-platform in SQL profile; ensure directory exists
+ - Avoid persisting duplicate user fields in ConfigManager (cleanup legacy CLI path) — 🔄 pending
 
 3) Shared Storage (Optional)
 - `storage.shared_root` stored and validated; verify write permissions if requested
@@ -139,14 +144,17 @@ This roadmap shows current status and planned development priorities. Items are 
 ## Implementation Notes (File-Level Targets)
 - `src/mus1/gui/setup_wizard.py`: **✅ COMPLETED** - reordered workflow with proper ConfigManager re-initialization, async execution, error handling
 - `src/mus1/core/setup_service.py`: **✅ COMPLETED** - removed cached config reference, migrated lab CRUD to SQL repository with User/Lab entities
-- `src/mus1/core/config_manager.py`: **✅ COMPLETED** - `init_config_manager(path)` exposed and used for immediate rebind after root setup
+- `src/mus1/core/config_manager.py`: **✅ COMPLETED** - `init_config_manager(path)` exposed and used for immediate rebind after root setup; root pointer implemented
 - `src/mus1/core/schema.py`: **✅ COMPLETED** - added UserModel, LabModel, LabProjectModel, WorkgroupModel, WorkgroupMemberModel tables
 - `src/mus1/core/repository.py`: **✅ COMPLETED** - added UserRepository, LabRepository with proper CRUD operations
 - `src/mus1/core/metadata.py`: **✅ COMPLETED** - added User, Lab, Workgroup domain models and DTOs
 - `src/mus1/gui/settings_view.py`: **✅ COMPLETED** - new SettingsView with User Settings, Lab Settings, Workers pages
 - `src/mus1/gui/main_window.py`: **✅ COMPLETED** - added Settings tab, updated tab management and theme propagation
 - `src/mus1/gui/project_view.py`: **✅ COMPLETED** - removed Workers functionality, focused on project operations
-- `src/mus1/main.py`: prefer configured root for logs; avoid unconditional `resolve_mus1_root()` after setup
+- `src/mus1/main.py`: prefer configured root for logs; avoid unconditional `resolve_mus1_root()` after setup — 🔄 pending
+- `src/mus1/core/setup_service.py`: implement optional copy of existing config on root creation — 🔄 pending
+- `src/mus1/core/simple_cli.py`: stop writing duplicate user profile keys; rely on SQL-backed services — 🔄 pending
+- `src/mus1/gui/setup_wizard.py`: show per-step statuses/errors on conclusion page; replace modal popups in dev builds — 🔄 pending
 
 ## Future Features
 

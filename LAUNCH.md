@@ -1,8 +1,8 @@
 # MUS1 Launch Guide
 
-## 📋 **Unified Launch Architecture**
+## 📋 **Launch Architecture**
 
-MUS1 has a **clean, streamlined launch architecture** that works identically for both development and production users, with automatic setup detection and user preference persistence.
+MUS1 has a **platform-aware launch architecture** with different behaviors for development and production environments. The system automatically detects the platform and available Qt backends, with fallback handling for GUI compatibility issues.
 
 ### **Entry Points (Defined in pyproject.toml)**
 ```toml
@@ -16,19 +16,23 @@ mus1-gui = "mus1.main:main"              # GUI entry point
 
 #### **Production Users (After `pip install mus1`)**
 ```bash
-mus1-gui                    # GUI mode (recommended)
-mus1 --help                 # CLI help
-mus1 project list           # CLI commands
+mus1-gui                    # GUI mode (may fail on macOS due to Qt issues)
+mus1 --help                 # CLI help (always works)
+mus1 project list           # CLI commands (always works)
 ```
 
 #### **Development Users**
 ```bash
-./setup.sh                  # One-time environment setup
-./dev-launch.sh set-root ~/Library/Application\ Support/MUS1   # Persist MUS1 root for dev launches
-./dev-launch.sh gui         # GUI mode (recommended)
+./setup.sh                  # Environment setup with Qt diagnostics
+./dev-launch.sh gui         # GUI mode with platform-specific Qt setup
 ./dev-launch.sh --help      # CLI help
 ./dev-launch.sh project list # CLI commands
 ```
+
+**Important Notes:**
+- **GUI may not work** on macOS due to Qt platform plugin issues
+- **CLI always works** regardless of Qt/GUI status
+- **Platform detection** automatically handles Qt backend selection
 
 ---
 
@@ -178,27 +182,38 @@ mus1 project list          # Production
 
 ##  **User Experience**
 
-### **Seamless Workflow**
-```bash
-# First time (automatic setup wizard appears)
-mus1-gui                    # Production
-./dev-launch.sh gui         # Development
+### **Actual Launch Behavior**
 
-# Subsequent launches (remembers your preferences)
-mus1-gui                    # Loads last project automatically
-./dev-launch.sh project list # Same CLI commands work everywhere
+#### **GUI Launch (May Fail on macOS)**
+```bash
+# May work or fail depending on Qt platform plugin status
+mus1-gui                    # Production - may show Qt errors
+./dev-launch.sh gui         # Development - includes Qt diagnostics
 ```
+
+#### **CLI Launch (Always Works)**
+```bash
+# CLI works regardless of GUI/Qt status
+mus1 --help                 # Production CLI
+./dev-launch.sh project list # Development CLI
+```
+
+### **Known Issues**
+
+#### **macOS Qt Platform Plugin Problem**
+- **Symptom**: `Could not find Qt platform plugin "cocoa"`
+- **Cause**: PySide6/PyQt6 platform plugins not compatible with macOS security restrictions
+- **Workaround**: Use CLI-only features, or try alternative Qt installations
+- **Status**: Known issue affecting Qt Python bindings on macOS
+
+#### **Platform-Specific Behavior**
+- **macOS**: GUI may fail, CLI works
+- **Linux**: GUI and CLI both work (with X11/Wayland)
+- **Windows**: GUI and CLI both work
 
 ### **Preferences & Recents**
 - MUS1 persists user profile and lab information in the configuration database (SQL) at the chosen root.
 - The last opened project is stored in SQL under the user scope and used to streamline subsequent launches.
-
-### **Smart Features**
-- ✅ **Automatic Setup Detection**: First-time users get guided wizard
-- ✅ **Preference Persistence**: User choices maintained across restarts
-- ✅ **Intelligent Discovery**: Projects found from configured locations
-- ✅ **Unified Commands**: Same CLI works in dev and production
-- ✅ **Configuration Hierarchy**: Settings cascade properly (Install → User → Lab → Project)
 
 ### **Error Recovery**
 - **Setup cancelled**: Retry dialog with clear options
@@ -219,8 +234,11 @@ mus1-gui                    # Loads last project automatically
 # Check if virtual environment is working
 source .venv/bin/activate && python -c "import mus1"
 
-# Rebuild virtual environment
+# Rebuild virtual environment with Qt diagnostics
 rm -rf .venv && ./setup.sh
+
+# Setup includes Qt platform checks now
+# Look for Qt diagnostic messages during setup
 
 # Check Python version in venv
 ./dev-launch.sh --version
@@ -241,15 +259,32 @@ ls -la ~/.config/mus1/                        # Linux
 
 #### **Qt/GUI Environment Issues**
 ```bash
-# macOS Qt setup
+# Check Qt availability
+python -c "try:
+    import PyQt6
+    print('PyQt6 available')
+except ImportError:
+    try:
+        import PySide6
+        print('PySide6 available')
+    except ImportError:
+        print('No Qt backend available')
+
+# Test Qt GUI capability
+python -c "try:
+    import PyQt6.QtWidgets as QtW
+    import sys
+    app = QtW.QApplication(sys.argv)
+    print('Qt GUI works')
+except Exception as e:
+    print(f'Qt GUI failed: {e}')
+
+# macOS specific (may not work due to platform plugin issues)
 export QT_QPA_PLATFORM=cocoa
 
 # Linux Qt setup
 export QT_QPA_PLATFORM=xcb
 export DISPLAY=:0
-
-# Check Qt plugins
-python -c "import PySide6; print(PySide6.__file__)"
 ```
 
 #### **Configuration Database Issues**

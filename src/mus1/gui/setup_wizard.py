@@ -17,14 +17,30 @@ from pathlib import Path
 import platform
 from datetime import datetime
 
-from PySide6.QtWidgets import (
-    QApplication, QWizard, QWizardPage, QLabel, QLineEdit, QVBoxLayout,
-    QHBoxLayout, QFormLayout, QCheckBox, QPushButton, QProgressBar,
-    QTextEdit, QMessageBox, QGroupBox, QRadioButton, QButtonGroup,
-    QFileDialog, QComboBox, QSpinBox, QDialogButtonBox
-)
-from PySide6.QtCore import Qt, Signal, QThread, QObject
-from PySide6.QtGui import QFont, QPixmap, QIcon
+# Qt imports - platform-specific handling
+try:
+    from PyQt6.QtWidgets import (
+        QApplication, QWizard, QWizardPage, QLabel, QLineEdit, QVBoxLayout,
+        QHBoxLayout, QFormLayout, QCheckBox, QPushButton, QProgressBar,
+        QTextEdit, QMessageBox, QGroupBox, QRadioButton, QButtonGroup,
+        QFileDialog, QComboBox, QSpinBox, QDialogButtonBox
+    )
+    from PyQt6.QtCore import Qt, pyqtSignal as Signal, QThread, QObject
+    from PyQt6.QtGui import QFont, QPixmap, QIcon
+    QT_BACKEND = "PyQt6"
+except ImportError:
+    try:
+        from PySide6.QtWidgets import (
+            QApplication, QWizard, QWizardPage, QLabel, QLineEdit, QVBoxLayout,
+            QHBoxLayout, QFormLayout, QCheckBox, QPushButton, QProgressBar,
+            QTextEdit, QMessageBox, QGroupBox, QRadioButton, QButtonGroup,
+            QFileDialog, QComboBox, QSpinBox, QDialogButtonBox
+        )
+        from PySide6.QtCore import Qt, Signal, QThread, QObject
+        from PySide6.QtGui import QFont, QPixmap, QIcon
+        QT_BACKEND = "PySide6"
+    except ImportError:
+        raise ImportError("Neither PyQt6 nor PySide6 is available. Please install a Qt Python binding.")
 
 from ..core.setup_service import (
     SetupService, UserProfileDTO, SharedStorageDTO, LabDTO, ColonyDTO,
@@ -628,7 +644,7 @@ class ConclusionPage(QWizardPage):
         next_steps_layout = QVBoxLayout()
 
         self.next_steps_text = QLabel()
-        self.next_steps_text.setTextFormat(Qt.RichText)
+        self.next_steps_text.setTextFormat(Qt.TextFormat.RichText)
         next_steps_layout.addWidget(self.next_steps_text)
 
         next_steps_group.setLayout(next_steps_layout)

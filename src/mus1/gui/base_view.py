@@ -1,5 +1,16 @@
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QStackedWidget, QLabel, QGroupBox
-from PySide6.QtCore import Qt
+# Qt imports - platform-specific handling
+try:
+    from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QStackedWidget, QLabel, QGroupBox
+    from PyQt6.QtCore import Qt
+    QT_BACKEND = "PyQt6"
+except ImportError:
+    try:
+        from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QStackedWidget, QLabel, QGroupBox
+        from PySide6.QtCore import Qt
+        QT_BACKEND = "PySide6"
+    except ImportError:
+        raise ImportError("Neither PyQt6 nor PySide6 is available. Please install a Qt Python binding.")
+
 from .navigation_pane import NavigationPane
 import logging
 
@@ -47,7 +58,7 @@ class BaseView(QWidget):
         self.layout.setSpacing(0)
         
         # Create a horizontal splitter (standard layout pattern)
-        self.splitter = QSplitter(Qt.Horizontal)
+        self.splitter = QSplitter(Qt.Orientation.Horizontal)
         self.splitter.setHandleWidth(2)
         self.splitter.setChildrenCollapsible(False)
         # Removed inline style for splitter handle; now using stylesheet version
@@ -124,7 +135,7 @@ class BaseView(QWidget):
         row.setSpacing(self.CONTROL_SPACING)
         row.setContentsMargins(0, 0, 0, 0)
         row.setProperty("class", "form-row")
-        row.setAlignment(Qt.AlignVCenter)
+        row.setAlignment(Qt.AlignmentFlag.AlignVCenter)
         if parent_layout: # Add the layout back here
             parent_layout.addLayout(row)
         return row
@@ -142,7 +153,7 @@ class BaseView(QWidget):
         label = QLabel(text, parent)
         label.setProperty("formLabel", True)
         label.setMinimumWidth(65)
-        label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         return label
     
     def setup_navigation(self, button_texts):

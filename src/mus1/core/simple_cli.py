@@ -802,19 +802,27 @@ def setup_wizard():
                 rich_print(f"[yellow]⚠[/yellow] Permission issue: {e}")
                 rich_print("[blue]ℹ[/blue] You can fix permissions later with 'mus1 setup shared'")
 
-    # Save user configuration
-    set_config("user.name", name, scope="user")
-    set_config("user.email", email, scope="user")
-    set_config("user.organization", organization, scope="user")
-    set_config("user.default_projects_dir", str(default_projects_dir), scope="user")
-    set_config("user.setup_date", datetime.now().isoformat(), scope="user")
-
-    if shared_path:
-        set_config("storage.shared_root", str(shared_path), scope="user")
-        set_config("storage.shared_setup_date", datetime.now().isoformat(), scope="user")
-
-    # Create default directories
-    default_projects_dir.mkdir(parents=True, exist_ok=True)
+    # Persist via SetupService (SQL authoritative; ConfigManager stores only active user id)
+    try:
+        from .setup_service import get_setup_service, UserProfileDTO, SharedStorageDTO
+        svc = get_setup_service()
+        user_result = svc.setup_user_profile(UserProfileDTO(
+            name=name,
+            email=email,
+            organization=organization,
+            default_projects_dir=default_projects_dir,
+            default_shared_dir=shared_path
+        ))
+        if not user_result.get("success"):
+            rich_print(f"[red]✗[/red] Failed to save user profile: {user_result.get('message','unknown error')}")
+            raise typer.Exit(1)
+        if shared_path:
+            storage_result = svc.setup_shared_storage(SharedStorageDTO(path=shared_path, create_if_missing=True, verify_permissions=True))
+            if not storage_result.get("success"):
+                rich_print(f"[yellow]⚠[/yellow] Shared storage setup warning: {storage_result.get('message','unknown error')}")
+    except Exception as e:
+        rich_print(f"[red]✗[/red] Error applying configuration: {e}")
+        raise typer.Exit(1)
 
     rich_print("\n[bold]Step 4: Lab Setup[/bold]")
     create_lab_now = Confirm.ask("Do you want to create your first lab now?", default=True)

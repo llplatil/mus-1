@@ -151,6 +151,8 @@ log_file = logs_dir / "mus1.log"
 app = QApplication(sys.argv)
 ```
 
+Note: In the current implementation, the logs root is resolved via `resolve_mus1_root()` on startup. The intended behavior post-setup is to prefer a configured `get_config("mus1.root_path")` when present, falling back to `resolve_mus1_root()` only if unset. See Roadmap for the outstanding task.
+
 #### **Phase 5: User Environment (SetupService)**
 ```python
 # First-time detection and setup wizard
@@ -183,6 +185,8 @@ DISPLAY=":0"                          # Linux display
   3. Platform default if it already contains a valid MUS1 config
   4. Create platform default if nothing else exists
 - The locator stores no user data; it only points to the authoritative root.
+
+Status: Implemented. `ConfigManager` reads and writes the root pointer at the platform default location and validates the target before use.
 
 ### Database Architecture
 ```sql
@@ -262,10 +266,8 @@ CREATE TABLE experiments (
 ```
 
 ### User Profile Persistence — Single Source of Truth
-- The SQL `users` table is authoritative for all user profile fields (name, email, organization, default directories)
-- `ConfigManager` stores only `user.id` to indicate the active user
-- Services fetch user details via repositories using the active `user.id`
-- Migration: on first run, if legacy config keys `user.name/email/organization` exist without a SQL user, seed the `users` table and remove those keys
+- Intended design: The SQL `users` table is authoritative for all user profile fields (name, email, organization, default directories). `ConfigManager` stores only `user.id` (active user). Services fetch user details via repositories using the active `user.id`. A one-time migration should seed SQL from legacy config keys and remove those keys.
+- Current status: Service/repository layer uses SQL for user data as intended. However, the legacy CLI path still writes `user.name/email/organization` to ConfigManager, and the one-time migration is not wired into startup. See Outstanding Items below.
 
 ### Wizard Behavior and Reinstall Experience
 - Wizard offers three options when a config is detected:
@@ -285,7 +287,7 @@ CREATE TABLE experiments (
 - SQLite-based domain models with lab-colony hierarchy
 - Repository pattern for data access
 - Clean project management with colony relationships
-- Plugin system with automatic discovery
+- Core plugin system with entry-point discovery (GUI integration pending)
 - Hierarchical configuration system
 - Simple CLI interface
 
@@ -293,6 +295,12 @@ CREATE TABLE experiments (
 - Some plugins require updates for new service pattern
 - Windows/Linux video scanners lack OS-specific optimizations
 - Workgroup features partially implemented (models exist, UI integration pending)
+- Setup wizard still uses modal popups (`QMessageBox`) for some flows; per dev guidelines, these should be replaced by the navigation/status log in development builds
+- Conclusion page does not render per-step statuses from `steps_completed`/`errors`; it shows generic success/failure
+- `main.py` currently resolves logs root via `resolve_mus1_root()`; should prefer configured `mus1.root_path` when present
+- CLI `simple_cli.py` persists user profile fields in ConfigManager; conflicts with the “SQL authoritative” model until migration is wired
+- "Copy existing configuration to new location" flag is collected by the wizard but not acted on in `SetupService`
+- GUI does not yet surface discovered plugins; Experiment view lists use placeholders
 
 ## Findings from Initial Setup and Project Creation Audit (2025-09)
 
@@ -303,10 +311,11 @@ This section documents concrete gaps discovered during the "user → lab setup �
 - Impact: User drive/root selection in the wizard had no effect.
 - Status: **Fixed**. The wizard now reads the selected path and initializes `MUS1RootLocationDTO` accordingly. On success, `ConfigManager` is re-initialized to `<selected_root>/config/config.db`.
 
-### ✅ **FIXED: Setup Worker Not Asynchronous; Errors Didn't Update Conclusion Page**
+### ✅/🔄 **SETUP WORKFLOW: Async Execution Implemented; Per-Step UI Pending**
 - Problem: `SetupWorker.run()` was invoked on the GUI thread; failure paths didn't update the conclusion page.
 - Impact: Potential UI freezes; conclusion page stuck on "in progress" after errors.
-- Status: **Fixed**. Worker runs in a `QThread`, and both success and error paths emit through `setup_completed`.
+- Status: **Fixed (Async)**. Worker runs in a `QThread`, and both success and error paths emit through `setup_completed`.
+- Status: **Outstanding (Per-Step UI)**. Conclusion page does not yet render per-step statuses/errors from the workflow result; it shows generic success/failure.
 
 ### ✅ **FIXED: ProjectView Not Wired to Active ProjectManagerClean**
 - Problem: Methods referenced `self.project_manager` which wasn't set; some other places used `self.window().project_manager`.
@@ -329,6 +338,25 @@ This section documents concrete gaps discovered during the "user → lab setup �
 - Status: **Implemented**. Added SQL schema with `UserModel`, `LabModel`, `LabProjectModel` tables. Created repositories and updated setup to store users/labs in SQL database with proper relationships.
 
 ### ✅ **IMPLEMENTED: GUI Tab Reorganization**
+### 🔄 **PARTIAL: Configuration Root Usage Consistency**
+- Intended: After setup, the app should prefer the configured MUS1 root (`mus1.root_path`) for logs and other paths, falling back to deterministic resolution only if unset.
+- Current: `main.py` always uses `resolve_mus1_root()` when configuring logs; imports across the app sometimes call `resolve_mus1_root()` directly.
+- Action: Prefer `get_config("mus1.root_path")` when present; audit imports and replace direct calls where appropriate.
+
+### 🔄 **PARTIAL: Copy Existing Configuration**
+- Intended: Wizard option "Copy existing configuration to new location" should copy an existing config (e.g., `config.db`) when creating a new root.
+- Current: Wizard collects the flag, but `SetupService.setup_mus1_root_location` does not implement copy logic.
+- Action: Implement guarded copy of legacy config into the new root when flagged.
+
+### 🔄 **PARTIAL: User Profile Single Source of Truth**
+- Intended: Only `user.id` lives in ConfigManager; all user fields live in SQL.
+- Current: Service/repository use SQL; legacy CLI still persists user fields in ConfigManager; one-time migration not wired.
+- Action: Update CLI to stop writing duplicate keys; wire `ConfigMigrationManager` (or a simpler seeding step) to migrate and remove legacy keys.
+
+### 🔄 **PARTIAL: Plugin Discovery surfaced in GUI**
+- Intended: GUI should list discovered plugins via the clean plugin manager.
+- Current: Core discovery exists; Experiment view uses placeholder text and does not display discovered plugins.
+- Action: Connect GUI lists to `PluginManagerClean` and populate dynamically.
 - Problem: Workers mixed with project settings; unclear separation of concerns.
 - Impact: Confusing user experience with settings scattered across different views.
 - Status: **Implemented**. Created `SettingsView` with User Settings, Lab Settings, and Workers pages. Moved Workers functionality from `ProjectView` to `SettingsView`. Project tab now focused on project-specific operations.
@@ -344,5 +372,5 @@ This section documents concrete gaps discovered during the "user → lab setup �
 - **Single Source of Truth**: All configuration in one SQLite database
 - **Clean Architecture**: Proper layer separation with repository pattern
 - **Lab-Colony Hierarchy**: Colony-based subject management with genotype tracking
-- **Plugin System**: Automatic discovery and clean service integration
+- **Plugin System**: Core automatic discovery and clean service integration (GUI surfacing pending)
 

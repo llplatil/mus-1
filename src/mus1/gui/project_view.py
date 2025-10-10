@@ -1,11 +1,19 @@
-from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, QLineEdit,
-    QComboBox, QPushButton, QListWidget, QLabel, QFileDialog, QTextEdit,
-    QCheckBox, QSpinBox, QDoubleSpinBox, QSlider, QMessageBox, QListWidgetItem, QProgressBar
-)
+# Qt imports - platform-specific handling
+try:
+    from PyQt6.QtWidgets import *
+    from PyQt6.QtCore import Qt, pyqtSignal as Signal
+    from PyQt6.QtGui import *
+    QT_BACKEND = "PyQt6"
+except ImportError:
+    try:
+        from PySide6.QtWidgets import *
+        from PySide6.QtCore import Qt, Signal
+        from PySide6.QtGui import *
+        QT_BACKEND = "PySide6"
+    except ImportError:
+        raise ImportError("Neither PyQt6 nor PySide6 is available. Please install a Qt Python binding.")
 from pathlib import Path
 from .base_view import BaseView
-from PySide6.QtCore import Qt, Signal
 from typing import Dict, Any
 from ..core.scanners.remote import collect_from_targets
 from .gui_services import GUIProjectService
@@ -369,7 +377,7 @@ class ProjectView(BaseView):
         self.enable_frame_rate_checkbox = QCheckBox("Enable Global Frame Rate")
         self.enable_frame_rate_checkbox.setChecked(False)
         
-        self.frame_rate_slider = QSlider(Qt.Horizontal)
+        self.frame_rate_slider = QSlider(Qt.Orientation.Horizontal)
         self.frame_rate_slider.setRange(0, 120)
         self.frame_rate_slider.setValue(60)
         self.frame_rate_slider.setProperty("mus1-slider", True)
@@ -691,7 +699,7 @@ class ProjectView(BaseView):
         current_layout = QHBoxLayout()
         self.current_project_label = QLabel("Current Project: None")
         self.current_project_label.setProperty("formLabel", True)
-        self.current_project_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        self.current_project_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         current_layout.addWidget(self.current_project_label)
         current_layout.addStretch(1)
         selection_layout.addLayout(current_layout)
@@ -885,7 +893,7 @@ class ProjectView(BaseView):
         row.addWidget(self.create_form_label("Select targets:"))
         self.targets_list = QListWidget()
         self.targets_list.setProperty("class", "mus1-list-widget")
-        self.targets_list.setSelectionMode(QListWidget.MultiSelection)
+        self.targets_list.setSelectionMode(QListWidget.SelectionMode.MultiSelection)
         row.addWidget(self.targets_list, 1)
 
         # Options
@@ -963,8 +971,8 @@ class ProjectView(BaseView):
             targets = []
         for t in targets:
             item = QListWidgetItem(f"{t.name}  ({t.kind})")
-            item.setData(Qt.UserRole, t.name)
-            item.setCheckState(Qt.Unchecked)
+            item.setData(Qt.ItemDataRole.UserRole, t.name)
+            item.setCheckState(Qt.CheckState.Unchecked)
             self.targets_list.addItem(item)
 
     def handle_scan_targets(self):
@@ -973,8 +981,8 @@ class ProjectView(BaseView):
             selected_names = []
             for i in range(self.targets_list.count()):
                 it = self.targets_list.item(i)
-                if it.checkState() == Qt.Checked:
-                    selected_names.append(it.data(Qt.UserRole))
+                if it.checkState() == Qt.CheckState.Checked:
+                    selected_names.append(it.data(Qt.ItemDataRole.UserRole))
             if not selected_names:
                 QMessageBox.warning(self, "Scan", "Select at least one target to scan.")
                 return
@@ -1135,7 +1143,7 @@ class ProjectView(BaseView):
             roots_str = ", ".join(str(r) for r in t.get('roots', []))
             alias = t.get('ssh_alias', '') or ''
             item = QListWidgetItem(f"{t.get('name', '')}  kind={t.get('kind', '')}  alias={alias}  roots=[{roots_str}]")
-            item.setData(Qt.UserRole, t.get('name', ''))
+            item.setData(Qt.ItemDataRole.UserRole, t.get('name', ''))
             self.targets_admin_list.addItem(item)
 
     def handle_add_target(self):
@@ -1184,7 +1192,7 @@ class ProjectView(BaseView):
             if not item:
                 QMessageBox.information(self, "Targets", "Select a target to remove.")
                 return
-            name = item.data(Qt.UserRole)
+            name = item.data(Qt.ItemDataRole.UserRole)
             targets = self.project_manager.config.settings.get('scan_targets', [])
             before = len(targets)
             targets = [t for t in targets if t.get('name') != name]
