@@ -76,6 +76,42 @@ class LoggingEventBus:
         self.logger.addHandler(rf_handler)
         self.logger.info("Rotating file handler configured at %s", log_path)
 
+    def configure_app_file_handler(self, *, max_size: int = 1 * 1024 * 1024, backups: int = 3) -> None:
+        """Attach/replace a RotatingFileHandler at the application logs directory.
+
+        Resolves the OS-default MUS1 app root and writes to `<app_root>/logs/mus1.log`.
+        This decouples logging from lab/project storage locations.
+        """
+        try:
+            from .config_manager import get_app_logs_dir
+        except Exception:
+            # Fallback: use current working directory logs to avoid crashing
+            from pathlib import Path as _Path
+            logs_dir = _Path.cwd() / "logs"
+            logs_dir.mkdir(parents=True, exist_ok=True)
+        else:
+            logs_dir = get_app_logs_dir()
+
+        log_path = logs_dir / "mus1.log"
+        # Remove existing RotatingFileHandler(s)
+        for h in list(self.logger.handlers):
+            if isinstance(h, RotatingFileHandler):
+                self.logger.removeHandler(h)
+                try:
+                    h.close()
+                except Exception:
+                    pass
+        rf_handler = RotatingFileHandler(
+            log_path,
+            maxBytes=max_size,
+            backupCount=backups,
+            encoding="utf-8",
+        )
+        rf_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
+        rf_handler.setLevel(logging.INFO)
+        self.logger.addHandler(rf_handler)
+        self.logger.info("Application file handler configured at %s", log_path)
+
     def _get_log_file_path(self) -> Optional[str]:
         """Get the path to the log file from logger's handlers."""
         # This might need adjustment depending on how RotatingFileHandler is identified

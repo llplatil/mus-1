@@ -25,7 +25,6 @@ from ..core.logging_bus import LoggingEventBus
 from .metadata_display import MetadataTreeView  # Import for overview display
 from pathlib import Path
 from .gui_services import GUISubjectService
-from ..core.metadata import Sex
 # TODO: Update to use new clean architecture models
 # from ..core import ObjectMetadata, BodyPartMetadata  # Import needed for body parts and objects pages
 
@@ -67,8 +66,10 @@ class SubjectView(BaseView):
     # --- Lifecycle hooks ---
     def on_services_ready(self, services):
         super().on_services_ready(services)
-        self.gui_services = services
-        self.subject_service = services
+        # services is now the GUIServiceFactory, create the services we need
+        self.gui_services = services.create_subject_service()
+        self.subject_service = services.create_subject_service()
+        self.experiment_service = services.create_experiment_service()
         try:
             self.refresh_subject_list_display()
             self.refresh_overview()
@@ -395,7 +396,7 @@ class SubjectView(BaseView):
 
         # Get subjects and experiments using GUI services
         subjects_dto = self.subject_service.get_subjects_for_display()
-        experiments_dto = self.gui_services.get_experiments_for_display()
+        experiments_dto = self.experiment_service.get_experiments_for_display()
 
         # Convert DTOs to dictionaries for compatibility with metadata_tree
         subjects_dict = {subj.id: subj for subj in subjects_dto}
@@ -564,35 +565,40 @@ class SubjectView(BaseView):
         self.navigation_pane.add_log_message(f"Notes feature not yet implemented for subject {subject_id}.", "info")
 
     # New methods for Treatments and Genotypes management (naming now consistent with core modules)
-    def handle_add_treatment(self):
-        """Handles adding a new treatment to available treatments."""
-        new_treatment = self.new_treatment_line_edit.text().strip()
-        if not new_treatment:
-            self.log_bus.log("Treatment name cannot be empty.", "error", "SubjectView")
+    def _add_metadata_item(self, name: str, line_edit, add_method, refresh_method, item_type: str):
+        """Generic helper method for adding metadata items (treatments, genotypes, etc.)."""
+        value = line_edit.text().strip()
+        if not value:
+            self.log_bus.log(f"{item_type} name cannot be empty.", "error", "SubjectView")
             return
         try:
-            self.project_manager.add_treatment(new_treatment)
-            self.new_treatment_line_edit.clear()
-            self.refresh_treatments_lists()
+            add_method(value)
+            line_edit.clear()
+            refresh_method()
             self.refresh_active_metadata_dropdowns()
-            self.log_bus.log(f"Added treatment '{new_treatment}' successfully.", "success", "SubjectView")
+            self.log_bus.log(f"Added {item_type.lower()} '{value}' successfully.", "success", "SubjectView")
         except Exception as e:
-            self.log_bus.log(f"Error adding treatment: {e}", "error", "SubjectView")
+            self.log_bus.log(f"Error adding {item_type.lower()}: {e}", "error", "SubjectView")
+
+    def handle_add_treatment(self):
+        """Handles adding a new treatment to available treatments."""
+        self._add_metadata_item(
+            "treatment",
+            self.new_treatment_line_edit,
+            self.project_manager.add_treatment,
+            self.refresh_treatments_lists,
+            "Treatment"
+        )
 
     def handle_add_genotype(self):
         """Handles adding a new genotype to available genotypes."""
-        new_genotype = self.new_genotype_line_edit.text().strip()
-        if not new_genotype:
-            self.log_bus.log("Genotype name cannot be empty.", "error", "SubjectView")
-            return
-        try:
-            self.project_manager.add_genotype(new_genotype)
-            self.new_genotype_line_edit.clear()
-            self.refresh_genotypes_lists()
-            self.refresh_active_metadata_dropdowns()
-            self.log_bus.log(f"Added genotype '{new_genotype}' successfully.", "success", "SubjectView")
-        except Exception as e:
-            self.log_bus.log(f"Error adding genotype: {e}", "error", "SubjectView")
+        self._add_metadata_item(
+            "genotype",
+            self.new_genotype_line_edit,
+            self.project_manager.add_genotype,
+            self.refresh_genotypes_lists,
+            "Genotype"
+        )
 
     def handle_add_to_active_treatments(self):
         """Adds selected treatments from the available list to active treatments."""

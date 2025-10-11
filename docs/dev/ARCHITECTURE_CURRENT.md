@@ -138,20 +138,16 @@ class ConfigManager:
 
 #### **Phase 4: Application Environment (main.py)**
 ```python
-# First, resolve MUS1 root deterministically
-from .core.config_manager import resolve_mus1_root
-mus1_root = resolve_mus1_root()
-logs_dir = mus1_root / "logs"
-logs_dir.mkdir(exist_ok=True)
-
-# Configure logging to use MUS1 logs directory
-log_file = logs_dir / "mus1.log"
+# Configure application-level logging (always under OS app root)
+from .core.logging_bus import LoggingEventBus
+log_bus = LoggingEventBus.get_instance()
+log_bus.configure_app_file_handler(max_size=5 * 1024 * 1024, backups=3)
 
 # Qt platform detection and setup
 app = QApplication(sys.argv)
 ```
 
-Note: In the current implementation, the logs root is resolved via `resolve_mus1_root()` on startup. The intended behavior post-setup is to prefer a configured `get_config("mus1.root_path")` when present, falling back to `resolve_mus1_root()` only if unset. See Roadmap for the outstanding task.
+Note: Application logs are now always written under the OS app root (`<app_root>/logs/mus1.log`) via `LoggingEventBus.configure_app_file_handler()`. This is decoupled from lab/project storage and respects the root pointer resolution.
 
 #### **Phase 5: User Environment (SetupService)**
 ```python
@@ -270,12 +266,9 @@ CREATE TABLE experiments (
 - Current status: Service/repository layer uses SQL for user data as intended. However, the legacy CLI path still writes `user.name/email/organization` to ConfigManager, and the one-time migration is not wired into startup. See Outstanding Items below.
 
 ### Wizard Behavior and Reinstall Experience
-- Wizard offers three options when a config is detected:
-  - Use existing configuration at the discovered root (default)
-  - Locate existing configuration... (browse to a `config.db` to switch roots)
-  - Set up new configuration (with optional “copy existing config to new location”)
-- After choosing a root, the wizard writes/updates the root pointer and rebinds the ConfigManager to `<root>/config/config.db`.
-- If the root (e.g., external drive) is temporarily unavailable, startup prompts to retry/locate/create, without losing the pointer.
+- The setup wizard no longer exposes MUS1 application root selection in the default flow; it focuses on user profile, global shared storage, and lab creation (with optional per-lab storage root).
+- If a previously configured root pointer is invalid or unavailable at startup, the application (outside the wizard) prompts to locate an existing configuration and updates the root pointer accordingly.
+- After startup root selection (when needed), the ConfigManager binds to `<root>/config/config.db`. The wizard does not move or configure the app root.
 
 ## Current Status
 
@@ -306,10 +299,9 @@ CREATE TABLE experiments (
 
 This section documents concrete gaps discovered during the "user → lab setup → drive selection → project creation" flow and the corrections applied.
 
-### ✅ **FIXED: MUS1 Root Selection Ignored in GUI Wizard**
-- Problem: `MUS1SetupWizard.collect_setup_data()` previously ignored the MUS1 Root page and always used `resolve_mus1_root()`.
-- Impact: User drive/root selection in the wizard had no effect.
-- Status: **Fixed**. The wizard now reads the selected path and initializes `MUS1RootLocationDTO` accordingly. On success, `ConfigManager` is re-initialized to `<selected_root>/config/config.db`.
+### ✅ **RESCOPED: MUS1 Root Selection Removed from Wizard**
+- Change: The wizard no longer selects the application root. The app root is determined deterministically (env var → root pointer → platform default → create).
+- Impact: The wizard cannot inadvertently redirect logs/config to lab/project drives. Root relocation is handled by a startup prompt when a prior pointer is invalid.
 
 ### ✅/🔄 **SETUP WORKFLOW: Async Execution Implemented; Per-Step UI Pending**
 - Problem: `SetupWorker.run()` was invoked on the GUI thread; failure paths didn't update the conclusion page.
@@ -338,20 +330,17 @@ This section documents concrete gaps discovered during the "user → lab setup �
 - Status: **Implemented**. Added SQL schema with `UserModel`, `LabModel`, `LabProjectModel` tables. Created repositories and updated setup to store users/labs in SQL database with proper relationships.
 
 ### ✅ **IMPLEMENTED: GUI Tab Reorganization**
-### 🔄 **PARTIAL: Configuration Root Usage Consistency**
-- Intended: After setup, the app should prefer the configured MUS1 root (`mus1.root_path`) for logs and other paths, falling back to deterministic resolution only if unset.
-- Current: `main.py` always uses `resolve_mus1_root()` when configuring logs; imports across the app sometimes call `resolve_mus1_root()` directly.
-- Action: Prefer `get_config("mus1.root_path")` when present; audit imports and replace direct calls where appropriate.
+### ✅ **FIXED: App Logging/Config Path Consistency**
+- Result: Logging is configured via `LoggingEventBus.configure_app_file_handler()` and always uses the OS app root. This is fully decoupled from lab/project storage.
+- Follow-up: Prefer central helpers for app paths; direct calls to `resolve_mus1_root()` remain acceptable for app-root concerns.
 
-### 🔄 **PARTIAL: Copy Existing Configuration**
-- Intended: Wizard option "Copy existing configuration to new location" should copy an existing config (e.g., `config.db`) when creating a new root.
-- Current: Wizard collects the flag, but `SetupService.setup_mus1_root_location` does not implement copy logic.
-- Action: Implement guarded copy of legacy config into the new root when flagged.
+### ✅ **IMPLEMENTED: Copy Existing Configuration (Best-Effort)**
+- Behavior: `SetupService.setup_mus1_root_location` supports best-effort copying of an existing `config.db` to a new root when requested and a valid source exists.
+- Note: The wizard’s default flow does not move the app root.
 
-### 🔄 **PARTIAL: User Profile Single Source of Truth**
-- Intended: Only `user.id` lives in ConfigManager; all user fields live in SQL.
-- Current: Service/repository use SQL; legacy CLI still persists user fields in ConfigManager; one-time migration not wired.
-- Action: Update CLI to stop writing duplicate keys; wire `ConfigMigrationManager` (or a simpler seeding step) to migrate and remove legacy keys.
+### ✅/🔄 **User Profile Single Source of Truth**
+- Implemented: Only `user.id` is persisted in ConfigManager; user fields live in SQL. A one-time migration from legacy keys to SQL is invoked at startup.
+- Outstanding: If any legacy CLI path persists duplicate user fields, it should be updated to stop writing them.
 
 ### 🔄 **PARTIAL: Plugin Discovery surfaced in GUI**
 - Intended: GUI should list discovered plugins via the clean plugin manager.
@@ -362,9 +351,16 @@ This section documents concrete gaps discovered during the "user → lab setup �
 - Status: **Implemented**. Created `SettingsView` with User Settings, Lab Settings, and Workers pages. Moved Workers functionality from `ProjectView` to `SettingsView`. Project tab now focused on project-specific operations.
 
 ### Reinforced Design Principles
-- Deterministic root resolution is the baseline; explicit GUI selection must override it and re-bind the config database path.
-- Project discovery priority: lab config → user default projects dir → shared storage `Projects/`. New projects should be registered into lab config when lab is known.
-- Views should act through services and the `ProjectManagerClean` held by `MainWindow` to avoid split state.
+- Deterministic root resolution is the baseline; GUI no longer selects the app root. A startup prompt handles relocating to an existing config when needed.
+- Project discovery priority: lab-registered projects → user default projects dir → shared storage root (entire root, not just `Projects/`) → lab-specific storage roots (when configured).
+- Views act through services and the `ProjectManagerClean` held by `MainWindow` to avoid split state.
+
+### Data Storage Roots
+- Global shared storage root (`storage.shared_root`) can be configured for collaborative data locations.
+- Optional per-lab storage roots can be set; discovery scans these alongside the global/shared locations.
+
+### GUI Identity
+- The main window title surfaces the active user (name and email) derived from the SQL profile.
 
 ## Key Features
 

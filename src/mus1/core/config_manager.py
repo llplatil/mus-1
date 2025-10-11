@@ -650,3 +650,46 @@ def set_config(key: str, value: Any, scope: str = "user", persist: bool = True):
 def delete_config(key: str, scope: str):
     """Delete a configuration key."""
     get_config_manager().delete(key, scope)
+
+
+# ===========================================
+# Convenience helpers for app/lab paths
+# ===========================================
+
+def get_app_root() -> Path:
+    """Return the resolved application root directory (OS-default location)."""
+    return resolve_mus1_root()
+
+
+def get_app_logs_dir() -> Path:
+    """Return the application logs directory, ensuring it exists."""
+    root = get_app_root()
+    logs_dir = root / "logs"
+    logs_dir.mkdir(parents=True, exist_ok=True)
+    return logs_dir
+
+
+def get_active_user_id() -> Optional[str]:
+    """Return the active user id if configured, otherwise None."""
+    user_id = get_config("user.id")
+    return str(user_id) if user_id else None
+
+
+def get_lab_storage_root(lab_id: str) -> Optional[Path]:
+    """Get a lab-specific storage root if configured in the lab scope."""
+    if not lab_id:
+        return None
+    key = f"lab.storage_roots.{lab_id}"
+    value = get_config_manager().get(key, None, scope="lab")
+    return Path(value) if value else None
+
+
+def set_lab_storage_root(lab_id: str, path: Path) -> None:
+    """Set a lab-specific storage root in the lab scope."""
+    if not lab_id:
+        raise ValueError("lab_id is required")
+    if path is None:
+        raise ValueError("path is required")
+    # Persist as string path in lab scope
+    key = f"lab.storage_roots.{lab_id}"
+    get_config_manager().set(key, str(path), scope="lab", persist=True)

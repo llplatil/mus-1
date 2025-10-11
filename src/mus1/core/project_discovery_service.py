@@ -8,6 +8,7 @@ a clear priority chain and single source of truth.
 from pathlib import Path
 from typing import Optional, List
 from .config_manager import get_config
+from .config_manager import get_lab_storage_root
 
 
 class ProjectDiscoveryService:
@@ -39,6 +40,11 @@ class ProjectDiscoveryService:
                     project_path = Path(project["path"])
                     if project_path.exists() and (project_path / "mus1.db").exists():
                         return project_path
+                    # If lab-registered path doesn't exist, log warning but continue searching
+                    import logging
+                    logging.getLogger("mus1").warning(
+                        f"Lab configuration has stale path for project '{project_name}': {project_path}"
+                    )
 
         # Priority 2: User-configured default directory
         default_dir = get_config("user.default_projects_dir")
@@ -47,26 +53,39 @@ class ProjectDiscoveryService:
             if project_path.exists() and (project_path / "mus1.db").exists():
                 return project_path
 
-        # Priority 3: Shared storage
+        # Priority 3: Shared storage root (scan entire root, not just Projects/)
         shared_root = get_config("storage.shared_root")
         if shared_root:
-            project_path = Path(shared_root) / "Projects" / project_name
+            shared_path = Path(shared_root)
+            # First check if it's directly in shared root
+            project_path = shared_path / project_name
+            if project_path.exists() and (project_path / "mus1.db").exists():
+                return project_path
+            # Then check Projects subdirectory for backward compatibility
+            project_path = shared_path / "Projects" / project_name
             if project_path.exists() and (project_path / "mus1.db").exists():
                 return project_path
 
         return None
 
-    def get_project_root_for_dialog(self) -> Path:
+    def get_project_root_for_dialog(self, lab_id: Optional[str] = None) -> Path:
         """
         Get the appropriate project root directory for project selection dialogs.
 
         This is used as a hint for where to start browsing, but the dialog
         discovers projects from all configured locations.
 
+        Args:
+            lab_id: Optional lab identifier to bias toward a lab-specific root
+
         Returns:
             Path to use as the root for project dialogs
         """
-        # Priority: user-configured default, then shared storage root, then local projects
+        # Priority: lab-specific root, user default, shared storage root, then local projects
+        if lab_id:
+            lab_root = get_lab_storage_root(lab_id)
+            if lab_root and lab_root.exists():
+                return lab_root
         default_dir = get_config("user.default_projects_dir")
         if default_dir:
             return Path(default_dir)
@@ -86,6 +105,7 @@ class ProjectDiscoveryService:
         1. Lab-registered projects (most authoritative)
         2. Filesystem scan of user default directory
         3. Filesystem scan of shared storage root (not Projects subdirectory)
+        4. Filesystem scan of lab-specific roots (if configured)
 
         Returns:
             List of project directory paths
@@ -114,6 +134,17 @@ class ProjectDiscoveryService:
         shared_root = get_config("storage.shared_root")
         if shared_root:
             self._discover_projects_in_directory(Path(shared_root), projects)
+
+        # Priority 4: Lab-specific roots
+        try:
+            from .setup_service import get_setup_service
+            labs = get_setup_service().get_labs()
+            for lab_id in labs.keys():
+                lab_root = get_lab_storage_root(lab_id)
+                if lab_root:
+                    self._discover_projects_in_directory(lab_root, projects)
+        except Exception:
+            pass
 
         return projects
 

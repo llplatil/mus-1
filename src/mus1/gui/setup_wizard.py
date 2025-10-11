@@ -558,6 +558,16 @@ class LabSetupPage(QWizardPage):
         self.pi_edit.setPlaceholderText("Principal Investigator name")
         lab_layout.addRow("PI Name:", self.pi_edit)
 
+        # Optional lab storage root
+        self.lab_storage_path_edit = QLineEdit()
+        self.lab_storage_path_edit.setPlaceholderText("Optional: Root directory for this lab's data")
+        browse_btn = QPushButton("Browse…")
+        browse_btn.clicked.connect(self.browse_lab_storage)
+        path_row = QHBoxLayout()
+        path_row.addWidget(self.lab_storage_path_edit)
+        path_row.addWidget(browse_btn)
+        lab_layout.addRow("Lab Storage Root:", path_row)
+
         self.lab_group.setLayout(lab_layout)
         layout.addWidget(self.lab_group)
 
@@ -566,6 +576,15 @@ class LabSetupPage(QWizardPage):
         self.lab_name_edit.textChanged.connect(self.update_lab_id)
 
         self.setLayout(layout)
+
+    def browse_lab_storage(self):
+        """Browse for optional lab storage root path."""
+        path = QFileDialog.getExistingDirectory(
+            self, "Select Lab Storage Root",
+            self.lab_storage_path_edit.text() or str(Path.home())
+        )
+        if path:
+            self.lab_storage_path_edit.setText(path)
 
     def toggle_lab_config(self, checked: bool):
         """Enable/disable lab configuration based on checkbox."""
@@ -751,7 +770,7 @@ class MUS1SetupWizard(QWizard):
 
         # Add pages
         self.addPage(WelcomePage())
-        self.addPage(MUS1RootLocationPage())
+        # Removed MUS1RootLocationPage from the default flow to avoid conflating app root with data roots
         self.addPage(UserProfilePage())
         self.addPage(SharedStoragePage())
         self.addPage(LabSetupPage())
@@ -804,24 +823,13 @@ class MUS1SetupWizard(QWizard):
 
     def collect_setup_data(self):
         """Collect setup data from wizard pages."""
-        # MUS1 Root Location - use user's selection from the wizard page
-        root_page = self.page(1)  # MUS1RootLocationPage
-        if hasattr(root_page, 'get_selected_path'):
-            selected_root = root_page.get_selected_path()
-            copy_existing = getattr(root_page, 'copy_config_checkbox', None)
-            self.mus1_root_dto = MUS1RootLocationDTO(
-                path=selected_root,
-                create_if_missing=True,
-                copy_existing_config=copy_existing.isChecked() if copy_existing else False
-            )
-        else:
-            # Fallback to deterministic resolution if page not available
-            mus1_root = resolve_mus1_root()
-            self.mus1_root_dto = MUS1RootLocationDTO(
-                path=mus1_root,
-                create_if_missing=True,
-                copy_existing_config=False
-            )
+        # MUS1 Root Location: use deterministic resolution; app root is OS-default and not chosen here
+        mus1_root = resolve_mus1_root()
+        self.mus1_root_dto = MUS1RootLocationDTO(
+            path=mus1_root,
+            create_if_missing=True,
+            copy_existing_config=False
+        )
 
         # User profile
         user_page = self.page(2)  # UserProfilePage
@@ -859,13 +867,24 @@ class MUS1SetupWizard(QWizard):
                 pi_name=lab_page.pi_edit.text().strip() or "",
                 creator_id=creator_id
             )
+            # Optional: lab storage root retained locally; set via service after workflow
+            self._lab_storage_root = Path(lab_page.lab_storage_path_edit.text().strip()) if lab_page.lab_storage_path_edit.text().strip() else None
         else:
             self.lab_dto = None
+            self._lab_storage_root = None
 
     def on_setup_finished(self, result: dict):
         """Handle successful setup completion."""
         # ConfigManager is already re-initialized in the worker thread after root setup
         self.setup_completed.emit(result)
+        # If lab was created and a lab storage root was provided, set it now via service
+        try:
+            if getattr(self, 'lab_dto', None) and getattr(self, '_lab_storage_root', None):
+                from ..core.setup_service import get_setup_service
+                svc = get_setup_service()
+                svc.set_lab_storage_root(self.lab_dto.id, self._lab_storage_root)
+        except Exception:
+            pass
         QMessageBox.information(
             self, "Setup Complete",
             "MUS1 has been configured successfully!\n\n"

@@ -26,12 +26,8 @@ def main():
         needs_root_selection = False
         invalid_root_target = None
 
-    # Configure a single rotating file handler under the resolved MUS1 root
-    # Prefer configured MUS1 root when present; fall back to deterministic resolution
-    configured_root = get_config("mus1.root_path")
-    mus1_root = Path(configured_root) if configured_root else resolve_mus1_root()
-    (mus1_root / "logs").mkdir(exist_ok=True)
-    log_bus.configure_default_file_handler(mus1_root / "logs", max_size=5 * 1024 * 1024, backups=3)
+    # Configure a single rotating file handler at the OS app root logs directory
+    log_bus.configure_app_file_handler(max_size=5 * 1024 * 1024, backups=3)
 
     config_manager = ConfigManager()
     # One-time migration: move legacy user profile keys to SQL if present
@@ -59,9 +55,8 @@ def main():
             if selected:
                 from .core.config_manager import set_root_pointer
                 set_root_pointer(Path(selected))
-                # Re-resolve after setting new root
-                configured_root = get_config("mus1.root_path")
-                mus1_root = Path(configured_root) if configured_root else resolve_mus1_root()
+                # Reconfigure logging to app logs under the (potentially) new root
+                log_bus.configure_app_file_handler(max_size=5 * 1024 * 1024, backups=3)
 
     logger = logging.getLogger('mus1')
     logger.info("Launching MUS1 GUI...")

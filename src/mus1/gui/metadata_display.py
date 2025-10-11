@@ -284,13 +284,13 @@ class MetadataGridDisplay(QWidget):
         
         # Configure table appearance
         self.table.setAlternatingRowColors(True)
-        self.table.setSelectionBehavior(QTableWidget.SelectRows)
-        self.table.setSelectionMode(QTableWidget.SingleSelection)
+        self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.table.setSortingEnabled(True)
         
         # Configure header
         header = self.table.horizontalHeader()
-        header.setSectionResizeMode(QHeaderView.Stretch)
+        header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         header.setProperty("class", "mus1-table-header")
 
         # Add table to layout
@@ -369,7 +369,7 @@ class MetadataGridDisplay(QWidget):
                     cell_widget = QWidget()
                     layout = QHBoxLayout(cell_widget)
                     layout.addWidget(checkbox)
-                    layout.setAlignment(Qt.AlignmentFlag.AlignmentFlag.AlignCenter)
+                    layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
                     layout.setContentsMargins(0,0,0,0)
                     self.table.setCellWidget(row, col, cell_widget)
 
@@ -405,7 +405,7 @@ class MetadataGridDisplay(QWidget):
 
                 # Common alignment for non-checkbox cells
                 if not (selectable and key == checkbox_column):
-                    self.table.item(row, col).setTextAlignment(Qt.AlignmentFlag.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignmentFlag.AlignVCenter)
+                    self.table.item(row, col).setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
                 
         self.table.resizeRowsToContents()
         self.table.setSortingEnabled(True) # Re-enable sorting

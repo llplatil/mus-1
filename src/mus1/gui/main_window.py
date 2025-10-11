@@ -19,6 +19,7 @@ from .gui_services import GUIServiceFactory
 from ..core.logging_bus import LoggingEventBus
 from ..core.project_manager_clean import ProjectManagerClean
 from ..core import ThemeManager
+from ..core.setup_service import get_setup_service
 import logging
 import sys
 from pathlib import Path
@@ -99,11 +100,19 @@ class MainWindow(QMainWindow):
 
     def update_window_title(self):
         """Sets the window title based on the current project."""
+        # Fetch active user profile (if configured)
+        try:
+            setup_service = get_setup_service()
+            profile = setup_service.get_user_profile()
+            user_str = f" — {profile.name} <{profile.email}>" if profile else ""
+        except Exception:
+            user_str = ""
+
         if self.selected_project_name:
-            self.setWindowTitle(f"Mus1 - {self.selected_project_name}")
+            self.setWindowTitle(f"Mus1 — {self.selected_project_name}{user_str}")
         else:
             # Consistent title when no project is loaded or selected yet
-            self.setWindowTitle("Mus1 - No Project Loaded")
+            self.setWindowTitle(f"Mus1 — No Project Loaded{user_str}")
 
     def create_menu_bar(self):
         """Create the main menu bar with application menus."""
@@ -277,7 +286,7 @@ class MainWindow(QMainWindow):
             if hasattr(self.project_view, 'on_services_ready'):
                 self.project_view.on_services_ready(self.gui_services.create_project_service())
             if hasattr(self.subject_view, 'on_services_ready'):
-                self.subject_view.on_services_ready(self.gui_services.create_subject_service())
+                self.subject_view.on_services_ready(self.gui_services)  # Pass factory for both subject and experiment services
             if hasattr(self.experiment_view, 'on_services_ready'):
                 self.experiment_view.on_services_ready(self.gui_services.create_experiment_service())
             if hasattr(self.settings_view, 'on_services_ready'):
@@ -328,7 +337,7 @@ class MainWindow(QMainWindow):
             if hasattr(self.project_view, 'on_services_ready'):
                 self.project_view.on_services_ready(self.gui_services.create_project_service())
             if hasattr(self.subject_view, 'on_services_ready'):
-                self.subject_view.on_services_ready(self.gui_services.create_subject_service())
+                self.subject_view.on_services_ready(self.gui_services)  # Pass factory for both subject and experiment services
             if hasattr(self.experiment_view, 'on_services_ready'):
                 self.experiment_view.on_services_ready(self.gui_services.create_experiment_service())
             if hasattr(self.settings_view, 'on_services_ready'):
@@ -504,7 +513,9 @@ class MainWindow(QMainWindow):
     def apply_theme(self):
         """Apply the current theme to the application and propagate to all views."""
         if self.theme_manager:
-            effective_theme = self.theme_manager.apply_theme(QApplication.instance())
+            # Theme palette is applied once in main.py. Here we only propagate
+            # the effective theme to widgets for styling and QSS variable usage.
+            effective_theme = getattr(self.theme_manager, "get_effective_theme", lambda: "dark")()
             self.setProperty("theme", effective_theme)
             self.style().unpolish(self)
             self.style().polish(self)

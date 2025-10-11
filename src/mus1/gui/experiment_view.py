@@ -348,7 +348,8 @@ class ExperimentView(BaseView):
         batch_details_form = QFormLayout()
         batch_details_form.setContentsMargins(self.FORM_MARGIN, self.FORM_MARGIN, self.FORM_MARGIN, self.FORM_MARGIN)
         batch_details_form.setVerticalSpacing(self.CONTROL_SPACING)
-        batch_details_group.setLayout(batch_details_form)
+        # Do not replace the group's existing container layout; add the form layout inside it
+        _container_layout.addLayout(batch_details_form)
 
         # Batch ID (auto-generated, but user can modify)
         self.batchIdLineEdit = QLineEdit()
@@ -385,7 +386,7 @@ class ExperimentView(BaseView):
         
         # Notification Label
         self.batch_notification_label = QLabel("")
-        self.batch_notification_label.setAlignment(Qt.AlignmentFlag.AlignmentFlag.AlignCenter)
+        self.batch_notification_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         batch_layout.addWidget(self.batch_notification_label)
 
         # Add stretch to keep elements at the top
@@ -650,12 +651,21 @@ class ExperimentView(BaseView):
                     raise  # Re-raise unexpected errors
 
             # Manually clear lists after successful add
-            if hasattr(self, 'data_handler_plugin_list'):
-                self.data_handler_plugin_list.clearSelection()
-            if hasattr(self, 'analysis_plugin_list'):
-                self.analysis_plugin_list.clearSelection()
-            if hasattr(self, 'exporter_plugin_list'):
-                self.exporter_plugin_list.clearSelection()
+            try:
+                if hasattr(self, 'data_handler_plugin_list') and self.data_handler_plugin_list:
+                    self.data_handler_plugin_list.clearSelection()
+            except RuntimeError:
+                pass
+            try:
+                if hasattr(self, 'analysis_plugin_list') and self.analysis_plugin_list:
+                    self.analysis_plugin_list.clearSelection()
+            except RuntimeError:
+                pass
+            try:
+                if hasattr(self, 'exporter_plugin_list') and self.exporter_plugin_list:
+                    self.exporter_plugin_list.clearSelection()
+            except RuntimeError:
+                pass
             # Button will be disabled by _update_add_button_state triggered by combo/list changes
 
             logger.info(f"Experiment '{experiment_id}' added successfully.")
@@ -862,17 +872,40 @@ class ExperimentView(BaseView):
             logger.warning("Plugin manager not available for discovery.")
             # Plugin system integration pending in clean architecture
             # For now, clear lists and show placeholder
-            self.importer_plugin_list.clear()
-            self.analysis_plugin_list.clear()
-            self.exporter_plugin_list.clear()
+            try:
+                if hasattr(self, 'importer_plugin_list') and self.importer_plugin_list:
+                    self.importer_plugin_list.clear()
+            except RuntimeError:
+                pass
+            try:
+                if hasattr(self, 'analysis_plugin_list') and self.analysis_plugin_list:
+                    self.analysis_plugin_list.clear()
+            except RuntimeError:
+                pass
+            try:
+                if hasattr(self, 'exporter_plugin_list') and self.exporter_plugin_list:
+                    self.exporter_plugin_list.clear()
+            except RuntimeError:
+                pass
             self.clear_plugin_fields()
             return
 
         # Clear previous entries and parameter fields
-        self.importer_plugin_list.clear()
-        self.analysis_plugin_list.clear()
-        if hasattr(self, 'exporter_plugin_list'):
-            self.exporter_plugin_list.clear()
+        try:
+            if hasattr(self, 'importer_plugin_list') and self.importer_plugin_list:
+                self.importer_plugin_list.clear()
+        except RuntimeError:
+            pass
+        try:
+            if hasattr(self, 'analysis_plugin_list') and self.analysis_plugin_list:
+                self.analysis_plugin_list.clear()
+        except RuntimeError:
+            pass
+        try:
+            if hasattr(self, 'exporter_plugin_list') and self.exporter_plugin_list:
+                self.exporter_plugin_list.clear()
+        except RuntimeError:
+            pass
         self.clear_plugin_fields()
 
         # Get the selected experiment type
@@ -904,23 +937,34 @@ class ExperimentView(BaseView):
         exporter_plugins = self.plugin_manager.get_exporter_plugins() if hasattr(self, 'exporter_plugin_list') else []
 
         # Populate Data Handler/Importer List
-        for plugin in importer_plugins:
-            item = QListWidgetItem(plugin.plugin_self_metadata().name)
-            item.setData(Qt.ItemDataRole.UserRole, plugin) # Store the actual plugin object
-            self.importer_plugin_list.addItem(item)
+        try:
+            if hasattr(self, 'importer_plugin_list') and self.importer_plugin_list:
+                for plugin in importer_plugins:
+                    item = QListWidgetItem(plugin.plugin_self_metadata().name)
+                    item.setData(Qt.ItemDataRole.UserRole, plugin) # Store the actual plugin object
+                    self.importer_plugin_list.addItem(item)
+        except RuntimeError:
+            pass
 
         # Populate Analysis Plugin List
-        for plugin in analysis_plugins:
-            item = QListWidgetItem(plugin.plugin_self_metadata().name)
-            item.setData(Qt.ItemDataRole.UserRole, plugin) # Store the actual plugin object
-            self.analysis_plugin_list.addItem(item)
+        try:
+            if hasattr(self, 'analysis_plugin_list') and self.analysis_plugin_list:
+                for plugin in analysis_plugins:
+                    item = QListWidgetItem(plugin.plugin_self_metadata().name)
+                    item.setData(Qt.ItemDataRole.UserRole, plugin) # Store the actual plugin object
+                    self.analysis_plugin_list.addItem(item)
+        except RuntimeError:
+            pass
 
         # Populate Exporter Plugin List (if present)
-        if hasattr(self, 'exporter_plugin_list'):
-            for plugin in exporter_plugins:
-                item = QListWidgetItem(plugin.plugin_self_metadata().name)
-                item.setData(Qt.ItemDataRole.UserRole, plugin)
-                self.exporter_plugin_list.addItem(item)
+        try:
+            if hasattr(self, 'exporter_plugin_list') and self.exporter_plugin_list:
+                for plugin in exporter_plugins:
+                    item = QListWidgetItem(plugin.plugin_self_metadata().name)
+                    item.setData(Qt.ItemDataRole.UserRole, plugin)
+                    self.exporter_plugin_list.addItem(item)
+        except RuntimeError:
+            pass
 
         # Update button state based on whether plugins are now available etc.
         self._update_add_button_state()
@@ -929,30 +973,41 @@ class ExperimentView(BaseView):
         """Helper to get the plugin objects currently selected in the UI lists."""
         selected_plugins = []
         # Importers/Data Handlers (respect multi-selection)
-        for i in range(self.data_handler_plugin_list.count()):
-            item = self.data_handler_plugin_list.item(i)
-            if item.isSelected():
-                plugin = item.data(Qt.ItemDataRole.UserRole)
-                if plugin and plugin not in selected_plugins:
-                    selected_plugins.append(plugin)
+        try:
+            if hasattr(self, 'data_handler_plugin_list') and self.data_handler_plugin_list:
+                for i in range(self.data_handler_plugin_list.count()):
+                    item = self.data_handler_plugin_list.item(i)
+                    if item.isSelected():
+                        plugin = item.data(Qt.ItemDataRole.UserRole)
+                        if plugin and plugin not in selected_plugins:
+                            selected_plugins.append(plugin)
+        except RuntimeError:
+            pass
 
         # Analysis Plugins (multi-selection)
-        for i in range(self.analysis_plugin_list.count()):
-             item = self.analysis_plugin_list.item(i)
-             if item.isSelected():
-                 plugin = item.data(Qt.ItemDataRole.UserRole)
-                 # Avoid adding the same plugin twice if it's both a handler and analyzer
-                 if plugin and plugin not in selected_plugins:
-                     selected_plugins.append(plugin)
+        try:
+            if hasattr(self, 'analysis_plugin_list') and self.analysis_plugin_list:
+                for i in range(self.analysis_plugin_list.count()):
+                     item = self.analysis_plugin_list.item(i)
+                     if item.isSelected():
+                         plugin = item.data(Qt.ItemDataRole.UserRole)
+                         # Avoid adding the same plugin twice if it's both a handler and analyzer
+                         if plugin and plugin not in selected_plugins:
+                             selected_plugins.append(plugin)
+        except RuntimeError:
+            pass
 
         # Exporter Plugins (multi-selection)
-        if hasattr(self, 'exporter_plugin_list'):
-            for i in range(self.exporter_plugin_list.count()):
-                item = self.exporter_plugin_list.item(i)
-                if item.isSelected():
-                    plugin = item.data(Qt.ItemDataRole.UserRole)
-                    if plugin and plugin not in selected_plugins:
-                        selected_plugins.append(plugin)
+        try:
+            if hasattr(self, 'exporter_plugin_list') and self.exporter_plugin_list:
+                for i in range(self.exporter_plugin_list.count()):
+                    item = self.exporter_plugin_list.item(i)
+                    if item.isSelected():
+                        plugin = item.data(Qt.ItemDataRole.UserRole)
+                        if plugin and plugin not in selected_plugins:
+                            selected_plugins.append(plugin)
+        except RuntimeError:
+            pass
 
         return selected_plugins
 
@@ -1454,15 +1509,29 @@ class ExperimentView(BaseView):
         and matching the selected experiment type.
         """
         # Plugin discovery not yet implemented in clean architecture
-        if hasattr(self, 'importer_plugin_list'):
-            self.importer_plugin_list.clear()
-            self.importer_plugin_list.addItem("Plugin discovery not yet implemented")
-        if hasattr(self, 'analysis_plugin_list'):
-            self.analysis_plugin_list.clear()
-            self.analysis_plugin_list.addItem("Plugin discovery not yet implemented")
-        if hasattr(self, 'exporter_plugin_list'):
-            self.exporter_plugin_list.clear()
-            self.exporter_plugin_list.addItem("Plugin discovery not yet implemented")
+        try:
+            if hasattr(self, 'importer_plugin_list') and self.importer_plugin_list:
+                self.importer_plugin_list.clear()
+                self.importer_plugin_list.addItem("Plugin discovery not yet implemented")
+        except RuntimeError:
+            # QListWidget has been deleted, skip operation
+            pass
+
+        try:
+            if hasattr(self, 'analysis_plugin_list') and self.analysis_plugin_list:
+                self.analysis_plugin_list.clear()
+                self.analysis_plugin_list.addItem("Plugin discovery not yet implemented")
+        except RuntimeError:
+            # QListWidget has been deleted, skip operation
+            pass
+
+        try:
+            if hasattr(self, 'exporter_plugin_list') and self.exporter_plugin_list:
+                self.exporter_plugin_list.clear()
+                self.exporter_plugin_list.addItem("Plugin discovery not yet implemented")
+        except RuntimeError:
+            # QListWidget has been deleted, skip operation
+            pass
         self.clear_plugin_fields()
         return
 

@@ -13,6 +13,7 @@ from datetime import datetime
 import platform
 
 from .config_manager import get_config_manager, set_config, get_config
+from .config_manager import set_lab_storage_root as cfg_set_lab_root
 from .metadata import Colony, Subject, Experiment, Worker, ScanTarget, WorkerProvider, ScanTargetKind
 from .schema import model_to_colony
 
@@ -701,6 +702,22 @@ class SetupService:
             "colony": saved_colony,
             "lab": colony_dto.lab_id
         }
+
+    # ===========================================
+    # LAB STORAGE ROOT MANAGEMENT
+    # ===========================================
+
+    def set_lab_storage_root(self, lab_id: str, path: Path) -> Dict[str, Any]:
+        """Set a per-lab storage root. Does not affect app config/logging roots."""
+        if not lab_id:
+            return {"success": False, "message": "lab_id is required"}
+        if not path:
+            return {"success": False, "message": "path is required"}
+        try:
+            cfg_set_lab_root(lab_id, path)
+            return {"success": True, "lab_id": lab_id, "path": str(path)}
+        except Exception as e:
+            return {"success": False, "message": str(e)}
 
     # ===========================================
     # SETUP STATUS & WORKFLOW
