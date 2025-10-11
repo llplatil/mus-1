@@ -17,30 +17,13 @@ from pathlib import Path
 import platform
 from datetime import datetime
 
-# Qt imports - platform-specific handling
-try:
-    from PyQt6.QtWidgets import (
-        QApplication, QWizard, QWizardPage, QLabel, QLineEdit, QVBoxLayout,
-        QHBoxLayout, QFormLayout, QCheckBox, QPushButton, QProgressBar,
-        QTextEdit, QMessageBox, QGroupBox, QRadioButton, QButtonGroup,
-        QFileDialog, QComboBox, QSpinBox, QDialogButtonBox
-    )
-    from PyQt6.QtCore import Qt, pyqtSignal as Signal, QThread, QObject
-    from PyQt6.QtGui import QFont, QPixmap, QIcon
-    QT_BACKEND = "PyQt6"
-except ImportError:
-    try:
-        from PySide6.QtWidgets import (
-            QApplication, QWizard, QWizardPage, QLabel, QLineEdit, QVBoxLayout,
-            QHBoxLayout, QFormLayout, QCheckBox, QPushButton, QProgressBar,
-            QTextEdit, QMessageBox, QGroupBox, QRadioButton, QButtonGroup,
-            QFileDialog, QComboBox, QSpinBox, QDialogButtonBox
-        )
-        from PySide6.QtCore import Qt, Signal, QThread, QObject
-        from PySide6.QtGui import QFont, QPixmap, QIcon
-        QT_BACKEND = "PySide6"
-    except ImportError:
-        raise ImportError("Neither PyQt6 nor PySide6 is available. Please install a Qt Python binding.")
+from .qt import (
+    QApplication, QWizard, QWizardPage, QLabel, QLineEdit, QVBoxLayout,
+    QHBoxLayout, QFormLayout, QCheckBox, QPushButton, QProgressBar,
+    QTextEdit, QMessageBox, QGroupBox, QRadioButton, QButtonGroup,
+    QFileDialog, QComboBox, QSpinBox, QDialogButtonBox,
+    Qt, Signal, QThread, QObject, QFont, QPixmap, QIcon
+)
 
 from ..core.setup_service import (
     SetupService, UserProfileDTO, SharedStorageDTO, LabDTO, ColonyDTO,
@@ -921,7 +904,7 @@ def show_setup_wizard(parent=None) -> Optional[MUS1SetupWizard]:
     wizard = MUS1SetupWizard(parent)
     result = wizard.exec()
 
-    if result == QWizard.Accepted:
+    if result == QWizard.DialogCode.Accepted:
         return wizard
     return None
 
