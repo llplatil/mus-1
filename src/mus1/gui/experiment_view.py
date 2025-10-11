@@ -1,21 +1,10 @@
-# Qt imports - platform-specific handling
-try:
-    from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QFormLayout, QLabel, QLineEdit,
-                            QComboBox, QDateTimeEdit, QPushButton, QGroupBox, QScrollArea,
-                            QCheckBox, QMessageBox, QListWidget, QListWidgetItem, QTextEdit, QHBoxLayout,
-                            QFileDialog, QTableWidget, QTableWidgetItem, QHeaderView, QSpinBox, QDoubleSpinBox, QAbstractItemView, QStackedWidget, QLayout)
-    from PyQt6.QtCore import QTimer, Qt, QDateTime
-    QT_BACKEND = "PyQt6"
-except ImportError:
-    try:
-        from PySide6.QtWidgets import (QWidget, QVBoxLayout, QFormLayout, QLabel, QLineEdit,
-                                QComboBox, QDateTimeEdit, QPushButton, QGroupBox, QScrollArea,
-                                QCheckBox, QMessageBox, QListWidget, QListWidgetItem, QTextEdit, QHBoxLayout,
-                                QFileDialog, QTableWidget, QTableWidgetItem, QHeaderView, QSpinBox, QDoubleSpinBox, QAbstractItemView, QStackedWidget, QLayout)
-        from PySide6.QtCore import QTimer, Qt, QDateTime
-        QT_BACKEND = "PySide6"
-    except ImportError:
-        raise ImportError("Neither PyQt6 nor PySide6 is available. Please install a Qt Python binding.")
+from .qt import (
+    QWidget, QVBoxLayout, QFormLayout, QLabel, QLineEdit,
+    QComboBox, QDateTimeEdit, QPushButton, QGroupBox, QScrollArea,
+    QCheckBox, QMessageBox, QListWidget, QListWidgetItem, QTextEdit, QHBoxLayout,
+    QFileDialog, QTableWidget, QTableWidgetItem, QHeaderView, QSpinBox, QDoubleSpinBox, QAbstractItemView, QStackedWidget, QLayout,
+    QTimer, Qt, QDateTime
+)
 from datetime import datetime
 from .navigation_pane import NavigationPane
 from .base_view import BaseView
@@ -51,15 +40,22 @@ class ExperimentView(BaseView):
         self.setup_view_experiments_page()
         self.setup_create_batch_page()
         
-        # Start with first page
-        self.change_page(0)
+        # Do not change pages or refresh here; lifecycle hooks will handle
 
-        # Initialize data
+    # --- Lifecycle hooks ---
+    def on_services_ready(self, services):
+        super().on_services_ready(services)
+        self.gui_services = services
+        try:
+            # Ensure UI controls like combos are populated once
+            # then show default page
+            self.change_page(0)
+            self.refresh_data()
+        except Exception:
+            pass
+
+    def on_activated(self):
         self.refresh_data()
-
-    def set_gui_services(self, gui_services):
-        """Set the GUI services when a project is loaded."""
-        self.gui_services = gui_services
 
     def set_plugin_manager(self, plugin_manager):
         """Set the plugin manager when a project is loaded."""
@@ -347,27 +343,12 @@ class ExperimentView(BaseView):
         batch_layout.setContentsMargins(self.FORM_MARGIN, self.FORM_MARGIN, self.FORM_MARGIN, self.FORM_MARGIN)
         batch_layout.setSpacing(self.SECTION_SPACING)
 
-        # Batch Details Section
-        batch_details_group, batch_details_form = self.create_form_section("Batch Details", batch_layout)
-        
-        # Ensure batch_details_form is a QFormLayout
-        if not isinstance(batch_details_form, QFormLayout):
-            # If create_form_section returned a QVBoxLayout inside the groupbox, get/create the QFormLayout
-            qgroupbox_layout = batch_details_group.layout()
-            if qgroupbox_layout and isinstance(qgroupbox_layout, QVBoxLayout):
-                 # Assuming the QVBoxLayout was just a container, replace it
-                 while qgroupbox_layout.count():
-                      item = qgroupbox_layout.takeAt(0)
-                      if item.widget(): item.widget().deleteLater()
-                 batch_details_form = QFormLayout() # Create the correct layout type
-                 batch_details_group.setLayout(batch_details_form) # Set the new layout
-                 batch_details_form.setContentsMargins(self.FORM_MARGIN, self.FORM_MARGIN, self.FORM_MARGIN, self.FORM_MARGIN)
-                 batch_details_form.setVerticalSpacing(self.CONTROL_SPACING)
-            else:
-                 # Fallback if the structure isn't as expected
-                 logger.error("Could not reliably get or create QFormLayout for batch details.")
-                 # Handle error appropriately, maybe return or raise
-                 return 
+        # Batch Details Section (explicit QFormLayout for predictability)
+        batch_details_group, _container_layout = self.create_form_section("Batch Details", batch_layout)
+        batch_details_form = QFormLayout()
+        batch_details_form.setContentsMargins(self.FORM_MARGIN, self.FORM_MARGIN, self.FORM_MARGIN, self.FORM_MARGIN)
+        batch_details_form.setVerticalSpacing(self.CONTROL_SPACING)
+        batch_details_group.setLayout(batch_details_form)
 
         # Batch ID (auto-generated, but user can modify)
         self.batchIdLineEdit = QLineEdit()

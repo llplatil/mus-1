@@ -94,18 +94,25 @@ if [ "${1:-}" = "set-root" ]; then
 elif [ "${1:-}" = "gui" ]; then
     echo "🚀 Launching MUS1 GUI..."
 
-    # Configure Qt for macOS - try PyQt6 first, fallback to PySide6
+    # Configure Qt for macOS - resolve plugin paths from the installed binding inside the venv
     if [[ "$OSTYPE" == "darwin"* ]]; then
-        PYTHON_VERSION=$(python3 -c "import sys; print(f'python{sys.version_info.major}.{sys.version_info.minor}')")
+        # Optional: set to 1 to debug plugin loading
+        : "${QT_DEBUG_PLUGINS:=0}"
+        export QT_DEBUG_PLUGINS
 
-        # Try PyQt6 first (more reliable on macOS)
         if python3 -c "import PyQt6" 2>/dev/null; then
-            export QT_QPA_PLATFORM_PLUGIN_PATH="$VENV_DIR/lib/$PYTHON_VERSION/site-packages/PyQt6/Qt6/plugins/platforms"
+            PYQT6_BASE=$(python3 -c 'import pathlib, PyQt6; print(pathlib.Path(PyQt6.__file__).parent)')
+            export QT_QPA_PLATFORM_PLUGIN_PATH="${PYQT6_BASE}/Qt6/plugins/platforms"
+            export QT_PLUGIN_PATH="${PYQT6_BASE}/Qt6/plugins"
+            export DYLD_FRAMEWORK_PATH="${PYQT6_BASE}/Qt6/lib"
+            export QT_QPA_PLATFORM="cocoa"
         elif python3 -c "import PySide6" 2>/dev/null; then
-            export QT_QPA_PLATFORM_PLUGIN_PATH="$VENV_DIR/lib/$PYTHON_VERSION/site-packages/PySide6/Qt/plugins/platforms"
+            PYSIDE6_BASE=$(python3 -c 'import pathlib, PySide6; print(pathlib.Path(PySide6.__file__).parent)')
+            export QT_QPA_PLATFORM_PLUGIN_PATH="${PYSIDE6_BASE}/Qt/plugins/platforms"
+            export QT_PLUGIN_PATH="${PYSIDE6_BASE}/Qt/plugins"
+            export DYLD_FRAMEWORK_PATH="${PYSIDE6_BASE}/Qt/lib"
+            export QT_QPA_PLATFORM="cocoa"
         fi
-
-        export QT_QPA_PLATFORM="cocoa"
     fi
 
     exec mus1-gui

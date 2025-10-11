@@ -1,17 +1,8 @@
-# Qt imports - platform-specific handling
-try:
-    from PyQt6.QtWidgets import *
-    from PyQt6.QtCore import *
-    from PyQt6.QtGui import *
-    QT_BACKEND = "PyQt6"
-except ImportError:
-    try:
-        from PySide6.QtWidgets import *
-        from PySide6.QtCore import *
-        from PySide6.QtGui import *
-        QT_BACKEND = "PySide6"
-    except ImportError:
-        raise ImportError("Neither PyQt6 nor PySide6 is available. Please install a Qt Python binding.")
+from .qt import (
+    QWidget, QVBoxLayout, QFormLayout, QLabel, QLineEdit, QHBoxLayout,
+    QPushButton, QListWidget, QComboBox, QFileDialog, QMessageBox,
+    Qt
+)
 """
 Settings View - GUI for application-wide settings including users, labs, and workers.
 
@@ -35,7 +26,15 @@ class SettingsView(BaseView):
         self.setup_user_settings_page()
         self.setup_lab_settings_page()
         self.setup_workers_page()
-        self.change_page(0)
+        # Do not change pages here; lifecycle handles activation
+
+    # --- Lifecycle hooks ---
+    def on_services_ready(self, services):
+        super().on_services_ready(services)
+
+    def on_activated(self):
+        # Refresh lists when settings tab becomes active
+        self.refresh_lists()
 
     def setup_user_settings_page(self):
         """Setup the User Settings page."""

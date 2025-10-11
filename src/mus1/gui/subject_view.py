@@ -1,17 +1,22 @@
-# Qt imports - platform-specific handling
-try:
-    from PyQt6.QtWidgets import *
-    from PyQt6.QtCore import *
-    from PyQt6.QtGui import *
-    QT_BACKEND = "PyQt6"
-except ImportError:
-    try:
-        from PySide6.QtWidgets import *
-        from PySide6.QtCore import *
-        from PySide6.QtGui import *
-        QT_BACKEND = "PySide6"
-    except ImportError:
-        raise ImportError("Neither PyQt6 nor PySide6 is available. Please install a Qt Python binding.")
+from .qt import (
+    Qt,
+    QVBoxLayout,
+    QHBoxLayout,
+    QWidget,
+    QGroupBox,
+    QFormLayout,
+    QLineEdit,
+    QComboBox,
+    QDateTimeEdit,
+    QCheckBox,
+    QTextEdit,
+    QListWidget,
+    QPushButton,
+    QLabel,
+    QDateTime,
+    QTimer,
+    QAbstractItemView,
+)
 
 from ..core.metadata import Sex
 from .navigation_pane import NavigationPane  
@@ -48,8 +53,7 @@ class SubjectView(BaseView):
         self.setup_objects_page()             # 5. Objects
         self.setup_add_subject_page()         # 6. Subjects
         
-        # Set default selection to Subject Overview
-        self.change_page(0)
+        # Do not change pages or refresh here; wait until services injected
 
         # TODO: Update state subscription to use new architecture
         # --- New: subscribe to state changes so overview auto-updates ---
@@ -60,10 +64,23 @@ class SubjectView(BaseView):
         # Populate UI immediately (in case a project is already loaded)
         # self._handle_state_change()
 
-    def set_gui_services(self, gui_services):
-        """Set the GUI services when a project is loaded."""
-        self.gui_services = gui_services
-        self.subject_service = gui_services  # GUISubjectService is the service itself
+    # --- Lifecycle hooks ---
+    def on_services_ready(self, services):
+        super().on_services_ready(services)
+        self.gui_services = services
+        self.subject_service = services
+        try:
+            self.refresh_subject_list_display()
+            self.refresh_overview()
+            self.change_page(0)
+        except Exception:
+            pass
+
+    def on_activated(self):
+        # Lightweight refresh when tab becomes active
+        self.refresh_subject_list_display()
+        if self.pages.currentIndex() == 0:
+            self.refresh_overview()
 
     def setup_add_subject_page(self):
         """Setup the Subjects page (previously named Add Subject)."""
@@ -219,7 +236,6 @@ class SubjectView(BaseView):
         # Log the successful addition and show notification
         self.log_bus.log(f"Subject '{subject_id}' added successfully", "success", "SubjectView")
         self.subject_notification_label.setText("Subject added successfully!")
-        from PySide6.QtCore import QTimer
         QTimer.singleShot(3000, lambda: self.subject_notification_label.setText(""))
 
     def refresh_subject_list_display(self):
@@ -336,8 +352,8 @@ class SubjectView(BaseView):
             subject_id = id_part[3:].strip()
         else:
             subject_id = id_part
-        if hasattr(self, 'project_manager'):
-            self.project_manager.remove_subject(subject_id)
+        if self.subject_service:
+            self.subject_service.remove_subject(subject_id)
             self.refresh_subject_list_display()
 
     def setup_view_subjects_page(self):
@@ -516,7 +532,6 @@ class SubjectView(BaseView):
         
         # Show notification
         self.subject_notification_label.setText("Subject updated successfully!")
-        from PySide6.QtCore import QTimer
         QTimer.singleShot(3000, lambda: self.subject_notification_label.setText(""))
 
     def handle_view_subject_notes(self):
@@ -875,7 +890,8 @@ class SubjectView(BaseView):
         selected = [item.text() for item in selected_items]
         current = [self.current_body_parts_list.item(i).text() for i in range(self.current_body_parts_list.count())]
         updated = current + [bp for bp in selected if bp not in current]
-        self.window().project_manager.update_active_body_parts(updated)
+        if self.subject_service:
+            self.subject_service.update_active_body_parts(updated)
         self.navigation_pane.add_log_message(f"Added {len(selected)} body parts to active list.", "success")
         self.refresh_body_parts_page()
 
@@ -888,7 +904,8 @@ class SubjectView(BaseView):
         current_active = [self.current_body_parts_list.item(i).text() for i in range(self.current_body_parts_list.count())]
         items_to_move = [item.text() for item in selected_items]
         updated_active = [bp for bp in current_active if bp not in items_to_move]
-        self.window().project_manager.update_active_body_parts(updated_active)
+        if self.subject_service:
+            self.subject_service.update_active_body_parts(updated_active)
         
         state = self.state_manager.project_state
         if state.project_metadata:
@@ -901,7 +918,8 @@ class SubjectView(BaseView):
             if bp not in new_master:
                 new_master.append(bp)
         if new_master != current_master:
-            self.window().project_manager.update_master_body_parts(new_master)
+            if self.subject_service:
+                self.subject_service.update_master_body_parts(new_master)
         
         self.navigation_pane.add_log_message(f"Moved {len(items_to_move)} body parts from active to master list.", "success")
         self.refresh_body_parts_page()
@@ -995,7 +1013,8 @@ class SubjectView(BaseView):
         for obj in moving_objects:
             if self.format_item(obj) not in existing_active:
                 active_list.append(obj)
-        self.window().project_manager.update_tracked_objects(active_list, list_type="active")
+        if self.subject_service:
+            self.subject_service.update_tracked_objects(active_list, list_type="active")
         self.navigation_pane.add_log_message(f"Moved {len(moving_objects)} object(s) from Master to Active.", 'success')
         self.refresh_objects_ui()
 
@@ -1015,8 +1034,9 @@ class SubjectView(BaseView):
                 # Object management is not implemented in the new architecture yet
                 # This would need to be updated when object management is added
                 pass
-        self.window().project_manager.update_tracked_objects(active_list, list_type="active")
-        self.window().project_manager.update_tracked_objects(master_list, list_type="master")
+        if self.subject_service:
+            self.subject_service.update_tracked_objects(active_list, list_type="active")
+            self.subject_service.update_tracked_objects(master_list, list_type="master")
         self.navigation_pane.add_log_message(f"Moved {len(selected_items)} object(s) from Active to Master.", 'success')
         self.refresh_objects_ui()
 
@@ -1030,7 +1050,8 @@ class SubjectView(BaseView):
         active_list = self._get_active_objects()
         master_list = [obj for obj in master_list if self.format_item(obj) not in selected_names]
         active_list = [obj for obj in active_list if self.format_item(obj) not in selected_names]
-        self.window().project_manager.update_tracked_objects(master_list, list_type="master")
+        if self.subject_service:
+            self.subject_service.update_tracked_objects(master_list, list_type="master")
         self.window().project_manager.update_tracked_objects(active_list, list_type="active")
         self.navigation_pane.add_log_message(f"Deleted {len(selected_names)} object(s) from Master.", 'success')
         self.refresh_objects_ui()

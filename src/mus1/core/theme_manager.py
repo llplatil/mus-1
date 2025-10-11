@@ -1,44 +1,19 @@
-# Qt imports - platform-specific handling
-try:
-    from PyQt6.QtGui import QPalette, QColor
-    from PyQt6.QtWidgets import QApplication
-    QT_BACKEND = "PyQt6"
+from ..gui.qt import QPalette, QColor, QApplication
+QT_BACKEND = "PyQt6"
 
-    # PyQt6 uses enum values
-    PALETTE_WINDOW = QPalette.ColorRole.Window
-    PALETTE_WINDOW_TEXT = QPalette.ColorRole.WindowText
-    PALETTE_BASE = QPalette.ColorRole.Base
-    PALETTE_ALTERNATE_BASE = QPalette.ColorRole.AlternateBase
-    PALETTE_TOOLTIP_BASE = QPalette.ColorRole.ToolTipBase
-    PALETTE_TOOLTIP_TEXT = QPalette.ColorRole.ToolTipText
-    PALETTE_TEXT = QPalette.ColorRole.Text
-    PALETTE_BUTTON = QPalette.ColorRole.Button
-    PALETTE_BUTTON_TEXT = QPalette.ColorRole.ButtonText
-    PALETTE_BRIGHT_TEXT = QPalette.ColorRole.BrightText
-    PALETTE_HIGHLIGHT = QPalette.ColorRole.Highlight
-    PALETTE_HIGHLIGHTED_TEXT = QPalette.ColorRole.HighlightedText
-
-except ImportError:
-    try:
-        from PySide6.QtGui import QPalette, QColor
-        from PySide6.QtWidgets import QApplication
-        QT_BACKEND = "PySide6"
-
-        # PySide6 uses direct enum values
-        PALETTE_WINDOW = PALETTE_WINDOW
-        PALETTE_WINDOW_TEXT = PALETTE_WINDOWText
-        PALETTE_BASE = QPalette.Base
-        PALETTE_ALTERNATE_BASE = QPalette.AlternateBase
-        PALETTE_TOOLTIP_BASE = QPalette.ToolTipBase
-        PALETTE_TOOLTIP_TEXT = QPalette.ToolTipText
-        PALETTE_TEXT = QPalette.Text
-        PALETTE_BUTTON = QPalette.Button
-        PALETTE_BUTTON_TEXT = QPalette.ButtonText
-        PALETTE_BRIGHT_TEXT = QPalette.BrightText
-        PALETTE_HIGHLIGHT = QPalette.Highlight
-        PALETTE_HIGHLIGHTED_TEXT = QPalette.HighlightedText
-    except ImportError:
-        raise ImportError("Neither PyQt6 nor PySide6 is available. Please install a Qt Python binding.")
+# PyQt6 uses enum values
+PALETTE_WINDOW = QPalette.ColorRole.Window
+PALETTE_WINDOW_TEXT = QPalette.ColorRole.WindowText
+PALETTE_BASE = QPalette.ColorRole.Base
+PALETTE_ALTERNATE_BASE = QPalette.ColorRole.AlternateBase
+PALETTE_TOOLTIP_BASE = QPalette.ColorRole.ToolTipBase
+PALETTE_TOOLTIP_TEXT = QPalette.ColorRole.ToolTipText
+PALETTE_TEXT = QPalette.ColorRole.Text
+PALETTE_BUTTON = QPalette.ColorRole.Button
+PALETTE_BUTTON_TEXT = QPalette.ColorRole.ButtonText
+PALETTE_BRIGHT_TEXT = QPalette.ColorRole.BrightText
+PALETTE_HIGHLIGHT = QPalette.ColorRole.Highlight
+PALETTE_HIGHLIGHTED_TEXT = QPalette.ColorRole.HighlightedText
 from pathlib import Path
 import os
 import logging
@@ -257,7 +232,7 @@ class ThemeManager:
              # Apply very basic defaults if a key is missing
              if effective_theme == "dark":
                  palette.setColor(PALETTE_WINDOW, QColor("#121212"))
-                 palette.setColor(PALETTE_WINDOWText, QColor("#FFFFFF")) # Use hex code instead of "white"
+                 palette.setColor(PALETTE_WINDOW_TEXT, QColor("#FFFFFF")) # Use hex code instead of "white"
              else:
                  palette = app.style().standardPalette() # Fallback to system style standard palette
 

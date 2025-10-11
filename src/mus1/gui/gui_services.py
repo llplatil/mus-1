@@ -128,6 +128,45 @@ class GUISubjectService:
             self.log_bus.log(f"Error removing subject {subject_id}: {e}", "error", "GUISubjectService")
             return False
 
+    # ---- Body parts and objects (shims for GUI use) ----
+    def update_active_body_parts(self, active_list: list[str]) -> None:
+        """Update active body parts in the project."""
+        try:
+            self.project_manager.update_active_body_parts(active_list)
+        except Exception as e:
+            self.log_bus.log(f"Error updating active body parts: {e}", "error", "GUISubjectService")
+
+    def update_master_body_parts(self, master_list: list[str]) -> None:
+        """Update master body parts in the project."""
+        try:
+            self.project_manager.update_master_body_parts(master_list)
+        except Exception as e:
+            self.log_bus.log(f"Error updating master body parts: {e}", "error", "GUISubjectService")
+
+    def add_treatment(self, name: str) -> None:
+        try:
+            self.project_manager.add_treatment(name)
+        except Exception as e:
+            self.log_bus.log(f"Error adding treatment '{name}': {e}", "error", "GUISubjectService")
+
+    def add_genotype(self, name: str) -> None:
+        try:
+            self.project_manager.add_genotype(name)
+        except Exception as e:
+            self.log_bus.log(f"Error adding genotype '{name}': {e}", "error", "GUISubjectService")
+
+    def add_tracked_object(self, name: str) -> None:
+        try:
+            self.project_manager.add_tracked_object(name)
+        except Exception as e:
+            self.log_bus.log(f"Error adding object '{name}': {e}", "error", "GUISubjectService")
+
+    def update_tracked_objects(self, items: list, list_type: str) -> None:
+        try:
+            self.project_manager.update_tracked_objects(items, list_type=list_type)
+        except Exception as e:
+            self.log_bus.log(f"Error updating tracked objects: {e}", "error", "GUISubjectService")
+
 
 class GUIExperimentService:
     """Service for GUI experiment operations."""

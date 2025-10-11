@@ -1,17 +1,19 @@
-# Qt imports - platform-specific handling
-try:
-    from PyQt6.QtWidgets import *
-    from PyQt6.QtCore import pyqtSignal as Signal
-    from PyQt6.QtGui import *
-    QT_BACKEND = "PyQt6"
-except ImportError:
-    try:
-        from PySide6.QtWidgets import *
-        from PySide6.QtCore import Signal
-        from PySide6.QtGui import *
-        QT_BACKEND = "PySide6"
-    except ImportError:
-        raise ImportError("Neither PyQt6 nor PySide6 is available. Please install a Qt Python binding.")
+# Qt imports - unified PyQt6 facade (explicit, no star imports)
+from .qt import (
+    Qt,
+    Signal,
+    QSizePolicy,
+    QAbstractItemView,
+    QHeaderView,
+    QTableWidget,
+    QTableWidgetItem,
+    QTreeWidget,
+    QTreeWidgetItem,
+    QWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QCheckBox,
+)
 from datetime import datetime
 from typing import Any, Union
 

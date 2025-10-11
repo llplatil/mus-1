@@ -469,10 +469,12 @@ class LabRepository(BaseRepository):
         """Add a project to a lab."""
         from .schema import LabProjectModel
         from datetime import datetime
+        # Resolve path to absolute path to ensure consistent storage
+        resolved_path = project_path.resolve()
         db_project = LabProjectModel(
             lab_id=lab_id,
             name=project_name,
-            path=str(project_path),
+            path=str(resolved_path),
             created_date=created_date or datetime.now()
         )
         with self._get_session() as session:

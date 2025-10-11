@@ -1,17 +1,7 @@
-# Qt imports - platform-specific handling
-try:
-    from PyQt6.QtWidgets import QWidget, QVBoxLayout, QPushButton, QButtonGroup, QListWidget, QListWidgetItem, QSizePolicy, QTextEdit, QLabel, QScrollArea, QFrame
-    from PyQt6.QtCore import Qt, pyqtSignal as Signal
-    from PyQt6.QtGui import QColor, QTextCharFormat, QFont, QTextOption
-    QT_BACKEND = "PyQt6"
-except ImportError:
-    try:
-        from PySide6.QtWidgets import QWidget, QVBoxLayout, QPushButton, QButtonGroup, QListWidget, QListWidgetItem, QSizePolicy, QTextEdit, QLabel, QScrollArea, QFrame
-        from PySide6.QtCore import Signal, Qt
-        from PySide6.QtGui import QColor, QTextCharFormat, QFont, QTextOption
-        QT_BACKEND = "PySide6"
-    except ImportError:
-        raise ImportError("Neither PyQt6 nor PySide6 is available. Please install a Qt Python binding.")
+from .qt import (
+    QWidget, QVBoxLayout, QPushButton, QButtonGroup, QListWidget, QListWidgetItem, QSizePolicy, QTextEdit, QLabel, QFrame,
+    Qt, QColor, QTextCharFormat, QFont, QTextOption, Signal
+)
 
 from datetime import datetime
 import logging

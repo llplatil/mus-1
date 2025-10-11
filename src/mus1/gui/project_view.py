@@ -1,17 +1,8 @@
-# Qt imports - platform-specific handling
-try:
-    from PyQt6.QtWidgets import *
-    from PyQt6.QtCore import Qt, pyqtSignal as Signal
-    from PyQt6.QtGui import *
-    QT_BACKEND = "PyQt6"
-except ImportError:
-    try:
-        from PySide6.QtWidgets import *
-        from PySide6.QtCore import Qt, Signal
-        from PySide6.QtGui import *
-        QT_BACKEND = "PySide6"
-    except ImportError:
-        raise ImportError("Neither PyQt6 nor PySide6 is available. Please install a Qt Python binding.")
+from .qt import (
+    QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QLabel, QLineEdit, QComboBox, QPushButton,
+    QListWidget, QListWidgetItem, QGroupBox, QFileDialog, QMessageBox, Qt, QProgressBar, QTextEdit, QSlider, QCheckBox
+)
+from .qt import Signal
 from pathlib import Path
 from .base_view import BaseView
 from typing import Dict, Any
@@ -93,17 +84,11 @@ class ProjectView(BaseView):
         self.add_navigation_button("Targets")
         self.change_page(0)
 
-    def set_gui_services(self, gui_services):
-        """Set the GUI services when a project is loaded."""
-        self.gui_services = gui_services
-        self.project_service = gui_services  # GUIProjectService is the service itself
-        # Ensure project_manager is wired from MainWindow for actions that require it
-        try:
-            main_window = self.window()
-            if main_window and getattr(main_window, 'project_manager', None):
-                self.project_manager = main_window.project_manager
-        except Exception:
-            pass
+    # --- Lifecycle hooks ---
+    def on_services_ready(self, services):
+        super().on_services_ready(services)
+        self.gui_services = services
+        self.project_service = services
 
     def format_item(self, item):
         """Utility to return the proper display string for an item."""

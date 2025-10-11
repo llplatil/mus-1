@@ -1,22 +1,22 @@
-# Qt imports - platform-specific handling
-try:
-    from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QStackedWidget, QLabel, QGroupBox
-    from PyQt6.QtCore import Qt
-    QT_BACKEND = "PyQt6"
-except ImportError:
-    try:
-        from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QStackedWidget, QLabel, QGroupBox
-        from PySide6.QtCore import Qt
-        QT_BACKEND = "PySide6"
-    except ImportError:
-        raise ImportError("Neither PyQt6 nor PySide6 is available. Please install a Qt Python binding.")
+# Qt imports - unified PyQt6 facade
+from .qt import (
+    Qt,
+    QWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QSplitter,
+    QStackedWidget,
+    QLabel,
+    QGroupBox,
+)
 
 from .navigation_pane import NavigationPane
+from .view_lifecycle import ViewLifecycle
 import logging
 
 logger = logging.getLogger(__name__)
 
-class BaseView(QWidget):
+class BaseView(QWidget, ViewLifecycle):
     """
     Base view class that implements the standardized layout structure for MUS1.
     All main tab views (ProjectView, SubjectsView, etc.) should inherit from this class.
@@ -92,6 +92,19 @@ class BaseView(QWidget):
         
         # Connect navigation buttons to page changes
         self.navigation_pane.button_clicked.connect(self.change_page)
+
+        # Lifecycle storage
+        self._services = None
+
+    # --- Lifecycle hooks (no-op defaults) ---
+    def on_services_ready(self, services):
+        self._services = services
+
+    def on_activated(self):
+        pass
+
+    def on_deactivated(self):
+        pass
     
     def create_form_section(self, title, parent_layout=None, is_subgroup=False):
         """

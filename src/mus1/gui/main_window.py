@@ -1,15 +1,15 @@
-# Qt imports - platform-specific handling
-try:
-    from PyQt6.QtWidgets import QMainWindow, QTabWidget, QDialog, QMenu, QMenuBar, QApplication
-    from PyQt6.QtGui import QAction, QIcon, QPixmap
-    QT_BACKEND = "PyQt6"
-except ImportError:
-    try:
-        from PySide6.QtWidgets import QMainWindow, QTabWidget, QDialog, QMenu, QMenuBar, QApplication
-        from PySide6.QtGui import QAction, QIcon, QPixmap
-        QT_BACKEND = "PySide6"
-    except ImportError:
-        raise ImportError("Neither PyQt6 nor PySide6 is available. Please install a Qt Python binding.")
+# Qt imports - unified PyQt6 facade
+from .qt import (
+    QApplication,
+    QMainWindow,
+    QTabWidget,
+    QDialog,
+    QMenu,
+    QMenuBar,
+    QAction,
+    QIcon,
+    QPixmap,
+)
 from .project_view import ProjectView
 from .subject_view import SubjectView
 from .experiment_view import ExperimentView
@@ -199,14 +199,26 @@ class MainWindow(QMainWindow):
         # Log the tab change
         self.log_bus.log(f"Switched to {current_tab_name} tab", "info", "MainWindow")
         
-        # Get the current view
+        # Deactivate previous view and activate current view
+        try:
+            prev_index = getattr(self, "_prev_tab_index", None)
+            if prev_index is not None and 0 <= prev_index < self.tab_widget.count():
+                prev_view = self.tab_widget.widget(prev_index)
+                if hasattr(prev_view, "on_deactivated"):
+                    prev_view.on_deactivated()
+        except Exception:
+            pass
+
+        self._prev_tab_index = index
+
         current_view = self.tab_widget.widget(index)
         
         # Remove redundant navigation pane sizing - BaseView now handles this
         # through its resize event handler
         
-        # Refresh the current view's data if possible
-        self.refresh_current_view(current_view)
+        # Activate the current view
+        if hasattr(current_view, "on_activated"):
+            current_view.on_activated()
     
     def refresh_current_view(self, view):
         """Refresh data in the current view if applicable."""
@@ -261,13 +273,15 @@ class MainWindow(QMainWindow):
             # Initialize views
             self.project_view.set_initial_project(project_name)
 
-            # Set services on views
-            if hasattr(self.experiment_view, 'set_gui_services'):
-                self.experiment_view.set_gui_services(self.gui_services.create_experiment_service())
-            if hasattr(self.subject_view, 'set_gui_services'):
-                self.subject_view.set_gui_services(self.gui_services.create_subject_service())
-            if hasattr(self.project_view, 'set_gui_services'):
-                self.project_view.set_gui_services(self.gui_services.create_project_service())
+            # Set services on views via lifecycle hook
+            if hasattr(self.project_view, 'on_services_ready'):
+                self.project_view.on_services_ready(self.gui_services.create_project_service())
+            if hasattr(self.subject_view, 'on_services_ready'):
+                self.subject_view.on_services_ready(self.gui_services.create_subject_service())
+            if hasattr(self.experiment_view, 'on_services_ready'):
+                self.experiment_view.on_services_ready(self.gui_services.create_experiment_service())
+            if hasattr(self.settings_view, 'on_services_ready'):
+                self.settings_view.on_services_ready(self.gui_services.create_project_service())
 
             # Refresh and apply theme
             self.refresh_all_views()
@@ -310,13 +324,15 @@ class MainWindow(QMainWindow):
             # Initialize views
             self.project_view.set_initial_project(project_name)
 
-            # Set services on views
-            if hasattr(self.experiment_view, 'set_gui_services'):
-                self.experiment_view.set_gui_services(self.gui_services.create_experiment_service())
-            if hasattr(self.subject_view, 'set_gui_services'):
-                self.subject_view.set_gui_services(self.gui_services.create_subject_service())
-            if hasattr(self.project_view, 'set_gui_services'):
-                self.project_view.set_gui_services(self.gui_services.create_project_service())
+            # Set services on views via lifecycle hook
+            if hasattr(self.project_view, 'on_services_ready'):
+                self.project_view.on_services_ready(self.gui_services.create_project_service())
+            if hasattr(self.subject_view, 'on_services_ready'):
+                self.subject_view.on_services_ready(self.gui_services.create_subject_service())
+            if hasattr(self.experiment_view, 'on_services_ready'):
+                self.experiment_view.on_services_ready(self.gui_services.create_experiment_service())
+            if hasattr(self.settings_view, 'on_services_ready'):
+                self.settings_view.on_services_ready(self.gui_services.create_project_service())
 
             # Refresh and apply theme
             self.refresh_all_views()
@@ -350,8 +366,7 @@ class MainWindow(QMainWindow):
 
     def show_welcome_dialog(self):
         """Show welcome dialog after setup completion."""
-        from PySide6.QtWidgets import QDialog, QVBoxLayout, QLabel, QPushButton, QHBoxLayout
-        from PySide6.QtCore import Qt
+        from .qt import QDialog, QVBoxLayout, QLabel, QPushButton, QHBoxLayout, Qt
         from pathlib import Path
 
         # Check if there are existing projects
@@ -422,7 +437,7 @@ class MainWindow(QMainWindow):
 
             dialog = ProjectSelectionDialog(project_root=str(project_root), parent=self)
             # Could set dialog to show existing projects tab by default
-            if dialog.exec() == QDialog.Accepted:
+            if dialog.exec() == QDialog.DialogCode.Accepted:
                 chosen_project = getattr(dialog, 'selected_project_name', None)
                 chosen_path = getattr(dialog, 'selected_project_path', None)
                 if chosen_path:
@@ -454,7 +469,7 @@ class MainWindow(QMainWindow):
 
         dialog = ProjectSelectionDialog(project_root=str(project_root), parent=self)
 
-        if dialog.exec() == QDialog.Accepted:
+        if dialog.exec() == QDialog.DialogCode.Accepted:
             chosen_project = getattr(dialog, 'selected_project_name', None)
             chosen_path = getattr(dialog, 'selected_project_path', None)
             if chosen_path:

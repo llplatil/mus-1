@@ -1,28 +1,11 @@
 from pathlib import Path
 import os
 
-# Qt imports - platform-specific handling
-try:
-    from PyQt6.QtWidgets import (
-        QDialog, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QPushButton, QLineEdit, QMessageBox,
-        QGridLayout, QFrame, QListWidget, QListWidgetItem, QFileDialog, QCheckBox, QWidget,
-        QApplication
-    )
-    from PyQt6.QtCore import Qt, QSize, pyqtSignal as Signal
-    from PyQt6.QtGui import QPixmap, QPalette, QBrush, QColor, QPainter, QImage, QIcon
-    QT_BACKEND = "PyQt6"
-except ImportError:
-    try:
-        from PySide6.QtWidgets import (
-            QDialog, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QPushButton, QLineEdit, QMessageBox,
-            QGridLayout, QFrame, QListWidget, QListWidgetItem, QFileDialog, QCheckBox, QWidget,
-            QApplication
-        )
-        from PySide6.QtCore import Qt, QSize, Signal
-        from PySide6.QtGui import QPixmap, QPalette, QBrush, QColor, QPainter, QImage, QIcon
-        QT_BACKEND = "PySide6"
-    except ImportError:
-        raise ImportError("Neither PyQt6 nor PySide6 is available. Please install a Qt Python binding.")
+from .qt import (
+    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QPushButton, QLineEdit, QMessageBox,
+    QGridLayout, QFrame, QListWidget, QListWidgetItem, QFileDialog, QWidget, QApplication, QCheckBox,
+    Qt, QSize, QPixmap, QPalette, QBrush, QColor, QPainter, QImage, QIcon
+)
 from ..core.project_manager_clean import ProjectManagerClean
 from ..core.config_manager import get_config, set_config
 from ..core.setup_service import get_setup_service
@@ -471,20 +454,20 @@ class ProjectSelectionDialog(QDialog):
             
             # Set as background
             palette = self.palette()
-            # Set a light background color
-            palette.setColor(QPalette.Window, QColor(245, 245, 245))
+            # Set a light background color (PyQt6 ColorRole API)
+            palette.setColor(QPalette.ColorRole.Window, QColor(245, 245, 245))
             self.setPalette(palette)
             self.setAutoFillBackground(True)
             
             # Now overlay the watermark
             brush = QBrush(transparent_pixmap)
-            palette.setBrush(QPalette.Window, brush)
+            palette.setBrush(QPalette.ColorRole.Window, brush)
             self.setPalette(palette)
         except Exception as e:
             print(f"Error setting background: {e}")
             # Fallback to a plain light background
             palette = self.palette()
-            palette.setColor(QPalette.Window, QColor(245, 245, 245))
+            palette.setColor(QPalette.ColorRole.Window, QColor(245, 245, 245))
             self.setPalette(palette)
             self.setAutoFillBackground(True)
 
