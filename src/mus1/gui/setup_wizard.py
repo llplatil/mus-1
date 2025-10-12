@@ -43,6 +43,7 @@ class SetupWorker(QObject):
     finished = Signal(dict)  # Emits result dict
     progress = Signal(str)   # Emits progress message
     error = Signal(str)      # Emits error message
+    warning = Signal(str)    # Emits warning message
 
     def __init__(self, workflow_dto: SetupWorkflowDTO):
         super().__init__()
@@ -71,6 +72,11 @@ class SetupWorker(QObject):
                 self.setup_service = get_setup_service()
 
                 self.progress.emit("MUS1 root location configured successfully")
+
+                # Emit any warnings about root pointer changes
+                if "warnings" in root_result:
+                    for warning in root_result["warnings"]:
+                        self.warning.emit(warning)
 
             # Step 2: Continue with unified workflow for remaining steps
             result = self._run_remaining_workflow()
@@ -133,6 +139,22 @@ class WelcomePage(QWizardPage):
             )
             warning_label.setStyleSheet("color: orange; font-weight: bold;")
             layout.addWidget(warning_label)
+
+        # Also check for existing root pointer that might be affected
+        from ..core.config_manager import get_root_pointer_info
+        root_pointer_info = get_root_pointer_info()
+        if root_pointer_info["exists"]:
+            root_warning_label = QLabel()
+            if root_pointer_info["valid"]:
+                root_warning_label.setText(
+                    f"⚠️  Existing root pointer will be overwritten: {root_pointer_info['target']}"
+                )
+            else:
+                root_warning_label.setText(
+                    f"⚠️  Invalid root pointer will be cleaned up: {root_pointer_info['target']}"
+                )
+            root_warning_label.setStyleSheet("color: orange; font-weight: bold;")
+            layout.addWidget(root_warning_label)
 
         self.setLayout(layout)
 
@@ -806,6 +828,7 @@ class MUS1SetupWizard(QWizard):
         self.worker.finished.connect(self.on_setup_finished)
         self.worker.error.connect(self.on_setup_error)
         self.worker.progress.connect(self.on_setup_progress)
+        self.worker.warning.connect(self.on_setup_warning)
         # Ensure thread cleanup
         self.worker.finished.connect(self.thread.quit)
         self.worker.error.connect(self.thread.quit)
@@ -904,6 +927,10 @@ class MUS1SetupWizard(QWizard):
         """Handle setup progress updates."""
         # Could update progress bar here
         print(f"Setup progress: {message}")
+
+    def on_setup_warning(self, warning_msg: str):
+        """Handle setup warnings."""
+        QMessageBox.warning(self, "Setup Warning", warning_msg)
 
     def update_conclusion_page(self, result: dict):
         """Update the conclusion page when setup completes."""

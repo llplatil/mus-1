@@ -8,7 +8,6 @@ MUS1 has a **platform-aware launch architecture** with different behaviors for d
 ```toml
 [project.scripts]
 mus1 = "mus1.core.simple_cli:app"        # CLI entry point
-mus1-cli = "mus1.core.simple_cli:app"    # CLI alias
 mus1-gui = "mus1.main:main"              # GUI entry point
 ```
 
@@ -17,7 +16,9 @@ mus1-gui = "mus1.main:main"              # GUI entry point
 #### **Production Users (After `pip install mus1`)**
 ```bash
 mus1-gui                    # GUI mode (may fail on macOS due to Qt issues)
+mus1-gui --setup            # GUI mode with setup wizard (can rerun anytime)
 mus1 --help                 # CLI help (always works)
+mus1 --setup                # CLI mode with setup wizard
 mus1 project list           # CLI commands (always works)
 ```
 
@@ -25,7 +26,9 @@ mus1 project list           # CLI commands (always works)
 ```bash
 ./setup.sh                  # Environment setup with Qt diagnostics
 ./dev-launch.sh gui         # GUI mode with platform-specific Qt setup
+./dev-launch.sh gui --setup # GUI mode with setup wizard (can rerun anytime)
 ./dev-launch.sh --help      # CLI help
+./dev-launch.sh --setup     # CLI mode with setup wizard
 ./dev-launch.sh project list # CLI commands
 ```
 
@@ -65,14 +68,14 @@ mus1-gui
 - **Logging**: File and console logging configuration
 
 #### **Phase 3: User Environment**
-1. **Setup Detection**: MUS1 detects it's the first launch
-2. **Setup Wizard**: Guided configuration wizard appears
+1. **Setup Detection**: MUS1 detects it's the first launch or setup was requested via `--setup` flag
+2. **Setup Wizard**: Guided configuration wizard appears (can be rerun anytime)
    - User profile (name, email, organization)
-   - MUS1 root location preference
    - Shared storage configuration (optional)
    - First lab creation (optional)
 3. **Configuration Persistence**: All preferences saved to SQLite
-4. **Project Selection**: Welcome dialog guides first project creation
+4. **User/Lab Selection**: Dialog guides user profile and lab selection
+5. **Project Management**: Project creation and selection handled in Project tab
 
 #### **External Configuration Roots (Best Practices)**
 - You can choose any location for the MUS1 root in the Setup Wizard (including external drives like `/Volumes/CuSSD3`).

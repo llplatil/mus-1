@@ -14,10 +14,17 @@ class NotesBox(QGroupBox):
     """A reusable notes component that can be added to any view."""
     def __init__(self, parent=None, title="Notes", placeholder_text="Enter notes here..."):
         super().__init__(title, parent)
-        
+
+        # Find base_view for accessing layout constants
+        self.base_view = self.find_base_view_parent(parent)
+
+        # Use base view constants if available, otherwise use defaults
+        form_margin = getattr(self.base_view, 'FORM_MARGIN', 10) if self.base_view else 10
+        control_spacing = getattr(self.base_view, 'CONTROL_SPACING', 8) if self.base_view else 8
+
         self.layout = QVBoxLayout(self)
-        self.layout.setContentsMargins(10, 15, 10, 10)
-        self.layout.setSpacing(8)
+        self.layout.setContentsMargins(form_margin, form_margin + 5, form_margin, form_margin)
+        self.layout.setSpacing(control_spacing)
         
         # Set up the QTextEdit for notes
         self.notes_edit = QTextEdit(self)
@@ -97,8 +104,7 @@ class ProjectView(BaseView):
     def setup_import_project_page(self):
         """Setup the page for importing data from external projects."""
         self.import_project_page = QWidget()
-        layout = QVBoxLayout(self.import_project_page)
-        layout.setSpacing(self.SECTION_SPACING)
+        layout = self.setup_page_layout(self.import_project_page)
 
         # 1. Importer Plugin Selection Group
         importer_group, importer_layout = self.create_form_section("Select Importer", layout)
@@ -127,7 +133,7 @@ class ProjectView(BaseView):
         self.import_project_button.setEnabled(False) # Disable until a plugin is selected
         button_row.addWidget(self.import_project_button)
 
-        self.add_page(self.import_project_page, "Import") # Add page to stacked widget
+        self.add_page(self.import_project_page, "Import Project") # Add page to stacked widget
         self.populate_importer_plugins() # Populate the dropdown
 
     def populate_importer_plugins(self):
@@ -289,7 +295,7 @@ class ProjectView(BaseView):
         # Run the project-level action via ProjectManager
         self.navigation_pane.add_log_message(f"Starting import using {plugin_name}...", "info")
         try:
-            result = self.project_manager.run_project_level_plugin_action(
+            result = self.window().project_manager.run_project_level_plugin_action(
                 plugin_name=plugin_name,
                 capability_name=capability_name,
                 parameters=parameters
@@ -317,8 +323,7 @@ class ProjectView(BaseView):
     def setup_general_settings_page(self):
         """Setup the General Settings page with application-wide settings."""
         self.general_settings_page = QWidget()
-        layout = QVBoxLayout(self.general_settings_page)
-        layout.setSpacing(self.SECTION_SPACING)
+        layout = self.setup_page_layout(self.general_settings_page)
         
         # 1. Display Settings Group
         display_group, display_layout = self.create_form_section("Display Settings", layout)
@@ -397,7 +402,7 @@ class ProjectView(BaseView):
         apply_button_row.addWidget(apply_settings_button)
         
         layout.addStretch(1)
-        self.add_page(self.general_settings_page, "Settings")
+        self.add_page(self.general_settings_page, "General Settings")
         
         self.populate_project_list()
         self.update_sort_mode_from_state()
@@ -427,6 +432,30 @@ class ProjectView(BaseView):
         self.update_sort_mode_from_state()
         # Update theme dropdown based on loaded project
         self.update_theme_dropdown_from_state()
+
+        # Update the location selector based on whether current project is under shared
+        try:
+            if hasattr(self, 'switch_location_combo') and self.window().project_manager:
+                pm = self.window().project_manager
+                from ..core.setup_service import get_setup_service
+                setup_service = get_setup_service()
+                shared_root = setup_service.get_shared_storage_path()
+                is_shared = False
+                # Prefer explicit shared_root in project config
+                if getattr(pm.config, 'shared_root', None):
+                    is_shared = True
+                elif shared_root:
+                    try:
+                        is_shared = str(pm.project_path.resolve()).startswith(str(shared_root.resolve()))
+                    except Exception:
+                        is_shared = False
+                target_index = 1 if is_shared else 0  # 0=Local, 1=Shared
+                if 0 <= target_index < self.switch_location_combo.count():
+                    self.switch_location_combo.blockSignals(True)
+                    self.switch_location_combo.setCurrentIndex(target_index)
+                    self.switch_location_combo.blockSignals(False)
+        except Exception:
+            pass
 
         # Refresh the project list dropdown to ensure it's up-to-date
         self.populate_project_list()
@@ -463,10 +492,10 @@ class ProjectView(BaseView):
         }
         
         # Update settings using project config
-        if self.project_manager:
-            self.project_manager.config.settings.update(settings)
+        if self.window().project_manager:
+            self.window().project_manager.config.settings.update(settings)
             # Save the project to persist these settings
-            self.project_manager.save_project()
+            self.window().project_manager.save_project()
             
             # Call through MainWindow to propagate theme changes across the application
             self.window().change_theme(theme_choice)
@@ -485,20 +514,20 @@ class ProjectView(BaseView):
         }
         
         # Update settings using project config
-        if self.project_manager:
-            self.project_manager.config.settings.update(settings)
+        if self.window().project_manager:
+            self.window().project_manager.config.settings.update(settings)
             # Save project to persist changes
-            self.project_manager.save_project()
+            self.window().project_manager.save_project()
             
         self.navigation_pane.add_log_message(f"Applied frame rate settings: {'Enabled' if frame_rate_enabled else 'Disabled'}, {frame_rate} fps", "success")
    
     def on_sort_mode_changed(self, new_sort_mode: str):
         """Update the project config's global_sort_mode and refresh data."""
-        if self.project_manager:
+        if self.window().project_manager:
             # Update sort mode using project config
-            self.project_manager.config.settings["global_sort_mode"] = new_sort_mode
+            self.window().project_manager.config.settings["global_sort_mode"] = new_sort_mode
             # Save project to persist changes
-            self.project_manager.save_project()
+            self.window().project_manager.save_project()
 
             # Refresh lists to show new sorting (repositories will use the updated sort mode)
             self.refresh_lists()
@@ -565,21 +594,231 @@ class ProjectView(BaseView):
         self.navigation_pane.add_log_message("Sort mode management not yet implemented in clean architecture.", "info")
 
     def populate_project_list(self):
-        """Populates the project selection dropdown."""
+        """Populate the project selection dropdown using discovery service.
+
+        Displays entries as: <name> — Local | Shared (Lab Name). Stores full path in itemData.
+        Filters by `switch_location_combo` (Local/Shared).
+        """
         if not hasattr(self, 'switch_project_combo'):
             self.navigation_pane.add_log_message("Switch project combo box not found.", "warning")
             return
 
-        current_selection = self.switch_project_combo.currentText()
-        self.switch_project_combo.clear()
+        try:
+            # Determine filter
+            location_filter = "Local"
+            if hasattr(self, 'switch_location_combo'):
+                location_filter = self.switch_location_combo.currentText() or "Local"
 
-        # For now, add current project if available
-        if hasattr(self.window(), 'selected_project_name') and self.window().selected_project_name:
-            self.switch_project_combo.addItem(self.window().selected_project_name, self.window().selected_project_name)
-            self.navigation_pane.add_log_message("Project switching not fully implemented in clean architecture.", "info")
-        else:
-            self.switch_project_combo.addItem("No projects available", None)
-            self.navigation_pane.add_log_message("Project list population pending in clean architecture.", "info")
+            # Discover projects
+            from ..core.project_discovery_service import get_project_discovery_service
+            pds = get_project_discovery_service()
+            project_paths = pds.discover_existing_projects() or []
+
+            # Lab id -> label mapping
+            lab_names = {}
+            try:
+                from ..core.setup_service import get_setup_service
+                labs = get_setup_service().get_labs() or {}
+                for lab_id, lab in labs.items():
+                    nm = lab.get('name') or lab_id
+                    inst = lab.get('institution')
+                    lab_names[lab_id] = f"{nm} ({inst})" if inst else nm
+            except Exception:
+                pass
+
+            # Resolve shared root
+            try:
+                from ..core.setup_service import get_setup_service as _gss
+                shared_root = _gss().get_shared_storage_path()
+            except Exception:
+                shared_root = None
+
+            from pathlib import Path as _Path
+            items = []  # (display, path)
+            for p in project_paths:
+                try:
+                    p = _Path(p)
+                    name = p.name
+                    lab_id = None
+                    proj_shared = None
+                    meta = p / 'project.json'
+                    if meta.exists():
+                        import json as _json
+                        try:
+                            with open(meta) as f:
+                                data = _json.load(f)
+                            lab_id = data.get('lab_id')
+                            sr = data.get('shared_root')
+                            if sr:
+                                from pathlib import Path as __P
+                                proj_shared = __P(sr)
+                        except Exception:
+                            pass
+
+                    # Determine location
+                    is_shared = bool(proj_shared)
+                    if not is_shared and shared_root:
+                        try:
+                            is_shared = str(p.resolve()).startswith(str(shared_root.resolve()))
+                        except Exception:
+                            is_shared = False
+
+                    # Apply filter
+                    if location_filter.lower() == 'shared' and not is_shared:
+                        continue
+                    if location_filter.lower() == 'local' and is_shared:
+                        continue
+
+                    loc_txt = 'Shared' if is_shared else 'Local'
+                    lab_txt = f" ({lab_names.get(lab_id)})" if lab_id and lab_id in lab_names else ""
+                    display = f"{name} — {loc_txt}{lab_txt}"
+                    items.append((display, str(p)))
+                except Exception:
+                    continue
+
+            # Fill combo
+            self.switch_project_combo.blockSignals(True)
+            self.switch_project_combo.clear()
+            if items:
+                for display, path_str in sorted(items, key=lambda x: x[0].lower()):
+                    self.switch_project_combo.addItem(display, path_str)
+            else:
+                self.switch_project_combo.addItem("No projects available", None)
+            self.switch_project_combo.blockSignals(False)
+        except Exception as e:
+            self.switch_project_combo.clear()
+            self.switch_project_combo.addItem("Error loading projects", None)
+            self.navigation_pane.add_log_message(f"Project list load error: {e}", "error")
+
+    def on_creation_location_changed(self, index):
+        """Handle location type change for project creation."""
+        if not hasattr(self, 'lab_label') or not hasattr(self, 'creation_lab_combo'):
+            return  # Not initialized yet
+        is_shared = self.creation_location_combo.currentText().lower() == "shared"
+        self.navigation_pane.add_log_message(f"Location changed to '{self.creation_location_combo.currentText()}', is_shared={is_shared}", "info")
+        self.lab_label.setVisible(is_shared)
+        self.creation_lab_combo.setVisible(is_shared)
+        self.navigation_pane.add_log_message(f"Lab label visible: {self.lab_label.isVisible()}, Combo visible: {self.creation_lab_combo.isVisible()}", "info")
+        if is_shared:
+            self.populate_lab_combo()
+
+    def populate_lab_combo(self):
+        """Populate the lab selection combo for project creation."""
+        if not hasattr(self, 'creation_lab_combo'):
+            return
+
+        self.creation_lab_combo.clear()
+        try:
+            from ..core.setup_service import get_setup_service
+            setup_service = get_setup_service()
+            labs = setup_service.get_labs()
+            self.navigation_pane.add_log_message(f"Found {len(labs)} labs for user", "info")
+            if labs:
+                for lab_id, lab_data in labs.items():
+                    display_name = f"{lab_data.get('name', 'Unknown Lab')} ({lab_data.get('institution', 'Unknown Institution')})"
+                    self.creation_lab_combo.addItem(display_name, lab_id)
+                    self.navigation_pane.add_log_message(f"Added lab: {display_name}", "info")
+            else:
+                self.creation_lab_combo.addItem("No labs available", None)
+                self.navigation_pane.add_log_message("No labs available for user", "warning")
+        except Exception as e:
+            self.navigation_pane.add_log_message(f"Error loading labs: {e}", "error")
+            self.creation_lab_combo.addItem("Error loading labs", None)
+
+    def handle_create_project(self):
+        """Handle creating a new project."""
+        project_name = self.new_project_name_edit.text().strip()
+        if not project_name:
+            QMessageBox.warning(self, "Project Creation", "Please enter a project name.")
+            return
+
+        location_type = self.creation_location_combo.currentText().lower()
+        lab_id = None
+
+        if location_type == "shared":
+            lab_id = self.creation_lab_combo.currentData()
+            if not lab_id:
+                QMessageBox.warning(self, "Project Creation", "Please select a lab for shared projects.")
+                return
+
+        try:
+            from ..core.setup_service import get_setup_service
+            from pathlib import Path
+
+            setup_service = get_setup_service()
+
+            # Determine base path
+            if location_type == "shared":
+                shared_root = setup_service.get_shared_storage_path()
+                if not shared_root:
+                    QMessageBox.warning(self, "Project Creation", "Shared storage not configured.")
+                    return
+                base_path = Path(shared_root) / "Projects"
+            else:
+                # Use local projects directory
+                user_profile = setup_service.get_user_profile()
+                if user_profile and user_profile.default_projects_dir:
+                    base_path = user_profile.default_projects_dir
+                else:
+                    base_path = Path.home() / "Documents" / "MUS1" / "Projects"
+
+            # Create project
+            project_path = base_path / project_name
+
+            if (project_path / "mus1.db").exists():
+                QMessageBox.warning(self, "Project Creation", f"Project '{project_name}' already exists.")
+                return
+
+            # Create directory and initialize project
+            project_path.mkdir(parents=True, exist_ok=True)
+
+            from ..core.project_manager_clean import ProjectManagerClean
+            project_manager = ProjectManagerClean(project_path)
+
+            # If created as Shared, set shared_root on project config
+            if location_type == "shared":
+                try:
+                    sr = setup_service.get_shared_storage_path()
+                    if sr:
+                        project_manager.set_shared_root(Path(sr))
+                except Exception as e:
+                    self.navigation_pane.add_log_message(f"Failed to persist shared root on project: {e}", "warning")
+
+            # Associate with lab if specified
+            if lab_id:
+                project_manager.set_lab_id(lab_id)
+                # Register with lab in database
+                from ..core.schema import Database
+                from ..core.repository import get_repository_factory
+                from ..core.config_manager import get_config_manager
+                from datetime import datetime
+
+                config_manager = get_config_manager()
+                db = Database(str(config_manager.db_path))
+                db.create_tables()
+                repo_factory = get_repository_factory(db)
+                repo_factory.labs.add_project(
+                    lab_id=lab_id,
+                    project_name=project_name,
+                    project_path=project_path,
+                    created_date=datetime.now()
+                )
+
+            # Switch to the newly created project
+            self.window().load_project_path(project_path)
+            try:
+                if hasattr(self, 'switch_location_combo'):
+                    self.switch_location_combo.setCurrentIndex(1 if location_type == 'shared' else 0)
+            except Exception:
+                pass
+            self.navigation_pane.add_log_message(f"Project '{project_name}' created successfully", "success")
+
+            # Clear the form
+            self.new_project_name_edit.clear()
+
+        except Exception as e:
+            self.navigation_pane.add_log_message(f"Error creating project: {e}", "error")
+            QMessageBox.critical(self, "Project Creation Error", f"Failed to create project: {e}")
 
     def handle_switch_project(self):
         """Handles the 'Switch' button click."""
@@ -633,11 +872,11 @@ class ProjectView(BaseView):
             self.navigation_pane.add_log_message(f"Attempting to rename project '{current_name}' to: {new_name}", 'info')
             # Perform rename using project_manager
             # Ensure project_manager exists
-            if not self.project_manager:
+            if not self.window().project_manager:
                  self.navigation_pane.add_log_message("ProjectManager not available for rename.", "error")
                  return
 
-            self.project_manager.rename_project(new_name)
+            self.window().project_manager.rename_project(new_name)
 
             # --- Rename Successful ---
             self.navigation_pane.add_log_message(f"Project successfully renamed to: {new_name}", 'success')
@@ -672,8 +911,59 @@ class ProjectView(BaseView):
         """Setup the Project Settings page with project info controls."""
         # Create the page widget without redundant styling
         self.project_settings_page = QWidget()
-        layout = QVBoxLayout(self.project_settings_page)
-        layout.setSpacing(15)
+        layout = self.setup_page_layout(self.project_settings_page)
+
+        # Project creation group
+        creation_group = QGroupBox("Create New Project")
+        creation_group.setProperty("class", "mus1-input-group")
+        creation_layout = QVBoxLayout(creation_group)
+
+        # Location type selection
+        location_row = self.create_form_row()
+        location_row.addWidget(self.create_form_label("Location:"))
+        self.creation_location_combo = QComboBox()
+        self.creation_location_combo.setProperty("class", "mus1-combo-box")
+        self.creation_location_combo.addItems(["Local", "Shared"])
+        location_row.addWidget(self.creation_location_combo, 1)
+        creation_layout.addLayout(location_row)
+
+        # Project name
+        name_row = self.create_form_row()
+        name_row.addWidget(self.create_form_label("Project Name:"))
+        self.new_project_name_edit = QLineEdit()
+        self.new_project_name_edit.setProperty("class", "mus1-text-input")
+        self.new_project_name_edit.setPlaceholderText("Enter project name")
+        name_row.addWidget(self.new_project_name_edit, 1)
+        creation_layout.addLayout(name_row)
+
+        # Lab selection for shared projects
+        self.lab_selection_row = self.create_form_row()
+        self.lab_label = self.create_form_label("Lab:")
+        self.creation_lab_combo = QComboBox()
+        self.creation_lab_combo.setProperty("class", "mus1-combo-box")
+        self.lab_selection_row.addWidget(self.lab_label)
+        self.lab_selection_row.addWidget(self.creation_lab_combo, 1)
+        # Initially hide the row widgets
+        self.lab_label.setVisible(False)
+        self.creation_lab_combo.setVisible(False)
+        creation_layout.addLayout(self.lab_selection_row)
+
+        # Create button
+        create_row = self.create_form_row()
+        create_row.addStretch(1)
+        self.create_project_button = QPushButton("Create Project")
+        self.create_project_button.setProperty("class", "mus1-primary-button")
+        self.create_project_button.clicked.connect(self.handle_create_project)
+        create_row.addWidget(self.create_project_button)
+        creation_layout.addLayout(create_row)
+
+        # Connect location combo to show/hide lab selection
+        self.creation_location_combo.currentIndexChanged.connect(self.on_creation_location_changed)
+        # Ensure initial state is correct (lab selection should be hidden for "Local")
+        self.lab_label.setVisible(False)
+        self.creation_lab_combo.setVisible(False)
+
+        layout.addWidget(creation_group)
 
         # Project selection group
         selection_group = QGroupBox("Project Selection")
@@ -759,10 +1049,23 @@ class ProjectView(BaseView):
 
         # Pre-fill from state if available
         try:
+            # First try to get from current project
+            shared_root = None
             if hasattr(self, 'project_service') and self.project_service:
                 project_info = self.project_service.get_project_info()
                 if project_info.get('shared_root'):
-                    self.shared_root_line.setText(project_info['shared_root'])
+                    shared_root = project_info['shared_root']
+
+            # If no project-specific shared root, try global config
+            if not shared_root:
+                from ..core.setup_service import get_setup_service
+                setup_service = get_setup_service()
+                global_path = setup_service.get_shared_storage_path()
+                if global_path:
+                    shared_root = str(global_path)
+
+            if shared_root:
+                self.shared_root_line.setText(shared_root)
         except Exception:
             pass
 
@@ -778,8 +1081,9 @@ class ProjectView(BaseView):
         # Add the page to the stacked widget - BaseView will apply styling
         self.add_page(self.project_settings_page, "Project Settings")
         
-        # Initialize the project list
+        # Initialize the project list and lab combo
         self.populate_project_list()
+        self.populate_lab_combo()
         
     def handle_save_project_notes(self):
         """Save the project notes to the current project state."""
@@ -790,14 +1094,14 @@ class ProjectView(BaseView):
         notes = self.project_notes_box.get_text()
         try:
             # Ensure project_manager is available
-            if not self.project_manager:
+            if not self.window().project_manager:
                  self.navigation_pane.add_log_message("Cannot save notes: Project manager not available.", 'error')
                  return
 
             # Update notes in project config settings
-            self.project_manager.config.settings["project_notes"] = notes
+            self.window().project_manager.config.settings["project_notes"] = notes
             # Save the project to persist changes
-            self.project_manager.save_project()
+            self.window().project_manager.save_project()
             
             self.navigation_pane.add_log_message("Project notes saved successfully.", 'success')
         except Exception as e:
@@ -827,8 +1131,18 @@ class ProjectView(BaseView):
                     sr.mkdir(parents=True, exist_ok=True)
                 else:
                     return
-            self.window().project_manager.set_shared_root(sr)
-            self.window().project_manager.save_project()
+
+            # Set global shared storage config
+            from ..core.setup_service import get_setup_service
+            setup_service = get_setup_service()
+            from ..core.config_manager import set_config
+            set_config("storage.shared_root", str(sr), scope="user")
+
+            # Also set per-project if there's a current project
+            if hasattr(self.window(), 'project_manager') and self.window().project_manager:
+                self.window().project_manager.set_shared_root(sr)
+                self.window().project_manager.save_project()
+
             self.navigation_pane.add_log_message(f"Shared root set to {sr}", "success")
         except Exception as e:
             self.navigation_pane.add_log_message(f"Failed to set shared root: {e}", "error")
@@ -854,6 +1168,7 @@ class ProjectView(BaseView):
         """Refreshes lists managed by this view."""
         self.navigation_pane.add_log_message("Refreshing ProjectView lists...", "info")
         self.populate_project_list()
+        self.populate_lab_combo()  # Refresh lab combo too
         self.populate_importer_plugins() # Also refresh importer list
         # Refresh settings UI from state
         self.update_frame_rate_from_state()
@@ -869,8 +1184,7 @@ class ProjectView(BaseView):
     def setup_scan_ingest_page(self):
         """Setup a page to scan configured targets and ingest videos into the project."""
         self.scan_ingest_page = QWidget()
-        layout = QVBoxLayout(self.scan_ingest_page)
-        layout.setSpacing(self.SECTION_SPACING)
+        layout = self.setup_page_layout(self.scan_ingest_page)
 
         # Targets selection
         targets_group, tg_layout = self.create_form_section("Scan Targets", layout)
@@ -951,18 +1265,24 @@ class ProjectView(BaseView):
             return
         self.targets_list.clear()
         try:
-            targets = list(self.project_manager.config.settings.get('scan_targets', []) or [])
+            targets = list(self.window().project_manager.config.settings.get('scan_targets', []) or [])
         except Exception:
             targets = []
         for t in targets:
-            item = QListWidgetItem(f"{t.name}  ({t.kind})")
-            item.setData(Qt.ItemDataRole.UserRole, t.name)
+            item = QListWidgetItem(f"{t.get('name', '')}  ({t.get('kind', '')})")
+            item.setData(Qt.ItemDataRole.UserRole, t.get('name', ''))
             item.setCheckState(Qt.CheckState.Unchecked)
             self.targets_list.addItem(item)
 
     def handle_scan_targets(self):
         try:
-            sr = self.project_manager.config.shared_root
+            # Check if project manager is available
+            if not self.window().project_manager:
+                QMessageBox.warning(self, "Scan", "No project is currently loaded. Please load a project first.")
+                self.navigation_pane.add_log_message("Cannot scan targets: no project loaded.", "error")
+                return
+
+            sr = self.window().project_manager.config.shared_root
             selected_names = []
             for i in range(self.targets_list.count()):
                 it = self.targets_list.item(i)
@@ -980,8 +1300,8 @@ class ProjectView(BaseView):
             non_recursive = self.non_recursive_check.isChecked()
 
             # Resolve targets
-            all_targets = list(self.project_manager.config.settings.get('scan_targets', []) or [])
-            targets = [t for t in all_targets if t.name in set(selected_names)]
+            all_targets = list(self.window().project_manager.config.settings.get('scan_targets', []) or [])
+            targets = [t for t in all_targets if t.get('name', '') in set(selected_names)]
             if not targets:
                 QMessageBox.warning(self, "Scan", "No matching targets found.")
                 return
@@ -1021,20 +1341,32 @@ class ProjectView(BaseView):
 
     def handle_add_under_shared(self):
         try:
+            # Check if project manager is available
+            if not self.window().project_manager:
+                QMessageBox.warning(self, "Add", "No project is currently loaded. Please load a project first.")
+                self.navigation_pane.add_log_message("Cannot add videos: no project loaded.", "error")
+                return
+
             if not self._in_shared:
                 QMessageBox.information(self, "Add", "No items under shared root to add.")
                 return
-            added = self.project_manager.register_unlinked_videos(iter(self._in_shared))
+            added = self.window().project_manager.register_unlinked_videos(iter(self._in_shared))
             QMessageBox.information(self, "Add", f"Added {added} videos under shared root.")
         except Exception as e:
             self.navigation_pane.add_log_message(f"Add under shared failed: {e}", "error")
 
     def handle_stage_off_shared(self):
         try:
+            # Check if project manager is available
+            if not self.window().project_manager:
+                QMessageBox.warning(self, "Stage", "No project is currently loaded. Please load a project first.")
+                self.navigation_pane.add_log_message("Cannot stage files: no project loaded.", "error")
+                return
+
             if not self._off_shared:
                 QMessageBox.information(self, "Stage", "No off-shared items to stage.")
                 return
-            sr = self.project_manager.config.shared_root
+            sr = self.window().project_manager.config.shared_root
             if not sr:
                 QMessageBox.warning(self, "Stage", "Set shared root first in Project Settings.")
                 return
@@ -1061,7 +1393,7 @@ class ProjectView(BaseView):
             #     progress_cb=_cb,
             # )
             staged_iter = []  # Placeholder until integration is complete
-            added = self.project_manager.register_unlinked_videos(staged_iter)
+            added = self.window().project_manager.register_unlinked_videos(staged_iter)
             QMessageBox.information(self, "Stage", f"Staged and added {added} videos.")
         except Exception as e:
             self.navigation_pane.add_log_message(f"Stage failed: {e}", "error")
@@ -1069,8 +1401,7 @@ class ProjectView(BaseView):
     def setup_targets_page(self):
         """Setup Targets management page (typed scan targets CRUD)."""
         self.targets_page = QWidget()
-        layout = QVBoxLayout(self.targets_page)
-        layout.setSpacing(self.SECTION_SPACING)
+        layout = self.setup_page_layout(self.targets_page)
 
         list_group, list_layout = self.create_form_section("Scan Targets", layout)
         row = self.create_form_row(list_layout)
@@ -1121,7 +1452,7 @@ class ProjectView(BaseView):
             return
         self.targets_admin_list.clear()
         try:
-            targets = self.project_manager.config.settings.get('scan_targets', [])
+            targets = self.window().project_manager.config.settings.get('scan_targets', [])
         except Exception:
             targets = []
         for t in targets:
@@ -1133,6 +1464,12 @@ class ProjectView(BaseView):
 
     def handle_add_target(self):
         try:
+            # Check if project manager is available
+            if not self.window().project_manager:
+                QMessageBox.warning(self, "Targets", "No project is currently loaded. Please load a project first.")
+                self.navigation_pane.add_log_message("Cannot add target: no project loaded.", "error")
+                return
+
             name = self.target_name_edit.text().strip()
             kind = self.target_kind_combo.currentText().strip()
             ssh_alias = self.target_ssh_alias_edit.text().strip() or None
@@ -1152,7 +1489,7 @@ class ProjectView(BaseView):
             if not roots:
                 QMessageBox.warning(self, "Targets", "At least one root path is required.")
                 return
-            targets = self.project_manager.config.settings.get('scan_targets', [])
+            targets = self.window().project_manager.config.settings.get('scan_targets', [])
             if any(t.get('name') == name for t in targets):
                 QMessageBox.warning(self, "Targets", f"Target '{name}' already exists.")
                 return
@@ -1163,8 +1500,8 @@ class ProjectView(BaseView):
                 'ssh_alias': ssh_alias
             }
             targets.append(target_dict)
-            self.project_manager.config.settings['scan_targets'] = targets
-            self.project_manager.save_project()
+            self.window().project_manager.config.settings['scan_targets'] = targets
+            self.window().project_manager.save_project()
             self.refresh_targets_admin_list()
             self.refresh_targets_list()
             self.navigation_pane.add_log_message(f"Added target {name}", "success")
@@ -1173,15 +1510,21 @@ class ProjectView(BaseView):
 
     def handle_remove_target(self):
         try:
+            # Check if project manager is available
+            if not self.window().project_manager:
+                QMessageBox.warning(self, "Targets", "No project is currently loaded. Please load a project first.")
+                self.navigation_pane.add_log_message("Cannot remove target: no project loaded.", "error")
+                return
+
             item = self.targets_admin_list.currentItem()
             if not item:
                 QMessageBox.information(self, "Targets", "Select a target to remove.")
                 return
             name = item.data(Qt.ItemDataRole.UserRole)
-            targets = self.project_manager.config.settings.get('scan_targets', [])
+            targets = self.window().project_manager.config.settings.get('scan_targets', [])
             before = len(targets)
             targets = [t for t in targets if t.get('name') != name]
-            self.project_manager.config.settings['scan_targets'] = targets
+            self.window().project_manager.config.settings['scan_targets'] = targets
             if len(targets) == before:
                 QMessageBox.information(self, "Targets", f"No target named '{name}' found.")
                 return

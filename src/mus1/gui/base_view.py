@@ -301,4 +301,21 @@ class BaseView(QWidget, ViewLifecycle):
         if add_stretch:
             row.addStretch(1)
 
-        return row 
+        return row
+
+    def setup_page_layout(self, page_widget, spacing=None):
+        """
+        Set up a standardized layout for a page widget.
+
+        Args:
+            page_widget: The QWidget to set up with a layout
+            spacing: Optional spacing override, defaults to SECTION_SPACING
+
+        Returns:
+            QVBoxLayout: The configured layout
+        """
+        from .qt import QVBoxLayout
+        layout = QVBoxLayout(page_widget)
+        layout.setSpacing(spacing if spacing is not None else self.SECTION_SPACING)
+        layout.setContentsMargins(self.FORM_MARGIN, self.FORM_MARGIN, self.FORM_MARGIN, self.FORM_MARGIN)
+        return layout

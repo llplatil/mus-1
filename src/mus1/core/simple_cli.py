@@ -51,11 +51,29 @@ app.add_typer(project_app, name="project")
 def main(
     ctx: typer.Context,
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose output"),
+    setup: bool = typer.Option(False, "--setup", "-s", help="Run setup wizard after starting GUI"),
 ):
     """MUS1 - Clean and simple."""
     if ctx.invoked_subcommand is None:
         rich_print("[bold blue]MUS1[/bold blue] - Video analysis system")
         rich_print("Use 'mus1 --help' for available commands")
+
+        # Launch GUI with setup flag if requested
+        if setup:
+            import sys
+            import os
+            # Set environment variable or modify sys.argv to pass setup flag to GUI
+            os.environ['MUS1_SETUP_REQUESTED'] = '1'
+
+        # Import and run GUI
+        try:
+            from ..main import main as gui_main
+            gui_main()
+        except KeyboardInterrupt:
+            rich_print("\n[yellow]GUI interrupted by user[/yellow]")
+        except Exception as e:
+            rich_print(f"[red]Error launching GUI: {e}[/red]")
+            raise typer.Exit(1)
 
 # ===========================================
 # ENHANCED PROJECT MANAGEMENT
@@ -685,6 +703,16 @@ def setup_wizard():
     if setup_service.is_user_configured():
         user_name = get_config("user.name")
         rich_print(f"[yellow]⚠[/yellow] MUS1 is already configured for user: {user_name}")
+
+        # Also check for existing root pointer that might be affected
+        from mus1.core.config_manager import get_root_pointer_info
+        root_pointer_info = get_root_pointer_info()
+        if root_pointer_info["exists"]:
+            if root_pointer_info["valid"]:
+                rich_print(f"[yellow]⚠[/yellow] Existing root pointer will be overwritten: {root_pointer_info['target']}")
+            else:
+                rich_print(f"[yellow]⚠[/yellow] Invalid root pointer will be cleaned up: {root_pointer_info['target']}")
+
         if not Confirm.ask("Run setup wizard anyway?"):
             rich_print("[blue]ℹ[/blue] Setup cancelled")
             return
@@ -746,6 +774,10 @@ def setup_wizard():
         root_result = setup_service.setup_mus1_root_location(root_dto)
         if root_result["success"]:
             rich_print("[green]✓[/green] MUS1 root location configured")
+            # Show any warnings about root pointer changes
+            if "warnings" in root_result:
+                for warning in root_result["warnings"]:
+                    rich_print(f"[yellow]⚠[/yellow] {warning}")
         else:
             rich_print(f"[yellow]⚠[/yellow] MUS1 root setup issue: {root_result['message']}")
     except Exception as e:
@@ -804,7 +836,7 @@ def setup_wizard():
 
     # Persist via SetupService (SQL authoritative; ConfigManager stores only active user id)
     try:
-        from .setup_service import get_setup_service, UserProfileDTO, SharedStorageDTO
+        from .setup_service import UserProfileDTO, SharedStorageDTO
         svc = get_setup_service()
         user_result = svc.setup_user_profile(UserProfileDTO(
             name=name,
@@ -829,31 +861,51 @@ def setup_wizard():
 
     lab_created = False
     if create_lab_now:
+        from .setup_service import LabDTO
+        from .metadata import User
+
         lab_id = Prompt.ask("Enter lab identifier (e.g., 'copperlab')", default="mylab")
         lab_name = Prompt.ask("Enter full lab name", default=f"{organization} Lab")
         lab_institution = Prompt.ask("Enter institution name", default=organization)
         lab_pi = Prompt.ask("Enter PI name", default=name)
 
-        # Create lab configuration
-        lab_config = {
-            "id": lab_id,
-            "name": lab_name,
-            "description": f"Research lab at {lab_institution}",
-            "institution": lab_institution,
-            "pi_name": lab_pi,
-            "created_date": datetime.now().isoformat(),
-            "colonies": [],
-            "projects": []
-        }
+        # Get current user ID for lab creator
+        user_id = get_config("user.id", scope="user")
+        if not user_id:
+            rich_print("[red]✗[/red] No user configured - cannot create lab")
+        else:
+            lab_dto = LabDTO(
+                id=lab_id,
+                name=lab_name,
+                institution=lab_institution,
+                pi_name=lab_pi,
+                creator_id=user_id
+            )
 
-        # Save to user config
-        labs = get_config("labs", scope="user") or {}
-        labs[lab_id] = lab_config
-        set_config("labs", labs, scope="user")
-        lab_created = True
-
-        rich_print("[green]✓[/green] Lab created successfully!")
-        rich_print(f"[blue]ℹ[/blue] Lab ID: {lab_id}")
+            try:
+                lab_result = setup_service.create_lab(lab_dto)
+                if lab_result["success"]:
+                    lab_created = True
+                    rich_print("[green]✓[/green] Lab created successfully!")
+                    rich_print(f"[blue]ℹ[/blue] Lab ID: {lab_id}")
+                else:
+                    rich_print(f"[yellow]⚠[/yellow] Could not create lab: {lab_result['message']}")
+                    # Check if lab already exists and offer to update
+                    if "already exists" in lab_result["message"]:
+                        if Confirm.ask(f"Lab '{lab_id}' already exists. Update it instead?", default=True):
+                            update_result = setup_service.update_lab(
+                                lab_id=lab_id,
+                                name=lab_name,
+                                institution=lab_institution,
+                                pi_name=lab_pi
+                            )
+                            if update_result["success"]:
+                                lab_created = True
+                                rich_print("[green]✓[/green] Lab updated successfully!")
+                            else:
+                                rich_print(f"[yellow]⚠[/yellow] Could not update lab: {update_result['message']}")
+            except Exception as e:
+                rich_print(f"[red]✗[/red] Error creating lab: {e}")
 
     # Summary
     rich_print("\n[bold green]🎉 MUS1 Setup Complete![/bold green]")

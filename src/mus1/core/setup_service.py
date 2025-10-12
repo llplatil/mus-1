@@ -267,16 +267,40 @@ class SetupService:
 
         # Write a stable root pointer file under platform default so future processes can rediscover
         try:
-            from .config_manager import _get_platform_default_mus1_root
+            from .config_manager import _get_platform_default_mus1_root, get_root_pointer_info
             default_root = _get_platform_default_mus1_root()
             pointer_dir = default_root / "config"
             pointer_dir.mkdir(parents=True, exist_ok=True)
             pointer_path = pointer_dir / "root_pointer.json"
+
+            # Check for existing root pointer and handle cleanup/warnings
+            existing_pointer = get_root_pointer_info()
+            warning_messages = []
+
+            if existing_pointer["exists"]:
+                if existing_pointer["valid"]:
+                    # Valid existing pointer - warn about overwrite
+                    warning_messages.append(f"Overwriting existing valid root pointer: {existing_pointer['target']}")
+                else:
+                    # Invalid existing pointer - warn and clean it up
+                    warning_messages.append(f"Cleaning up invalid root pointer: {existing_pointer['target']}")
+                    try:
+                        existing_pointer["pointer_path"].unlink(missing_ok=True)
+                    except Exception:
+                        pass  # Non-fatal if we can't remove it
+
+            # Write new root pointer
             with open(pointer_path, "w") as f:
                 import json
                 json.dump({"root": str(root_dto.path), "updated_at": datetime.now().isoformat()}, f)
-        except Exception:
-            pass
+
+            # Add warnings to result if any
+            if warning_messages:
+                result["warnings"] = warning_messages
+
+        except Exception as e:
+            # Non-fatal; root pointer is best-effort
+            result["warnings"] = result.get("warnings", []) + [f"Failed to update root pointer: {e}"]
 
         return {
             "success": True,
@@ -407,6 +431,72 @@ class SetupService:
             default_projects_dir=user.default_projects_dir,
             default_shared_dir=user.default_shared_dir
         )
+
+    def get_all_users(self) -> Dict[str, Dict[str, Any]]:
+        """Get all configured users as a dictionary."""
+        from .repository import get_repository_factory
+
+        db = self._get_database()
+        repo_factory = get_repository_factory(db)
+        user_repo = repo_factory.users
+
+        users = user_repo.find_all()
+        result = {}
+
+        for user in users:
+            result[user.id] = {
+                "id": user.id,
+                "name": user.name,
+                "email": user.email,
+                "organization": user.organization or "",
+                "default_projects_dir": str(user.default_projects_dir) if user.default_projects_dir else None,
+                "default_shared_dir": str(user.default_shared_dir) if user.default_shared_dir else None,
+            }
+
+        return result
+
+    def update_lab(self, lab_id: str, name: Optional[str] = None, institution: Optional[str] = None,
+                   pi_name: Optional[str] = None) -> Dict[str, Any]:
+        """Update lab information in the database.
+
+        Args:
+            lab_id: The lab ID to update
+            name: New lab name (optional)
+            institution: New institution name (optional)
+            pi_name: New PI name (optional)
+
+        Returns:
+            Dict with success status and details
+        """
+        from .repository import get_repository_factory
+
+        db = self._get_database()
+        repo_factory = get_repository_factory(db)
+
+        # Get existing lab
+        lab_repo = repo_factory.labs
+        lab = lab_repo.find_by_id(lab_id)
+        if not lab:
+            return {"success": False, "message": f"Lab '{lab_id}' not found"}
+
+        # Apply updates
+        if name is not None:
+            lab.name = name
+        if institution is not None:
+            lab.institution = institution
+        if pi_name is not None:
+            lab.pi_name = pi_name
+
+        # Save updated lab
+        try:
+            saved_lab = lab_repo.save(lab)
+            return {
+                "success": True,
+                "message": "Lab updated successfully",
+                "lab": saved_lab
+            }
+        except Exception as e:
+            return {"success": False, "message": f"Failed to update lab: {e}"}
 
     def update_user_profile(self, name: Optional[str] = None, organization: Optional[str] = None,
                             default_projects_dir: Optional[Path] = None,

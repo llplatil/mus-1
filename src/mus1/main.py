@@ -77,24 +77,33 @@ def main():
     setup_service = get_setup_service()
     setup_completed = False
 
-    if not setup_service.is_user_configured():
-        logger.info("First-time setup required - showing setup wizard")
+    # Check command line arguments or environment variable for setup wizard
+    import os
+    run_setup_wizard = "--setup" in sys.argv or "-s" in sys.argv or os.environ.get('MUS1_SETUP_REQUESTED') == '1'
+
+    if run_setup_wizard or not setup_service.is_user_configured():
+        if run_setup_wizard:
+            logger.info("Setup wizard requested via command line")
+        else:
+            logger.info("First-time setup required - showing setup wizard")
+
         from .gui.setup_wizard import show_setup_wizard
         setup_wizard = show_setup_wizard()
 
         if setup_wizard is None:
             logger.info("Setup cancelled by user")
-            reply = QMessageBox.question(
-                None, "Setup Required",
-                "MUS1 requires initial setup to continue. Would you like to run setup again?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-            )
-            if reply == QMessageBox.StandardButton.Yes:
-                setup_wizard = show_setup_wizard()
-                if setup_wizard is None:
-                    sys.exit(0)  # User cancelled again - exit cleanly
-            else:
-                sys.exit(0)  # User doesn't want to setup - exit cleanly
+            if not setup_service.is_user_configured():
+                reply = QMessageBox.question(
+                    None, "Setup Required",
+                    "MUS1 requires initial setup to continue. Would you like to run setup again?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                )
+                if reply == QMessageBox.StandardButton.Yes:
+                    setup_wizard = show_setup_wizard()
+                    if setup_wizard is None:
+                        sys.exit(0)  # User cancelled again - exit cleanly
+                else:
+                    sys.exit(0)  # User doesn't want to setup - exit cleanly
 
         logger.info("Setup wizard completed successfully")
         setup_completed = True

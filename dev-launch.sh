@@ -100,14 +100,14 @@ elif [ "${1:-}" = "gui" ]; then
         : "${QT_DEBUG_PLUGINS:=0}"
         export QT_DEBUG_PLUGINS
 
-        if python3 -c "import PyQt6" 2>/dev/null; then
-            PYQT6_BASE=$(python3 -c 'import pathlib, PyQt6; print(pathlib.Path(PyQt6.__file__).parent)')
+        if python -c "import PyQt6" 2>/dev/null; then
+            PYQT6_BASE=$(python -c 'import pathlib, PyQt6; print(pathlib.Path(PyQt6.__file__).parent)')
             export QT_QPA_PLATFORM_PLUGIN_PATH="${PYQT6_BASE}/Qt6/plugins/platforms"
             export QT_PLUGIN_PATH="${PYQT6_BASE}/Qt6/plugins"
             export DYLD_FRAMEWORK_PATH="${PYQT6_BASE}/Qt6/lib"
             export QT_QPA_PLATFORM="cocoa"
-        elif python3 -c "import PySide6" 2>/dev/null; then
-            PYSIDE6_BASE=$(python3 -c 'import pathlib, PySide6; print(pathlib.Path(PySide6.__file__).parent)')
+        elif python -c "import PySide6" 2>/dev/null; then
+            PYSIDE6_BASE=$(python -c 'import pathlib, PySide6; print(pathlib.Path(PySide6.__file__).parent)')
             export QT_QPA_PLATFORM_PLUGIN_PATH="${PYSIDE6_BASE}/Qt/plugins/platforms"
             export QT_PLUGIN_PATH="${PYSIDE6_BASE}/Qt/plugins"
             export DYLD_FRAMEWORK_PATH="${PYSIDE6_BASE}/Qt/lib"
@@ -115,7 +115,9 @@ elif [ "${1:-}" = "gui" ]; then
         fi
     fi
 
-    exec mus1-gui
+    # Pass remaining arguments to local main.py
+    shift
+    exec python -m mus1.main "$@"
 else
     # Run CLI command
     exec mus1 "$@"

@@ -88,8 +88,8 @@ class SubjectView(BaseView):
         # Create the page widget
         self.page_add_subject = QWidget()
         add_layout = QVBoxLayout(self.page_add_subject)
-        add_layout.setContentsMargins(10, 10, 10, 10)
-        add_layout.setSpacing(10)
+        add_layout.setContentsMargins(self.FORM_MARGIN, self.FORM_MARGIN, self.FORM_MARGIN, self.FORM_MARGIN)
+        add_layout.setSpacing(self.SECTION_SPACING)
 
         # Create input form for adding a subject
         self.subject_group = QGroupBox("Add Subject")
@@ -361,8 +361,8 @@ class SubjectView(BaseView):
         """Setup the Subjects Overview page."""
         self.page_overview = QWidget()
         overview_layout = QVBoxLayout(self.page_overview)
-        overview_layout.setContentsMargins(10, 10, 10, 10)
-        overview_layout.setSpacing(10)
+        overview_layout.setContentsMargins(self.FORM_MARGIN, self.FORM_MARGIN, self.FORM_MARGIN, self.FORM_MARGIN)
+        overview_layout.setSpacing(self.SECTION_SPACING)
         
         # Create a metadata tree view for hierarchical display of subjects and experiments
         tree_group, tree_layout = self.create_form_section("Subjects and Experiments Overview", overview_layout)
@@ -697,8 +697,7 @@ class SubjectView(BaseView):
     def setup_genotypes_page(self):
         """Initialize the Genotypes page."""
         self.genotypes_page = QWidget()
-        layout = QVBoxLayout(self.genotypes_page)
-        layout.setSpacing(self.SECTION_SPACING)
+        layout = self.setup_page_layout(self.genotypes_page)
 
         # ---- Genotypes Management Section ----
         genotypes_group, genotypes_layout = self.create_form_section("Genotypes Management", layout)
@@ -750,8 +749,7 @@ class SubjectView(BaseView):
     def setup_treatments_page(self):
         """Initialize the Treatments page."""
         self.treatments_page = QWidget()
-        layout = QVBoxLayout(self.treatments_page)
-        layout.setSpacing(self.SECTION_SPACING)
+        layout = self.setup_page_layout(self.treatments_page)
 
         # ---- Treatments Management Section ----
         treatments_group, treatments_layout = self.create_form_section("Treatments Management", layout)
@@ -805,8 +803,7 @@ class SubjectView(BaseView):
     def setup_body_parts_page(self):
         """Initialize the user interface for managing body parts (Master vs Active)."""
         self.bodyparts_page = QWidget()
-        layout = QVBoxLayout(self.bodyparts_page)
-        layout.setSpacing(self.SECTION_SPACING)
+        layout = self.setup_page_layout(self.bodyparts_page)
 
         # --- Renamed and Kept: Manage Body Parts Section ---
         management_group, management_layout = self.create_form_section("Manage Body Parts (Master vs Active)", layout) # Renamed title slightly for clarity
@@ -933,8 +930,7 @@ class SubjectView(BaseView):
     def setup_objects_page(self):
         """Setup the Objects page with object list widgets."""
         self.objects_page = QWidget()
-        layout = QVBoxLayout(self.objects_page)
-        layout.setSpacing(self.SECTION_SPACING)
+        layout = self.setup_page_layout(self.objects_page)
 
         objects_group, objects_layout = self.create_form_section("Objects Management", layout)
 

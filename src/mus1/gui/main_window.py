@@ -14,7 +14,7 @@ from .project_view import ProjectView
 from .subject_view import SubjectView
 from .experiment_view import ExperimentView
 from .settings_view import SettingsView
-from .project_selection_dialog import ProjectSelectionDialog
+from .user_lab_selection_dialog import UserLabSelectionDialog
 from .gui_services import GUIServiceFactory
 from ..core.logging_bus import LoggingEventBus
 from ..core.project_manager_clean import ProjectManagerClean
@@ -122,16 +122,22 @@ class MainWindow(QMainWindow):
         # File menu
         file_menu = QMenu("&File", self)
         menu_bar.addMenu(file_menu)
-        
+
         # Add file actions
+        setup_wizard_action = QAction("&Setup Wizard...", self)
+        setup_wizard_action.triggered.connect(self.show_setup_wizard)
+        file_menu.addAction(setup_wizard_action)
+
+        file_menu.addSeparator()
+
         new_project_action = QAction("&New Project...", self)
         file_menu.addAction(new_project_action)
-        
+
         open_project_action = QAction("&Open Project...", self)
         file_menu.addAction(open_project_action)
-        
+
         file_menu.addSeparator()
-        
+
         exit_action = QAction("E&xit", self)
         exit_action.triggered.connect(self.close)
         file_menu.addAction(exit_action)
@@ -240,18 +246,14 @@ class MainWindow(QMainWindow):
             view.refresh_subject_list_display()
 
     def perform_project_selection(self):
-        """Handle project selection or load pre-selected project."""
+        """Handle user/lab selection followed by project management."""
+        # Always show user/lab selection first (unless we already have a project loaded)
         if self.selected_project_name is not None:
-            # Use pre-selected project name
-            self.load_project(self.selected_project_name)
+            # Project already loaded, just refresh
+            return
         else:
-            # Check if setup was just completed
-            if self.setup_completed:
-                # Show welcome dialog for first project creation
-                self.show_welcome_dialog()
-            else:
-                # Show project selection dialog
-                self.show_project_selection_dialog()
+            # Show user/lab selection dialog
+            self.show_user_lab_selection_dialog()
 
     def load_project(self, project_name):
         """
@@ -315,7 +317,7 @@ class MainWindow(QMainWindow):
         """Loads a project directly from a full path."""
         if not project_path.exists() or not (project_path / "mus1.db").exists():
             self.log_bus.log(f"Invalid project path: {project_path}", "error", "MainWindow")
-            self.show_project_selection_dialog()
+            self.show_user_lab_selection_dialog()
             return
 
         try:
@@ -352,7 +354,7 @@ class MainWindow(QMainWindow):
         except Exception as e:
             self.log_bus.log(f"Error loading project from '{project_path}': {e}", "error", "MainWindow")
             self._reset_project_state()
-            self.show_project_selection_dialog()
+            self.show_user_lab_selection_dialog()
 
     def refresh_all_views(self):
         """Refresh data in all views."""
@@ -436,30 +438,10 @@ class MainWindow(QMainWindow):
         dialog.accept()
 
         if choice == "create":
-            self.show_project_selection_dialog()
+            self.show_user_lab_selection_dialog()
         elif choice == "open":
-            # Show project selection but focus on existing projects
-            from ..core.project_discovery_service import get_project_discovery_service
-
-            discovery_service = get_project_discovery_service()
-            project_root = discovery_service.get_project_root_for_dialog()
-
-            dialog = ProjectSelectionDialog(project_root=str(project_root), parent=self)
-            # Could set dialog to show existing projects tab by default
-            if dialog.exec() == QDialog.DialogCode.Accepted:
-                chosen_project = getattr(dialog, 'selected_project_name', None)
-                chosen_path = getattr(dialog, 'selected_project_path', None)
-                if chosen_path:
-                    try:
-                        self.load_project_path(Path(chosen_path))
-                    except Exception:
-                        if chosen_project:
-                            self.load_project(chosen_project)
-                elif chosen_project:
-                    self.load_project(chosen_project)
-                else:
-                    self.log_bus.log("No project selected from dialog.", "warning", "MainWindow")
-                    self.update_window_title()
+            # Show user/lab selection then proceed to project management
+            self.show_user_lab_selection_dialog()
 
     def discover_existing_projects(self):
         """Discover existing projects from configured locations."""
@@ -469,39 +451,36 @@ class MainWindow(QMainWindow):
         return discovery_service.discover_existing_projects()
 
 
-    def show_project_selection_dialog(self):
-        """Show dialog for selecting a project."""
-        from ..core.project_discovery_service import get_project_discovery_service
-
-        discovery_service = get_project_discovery_service()
-        project_root = discovery_service.get_project_root_for_dialog()
-
-        dialog = ProjectSelectionDialog(project_root=str(project_root), parent=self)
+    def show_user_lab_selection_dialog(self):
+        """Show dialog for selecting user and lab, then proceed to project management."""
+        dialog = UserLabSelectionDialog(parent=self)
 
         if dialog.exec() == QDialog.DialogCode.Accepted:
-            chosen_project = getattr(dialog, 'selected_project_name', None)
-            chosen_path = getattr(dialog, 'selected_project_path', None)
-            if chosen_path:
-                try:
-                    self.load_project_path(Path(chosen_path))
-                except Exception:
-                    if chosen_project:
-                        self.load_project(chosen_project)
-            elif chosen_project:
-                self.load_project(chosen_project) # Use the central load method
-            else:
-                self.log_bus.log("No project selected from dialog.", "warning", "MainWindow")
-                self.update_window_title() # Ensure title is correct
-                # Decide if the app should close or stay open with 'No Project'
-                # self.close()
+            # Store selected user and lab for later use
+            self.selected_user_id = dialog.selected_user_id
+            self.selected_lab_id = dialog.selected_lab_id
+
+            self.log_bus.log(f"Selected user: {self.selected_user_id}, lab: {self.selected_lab_id}", "info", "MainWindow")
+
+            # Now switch to project management tab
+            self.tab_widget.setCurrentWidget(self.project_view)
+            # The project_view will handle project creation/selection from here
         else:
             # User cancelled the dialog
-            self.log_bus.log("Project selection cancelled.", "warning", "MainWindow")
-            self.update_window_title() # Ensure title is correct
+            self.log_bus.log("User/lab selection cancelled.", "warning", "MainWindow")
             # Close if no project was previously loaded and selection is cancelled
             if not self.selected_project_name:
-                 self.log_bus.log("Closing application as no project was selected.", "info", "MainWindow")
+                 self.log_bus.log("Closing application as no user/lab was selected.", "info", "MainWindow")
                  self.close()
+
+    def show_setup_wizard(self):
+        """Show the MUS1 setup wizard dialog."""
+        from .setup_wizard import show_setup_wizard
+        wizard = show_setup_wizard(self)
+        if wizard:
+            self.log_bus.log("Setup wizard completed successfully", "success", "MainWindow")
+            # Refresh the user/lab selection if needed
+            # This would trigger a refresh of any cached lab/user data
 
     def handle_project_rename(self, new_name: str):
         """Slot to handle the project_renamed signal from ProjectView."""

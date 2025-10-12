@@ -151,10 +151,21 @@ Note: Application logs are now always written under the OS app root (`<app_root>
 
 #### **Phase 5: User Environment (SetupService)**
 ```python
-# First-time detection and setup wizard
-if not setup_service.is_user_configured():
+# First-time detection and setup wizard (or via --setup flag)
+run_setup_wizard = "--setup" in sys.argv or "-s" in sys.argv or os.environ.get('MUS1_SETUP_REQUESTED') == '1'
+
+if run_setup_wizard or not setup_service.is_user_configured():
     setup_wizard = show_setup_wizard()
-    # Clean startup sequence prevents wizard loops
+    # Setup wizard can be run anytime, not just first launch
+
+# User/Lab Selection Dialog
+dialog = UserLabSelectionDialog(parent=self)
+if dialog.exec() == QDialog.DialogCode.Accepted:
+    # Store selected user and lab
+    self.selected_user_id = dialog.selected_user_id
+    self.selected_lab_id = dialog.selected_lab_id
+    # Switch to project management tab
+    self.tab_widget.setCurrentWidget(self.project_view)
 ```
 
 ### **Platform-Specific Environment Handling**
@@ -266,6 +277,8 @@ CREATE TABLE experiments (
 - Current status: Service/repository layer uses SQL for user data as intended. However, the legacy CLI path still writes `user.name/email/organization` to ConfigManager, and the one-time migration is not wired into startup. See Outstanding Items below.
 
 ### Wizard Behavior and Reinstall Experience
+- The setup wizard can be run anytime via `--setup` flag (CLI/GUI) or File → Setup Wizard... menu option
+- Clean separation of concerns: Setup Wizard → User/Lab Selection Dialog → Project Management in Project tab
 - The setup wizard no longer exposes MUS1 application root selection in the default flow; it focuses on user profile, global shared storage, and lab creation (with optional per-lab storage root).
 - If a previously configured root pointer is invalid or unavailable at startup, the application (outside the wizard) prompts to locate an existing configuration and updates the root pointer accordingly.
 - After startup root selection (when needed), the ConfigManager binds to `<root>/config/config.db`. The wizard does not move or configure the app root.
@@ -275,6 +288,9 @@ CREATE TABLE experiments (
 ### Working Components
 - **Application-level user and lab management**: SQL-based user/lab entities with proper relationships
 - **Complete user-lab-project-workgroup hierarchy**: Full relational schema with foreign keys
+- **Re-runnable setup wizard**: Can be launched anytime via `--setup` flag or GUI menu
+- **Clean entry point flow**: Setup Wizard → User/Lab Selection → Project Management
+- **Project creation and management**: Centralized in Project tab with lab association
 - **Clean setup workflow**: Proper ConfigManager re-initialization after MUS1 root selection
 - **Organized GUI architecture**: Settings tab with User Settings, Lab Settings, and Workers
 - SQLite-based domain models with lab-colony hierarchy
@@ -282,7 +298,7 @@ CREATE TABLE experiments (
 - Clean project management with colony relationships
 - Core plugin system with entry-point discovery (GUI integration pending)
 - Hierarchical configuration system
-- Simple CLI interface
+- Simple CLI interface with setup flag support
 
 ### Known Limitations
 - Some plugins require updates for new service pattern

@@ -21,19 +21,23 @@ cd mus1
 ### GUI Mode (Recommended)
 ```bash
 # Production
-mus1-gui
+mus1-gui                    # Normal GUI launch
+mus1-gui --setup           # GUI with setup wizard (can rerun anytime)
 
 # Development
-./dev-launch.sh gui
+./dev-launch.sh gui        # Normal GUI launch
+./dev-launch.sh gui --setup # GUI with setup wizard (can rerun anytime)
 ```
 
 ### CLI Mode
 ```bash
 # Production
-mus1 --help
+mus1 --help                # CLI help
+mus1 --setup               # CLI mode with setup wizard
 
 # Development
-./dev-launch.sh --help
+./dev-launch.sh --help     # CLI help
+./dev-launch.sh --setup    # CLI mode with setup wizard
 ```
 
 ## Features
@@ -43,6 +47,12 @@ mus1 --help
 - Lab management with proper relational database storage
 - Project association with labs for organized research workflows
 - Settings tab for centralized user, lab, and worker configuration
+
+### 🔄 **Re-runnable Setup Wizard**
+- Setup wizard can be run anytime via `--setup` flag or File menu
+- Clean separation: Setup Wizard → User/Lab Selection → Project Management
+- Deterministic configuration root resolution with user override capability
+- Platform-aware defaults and shared storage configuration
 
 ### 🏗️ **Clean Architecture**
 - Complete user-lab-project-workgroup hierarchy in SQL

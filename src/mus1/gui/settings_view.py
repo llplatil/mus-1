@@ -1,6 +1,6 @@
 from .qt import (
     QWidget, QVBoxLayout, QFormLayout, QLabel, QLineEdit, QHBoxLayout,
-    QPushButton, QListWidget, QComboBox, QFileDialog, QMessageBox,
+    QPushButton, QListWidget, QListWidgetItem, QComboBox, QFileDialog, QMessageBox,
     Qt
 )
 """
@@ -39,8 +39,7 @@ class SettingsView(BaseView):
     def setup_user_settings_page(self):
         """Setup the User Settings page."""
         self.user_settings_page = QWidget()
-        layout = QVBoxLayout(self.user_settings_page)
-        layout.setSpacing(self.SECTION_SPACING)
+        layout = self.setup_page_layout(self.user_settings_page)
 
         # User Profile Group
         profile_group, profile_layout = self.create_form_section("User Profile", layout)
@@ -102,8 +101,7 @@ class SettingsView(BaseView):
     def setup_lab_settings_page(self):
         """Setup the Lab Settings page."""
         self.lab_settings_page = QWidget()
-        layout = QVBoxLayout(self.lab_settings_page)
-        layout.setSpacing(self.SECTION_SPACING)
+        layout = self.setup_page_layout(self.lab_settings_page)
 
         # Labs List Group
         list_group, list_layout = self.create_form_section("Your Labs", layout)
@@ -159,8 +157,7 @@ class SettingsView(BaseView):
     def setup_workers_page(self):
         """Setup Workers management page (moved from ProjectView)."""
         self.workers_page = QWidget()
-        layout = QVBoxLayout(self.workers_page)
-        layout.setSpacing(self.SECTION_SPACING)
+        layout = self.setup_page_layout(self.workers_page)
 
         # List existing workers
         list_group, list_layout = self.create_form_section("Workers", layout)
@@ -332,8 +329,39 @@ class SettingsView(BaseView):
 
     def handle_update_lab(self):
         """Update selected lab."""
-        # TODO: Implement lab update functionality
-        self.navigation_pane.add_log_message("Lab update not yet implemented", "info")
+        current_item = self.labs_list.currentItem()
+        if not current_item:
+            QMessageBox.warning(self, "No Selection", "Please select a lab to update.")
+            return
+
+        lab_id = current_item.data(1)
+        lab_name = self.lab_name_edit.text().strip()
+        institution = self.lab_institution_edit.text().strip()
+        pi_name = self.lab_pi_edit.text().strip()
+
+        if not lab_name:
+            QMessageBox.warning(self, "Validation Error", "Lab name is required.")
+            return
+
+        try:
+            from ..core.setup_service import get_setup_service
+            setup_service = get_setup_service()
+
+            # Update lab in the database
+            result = setup_service.update_lab(lab_id, name=lab_name, institution=institution, pi_name=pi_name)
+
+            if result["success"]:
+                self.navigation_pane.add_log_message(f"Lab '{lab_name}' updated successfully", "success")
+                self.refresh_labs_list()
+                # Clear form
+                self.lab_name_edit.clear()
+                self.lab_institution_edit.clear()
+                self.lab_pi_edit.clear()
+            else:
+                QMessageBox.warning(self, "Update Failed", result["message"])
+
+        except Exception as e:
+            self.navigation_pane.add_log_message(f"Error updating lab: {e}", "error")
 
     def refresh_workers_list(self):
         """Refresh the workers list."""

@@ -26,7 +26,6 @@ dependencies = [
 
 [project.scripts]
 mus1 = "mus1.core.simple_cli:app"
-mus1-cli = "mus1.core.simple_cli:app"
 mus1-gui = "mus1.main:main"
 
 [build-system]

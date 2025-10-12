@@ -403,15 +403,6 @@ class ExperimentView(BaseView):
         # Refresh data if needed
         self.refresh_data()
 
-    def set_core(self, project_manager, state_manager):
-        """
-        This method is now deprecated as we get managers from window.
-        Kept for backward compatibility but logs a warning.
-        """
-        logger.warning("ExperimentView.set_core is deprecated. Managers are accessed via self.window()")
-        # Still update if called, but prefer window() access
-        self.project_manager = project_manager
-        self.state_manager = state_manager
         
         # Re-subscribe if managers are set late
         if self.state_manager:
@@ -628,7 +619,7 @@ class ExperimentView(BaseView):
                 try:
                     if video_path.exists():
                         logger.debug(f"Linking video {video_path} to {experiment_id}")
-                        self.project_manager.link_video_to_experiment(
+                        self.window().project_manager.link_video_to_experiment(
                             experiment_id=experiment_id,
                             video_path=video_path,
                             notes="Linked via Add-Experiment form",
@@ -762,7 +753,7 @@ class ExperimentView(BaseView):
 
     def handle_create_batch(self):
         """Create a new batch with the selected experiments."""
-        if not self.project_manager or not self.state_manager:
+        if not self.window().project_manager or not self.state_manager:
             logger.error("ProjectManager or StateManager not available for creating batch.")
             QMessageBox.critical(self, "Error", "Core managers not available. Cannot create batch.")
             return
@@ -795,7 +786,7 @@ class ExperimentView(BaseView):
                  selection_criteria["description"] = batch_description # Store description if provided
 
             # Call the ProjectManager method
-            self.project_manager.create_batch(
+            self.window().project_manager.create_batch(
                 batch_id=batch_id,
                 batch_name=batch_name, # Pass optional name
                 description=batch_description, # Pass optional description
@@ -1307,7 +1298,7 @@ class ExperimentView(BaseView):
         selected experiment via ProjectManager.link_video_to_experiment."""
 
         # Validate ProjectManager availability
-        if not self.project_manager:
+        if not self.window().project_manager:
             self.show_error_message("Internal Error", "Project Manager not initialized.")
             return
 

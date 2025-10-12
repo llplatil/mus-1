@@ -109,8 +109,20 @@ def resolve_mus1_root() -> Path:
             if _is_valid_mus1_root(pointed):
                 return pointed
             logger.warning(f"Root pointer invalid, ignoring: {pointed}")
+            # Automatically clean up invalid root pointers to prevent repeated warnings
+            try:
+                pointer_path.unlink(missing_ok=True)
+                logger.info(f"Cleaned up invalid root pointer: {pointed}")
+            except Exception as cleanup_error:
+                logger.debug(f"Failed to clean up invalid root pointer: {cleanup_error}")
         except Exception as e:
             logger.warning(f"Failed to read root pointer: {e}")
+            # If we can't read the pointer file, it's probably corrupted - clean it up
+            try:
+                pointer_path.unlink(missing_ok=True)
+                logger.info("Cleaned up corrupted root pointer file")
+            except Exception as cleanup_error:
+                logger.debug(f"Failed to clean up corrupted root pointer: {cleanup_error}")
 
     # Priority 3: Platform default with existing config
     if _is_valid_mus1_root(default_root):
@@ -144,6 +156,39 @@ def _is_valid_mus1_root(path: Path) -> bool:
 
     db_path = config_dir / "config.db"
     return db_path.exists() and db_path.is_file()
+
+
+def _repair_invalid_config_root(db_path: Path):
+    """
+    Check if the stored config root path is invalid and clear it if so.
+
+    This prevents the system from repeatedly trying to use invalid paths
+    that are stored in the configuration database itself.
+    """
+    try:
+        # Access the database directly to avoid circular dependency with ConfigManager
+        import sqlite3
+        conn = sqlite3.connect(str(db_path))
+        cursor = conn.cursor()
+
+        # Check for invalid stored root path
+        cursor.execute("SELECT value FROM config WHERE key = ? AND scope = ?", ("mus1.root_path", "install"))
+        result = cursor.fetchone()
+
+        if result:
+            stored_root = result[0]
+            stored_path = Path(stored_root)
+            if not _is_valid_mus1_root(stored_path):
+                logger.warning(f"Stored MUS1 root path is invalid, clearing: {stored_path}")
+                # Clear the invalid config entries
+                cursor.execute("DELETE FROM config WHERE key IN (?, ?) AND scope = ?",
+                             ("mus1.root_path", "mus1.root_setup_date", "install"))
+                conn.commit()
+                logger.info("Cleared invalid stored root path")
+
+        conn.close()
+    except Exception as e:
+        logger.debug(f"Failed to repair invalid config root: {e}")
 
 
 def _create_mus1_root(root_path: Path) -> Path:
@@ -209,6 +254,9 @@ class ConfigManager:
             config_dir = mus1_root / "config"
             config_dir.mkdir(parents=True, exist_ok=True)
             self.db_path = config_dir / "config.db"
+
+            # Repair any invalid stored config root paths
+            _repair_invalid_config_root(self.db_path)
         else:
             self.db_path = db_path
             self.db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -657,8 +705,8 @@ def delete_config(key: str, scope: str):
 # ===========================================
 
 def get_app_root() -> Path:
-    """Return the resolved application root directory (OS-default location)."""
-    return resolve_mus1_root()
+    """Return the OS-default application root directory (for logs, etc.)."""
+    return _get_platform_default_mus1_root()
 
 
 def get_app_logs_dir() -> Path:
