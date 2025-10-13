@@ -422,10 +422,15 @@ class ProjectView(BaseView):
             self.rename_line_edit.setText(project_name)
 
         # Load project notes (still relevant here)
-        if hasattr(self, 'project_notes_box') and self.window().project_manager:
+        if hasattr(self, 'project_notes_box') and self.window() and self.window().project_manager:
             pm = self.window().project_manager
             notes = pm.config.settings.get("project_notes", "")
+            self.navigation_pane.add_log_message(f"Loading project notes ({len(notes)} characters) for project: {project_name}", "info")
             self.project_notes_box.set_text(notes)
+        else:
+            has_window = bool(self.window())
+            has_pm = has_window and bool(self.window().project_manager)
+            self.navigation_pane.add_log_message(f"Cannot load project notes - project_notes_box exists: {hasattr(self, 'project_notes_box')}, window exists: {has_window}, project_manager exists: {has_pm}", "warning")
 
         # Update UI settings from the loaded project state
         self.update_frame_rate_from_state()
@@ -692,15 +697,20 @@ class ProjectView(BaseView):
 
     def on_creation_location_changed(self, index):
         """Handle location type change for project creation."""
-        if not hasattr(self, 'lab_label') or not hasattr(self, 'creation_lab_combo'):
-            return  # Not initialized yet
         is_shared = self.creation_location_combo.currentText().lower() == "shared"
         self.navigation_pane.add_log_message(f"Location changed to '{self.creation_location_combo.currentText()}', is_shared={is_shared}", "info")
-        self.lab_label.setVisible(is_shared)
-        self.creation_lab_combo.setVisible(is_shared)
-        self.navigation_pane.add_log_message(f"Lab label visible: {self.lab_label.isVisible()}, Combo visible: {self.creation_lab_combo.isVisible()}", "info")
+        self._set_lab_selection_visible(is_shared)
         if is_shared:
             self.populate_lab_combo()
+
+    def _set_lab_selection_visible(self, visible):
+        """Set visibility of lab selection row."""
+        if hasattr(self, 'lab_selection_row'):
+            # Hide/show the entire row by setting visibility on widgets
+            for i in range(self.lab_selection_row.count()):
+                widget = self.lab_selection_row.itemAt(i).widget()
+                if widget:
+                    widget.setVisible(visible)
 
     def populate_lab_combo(self):
         """Populate the lab selection combo for project creation."""
@@ -911,56 +921,55 @@ class ProjectView(BaseView):
         """Setup the Project Settings page with project info controls."""
         # Create the page widget without redundant styling
         self.project_settings_page = QWidget()
-        layout = self.setup_page_layout(self.project_settings_page)
+
+        # Create a scroll area to handle overflow content
+        from .qt import QScrollArea
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll_area.setProperty("class", "mus1-scroll-area")
+
+        # Create a container widget for the scrollable content
+        scroll_content = QWidget()
+        layout = self.setup_page_layout(scroll_content)
+        # Adjust margins for scroll content (less top margin since scroll area handles spacing)
+        layout.setContentsMargins(self.FORM_MARGIN, self.PAGE_MARGIN // 2, self.FORM_MARGIN, self.FORM_MARGIN)
+
+        # Set the scroll content as the widget for the scroll area
+        scroll_area.setWidget(scroll_content)
+
+        # Set up the page layout to contain just the scroll area
+        page_layout = QVBoxLayout(self.project_settings_page)
+        page_layout.setContentsMargins(0, 0, 0, 0)
+        page_layout.addWidget(scroll_area)
 
         # Project creation group
-        creation_group = QGroupBox("Create New Project")
-        creation_group.setProperty("class", "mus1-input-group")
-        creation_layout = QVBoxLayout(creation_group)
+        creation_group, creation_layout = self.create_form_section("Create New Project", layout)
 
         # Location type selection
-        location_row = self.create_form_row()
-        location_row.addWidget(self.create_form_label("Location:"))
-        self.creation_location_combo = QComboBox()
-        self.creation_location_combo.setProperty("class", "mus1-combo-box")
+        _, self.creation_location_combo = self.create_form_field("Location", "combo_box", parent_layout=creation_layout)
         self.creation_location_combo.addItems(["Local", "Shared"])
-        location_row.addWidget(self.creation_location_combo, 1)
-        creation_layout.addLayout(location_row)
 
         # Project name
-        name_row = self.create_form_row()
-        name_row.addWidget(self.create_form_label("Project Name:"))
-        self.new_project_name_edit = QLineEdit()
-        self.new_project_name_edit.setProperty("class", "mus1-text-input")
-        self.new_project_name_edit.setPlaceholderText("Enter project name")
-        name_row.addWidget(self.new_project_name_edit, 1)
-        creation_layout.addLayout(name_row)
+        _, self.new_project_name_edit = self.create_form_field("Project Name", "line_edit", "Enter project name", True, creation_layout)
 
         # Lab selection for shared projects
-        self.lab_selection_row = self.create_form_row()
-        self.lab_label = self.create_form_label("Lab:")
-        self.creation_lab_combo = QComboBox()
-        self.creation_lab_combo.setProperty("class", "mus1-combo-box")
-        self.lab_selection_row.addWidget(self.lab_label)
-        self.lab_selection_row.addWidget(self.creation_lab_combo, 1)
-        # Initially hide the row widgets
-        self.lab_label.setVisible(False)
-        self.creation_lab_combo.setVisible(False)
-        creation_layout.addLayout(self.lab_selection_row)
+        self.lab_selection_row, self.creation_lab_combo = self.create_form_field("Lab", "combo_box", parent_layout=creation_layout)
+        # Store references for visibility control
+        self.lab_label = self.lab_selection_row.itemAt(0).widget()  # Get the label from the row
+        self.lab_combo = self.creation_lab_combo
 
         # Create button
-        create_row = self.create_form_row()
-        create_row.addStretch(1)
-        self.create_project_button = QPushButton("Create Project")
-        self.create_project_button.setProperty("class", "mus1-primary-button")
-        self.create_project_button.clicked.connect(self.handle_create_project)
-        create_row.addWidget(self.create_project_button)
-        creation_layout.addLayout(create_row)
+        button_row = self.create_form_actions_section("", [("Create Project", "mus1-primary-button")], creation_layout)
+        self.create_project_button = button_row.itemAt(1).widget()  # Get the button from the centered layout
+        if self.create_project_button:
+            self.create_project_button.clicked.connect(self.handle_create_project)
 
         # Connect location combo to show/hide lab selection
         self.creation_location_combo.currentIndexChanged.connect(self.on_creation_location_changed)
-        # Ensure initial state is correct (lab selection should be hidden for "Local")
-        self.lab_label.setVisible(False)
+        # Initially hide lab selection (for "Local")
+        self._set_lab_selection_visible(False)
         self.creation_lab_combo.setVisible(False)
 
         layout.addWidget(creation_group)
@@ -1090,8 +1099,14 @@ class ProjectView(BaseView):
         if not hasattr(self, 'window') or not self.window():
             self.navigation_pane.add_log_message("Cannot save notes: window reference not available.", 'error')
             return
-            
+
+        if not hasattr(self, 'project_notes_box'):
+            self.navigation_pane.add_log_message("Cannot save notes: project_notes_box not initialized.", 'error')
+            return
+
         notes = self.project_notes_box.get_text()
+        self.navigation_pane.add_log_message(f"Saving project notes ({len(notes)} characters)...", 'info')
+
         try:
             # Ensure project_manager is available
             if not self.window().project_manager:
@@ -1099,10 +1114,12 @@ class ProjectView(BaseView):
                  return
 
             # Update notes in project config settings
-            self.window().project_manager.config.settings["project_notes"] = notes
+            pm = self.window().project_manager
+            pm.config.settings["project_notes"] = notes
+
             # Save the project to persist changes
-            self.window().project_manager.save_project()
-            
+            pm.save_project()
+
             self.navigation_pane.add_log_message("Project notes saved successfully.", 'success')
         except Exception as e:
             error_msg = f"Error saving project notes: {e}"
@@ -1187,40 +1204,30 @@ class ProjectView(BaseView):
         layout = self.setup_page_layout(self.scan_ingest_page)
 
         # Targets selection
-        targets_group, tg_layout = self.create_form_section("Scan Targets", layout)
-        row = self.create_form_row(tg_layout)
-        row.addWidget(self.create_form_label("Select targets:"))
         self.targets_list = QListWidget()
         self.targets_list.setProperty("class", "mus1-list-widget")
         self.targets_list.setSelectionMode(QListWidget.SelectionMode.MultiSelection)
-        row.addWidget(self.targets_list, 1)
+        targets_group, tg_layout = self.create_form_list_section("Scan Targets", self.targets_list, layout)
 
         # Options
         opt_group, opt_layout = self.create_form_section("Options", layout)
-        opt_row1 = self.create_form_row(opt_layout)
-        self.extensions_line = QLineEdit()
-        self.extensions_line.setProperty("class", "mus1-text-input")
-        self.extensions_line.setPlaceholderText("Extensions (e.g., .mp4 .avi .mov)")
-        opt_row1.addWidget(self.create_form_label("Extensions:"))
-        opt_row1.addWidget(self.extensions_line, 1)
 
-        opt_row2 = self.create_form_row(opt_layout)
-        self.exclude_line = QLineEdit()
-        self.exclude_line.setProperty("class", "mus1-text-input")
-        self.exclude_line.setPlaceholderText("Exclude dirs substrings (comma-separated)")
-        opt_row2.addWidget(self.create_form_label("Excludes:"))
-        opt_row2.addWidget(self.exclude_line, 1)
+        # Extensions field
+        _, self.extensions_line = self.create_form_field("Extensions", "line_edit", "Extensions (e.g., .mp4 .avi .mov)", parent_layout=opt_layout)
 
-        opt_row3 = self.create_form_row(opt_layout)
-        self.non_recursive_check = QCheckBox("Non-recursive")
-        opt_row3.addWidget(self.non_recursive_check)
+        # Excludes field
+        _, self.exclude_line = self.create_form_field("Excludes", "line_edit", "Exclude dirs substrings (comma-separated)", parent_layout=opt_layout)
+
+        # Non-recursive checkbox
+        _, self.non_recursive_check = self.create_form_field("Non-recursive", "check_box", parent_layout=opt_layout)
 
         # Actions and progress
-        action_row = self.create_button_row(layout)
-        self.scan_button = QPushButton("Scan Selected Targets")
-        self.scan_button.setProperty("class", "mus1-primary-button")
-        self.scan_button.clicked.connect(self.handle_scan_targets)
-        action_row.addWidget(self.scan_button)
+        self.create_form_actions_section("", [("Scan Selected Targets", "mus1-primary-button")], layout)
+        # Get the scan button
+        actions_layout = layout.itemAt(layout.count() - 1).layout()
+        self.scan_button = actions_layout.itemAt(1).widget() if actions_layout.count() > 1 else None
+        if self.scan_button:
+            self.scan_button.clicked.connect(self.handle_scan_targets)
 
         self.scan_progress = QProgressBar()
         self.scan_progress.setRange(0, 100)
@@ -1232,22 +1239,20 @@ class ProjectView(BaseView):
         layout.addWidget(self.scan_summary_label)
 
         stage_group, stage_layout = self.create_form_section("Stage Off-Shared", layout)
-        stage_row = self.create_form_row(stage_layout)
-        self.stage_subdir_line = QLineEdit()
-        self.stage_subdir_line.setProperty("class", "mus1-text-input")
-        self.stage_subdir_line.setPlaceholderText("Destination subdir under shared root (e.g., recordings/raw)")
-        self.stage_button = QPushButton("Stage Off-Shared to Subdir")
-        self.stage_button.setProperty("class", "mus1-primary-button")
-        self.stage_button.clicked.connect(self.handle_stage_off_shared)
-        stage_row.addWidget(self.create_form_label("Subdir:"))
-        stage_row.addWidget(self.stage_subdir_line, 1)
-        stage_row.addWidget(self.stage_button)
+        _, self.stage_subdir_line, self.stage_button = self.create_form_field_with_button(
+            "Subdir", "line_edit", "Stage Off-Shared to Subdir",
+            "Destination subdir under shared root (e.g., recordings/raw)",
+            parent_layout=stage_layout
+        )
+        if self.stage_button:
+            self.stage_button.clicked.connect(self.handle_stage_off_shared)
 
-        add_row = self.create_button_row(layout)
-        self.add_shared_button = QPushButton("Add Unique Under Shared")
-        self.add_shared_button.setProperty("class", "mus1-primary-button")
-        self.add_shared_button.clicked.connect(self.handle_add_under_shared)
-        add_row.addWidget(self.add_shared_button)
+        self.create_form_actions_section("", [("Add Unique Under Shared", "mus1-primary-button")], layout)
+        # Get the add button
+        add_layout = layout.itemAt(layout.count() - 1).layout()
+        self.add_shared_button = add_layout.itemAt(1).widget() if add_layout.count() > 1 else None
+        if self.add_shared_button:
+            self.add_shared_button.clicked.connect(self.handle_add_under_shared)
 
         layout.addStretch(1)
         self.add_page(self.scan_ingest_page, "Scan & Ingest")

@@ -43,47 +43,46 @@ class SettingsView(BaseView):
 
         # User Profile Group
         profile_group, profile_layout = self.create_form_section("User Profile", layout)
-        profile_form = QFormLayout()
 
+        # Create labeled input rows using helper method
         self.user_name_edit = QLineEdit()
         self.user_name_edit.setProperty("class", "mus1-text-input")
-        profile_form.addRow("Name:", self.user_name_edit)
+        self.create_labeled_input_row("Name:", self.user_name_edit, profile_layout)
 
         self.user_email_edit = QLineEdit()
         self.user_email_edit.setProperty("class", "mus1-text-input")
-        profile_form.addRow("Email:", self.user_email_edit)
+        self.create_labeled_input_row("Email:", self.user_email_edit, profile_layout)
 
         self.user_org_edit = QLineEdit()
         self.user_org_edit.setProperty("class", "mus1-text-input")
-        profile_form.addRow("Organization:", self.user_org_edit)
-
-        profile_layout.addLayout(profile_form)
+        self.create_labeled_input_row("Organization:", self.user_org_edit, profile_layout)
 
         # Default Directories Group
         dirs_group, dirs_layout = self.create_form_section("Default Directories", layout)
-        dirs_form = QFormLayout()
 
+        # Projects directory row
+        projects_row = self.create_form_row(dirs_layout)
+        projects_label = self.create_form_label("Projects Directory:")
         self.projects_dir_edit = QLineEdit()
         self.projects_dir_edit.setProperty("class", "mus1-text-input")
         self.projects_dir_btn = QPushButton("Browse...")
         self.projects_dir_btn.setProperty("class", "mus1-secondary-button")
         self.projects_dir_btn.clicked.connect(self._browse_projects_dir)
-        projects_row = QHBoxLayout()
+        projects_row.addWidget(projects_label)
         projects_row.addWidget(self.projects_dir_edit, 1)
         projects_row.addWidget(self.projects_dir_btn)
-        dirs_form.addRow("Projects Directory:", projects_row)
 
+        # Shared directory row
+        shared_row = self.create_form_row(dirs_layout)
+        shared_label = self.create_form_label("Shared Directory:")
         self.shared_dir_edit = QLineEdit()
         self.shared_dir_edit.setProperty("class", "mus1-text-input")
         self.shared_dir_btn = QPushButton("Browse...")
         self.shared_dir_btn.setProperty("class", "mus1-secondary-button")
         self.shared_dir_btn.clicked.connect(self._browse_shared_dir)
-        shared_row = QHBoxLayout()
+        shared_row.addWidget(shared_label)
         shared_row.addWidget(self.shared_dir_edit, 1)
         shared_row.addWidget(self.shared_dir_btn)
-        dirs_form.addRow("Shared Directory:", shared_row)
-
-        dirs_layout.addLayout(dirs_form)
 
         # Save button
         button_row = self.create_button_row(layout)
@@ -104,34 +103,30 @@ class SettingsView(BaseView):
         layout = self.setup_page_layout(self.lab_settings_page)
 
         # Labs List Group
-        list_group, list_layout = self.create_form_section("Your Labs", layout)
         self.labs_list = QListWidget()
         self.labs_list.setProperty("class", "mus1-list-widget")
-        list_layout.addWidget(self.labs_list)
+        self.create_form_with_list("Your Labs", self.labs_list, layout)
 
         # Lab Details Group
         details_group, details_layout = self.create_form_section("Lab Details", layout)
-        details_form = QFormLayout()
 
+        # Create labeled input rows using helper method
         self.lab_name_edit = QLineEdit()
         self.lab_name_edit.setProperty("class", "mus1-text-input")
-        details_form.addRow("Name:", self.lab_name_edit)
+        self.create_labeled_input_row("Name:", self.lab_name_edit, details_layout)
 
         self.lab_institution_edit = QLineEdit()
         self.lab_institution_edit.setProperty("class", "mus1-text-input")
-        details_form.addRow("Institution:", self.lab_institution_edit)
+        self.create_labeled_input_row("Institution:", self.lab_institution_edit, details_layout)
 
         self.lab_pi_edit = QLineEdit()
         self.lab_pi_edit.setProperty("class", "mus1-text-input")
-        details_form.addRow("PI Name:", self.lab_pi_edit)
-
-        details_layout.addLayout(details_form)
+        self.create_labeled_input_row("PI Name:", self.lab_pi_edit, details_layout)
 
         # Projects in Lab Group
-        projects_group, projects_layout = self.create_form_section("Projects in Lab", layout)
         self.lab_projects_list = QListWidget()
         self.lab_projects_list.setProperty("class", "mus1-list-widget")
-        projects_layout.addWidget(self.lab_projects_list)
+        self.create_form_with_list("Projects in Lab", self.lab_projects_list, layout)
 
         # Action buttons
         button_row = self.create_button_row(layout)
@@ -160,31 +155,35 @@ class SettingsView(BaseView):
         layout = self.setup_page_layout(self.workers_page)
 
         # List existing workers
-        list_group, list_layout = self.create_form_section("Workers", layout)
-        row = self.create_form_row(list_layout)
         self.workers_list = QListWidget()
         self.workers_list.setProperty("class", "mus1-list-widget")
-        row.addWidget(self.workers_list, 1)
+        self.create_form_with_list("Workers", self.workers_list, layout)
 
         # Add form
         form_group, form_layout = self.create_form_section("Add Worker", layout)
+
+        # First row: Name and SSH Alias
         r1 = self.create_form_row(form_layout)
         self.worker_name_edit = QLineEdit()
         self.worker_name_edit.setProperty("class", "mus1-text-input")
+        r1.addWidget(self.create_form_label("Name:"))
+        r1.addWidget(self.worker_name_edit)
+
         self.worker_ssh_alias_edit = QLineEdit()
         self.worker_ssh_alias_edit.setProperty("class", "mus1-text-input")
+        r1.addWidget(self.create_form_label("SSH Alias:"))
+        r1.addWidget(self.worker_ssh_alias_edit)
+
+        # Second row: Role and Provider
+        r2 = self.create_form_row(form_layout)
         self.worker_role_edit = QLineEdit()
         self.worker_role_edit.setProperty("class", "mus1-text-input")
+        r2.addWidget(self.create_form_label("Role:"))
+        r2.addWidget(self.worker_role_edit)
+
         self.worker_provider_combo = QComboBox()
         self.worker_provider_combo.setProperty("class", "mus1-combo-box")
         self.worker_provider_combo.addItems(["ssh", "wsl"])
-        r1.addWidget(self.create_form_label("Name:"))
-        r1.addWidget(self.worker_name_edit)
-        r1.addWidget(self.create_form_label("SSH Alias:"))
-        r1.addWidget(self.worker_ssh_alias_edit)
-        r2 = self.create_form_row(form_layout)
-        r2.addWidget(self.create_form_label("Role:"))
-        r2.addWidget(self.worker_role_edit)
         r2.addWidget(self.create_form_label("Provider:"))
         r2.addWidget(self.worker_provider_combo)
 
@@ -227,9 +226,10 @@ class SettingsView(BaseView):
 
             self.labs_list.clear()
             for lab_id, lab_data in labs.items():
-                item = QListWidgetItem(f"{lab_data['name']} ({lab_data.get('institution', 'Unknown')})")
-                item.setData(1, lab_id)
-                item.setData(2, lab_data)
+                display_text = f"{lab_data['name']} ({lab_data.get('institution', 'Unknown')})"
+                item = QListWidgetItem(display_text)
+                item.setData(Qt.ItemDataRole.UserRole, lab_id)
+                item.setData(Qt.ItemDataRole.UserRole + 1, lab_data)
                 self.labs_list.addItem(item)
         except Exception as e:
             self.navigation_pane.add_log_message(f"Error loading labs: {e}", "error")
@@ -240,7 +240,7 @@ class SettingsView(BaseView):
         if not current_item:
             return
 
-        lab_data = current_item.data(2)
+        lab_data = current_item.data(Qt.ItemDataRole.UserRole + 1)
         self.lab_name_edit.setText(lab_data.get('name', ''))
         self.lab_institution_edit.setText(lab_data.get('institution', ''))
         self.lab_pi_edit.setText(lab_data.get('pi_name', ''))
@@ -334,7 +334,7 @@ class SettingsView(BaseView):
             QMessageBox.warning(self, "No Selection", "Please select a lab to update.")
             return
 
-        lab_id = current_item.data(1)
+        lab_id = current_item.data(Qt.ItemDataRole.UserRole)
         lab_name = self.lab_name_edit.text().strip()
         institution = self.lab_institution_edit.text().strip()
         pi_name = self.lab_pi_edit.text().strip()
@@ -352,7 +352,7 @@ class SettingsView(BaseView):
 
             if result["success"]:
                 self.navigation_pane.add_log_message(f"Lab '{lab_name}' updated successfully", "success")
-                self.refresh_labs_list()
+                self.load_labs()  # Refresh the list
                 # Clear form
                 self.lab_name_edit.clear()
                 self.lab_institution_edit.clear()
@@ -379,7 +379,7 @@ class SettingsView(BaseView):
             workers = []
         for w in workers:
             item = QListWidgetItem(f"{w.get('name', '')}  alias={w.get('ssh_alias', '')}  role={w.get('role', '') or ''}  provider={w.get('provider', '')}")
-            item.setData(1, w.get('name', ''))
+            item.setData(Qt.ItemDataRole.UserRole, w.get('name', ''))
             self.workers_list.addItem(item)
 
     def handle_add_worker(self):
@@ -427,7 +427,7 @@ class SettingsView(BaseView):
             if not item:
                 QMessageBox.information(self, "Workers", "Select a worker to remove.")
                 return
-            name = item.data(1)
+            name = item.data(Qt.ItemDataRole.UserRole)
 
             pm = self.window().project_manager
             if not pm:

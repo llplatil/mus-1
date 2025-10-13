@@ -10,7 +10,7 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime
 from pathlib import Path
 
-from ..core.metadata import Subject, Experiment, VideoFile, Sex, ProcessingStage
+from ..core.metadata import Subject, Experiment, VideoFile, Sex, ProcessingStage, SubjectDesignation
 from ..core.project_manager_clean import ProjectManagerClean
 from ..core.repository import RepositoryFactory
 from ..core.logging_bus import LoggingEventBus
@@ -74,11 +74,29 @@ class GUISubjectService:
             return []
 
     def add_subject(self, subject_id: str, sex: str, genotype: str = None,
-                   birth_date: datetime = None) -> Optional[Subject]:
-        """Add a new subject via GUI."""
+                   birth_date: datetime = None, colony_id: str = None,
+                   notes: str = "", designation: str = "experimental") -> Optional[Subject]:
+        """Add a new subject via GUI.
+
+        This method creates subjects with comprehensive metadata that's compatible
+        with both manual entry and future plugin-based bulk import operations.
+        """
         try:
+            # Validate subject ID
+            if not subject_id or not subject_id.strip():
+                self.log_bus.log("Subject ID cannot be empty", "error", "GUISubjectService")
+                return None
+
+            subject_id = subject_id.strip()
+
+            # Check for duplicate subject ID
+            existing = self.project_manager.get_subject(subject_id)
+            if existing:
+                self.log_bus.log(f"Subject ID '{subject_id}' already exists", "error", "GUISubjectService")
+                return None
+
             # Validate and convert sex enum
-            sex_enum = None
+            sex_enum = Sex.UNKNOWN
             if sex:
                 sex_upper = sex.upper()
                 if sex_upper in ["MALE", "M"]:
@@ -91,20 +109,151 @@ class GUISubjectService:
                     self.log_bus.log(f"Invalid sex value: {sex}", "error", "GUISubjectService")
                     return None
 
+            # Validate and convert designation enum
+            designation_enum = SubjectDesignation.EXPERIMENTAL
+            if designation:
+                designation_upper = designation.upper()
+                if designation_upper == "EXPERIMENTAL":
+                    designation_enum = SubjectDesignation.EXPERIMENTAL
+                elif designation_upper == "BREEDING":
+                    designation_enum = SubjectDesignation.BREEDING
+                elif designation_upper == "CULLED":
+                    designation_enum = SubjectDesignation.CULLED
+                else:
+                    self.log_bus.log(f"Invalid designation value: {designation}", "error", "GUISubjectService")
+                    return None
+
+            # Ensure a colony exists - use default if not specified
+            if not colony_id:
+                colony_id = self._ensure_default_colony()
+
+            # Validate colony exists
+            colony = self.project_manager.get_colony(colony_id)
+            if not colony:
+                self.log_bus.log(f"Colony '{colony_id}' does not exist", "error", "GUISubjectService")
+                return None
+
+            # Create subject with comprehensive metadata for future compatibility
             subject = Subject(
                 id=subject_id,
+                colony_id=colony_id,
                 sex=sex_enum,
-                genotype=genotype,
-                birth_date=birth_date
+                designation=designation_enum,
+                birth_date=birth_date,
+                individual_genotype=genotype,
+                notes=notes.strip() if notes else ""
             )
 
             saved_subject = self.project_manager.add_subject(subject)
-            self.log_bus.log(f"Subject {subject_id} added successfully", "success", "GUISubjectService")
+            self.log_bus.log(f"Subject {subject_id} added to colony '{colony_id}' successfully", "success", "GUISubjectService")
             return saved_subject
 
+        except ValueError as ve:
+            self.log_bus.log(f"Validation error adding subject {subject_id}: {ve}", "error", "GUISubjectService")
+            return None
         except Exception as e:
             self.log_bus.log(f"Error adding subject {subject_id}: {e}", "error", "GUISubjectService")
             return None
+
+    def _ensure_default_colony(self) -> str:
+        """Ensure a default colony exists and return its ID."""
+        default_colony_id = "default"
+
+        # Check if default colony exists
+        try:
+            existing_colony = self.project_manager.get_colony(default_colony_id)
+            if existing_colony:
+                return default_colony_id
+        except Exception:
+            pass
+
+        # Create default colony if it doesn't exist
+        try:
+            from ..core.metadata import Colony
+            default_colony = Colony(
+                id=default_colony_id,
+                lab_id=self.project_manager.config.lab_id or "default_lab",
+                name="Default Colony",
+                background_strain="Unknown",
+                genotype="Unknown"
+            )
+            self.project_manager.add_colony(default_colony)
+            self.log_bus.log(f"Created default colony '{default_colony_id}'", "info", "GUISubjectService")
+            return default_colony_id
+        except Exception as e:
+            self.log_bus.log(f"Error creating default colony: {e}", "error", "GUISubjectService")
+            # If we can't create a default colony, try to use the project name as colony ID
+            # This is a fallback that assumes the project name is a valid colony ID
+            return self.project_manager.config.name
+
+    def bulk_import_subjects(self, subjects_data: List[Dict[str, Any]],
+                           colony_id: str = None) -> Dict[str, Any]:
+        """Bulk import subjects with comprehensive validation.
+
+        This method is designed for plugin compatibility and ensures
+        that bulk imports follow the same validation rules as manual entry.
+
+        Args:
+            subjects_data: List of dicts with subject data
+            colony_id: Colony to import into (creates default if None)
+
+        Returns:
+            Dict with 'success_count', 'errors', and 'imported_subjects'
+        """
+        if not colony_id:
+            colony_id = self._ensure_default_colony()
+
+        # Validate colony exists
+        colony = self.project_manager.get_colony(colony_id)
+        if not colony:
+            return {
+                'success_count': 0,
+                'errors': [f"Colony '{colony_id}' does not exist"],
+                'imported_subjects': []
+            }
+
+        success_count = 0
+        errors = []
+        imported_subjects = []
+
+        for i, subject_data in enumerate(subjects_data):
+            try:
+                # Extract and validate data with defaults compatible with manual entry
+                subject_id = subject_data.get('id') or subject_data.get('subject_id')
+                if not subject_id:
+                    errors.append(f"Row {i+1}: Missing subject ID")
+                    continue
+
+                # Use the same validation logic as manual entry
+                subject = self.add_subject(
+                    subject_id=str(subject_id),
+                    sex=subject_data.get('sex', 'UNKNOWN'),
+                    genotype=subject_data.get('genotype') or subject_data.get('individual_genotype'),
+                    birth_date=subject_data.get('birth_date'),
+                    colony_id=colony_id,
+                    notes=subject_data.get('notes', ''),
+                    designation=subject_data.get('designation', 'experimental')
+                )
+
+                if subject:
+                    success_count += 1
+                    imported_subjects.append(subject)
+                else:
+                    errors.append(f"Row {i+1}: Failed to create subject '{subject_id}'")
+
+            except Exception as e:
+                errors.append(f"Row {i+1}: {str(e)}")
+
+        result = {
+            'success_count': success_count,
+            'errors': errors,
+            'imported_subjects': imported_subjects
+        }
+
+        self.log_bus.log(f"Bulk import completed: {success_count} subjects imported, {len(errors)} errors",
+                        "info" if success_count > 0 else "warning", "GUISubjectService")
+
+        return result
 
     def get_subject_by_id(self, subject_id: str) -> Optional[SubjectDisplayDTO]:
         """Get a specific subject for display."""
@@ -161,6 +310,22 @@ class GUISubjectService:
         except Exception as e:
             self.log_bus.log(f"Error adding object '{name}': {e}", "error", "GUISubjectService")
 
+    def get_available_treatments(self) -> List[str]:
+        """Get all available treatments for the project."""
+        try:
+            return self.project_manager.get_available_treatments()
+        except Exception as e:
+            self.log_bus.log(f"Error getting available treatments: {e}", "error", "GUISubjectService")
+            return []
+
+    def get_available_genotypes(self) -> List[str]:
+        """Get all available genotypes for the project."""
+        try:
+            return self.project_manager.get_available_genotypes()
+        except Exception as e:
+            self.log_bus.log(f"Error getting available genotypes: {e}", "error", "GUISubjectService")
+            return []
+
     def update_tracked_objects(self, items: list, list_type: str) -> None:
         try:
             self.project_manager.update_tracked_objects(items, list_type=list_type)
@@ -190,7 +355,17 @@ class GUIExperimentService:
             subjects = self.project_manager.list_subjects()
             return [SubjectDisplayDTO(sub) for sub in subjects]
         except Exception as e:
-            self.log_bus.log(f"Error loading subjects: {e}", "error", "GUIExperimentService")
+            self.log_bus.log(f"Error loading subjects: {e}", "error", "GUISubjectService")
+            return []
+
+    def get_colonies_for_display(self) -> List[Dict[str, str]]:
+        """Get all colonies formatted for GUI display."""
+        try:
+            # For now, return a simple list with the default colony
+            # In the future, this could return all colonies from the project manager
+            return [{"id": "default", "name": "Default Colony", "background_strain": "Unknown"}]
+        except Exception as e:
+            self.log_bus.log(f"Error loading colonies: {e}", "error", "GUISubjectService")
             return []
 
     def add_experiment(self, experiment_id: str, subject_id: str, experiment_type: str,

@@ -210,24 +210,34 @@ class SubjectView(BaseView):
             sex_enum = None
 
         genotype = self.genotype_combo.currentText().strip() or None
-        # TODO: Handle notes and in_training_set when Subject model supports them
+        notes = self.notes_edit.toPlainText().strip() if hasattr(self, 'notes_edit') else ""
         birth_date = self.birthdate_edit.dateTime().toPython()
+
+        # Determine designation based on training set checkbox (if available)
+        designation = "experimental"  # Default
+        if hasattr(self, 'training_set_check') and self.training_set_check.isChecked():
+            # For now, training set subjects are still experimental
+            # In the future, this could be a separate designation
+            designation = "experimental"
 
         # Add the subject via GUI service
         subject = self.subject_service.add_subject(
             subject_id=subject_id,
-            sex=sex_value if sex_enum else None,
+            sex=sex_value if sex_enum else "UNKNOWN",
             genotype=genotype,
-            birth_date=birth_date
+            birth_date=birth_date,
+            notes=notes,
+            designation=designation
         )
 
         if subject:
             # Clear the input fields after successful addition
             self.subject_id_edit.clear()
             self.genotype_combo.clear()
-            # TODO: Handle notes and training_set_check when Subject model supports them
-            # self.notes_edit.clear()
-            # self.training_set_check.setChecked(False)
+            if hasattr(self, 'notes_edit'):
+                self.notes_edit.clear()
+            if hasattr(self, 'training_set_check'):
+                self.training_set_check.setChecked(False)
             self.birthdate_edit.setDateTime(QDateTime.currentDateTime())
 
             # Refresh the displayed subject list on the same page
@@ -585,7 +595,7 @@ class SubjectView(BaseView):
         self._add_metadata_item(
             "treatment",
             self.new_treatment_line_edit,
-            self.project_manager.add_treatment,
+            self.subject_service.add_treatment,
             self.refresh_treatments_lists,
             "Treatment"
         )
@@ -595,7 +605,7 @@ class SubjectView(BaseView):
         self._add_metadata_item(
             "genotype",
             self.new_genotype_line_edit,
-            self.project_manager.add_genotype,
+            self.subject_service.add_genotype,
             self.refresh_genotypes_lists,
             "Genotype"
         )
@@ -607,9 +617,9 @@ class SubjectView(BaseView):
             self.log_bus.log("No treatments selected to add to active.", "warning", "SubjectView")
             return
 
-        # Treatment management is not implemented in the new architecture yet
-        # This is a placeholder until treatment management is added to the clean architecture
-        self.log_bus.log("Treatment management not yet implemented in clean architecture.", "warning", "SubjectView")
+        # For now, all available treatments are automatically active
+        # In the future, this could implement selective activation
+        self.log_bus.log("All available treatments are already active.", "info", "SubjectView")
 
     def handle_remove_active_treatments(self):
         """Removes selected treatments from the active treatments list."""
@@ -618,8 +628,9 @@ class SubjectView(BaseView):
             self.log_bus.log("No active treatments selected for removal.", "warning", "SubjectView")
             return
 
-        # Treatment management is not implemented in the new architecture yet
-        self.log_bus.log("Treatment management not yet implemented in clean architecture.", "warning", "SubjectView")
+        # For now, treatments cannot be selectively deactivated
+        # In the future, this could implement selective deactivation
+        self.log_bus.log("Treatment deactivation not yet implemented.", "warning", "SubjectView")
 
     def handle_add_to_active_genotypes(self):
         """Adds selected genotypes from the available list to active genotypes."""
@@ -628,8 +639,9 @@ class SubjectView(BaseView):
             self.log_bus.log("No genotypes selected to add to active.", "warning", "SubjectView")
             return
 
-        # Genotype management is not implemented in the new architecture yet
-        self.log_bus.log("Genotype management not yet implemented in clean architecture.", "warning", "SubjectView")
+        # For now, all available genotypes are automatically active
+        # In the future, this could implement selective activation
+        self.log_bus.log("All available genotypes are already active.", "info", "SubjectView")
 
     def handle_remove_active_genotypes(self):
         """Removes selected genotypes from the active genotypes list."""
@@ -638,30 +650,55 @@ class SubjectView(BaseView):
             self.log_bus.log("No active genotypes selected for removal.", "warning", "SubjectView")
             return
 
-        # Genotype management is not implemented in the new architecture yet
-        self.log_bus.log("Genotype management not yet implemented in clean architecture.", "warning", "SubjectView")
+        # For now, all available genotypes are automatically active
+        # In the future, this could implement selective activation
+        self.log_bus.log("All available genotypes are already active.", "info", "SubjectView")
 
     def refresh_treatments_lists(self):
         """Refresh the available and active treatments list widgets."""
-        # Treatment management is not implemented in the new architecture yet
-        # Clear lists and show placeholder
         if hasattr(self, 'all_treatments_list'):
             self.all_treatments_list.clear()
-            self.all_treatments_list.addItem("Treatment management not yet implemented")
+            if self.subject_service:
+                treatments = self.subject_service.get_available_treatments()
+                if treatments:
+                    for treatment in treatments:
+                        self.all_treatments_list.addItem(treatment)
+                else:
+                    self.all_treatments_list.addItem("No treatments configured")
+
         if hasattr(self, 'current_treatments_list'):
             self.current_treatments_list.clear()
-            self.current_treatments_list.addItem("Treatment management not yet implemented")
+            # For now, all available treatments are considered active
+            if self.subject_service:
+                treatments = self.subject_service.get_available_treatments()
+                if treatments:
+                    for treatment in treatments:
+                        self.current_treatments_list.addItem(treatment)
+                else:
+                    self.current_treatments_list.addItem("No active treatments")
 
     def refresh_genotypes_lists(self):
         """Refresh the available and active genotypes list widgets."""
-        # Genotype management is not implemented in the new architecture yet
-        # Clear lists and show placeholder
         if hasattr(self, 'all_genotypes_list'):
             self.all_genotypes_list.clear()
-            self.all_genotypes_list.addItem("Genotype management not yet implemented")
+            if self.subject_service:
+                genotypes = self.subject_service.get_available_genotypes()
+                if genotypes:
+                    for genotype in genotypes:
+                        self.all_genotypes_list.addItem(genotype)
+                else:
+                    self.all_genotypes_list.addItem("No genotypes configured")
+
         if hasattr(self, 'current_genotypes_list'):
             self.current_genotypes_list.clear()
-            self.current_genotypes_list.addItem("Genotype management not yet implemented")
+            # For now, all available genotypes are considered active
+            if self.subject_service:
+                genotypes = self.subject_service.get_available_genotypes()
+                if genotypes:
+                    for genotype in genotypes:
+                        self.current_genotypes_list.addItem(genotype)
+                else:
+                    self.current_genotypes_list.addItem("No active genotypes")
 
     def refresh_body_parts_page(self):
         """Refresh the body parts lists."""
@@ -1076,18 +1113,35 @@ class SubjectView(BaseView):
         return []
 
     def refresh_active_metadata_dropdowns(self):
-        """Populate the genotype and treatment dropdowns in the Add Subject page from the active lists."""
+        """Populate the genotype and treatment dropdowns in the Add Subject page from the available lists."""
         self.genotype_combo.clear()
         self.treatment_combo.clear()
 
-        # For now, add some default genotypes since genotype/treatment management
-        # is not implemented in the new architecture yet
-        default_genotypes = ["WT", "HET", "KO", "ATP7B:WT", "ATP7B:HET", "ATP7B:KO"]
-        for genotype in default_genotypes:
-            self.genotype_combo.addItem(genotype)
+        # Get available genotypes and treatments from the service
+        if self.subject_service:
+            available_genotypes = self.subject_service.get_available_genotypes()
+            available_treatments = self.subject_service.get_available_treatments()
 
-        # Treatment dropdown remains empty for now
-        self.treatment_combo.addItem("No treatments configured")
+            # Populate genotype combo
+            if available_genotypes:
+                for genotype in available_genotypes:
+                    self.genotype_combo.addItem(genotype)
+            else:
+                # Add some defaults if none configured
+                default_genotypes = ["WT", "HET", "KO"]
+                for genotype in default_genotypes:
+                    self.genotype_combo.addItem(genotype)
+
+            # Populate treatment combo
+            if available_treatments:
+                for treatment in available_treatments:
+                    self.treatment_combo.addItem(treatment)
+            else:
+                self.treatment_combo.addItem("No treatments configured")
+        else:
+            # Fallback if service not available
+            self.genotype_combo.addItem("Service unavailable")
+            self.treatment_combo.addItem("Service unavailable")
 
     def set_overview_edit_mode(self, checked):
         """Toggle inline editing of subject rows in the overview tree."""

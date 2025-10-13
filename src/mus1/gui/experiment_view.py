@@ -90,47 +90,27 @@ class ExperimentView(BaseView):
         rec_group, rec_container_layout = self.create_form_section("Recording Details", page_layout)
 
         # --- Video file row ---
-        video_row = self.create_form_row(rec_container_layout)
-        video_label = self.create_form_label("Video File:")
-        self.video_path_edit = QLineEdit()
-        self.video_path_edit.setProperty("class", "mus1-text-input")
-        self.video_path_edit.setPlaceholderText("Select video file…")
-        browse_video_btn = QPushButton("Browse…")
-        browse_video_btn.setProperty("class", "mus1-secondary-button")
-        browse_video_btn.clicked.connect(lambda: self._browse_for_path(self.video_path_edit, "file"))
-        video_row.addWidget(video_label)
-        video_row.addWidget(self.video_path_edit, 1)
-        video_row.addWidget(browse_video_btn)
+        _, self.video_path_edit, browse_video_btn = self.create_form_field_with_button(
+            "Video File", "line_edit", "Browse…", "Select video file…", parent_layout=rec_container_layout
+        )
+        if browse_video_btn:
+            browse_video_btn.clicked.connect(lambda: self._browse_for_path(self.video_path_edit, "file"))
 
         # --- Arena image row (optional) ---
-        arena_row = self.create_form_row(rec_container_layout)
-        arena_label = self.create_form_label("Arena Image:")
-        self.arena_image_edit = QLineEdit()
-        self.arena_image_edit.setProperty("class", "mus1-text-input")
-        self.arena_image_edit.setPlaceholderText("Select arena image (optional)…")
-        browse_arena_btn = QPushButton("Browse…")
-        browse_arena_btn.setProperty("class", "mus1-secondary-button")
-        browse_arena_btn.clicked.connect(lambda: self._browse_for_path(self.arena_image_edit, "file"))
-        arena_row.addWidget(arena_label)
-        arena_row.addWidget(self.arena_image_edit, 1)
-        arena_row.addWidget(browse_arena_btn)
+        _, self.arena_image_edit, browse_arena_btn = self.create_form_field_with_button(
+            "Arena Image", "line_edit", "Browse…", "Select arena image (optional)…", parent_layout=rec_container_layout
+        )
+        if browse_arena_btn:
+            browse_arena_btn.clicked.connect(lambda: self._browse_for_path(self.arena_image_edit, "file"))
 
         # --- Processing stage row ---
-        stage_row = self.create_form_row(rec_container_layout)
-        stage_label = self.create_form_label("Processing Stage:")
-        self.processing_stage_combo = QComboBox()
-        self.processing_stage_combo.setProperty("class", "mus1-combo-box")
+        _, self.processing_stage_combo = self.create_form_field("Processing Stage", "combo_box", parent_layout=rec_container_layout)
         self.processing_stage_combo.addItems(self.PROCESSING_STAGES)
-        stage_row.addWidget(stage_label)
-        stage_row.addWidget(self.processing_stage_combo, 1)
 
         # --- Quick Sample Hash Row (auto-computed) ---
-        hash_row = self.create_form_row(rec_container_layout)
-        hash_label = self.create_form_label("Sample Hash:")
         self.sample_hash_value = QLabel("—")
         self.sample_hash_value.setProperty("class", "mus1-input-label")
-        hash_row.addWidget(hash_label)
-        hash_row.addWidget(self.sample_hash_value, 1)
+        self.create_form_display_field("Sample Hash", self.sample_hash_value, rec_container_layout)
 
         # Auto-change stage when video selected
         self.video_path_edit.textChanged.connect(self._auto_stage_from_video)
@@ -144,55 +124,32 @@ class ExperimentView(BaseView):
         details_group, details_layout = self.create_form_section("Core Experiment Details", page_layout)
 
         # Experiment ID
-        id_row = self.create_form_row(details_layout)
-        id_label = self.create_form_label("Experiment ID*:")
-        self.experiment_id_input = QLineEdit()
+        _, self.experiment_id_input = self.create_form_field(
+            "Experiment ID", "line_edit", "Enter unique experiment ID", True, details_layout
+        )
         self.experiment_id_input.setObjectName("experimentIdInput")
-        self.experiment_id_input.setProperty("class", "mus1-text-input")
-        self.experiment_id_input.setPlaceholderText("Enter unique experiment ID")
-        id_row.addWidget(id_label)
-        id_row.addWidget(self.experiment_id_input)
         self.experiment_id_input.textChanged.connect(self._update_add_button_state)
 
         # Subject ID
-        subject_row = self.create_form_row(details_layout)
-        subject_label = self.create_form_label("Subject ID*:")
-        self.subject_id_combo = QComboBox()
+        _, self.subject_id_combo = self.create_form_field("Subject ID", "combo_box", required=True, parent_layout=details_layout)
         self.subject_id_combo.setObjectName("subjectIdCombo")
-        self.subject_id_combo.setProperty("class", "mus1-combo-box")
-        subject_row.addWidget(subject_label)
-        subject_row.addWidget(self.subject_id_combo)
         self.subject_id_combo.currentIndexChanged.connect(self._update_add_button_state)
 
         # Experiment Type
-        type_row = self.create_form_row(details_layout)
-        type_label = self.create_form_label("Experiment Type*:")
-        self.experiment_type_combo = QComboBox()
+        _, self.experiment_type_combo = self.create_form_field("Experiment Type", "combo_box", required=True, parent_layout=details_layout)
         self.experiment_type_combo.setObjectName("experimentTypeCombo")
-        self.experiment_type_combo.setProperty("class", "mus1-combo-box")
         self.experiment_type_combo.addItem("Select Type...", None)
-        type_row.addWidget(type_label)
-        type_row.addWidget(self.experiment_type_combo)
         self.experiment_type_combo.currentIndexChanged.connect(self._on_experiment_type_changed)
+
         # Experiment Subtype (optional, driven by plugins)
-        subtype_row = self.create_form_row(details_layout)
-        subtype_label = self.create_form_label("Subtype:")
-        self.experiment_subtype_combo = QComboBox()
+        _, self.experiment_subtype_combo = self.create_form_field("Subtype", "combo_box", parent_layout=details_layout)
         self.experiment_subtype_combo.setObjectName("experimentSubtypeCombo")
-        self.experiment_subtype_combo.setProperty("class", "mus1-combo-box")
         self.experiment_subtype_combo.setEnabled(False)
-        subtype_row.addWidget(subtype_label)
-        subtype_row.addWidget(self.experiment_subtype_combo)
         self.experiment_subtype_combo.currentIndexChanged.connect(self._update_add_button_state)
 
         # Date Recorded
-        date_row = self.create_form_row(details_layout)
-        date_label = self.create_form_label("Date Recorded*:")
-        self.date_recorded_edit = QDateTimeEdit(QDateTime.currentDateTime())
-        self.date_recorded_edit.setCalendarPopup(True)
+        date_row, self.date_recorded_edit = self.create_form_field("Date Recorded", "date_time_edit", required=True, parent_layout=details_layout)
         self.date_recorded_edit.setDisplayFormat("yyyy-MM-dd")
-        date_row.addWidget(date_label)
-        date_row.addWidget(self.date_recorded_edit)
 
         # --- 3. Plugin Selection ---
         # Importer Plugins (includes handler-type plugins)
@@ -399,15 +356,8 @@ class ExperimentView(BaseView):
         """Change the active page in the view."""
         # Use BaseView's change_page implementation
         super().change_page(index)
-        
-        # Refresh data if needed
-        self.refresh_data()
 
-        
-        # Re-subscribe if managers are set late
-        if self.state_manager:
-            self.state_manager.unsubscribe(self.refresh_data)
-            self.state_manager.subscribe(self.refresh_data)
+        # Refresh data if needed
         self.refresh_data()
 
     def refresh_data(self):
@@ -627,9 +577,9 @@ class ExperimentView(BaseView):
                         logger.debug("Video linked successfully")
                         # Auto-set stage to recorded if not already
                         if processing_stage == "planned":
-                            exp_meta = self.state_manager.get_experiment_by_id(experiment_id)
-                            if exp_meta:
-                                exp_meta.processing_stage = "recorded"
+                            # Update the experiment's processing stage to recorded
+                            experiment.processing_stage = ProcessingStage.RECORDED
+                            self.window().project_manager.repos.experiments.save(experiment)
                 except FileNotFoundError as fnf:
                     logger.error(f"Video file not found: {fnf}")
                     self.show_error_message("File Error", str(fnf))
@@ -753,8 +703,8 @@ class ExperimentView(BaseView):
 
     def handle_create_batch(self):
         """Create a new batch with the selected experiments."""
-        if not self.window().project_manager or not self.state_manager:
-            logger.error("ProjectManager or StateManager not available for creating batch.")
+        if not self.window().project_manager:
+            logger.error("ProjectManager not available for creating batch.")
             QMessageBox.critical(self, "Error", "Core managers not available. Cannot create batch.")
             return
 
@@ -820,15 +770,7 @@ class ExperimentView(BaseView):
 
     def closeEvent(self, event):
         """Clean up when the view is closed."""
-        # Unsubscribe the observer when the view is closed
-        if hasattr(self, 'state_manager') and self.state_manager: # Check if state_manager exists
-             try:
-                 self.state_manager.unsubscribe(self.refresh_data)
-                 logger.debug("Unsubscribed ExperimentView.refresh_data from StateManager.")
-             except Exception as e:
-                  logger.error(f"Error unsubscribing ExperimentView: {e}")
-        else:
-             logger.warning("StateManager not found during ExperimentView closeEvent, skipping unsubscribe.")
+        # No special cleanup needed for clean architecture
         super().closeEvent(event)
         
     def update_theme(self, theme):
@@ -908,19 +850,11 @@ class ExperimentView(BaseView):
         # logger.debug(f"Discovering plugins for experiment type: {selected_type}") # Commented out
 
         # Update subtype list based on selected type
-        try:
-            subtypes = self.state_manager.get_supported_experiment_subtypes(selected_type)
-        except Exception:
-            subtypes = []
+        # Plugin system integration pending in clean architecture
+        # For now, disable subtypes
         self.experiment_subtype_combo.clear()
-        if subtypes:
-            self.experiment_subtype_combo.setEnabled(True)
-            self.experiment_subtype_combo.addItem("Select Subtype...", None)
-            for st in subtypes:
-                self.experiment_subtype_combo.addItem(st, st)
-        else:
-            self.experiment_subtype_combo.setEnabled(False)
-            self.experiment_subtype_combo.addItem("(none)", None)
+        self.experiment_subtype_combo.setEnabled(False)
+        self.experiment_subtype_combo.addItem("(none)", None)
 
         # Fetch plugin groups from core (PluginManager owns selection logic)
         importer_plugins = self.plugin_manager.get_importer_plugins()

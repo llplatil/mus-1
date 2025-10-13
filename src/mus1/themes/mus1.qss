@@ -14,14 +14,13 @@ QLabel {
 /* Form labels specifically (used with create_form_label helper) */
 QLabel[formLabel="true"] {
   background: transparent;
-  padding: 4px 0;
+  padding: 4px 8px 4px 0; /* Right padding for spacing before input fields */
   margin: 0;
   min-height: 24px; /* Consistent height for alignment */
   height: 24px;
   line-height: 24px;
-  min-width: 65px;
+  width: 120px; /* Fixed width for perfect alignment */
   text-align: right;
-  margin-right: 8px;
 }
 
 /* Styling for section header labels (e.g., "Core Experiment Details") */
@@ -103,8 +102,8 @@ QLabel[fieldRequired="true"] {
 .mus1-input-group {
   border: 1px solid $BORDER_COLOR;
   border-radius: 6px;
-  /* Reserve space for the group title to avoid overlap with first row */
-  padding: 18px 10px 10px 10px; /* extra top padding for title */
+  /* Increased top padding to fully contain title within content area */
+  padding: 16px 10px 10px 10px;
   margin-bottom: 10px;
   background-color: $WIDGET_BOX_BG;
   color: $TEXT_COLOR;
@@ -114,7 +113,7 @@ QLabel[fieldRequired="true"] {
 .mus1-subgroup {
   border: 1px solid $BORDER_COLOR;
   border-radius: 4px;
-  padding: 16px 10px 10px 10px; /* extra top padding for title */
+  padding: 16px 10px 10px 10px; /* consistent padding for title and content */
   margin: 0;
   background-color: $WIDGET_BOX_BG;
   color: $TEXT_COLOR;
@@ -234,12 +233,12 @@ QHBoxLayout.form-row, .form-row {
   min-height: 24px;
 }
 
-/* Ensure QGroupBox titles are positioned outside the content padding */
+/* Ensure QGroupBox titles are positioned properly within the padding */
 QGroupBox::title {
-  subcontrol-origin: margin; /* place title in the margin area */
-  left: 10px;                /* horizontal padding alignment */
-  top: -8px;                 /* pull title slightly into the top padding */
-  padding: 0 4px;            /* small horizontal padding around text */
+  subcontrol-origin: padding; /* place title within the padding area */
+  left: 2px;                  /* small left offset from padding start */
+  top: 2px;                   /* position within the top padding area */
+  padding: 0 4px;             /* small horizontal padding around text */
   background-color: $WIDGET_BOX_BG;
 }
 

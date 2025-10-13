@@ -454,3 +454,102 @@ class ProjectManagerClean:
         """Clean up resources."""
         # Close database connections
         pass
+
+    # --- Treatment and Genotype Management ---
+
+    def add_treatment(self, name: str) -> None:
+        """Add a treatment to the project's available treatments."""
+        if not name or not name.strip():
+            raise ValueError("Treatment name cannot be empty")
+
+        name = name.strip()
+        treatments = self.config.settings.get('available_treatments', [])
+        if name not in treatments:
+            treatments.append(name)
+            self.config.settings['available_treatments'] = treatments
+            self._save_config()
+            logger.info(f"Added treatment '{name}' to project {self.config.name}")
+
+    def add_genotype(self, name: str) -> None:
+        """Add a genotype to the project's available genotypes."""
+        if not name or not name.strip():
+            raise ValueError("Genotype name cannot be empty")
+
+        name = name.strip()
+        genotypes = self.config.settings.get('available_genotypes', [])
+        if name not in genotypes:
+            genotypes.append(name)
+            self.config.settings['available_genotypes'] = genotypes
+            self._save_config()
+            logger.info(f"Added genotype '{name}' to project {self.config.name}")
+
+    def get_available_treatments(self) -> List[str]:
+        """Get all available treatments for this project."""
+        return self.config.settings.get('available_treatments', [])
+
+    def get_available_genotypes(self) -> List[str]:
+        """Get all available genotypes for this project."""
+        return self.config.settings.get('available_genotypes', [])
+
+    def remove_treatment(self, name: str) -> bool:
+        """Remove a treatment from available treatments."""
+        treatments = self.config.settings.get('available_treatments', [])
+        if name in treatments:
+            treatments.remove(name)
+            self.config.settings['available_treatments'] = treatments
+            self._save_config()
+            logger.info(f"Removed treatment '{name}' from project {self.config.name}")
+            return True
+        return False
+
+    def remove_genotype(self, name: str) -> bool:
+        """Remove a genotype from available genotypes."""
+        genotypes = self.config.settings.get('available_genotypes', [])
+        if name in genotypes:
+            genotypes.remove(name)
+            self.config.settings['available_genotypes'] = genotypes
+            self._save_config()
+            logger.info(f"Removed genotype '{name}' from project {self.config.name}")
+            return True
+        return False
+
+    # --- Body Parts and Objects Management (placeholders) ---
+
+    def update_active_body_parts(self, active_list: List[str]) -> None:
+        """Update active body parts in the project."""
+        self.config.settings['active_body_parts'] = active_list
+        self._save_config()
+        logger.info(f"Updated active body parts: {active_list}")
+
+    def update_master_body_parts(self, master_list: List[str]) -> None:
+        """Update master body parts in the project."""
+        self.config.settings['master_body_parts'] = master_list
+        self._save_config()
+        logger.info(f"Updated master body parts: {master_list}")
+
+    def get_active_body_parts(self) -> List[str]:
+        """Get active body parts for this project."""
+        return self.config.settings.get('active_body_parts', [])
+
+    def get_master_body_parts(self) -> List[str]:
+        """Get master body parts for this project."""
+        return self.config.settings.get('master_body_parts', [])
+
+    def update_tracked_objects(self, items: List[str], list_type: str) -> None:
+        """Update tracked objects in the project."""
+        self.config.settings[f'{list_type}_tracked_objects'] = items
+        self._save_config()
+        logger.info(f"Updated {list_type} tracked objects: {items}")
+
+    def add_tracked_object(self, name: str) -> None:
+        """Add a tracked object to the project."""
+        if not name or not name.strip():
+            raise ValueError("Tracked object name cannot be empty")
+
+        name = name.strip()
+        objects = self.config.settings.get('tracked_objects', [])
+        if name not in objects:
+            objects.append(name)
+            self.config.settings['tracked_objects'] = objects
+            self._save_config()
+            logger.info(f"Added tracked object '{name}' to project {self.config.name}")
