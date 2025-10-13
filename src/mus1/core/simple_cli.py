@@ -18,12 +18,12 @@ import platform
 from datetime import datetime
 
 from .metadata import ProjectConfig, SubjectDTO, ExperimentDTO, ColonyDTO, Colony, Worker, ScanTarget, WorkerProvider, ScanTargetKind
-from .data_service import SubjectService, ExperimentService
 from .config_manager import get_config_manager, set_config, get_config
 from .repository import ColonyRepository, SubjectRepository, ExperimentRepository
 from .schema import Database
 from .setup_service import (
-    SetupService, SetupStatusDTO, get_setup_service, MUS1RootLocationDTO
+    SetupService, SetupStatusDTO, get_setup_service, MUS1RootLocationDTO,
+    UserProfileDTO, SharedStorageDTO
 )
 
 app = typer.Typer(
@@ -106,7 +106,16 @@ def init_project(
     else:
         project_path = path
 
-    # Check if project already exists
+    # Check for global project name uniqueness
+    from .project_discovery_service import get_project_discovery_service
+    discovery_service = get_project_discovery_service()
+    existing_project_path = discovery_service.find_project_path(name)
+    if existing_project_path:
+        rich_print(f"[red]✗[/red] A project named '{name}' already exists at: {existing_project_path}")
+        rich_print("[blue]ℹ[/blue] Please choose a different name or delete the existing project first")
+        raise typer.Exit(1)
+
+    # Check if project already exists at target location
     if (project_path / "mus1.db").exists() or (project_path / "project.json").exists():
         rich_print(f"[red]✗[/red] Project already exists at {project_path}")
         raise typer.Exit(1)
@@ -323,14 +332,44 @@ def add_subject(
         genotype=genotype
     )
 
-    # Initialize database
+    # Initialize database and repositories
     db_path = project_path / "mus1.db"
     db = Database(str(db_path))
     db.create_tables()
 
-    # Save subject
-    service = SubjectService(db)
-    subject = service.create_subject(subject_dto)
+    # Get repositories
+    from .repository import get_repository_factory
+    repos = get_repository_factory(db)
+
+    # Convert DTO to domain object (need colony_id)
+    # For CLI, we'll use a default colony or create one
+    colony_id = "default"
+    colony_repo = repos.colonies
+
+    # Check if default colony exists, create if not
+    if not colony_repo.find_by_id(colony_id):
+        from .metadata import Colony
+        default_colony = Colony(
+            id=colony_id,
+            lab_id="default_lab",  # Default lab for CLI usage
+            name="Default Colony",
+            genotype_of_interest="Unknown",
+            background_strain="Unknown"
+        )
+        colony_repo.save(default_colony)
+
+    # Create domain subject
+    from .metadata import Subject
+    subject_domain = Subject(
+        id=subject_dto.id,
+        colony_id=colony_id,
+        sex=subject_dto.sex,
+        designation=subject_dto.designation,
+        individual_genotype=subject_dto.individual_genotype
+    )
+
+    # Save subject using repository
+    subject = repos.subjects.save(subject_domain)
 
     rich_print(f"[green]✓[/green] Added subject {subject.id}")
     if subject.genotype:
@@ -362,14 +401,27 @@ def add_experiment(
         date_recorded=recorded_date
     )
 
-    # Initialize database
+    # Initialize database and repositories
     db_path = project_path / "mus1.db"
     db = Database(str(db_path))
     db.create_tables()
 
-    # Save experiment
-    service = ExperimentService(db)
-    experiment = service.create_experiment(experiment_dto)
+    # Get repositories
+    from .repository import get_repository_factory
+    repos = get_repository_factory(db)
+
+    # Convert DTO to domain object
+    from .metadata import Experiment, ProcessingStage
+    experiment_domain = Experiment(
+        id=experiment_dto.id,
+        subject_id=experiment_dto.subject_id,
+        experiment_type=experiment_dto.experiment_type,
+        date_recorded=experiment_dto.date_recorded,
+        processing_stage=experiment_dto.processing_stage
+    )
+
+    # Save experiment using repository
+    experiment = repos.experiments.save(experiment_domain)
 
     rich_print(f"[green]✓[/green] Added experiment {experiment.id}")
     rich_print(f"[blue]ℹ[/blue] Type: {experiment.experiment_type}")
@@ -387,9 +439,10 @@ def list_subjects(
         return
 
     db = Database(str(db_path))
-    service = SubjectService(db)
+    from .repository import get_repository_factory
+    repos = get_repository_factory(db)
 
-    subjects = service.list_subjects()
+    subjects = repos.subjects.find_all()
     if not subjects:
         rich_print("[yellow]⚠[/yellow] No subjects found")
         return
@@ -413,9 +466,10 @@ def list_experiments(
         return
 
     db = Database(str(db_path))
-    service = ExperimentService(db)
+    from .repository import get_repository_factory
+    repos = get_repository_factory(db)
 
-    experiments = service.list_experiments()
+    experiments = repos.experiments.find_all()
     if not experiments:
         rich_print("[yellow]⚠[/yellow] No experiments found")
         return
@@ -1110,10 +1164,10 @@ def run_demo(
 ):
     """Run architecture demonstration."""
     if demo_type == "clean-architecture":
-        from .demo_clean_architecture import demo_clean_architecture
+        from functional_tests.demo_clean_architecture import demo_clean_architecture
         demo_clean_architecture()
     elif demo_type == "plugin-architecture":
-        from .demo_plugin_architecture import demo_plugin_architecture
+        from functional_tests.demo_plugin_architecture import demo_plugin_architecture
         demo_plugin_architecture()
     else:
         rich_print(f"[red]Unknown demo type: {demo_type}[/red]")

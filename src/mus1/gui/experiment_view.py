@@ -10,7 +10,7 @@ from .navigation_pane import NavigationPane
 from .base_view import BaseView
 from .metadata_display import MetadataGridDisplay
 from .gui_services import GUIExperimentService
-from ..core.metadata import ProcessingStage
+from ..core.metadata import ProcessingStage, VideoFile
 import os
 import json
 from pathlib import Path
@@ -631,10 +631,13 @@ class ExperimentView(BaseView):
 
         experiments = self.gui_services.get_experiments_for_display()
         self.experimentListWidget.clear()
+
         if experiments:
             for exp in experiments:
-                # TODO: Add video linking check when video management is implemented
-                has_video = False  # Placeholder for now
+                # Check for associated videos using proper associations
+                associated_videos = self._find_associated_videos(exp.id)
+                has_video = len(associated_videos) > 0
+
                 video_marker = " 📹" if has_video else ""
 
                 display_text = f"{exp.id} ({exp.experiment_type}, Subj: {exp.subject_id}, Stage: {exp.processing_stage}){video_marker}"
@@ -646,20 +649,15 @@ class ExperimentView(BaseView):
 
     def setup_batch_creation(self):
         """Initialize the batch creation page with experiments grid."""
-        # Batch creation not yet implemented in clean architecture
-        logger.warning("Batch creation not yet implemented in clean architecture.")
-        # Disable batch creation UI elements for now
+        # Enable batch creation UI elements
         if hasattr(self, 'batchIdLineEdit'):
-            self.batchIdLineEdit.setEnabled(False)
+            self.batchIdLineEdit.setEnabled(True)
         if hasattr(self, 'batchNameLineEdit'):
-            self.batchNameLineEdit.setEnabled(False)
+            self.batchNameLineEdit.setEnabled(True)
         if hasattr(self, 'batchDescriptionTextEdit'):
-            self.batchDescriptionTextEdit.setEnabled(False)
+            self.batchDescriptionTextEdit.setEnabled(True)
         if hasattr(self, 'create_batch_button'):
-            self.create_batch_button.setEnabled(False)
-        if hasattr(self, 'batch_experiment_grid'):
-            self.batch_experiment_grid.set_columns(["Status"])
-            self.batch_experiment_grid.populate_data([{"Status": "Batch creation not yet implemented"}], ["Status"])
+            self.create_batch_button.setEnabled(False)  # Will be enabled when experiments are selected
 
         # Generate a unique suggested batch ID
         timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
@@ -669,23 +667,62 @@ class ExperimentView(BaseView):
         self.batchNameLineEdit.clear()
         self.batchDescriptionTextEdit.clear()
 
-        # Populate experiment grid using the existing method
-        # This will also clear previous selections in the grid
+        # Populate experiment grid with actual experiments
         self.update_experiment_grid()
 
         # Reset notification and button state
         self.batch_notification_label.setText("")
         # The button state will be updated by on_experiment_selection_changed after grid population
-        self.create_batch_button.setEnabled(False) # Start disabled
+        self.create_batch_button.setEnabled(False) # Start disabled until experiments are selected
 
     def update_experiment_grid(self):
         """Update the grid display with experiments for batch creation."""
-        # Experiment grid update not yet implemented in clean architecture
-        logger.warning("Experiment grid update not yet implemented in clean architecture.")
-        if hasattr(self, 'batch_experiment_grid'):
-            self.batch_experiment_grid.set_columns(["Status"])
-            self.batch_experiment_grid.populate_data([{"Status": "Experiment grid not yet implemented"}], ["Status"])
-        return
+        if not self.gui_services:
+            logger.warning("GUI services not available for experiment grid update.")
+            if hasattr(self, 'batch_experiment_grid'):
+                self.batch_experiment_grid.set_columns(["Status"])
+                self.batch_experiment_grid.populate_data([{"Status": "GUI services unavailable"}], ["Status"])
+            return
+
+        try:
+            # Get all experiments
+            experiments = self.gui_services.get_experiments_for_display()
+
+            if experiments:
+                # Convert to format expected by MetadataGridDisplay
+                grid_data = []
+                for exp in experiments:
+                    # Check for associated videos
+                    associated_videos = self._find_associated_videos(exp.id)
+                    has_video = len(associated_videos) > 0
+                    video_status = "Yes" if has_video else "No"
+
+                    grid_data.append({
+                        "ID": exp.id,
+                        "Type": exp.experiment_type,
+                        "Subject": exp.subject_id,
+                        "Stage": exp.processing_stage.value if hasattr(exp.processing_stage, 'value') else str(exp.processing_stage),
+                        "Date": exp.date_recorded.strftime('%Y-%m-%d') if exp.date_recorded else 'N/A',
+                        "Video": video_status
+                    })
+
+                # Define columns to display
+                columns = ["ID", "Type", "Subject", "Stage", "Date", "Video"]
+
+                if hasattr(self, 'batch_experiment_grid'):
+                    self.batch_experiment_grid.set_columns(columns)
+                    self.batch_experiment_grid.populate_data(grid_data, columns)
+                    logger.info(f"Populated experiment grid with {len(grid_data)} experiments")
+            else:
+                if hasattr(self, 'batch_experiment_grid'):
+                    self.batch_experiment_grid.set_columns(["Status"])
+                    self.batch_experiment_grid.populate_data([{"Status": "No experiments found in project"}], ["Status"])
+
+        except Exception as e:
+            logger.error(f"Error updating experiment grid: {e}", exc_info=True)
+            if hasattr(self, 'batch_experiment_grid'):
+                self.batch_experiment_grid.set_columns(["Status"])
+                self.batch_experiment_grid.populate_data([{"Status": f"Error loading experiments: {str(e)}"}], ["Status"])
 
     def on_experiment_selection_changed(self, exp_id: str, is_selected: bool):
         """Handle experiment selection changes from the MetadataGridDisplay."""
@@ -1261,17 +1298,18 @@ class ExperimentView(BaseView):
             return  # Dialog cancelled
 
         try:
-            # --- New workflow: register + link via unassigned list ---
+            # Link video to experiment using project manager
             video_path = Path(file_path)
-            # TODO: Implement video hashing and registration with new architecture
-            # sample_hash = self.data_manager.compute_sample_hash(video_path)
-            # start_time = self.data_manager._extract_start_time(video_path)
-            # Register if not already known
-            # self.project_manager.register_unlinked_videos([(video_path, sample_hash, start_time)])
-            # Link to the chosen experiment
-            # self.project_manager.link_unassigned_video(sample_hash, exp_id)
-            QMessageBox.warning(self, "Not Implemented", "Video linking not yet implemented in new architecture.")
-            QMessageBox.information(self, "Success", f"Video linked to experiment '{exp_id}'.")
+            success = self.window().project_manager.link_video_to_experiment(
+                experiment_id=exp_id,
+                video_path=video_path,
+                notes=f"Manually linked via experiment view"
+            )
+
+            if success:
+                QMessageBox.information(self, "Success", f"Video linked to experiment '{exp_id}'.")
+            else:
+                QMessageBox.warning(self, "Warning", f"Video was added to project but could not be linked to experiment '{exp_id}'.")
         except Exception as e:
             logger.error(f"Failed to link video to experiment {exp_id}: {e}", exc_info=True)
             QMessageBox.critical(self, "Error", f"Failed to link video:\n{e}")
@@ -1302,12 +1340,76 @@ class ExperimentView(BaseView):
         self.rec_path_label.style().unpolish(self.rec_path_label)
         self.rec_path_label.style().polish(self.rec_path_label)
 
+    def _find_associated_videos(self, exp_id: str) -> List[VideoFile]:
+        """Find videos that are associated with the given experiment ID.
+
+        Uses the proper experiment-video association table.
+        """
+        try:
+            # Use project manager to get properly associated videos
+            return self.window().project_manager.get_videos_for_experiment(exp_id)
+        except Exception as e:
+            logger.debug(f"Error finding associated videos for experiment {exp_id}: {e}")
+            return []
+
     def _update_recording_info(self, exp_id: str):
         """Populate the recording info panel for the given experiment ID."""
-        # Recording info update not yet implemented in clean architecture
         self._clear_recording_info()
-        self.rec_status_label.setText("Status: Recording info not yet implemented")
-        return
+
+        if not self.gui_services:
+            self.rec_status_label.setText("Status: GUI services not available")
+            return
+
+        try:
+            # Look for videos that might be associated with this experiment
+            associated_videos = self._find_associated_videos(exp_id)
+
+            if associated_videos:
+                # Show info for the first associated video (most common case)
+                video = associated_videos[0]
+
+                # Path
+                self.rec_path_label.setText(f"Path: {video.path}")
+
+                # Status - based on whether video exists and is accessible
+                if video.path.exists():
+                    self.rec_status_label.setText("Status: Video file found")
+                    self.rec_path_label.setProperty("missing", False)
+                else:
+                    self.rec_status_label.setText("Status: Video file missing")
+                    self.rec_path_label.setProperty("missing", True)
+                    self.rec_path_label.style().unpolish(self.rec_path_label)
+                    self.rec_path_label.style().polish(self.rec_path_label)
+
+                # Size
+                if video.size_bytes > 0:
+                    size_mb = video.size_bytes / (1024 * 1024)
+                    self.rec_size_label.setText(f"Size: {size_mb:.1f} MB")
+                else:
+                    self.rec_size_label.setText("Size: Unknown")
+
+                # Hash
+                if video.hash:
+                    # Show first 8 characters of hash for readability
+                    short_hash = video.hash[:8] if len(video.hash) > 8 else video.hash
+                    self.rec_hash_label.setText(f"Sample-hash: {short_hash}...")
+                else:
+                    self.rec_hash_label.setText("Sample-hash: Not computed")
+
+                # If multiple videos match, indicate this
+                if len(associated_videos) > 1:
+                    self.rec_status_label.setText(f"{self.rec_status_label.text()} ({len(associated_videos)} matching files)")
+
+            else:
+                # No associated videos found
+                self.rec_path_label.setText("Path: No video associated")
+                self.rec_status_label.setText("Status: No video found")
+                self.rec_size_label.setText("Size: —")
+                self.rec_hash_label.setText("Sample-hash: —")
+
+        except Exception as e:
+            logger.error(f"Error updating recording info for experiment {exp_id}: {e}", exc_info=True)
+            self.rec_status_label.setText(f"Status: Error loading info - {str(e)}")
 
     def _suggest_experiment_id(self, video_path_text):
         """
@@ -1411,9 +1513,70 @@ class ExperimentView(BaseView):
 
     def handle_create_batch(self):
         """Create a new batch with the selected experiments."""
-        # Batch creation not yet implemented in clean architecture
-        QMessageBox.information(self, "Not Implemented", "Batch creation not yet implemented in clean architecture.")
-        return
+        if not self.window().project_manager:
+            logger.error("ProjectManager not available for creating batch.")
+            QMessageBox.critical(self, "Error", "Core managers not available. Cannot create batch.")
+            return
+
+        # Get batch info from UI
+        batch_id = self.batchIdLineEdit.text().strip()
+        batch_name = self.batchNameLineEdit.text().strip() # Optional
+        batch_description = self.batchDescriptionTextEdit.toPlainText().strip() # Optional
+
+        # Validate required Batch ID
+        if not batch_id:
+            QMessageBox.warning(self, "Validation Error", "Batch ID is required.")
+            return
+
+        # Get selected experiments directly from the grid component
+        selected_experiment_ids = self.batch_experiment_grid.get_selected_items()
+
+        if not selected_experiment_ids:
+            QMessageBox.warning(self, "Validation Error", "Please select at least one experiment to include in the batch.")
+            return
+
+        # Create the batch via ProjectManager
+        try:
+            logger.info(f"Attempting to create batch '{batch_id}' with {len(selected_experiment_ids)} experiments.")
+            # Basic selection criteria (can be expanded later if needed)
+            selection_criteria = {"manual_selection": True}
+            if batch_name:
+                 selection_criteria["batch_name"] = batch_name # Store name if provided
+            if batch_description:
+                 selection_criteria["description"] = batch_description # Store description if provided
+
+            # Call the ProjectManager method
+            self.window().project_manager.create_batch(
+                batch_id=batch_id,
+                batch_name=batch_name, # Pass optional name
+                description=batch_description, # Pass optional description
+                experiment_ids=list(selected_experiment_ids), # Pass the list of selected IDs
+                selection_criteria=selection_criteria
+            )
+
+            # --- Success ---
+            logger.info(f"Batch '{batch_id}' created successfully.")
+            # Show success message via notification label, clear after delay
+            self.batch_notification_label.setText(f"Batch '{batch_id}' created successfully!")
+            QTimer.singleShot(3000, lambda: self.batch_notification_label.setText(""))
+
+            # Reset the form for the next batch creation
+            self.batchNameLineEdit.clear()
+            self.batchDescriptionTextEdit.clear()
+            # Generate a new suggested batch ID
+            timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+            self.batchIdLineEdit.setText(f"batch_{timestamp}")
+            # Clear grid selection by re-populating
+            self.update_experiment_grid() # This re-populates and inherently clears checkboxes
+
+        except ValueError as ve: # Catch specific errors like duplicate batch ID
+             logger.error(f"Failed to create batch '{batch_id}': {ve}", exc_info=False) # Log concisely
+             QMessageBox.critical(self, "Batch Creation Error", f"Failed to create batch:\n{ve}")
+             self.batch_notification_label.setText("Batch creation failed.")
+        except Exception as e: # Catch unexpected errors
+            logger.error(f"Unexpected error creating batch '{batch_id}': {e}", exc_info=True)
+            QMessageBox.critical(self, "Error", f"An unexpected error occurred during batch creation:\n{str(e)}")
+            self.batch_notification_label.setText("Batch creation failed.")
 
     def closeEvent(self, event):
         """Handle cleanup when the experiment view is closed."""
@@ -1433,32 +1596,82 @@ class ExperimentView(BaseView):
         Finds analysis plugins by listing those with capabilities beyond loading data
         and matching the selected experiment type.
         """
-        # Plugin discovery not yet implemented in clean architecture
+        # Clear previous entries and parameter fields
         try:
             if hasattr(self, 'importer_plugin_list') and self.importer_plugin_list:
                 self.importer_plugin_list.clear()
-                self.importer_plugin_list.addItem("Plugin discovery not yet implemented")
         except RuntimeError:
-            # QListWidget has been deleted, skip operation
             pass
-
         try:
             if hasattr(self, 'analysis_plugin_list') and self.analysis_plugin_list:
                 self.analysis_plugin_list.clear()
-                self.analysis_plugin_list.addItem("Plugin discovery not yet implemented")
         except RuntimeError:
-            # QListWidget has been deleted, skip operation
             pass
-
         try:
             if hasattr(self, 'exporter_plugin_list') and self.exporter_plugin_list:
                 self.exporter_plugin_list.clear()
-                self.exporter_plugin_list.addItem("Plugin discovery not yet implemented")
         except RuntimeError:
-            # QListWidget has been deleted, skip operation
             pass
         self.clear_plugin_fields()
-        return
+
+        # Get the selected experiment type
+        selected_type = self.experiment_type_combo.currentData()
+        if not selected_type:
+            return # No type selected, nothing to discover
+
+        # Discover plugins using plugin manager
+        if not self.plugin_manager:
+            logger.warning("Plugin manager not available for discovery.")
+            return
+
+        # Update subtype list based on selected type
+        # Plugin system integration pending in clean architecture
+        # For now, disable subtypes
+        self.experiment_subtype_combo.clear()
+        self.experiment_subtype_combo.setEnabled(False)
+        self.experiment_subtype_combo.addItem("(none)", None)
+
+        # Fetch plugin groups from core (PluginManager owns selection logic)
+        importer_plugins = self.plugin_manager.get_importer_plugins()
+        analysis_plugins = self.plugin_manager.get_analysis_plugins_for_type(selected_type)
+        exporter_plugins = self.plugin_manager.get_exporter_plugins() if hasattr(self, 'exporter_plugin_list') else []
+
+        # Populate Importer List
+        try:
+            if hasattr(self, 'importer_plugin_list') and self.importer_plugin_list:
+                for plugin in importer_plugins:
+                    item = QListWidgetItem(plugin.plugin_self_metadata().name)
+                    item.setData(Qt.ItemDataRole.UserRole, plugin) # Store the actual plugin object
+                    self.importer_plugin_list.addItem(item)
+        except RuntimeError:
+            pass
+
+        # Populate Analysis Plugin List
+        try:
+            if hasattr(self, 'analysis_plugin_list') and self.analysis_plugin_list:
+                for plugin in analysis_plugins:
+                    item = QListWidgetItem(plugin.plugin_self_metadata().name)
+                    item.setData(Qt.ItemDataRole.UserRole, plugin) # Store the actual plugin object
+                    self.analysis_plugin_list.addItem(item)
+        except RuntimeError:
+            pass
+
+        # Populate Exporter Plugin List (if present)
+        try:
+            if hasattr(self, 'exporter_plugin_list') and self.exporter_plugin_list:
+                for plugin in exporter_plugins:
+                    item = QListWidgetItem(plugin.plugin_self_metadata().name)
+                    item.setData(Qt.ItemDataRole.UserRole, plugin)
+                    self.exporter_plugin_list.addItem(item)
+        except RuntimeError:
+            pass
+
+        # Update button state based on whether plugins are now available etc.
+        self._update_add_button_state()
+
+    def show_error_message(self, title: str, message: str):
+        """Show an error message dialog."""
+        QMessageBox.critical(self, title, message)
 
     def _get_selected_plugins(self) -> List['BasePlugin']:
         """Get the currently selected plugins."""

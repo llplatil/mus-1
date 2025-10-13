@@ -140,9 +140,11 @@ class GUISubjectService:
                 sex=sex_enum,
                 designation=designation_enum,
                 birth_date=birth_date,
-                individual_genotype=genotype,
                 notes=notes.strip() if notes else ""
             )
+            # Set genotype using property (for backward compatibility)
+            if genotype:
+                subject.genotype = genotype
 
             saved_subject = self.project_manager.add_subject(subject)
             self.log_bus.log(f"Subject {subject_id} added to colony '{colony_id}' successfully", "success", "GUISubjectService")
@@ -164,8 +166,8 @@ class GUISubjectService:
             existing_colony = self.project_manager.get_colony(default_colony_id)
             if existing_colony:
                 return default_colony_id
-        except Exception:
-            pass
+        except Exception as e:
+            self.log_bus.log(f"Error checking for existing default colony: {e}", "warning", "GUISubjectService")
 
         # Create default colony if it doesn't exist
         try:
@@ -175,16 +177,41 @@ class GUISubjectService:
                 lab_id=self.project_manager.config.lab_id or "default_lab",
                 name="Default Colony",
                 background_strain="Unknown",
-                genotype="Unknown"
+                genotype_of_interest="Unknown"
             )
             self.project_manager.add_colony(default_colony)
             self.log_bus.log(f"Created default colony '{default_colony_id}'", "info", "GUISubjectService")
             return default_colony_id
         except Exception as e:
             self.log_bus.log(f"Error creating default colony: {e}", "error", "GUISubjectService")
-            # If we can't create a default colony, try to use the project name as colony ID
-            # This is a fallback that assumes the project name is a valid colony ID
-            return self.project_manager.config.name
+            # Try to find any existing colony to use as fallback
+            try:
+                colonies = self.project_manager.list_colonies()
+                if colonies:
+                    colony_id = colonies[0].id
+                    self.log_bus.log(f"Using existing colony '{colony_id}' as fallback", "warning", "GUISubjectService")
+                    return colony_id
+            except Exception:
+                pass
+
+            # Last resort: create a colony with the project name
+            project_colony_id = self.project_manager.config.name.replace(" ", "_").lower()
+            try:
+                from ..core.metadata import Colony
+                project_colony = Colony(
+                    id=project_colony_id,
+                    lab_id=self.project_manager.config.lab_id or "default_lab",
+                    name=f"{self.project_manager.config.name} Colony",
+                    background_strain="Unknown",
+                    genotype_of_interest="Unknown"
+                )
+                self.project_manager.add_colony(project_colony)
+                self.log_bus.log(f"Created project-specific colony '{project_colony_id}'", "info", "GUISubjectService")
+                return project_colony_id
+            except Exception as e2:
+                self.log_bus.log(f"Failed to create any colony: {e2}", "error", "GUISubjectService")
+                # Return the project name anyway - this will cause validation errors but won't crash
+                return project_colony_id
 
     def bulk_import_subjects(self, subjects_data: List[Dict[str, Any]],
                            colony_id: str = None) -> Dict[str, Any]:
@@ -332,6 +359,22 @@ class GUISubjectService:
         except Exception as e:
             self.log_bus.log(f"Error updating tracked objects: {e}", "error", "GUISubjectService")
 
+    def get_master_tracked_objects(self) -> List[str]:
+        """Get master tracked objects from project manager."""
+        try:
+            return self.project_manager.get_master_tracked_objects()
+        except Exception as e:
+            self.log_bus.log(f"Error getting master tracked objects: {e}", "error", "GUISubjectService")
+            return []
+
+    def get_active_tracked_objects(self) -> List[str]:
+        """Get active tracked objects from project manager."""
+        try:
+            return self.project_manager.get_active_tracked_objects()
+        except Exception as e:
+            self.log_bus.log(f"Error getting active tracked objects: {e}", "error", "GUISubjectService")
+            return []
+
 
 class GUIExperimentService:
     """Service for GUI experiment operations."""
@@ -355,7 +398,7 @@ class GUIExperimentService:
             subjects = self.project_manager.list_subjects()
             return [SubjectDisplayDTO(sub) for sub in subjects]
         except Exception as e:
-            self.log_bus.log(f"Error loading subjects: {e}", "error", "GUISubjectService")
+            self.log_bus.log(f"Error loading subjects: {e}", "error", "GUIExperimentService")
             return []
 
     def get_colonies_for_display(self) -> List[Dict[str, str]]:
@@ -407,7 +450,7 @@ class GUIExperimentService:
     def get_experiments_by_subject(self, subject_id: str) -> List[ExperimentDisplayDTO]:
         """Get all experiments for a specific subject."""
         try:
-            experiments = self.project_manager.get_experiments_by_subject(subject_id)
+            experiments = self.project_manager.list_experiments_for_subject(subject_id)
             return [ExperimentDisplayDTO(exp) for exp in experiments]
         except Exception as e:
             self.log_bus.log(f"Error getting experiments for subject {subject_id}: {e}", "error", "GUIExperimentService")
@@ -456,7 +499,7 @@ class GUIProjectService:
     def get_project_statistics(self) -> Dict[str, Any]:
         """Get detailed project statistics."""
         try:
-            return self.project_manager.get_statistics()
+            return self.project_manager.get_stats()
         except Exception as e:
             self.log_bus.log(f"Error getting project statistics: {e}", "error", "GUIProjectService")
             return {}

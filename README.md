@@ -40,74 +40,89 @@ mus1 --setup               # CLI mode with setup wizard
 ./dev-launch.sh --setup    # CLI mode with setup wizard
 ```
 
-## Features
+## Current Status
 
-### 🎯 **Application-Level User & Lab Management**
-- User profiles with email-based identification (replaces fragile ID systems)
-- Lab management with proper relational database storage
-- Project association with labs for organized research workflows
-- Settings tab for centralized user, lab, and worker configuration
+### ⚠️ **Remaining Issues**
+- **GUI has some remaining bugs** - subject management and video linking now work, but other components may have issues
+- **JSON serialization issues** cause project files to become corrupted
+- **Incomplete clean architecture migration** - subject view and video linking migrated, other components still need work
+- **Project loading fails** due to corruption and missing methods in some areas
 
-### 🔄 **Re-runnable Setup Wizard**
-- Setup wizard can be run anytime via `--setup` flag or File menu
-- Clean separation: Setup Wizard → User/Lab Selection → Project Management
-- Deterministic configuration root resolution with user override capability
-- Platform-aware defaults and shared storage configuration
+### ✅ **What Works**
+- **CLI Interface**: Basic command-line operations work reliably
+- **Video Linking System**: Videos can be linked to experiments with proper association tables
+- **Subject Management**: Subject creation and genotype handling works with proper data relationships
+- **Batch Creation**: Experiments can be grouped into batches for analysis
+- **Database Schema**: SQL tables exist for users, labs, colonies, subjects, experiments, videos
+- **Setup Wizard**: Can be launched via `--setup` flag, basic user profile creation works
+- **Repository Pattern**: Data access layer implemented with proper update/merge handling
 
-### 🏗️ **Clean Architecture**
-- Complete user-lab-project-workgroup hierarchy in SQL
-- Repository pattern for data access
-- Service layer for business logic
-- Proper separation of concerns across all layers
+### ❌ **What's Broken**
+- **GUI**: Some remaining AttributeError and signal disconnection issues (subject view and video linking fixed)
 
-### 🎨 **Organized GUI**
-- **Project Tab**: Focused on project-specific operations
-- **Subjects Tab**: Subject and colony management
-- **Experiments Tab**: Experiment tracking and analysis
-- **Settings Tab**: User settings, lab management, worker configuration
+- **State Management**: References resolved in subject view and core functionality
+- **Lab-Project Association**: Database schema exists but GUI integration broken
+- **Plugin System**: Entry-point discovery exists but GUI integration broken
 
-### 🔧 **Robust Setup & Configuration**
-- Deterministic MUS1 root resolution with user override capability
-- Asynchronous setup workflow with proper error handling
-- ConfigManager re-initialization for correct database targeting
-- Platform-specific defaults (macOS, Linux, Windows)
+## Features (Planned/Partial)
 
-## Usage Examples
+### 🎯 **Application-Level User & Lab Management (Partial)**
+- Database schema exists for user/lab management
+- Basic setup wizard works for user profile creation
+- Subject management with proper genotype handling works
+- Lab-project association broken in GUI
 
-### Project Management
+### 🔄 **Setup Wizard (Partial)**
+- Can be launched via `--setup` flag
+- Basic user profile setup works
+- Advanced configuration options missing
+
+### 🎬 **Video Analysis System (Working)**
+- Video linking to experiments with proper database associations
+- Batch creation for grouping experiments for analysis
+- File hash computation for video deduplication
+
+### 🏗️ **Clean Architecture (Partial)**
+- Repository pattern implemented with proper update/merge handling
+- Service layer implemented for subject and experiment management
+- GUI migration completed for subject view and video linking
+
+### 🎨 **GUI (Partial)**
+- Subject management and video linking work properly
+- Basic tab structure exists with some functionality working
+- Some remaining bugs and signal handling issues in other components
+
+### 🔧 **Configuration System (Partial)**
+- Basic hierarchical config exists
+- JSON serialization works but has Path object corruption bugs
+- Project discovery works for finding existing projects
+
+## Usage Examples (CLI Only - GUI Broken)
+
+### Basic CLI Operations (Working)
 ```bash
-# List projects
+# Setup wizard
+mus1 --setup
+
+# List projects (may work)
 mus1 project list
 
-# Create project
-mus1 project init "My Project" --lab mylab
-
 # Check status
-mus1 project status
+mus1 setup status
 ```
 
-### Data Management
+### Data Management (May Not Work)
 ```bash
-# Add subject
+# These commands exist but may have issues
 mus1 add-subject SUB001 --sex M --designation experimental
-
-# Add experiment
 mus1 add-experiment EXP001 SUB001 "Open Field Test" --date 2024-01-15
-
-# List data
 mus1 list-subjects
-mus1 list-experiments
 ```
 
-### Lab and Colony Management
+### Lab Management (Broken)
 ```bash
-# Create lab
+# Lab commands exist but GUI integration broken
 mus1 lab create mylab "My Laboratory"
-
-# Add colony
-mus1 lab add-colony mylab colony1 "Treatment Group" --genotype "GENE:WT"
-
-# List labs
 mus1 lab list
 ```
 

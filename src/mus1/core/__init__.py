@@ -20,7 +20,6 @@ from .metadata import (
 # Import clean services and managers
 from .project_manager_clean import ProjectManagerClean
 from .repository import RepositoryFactory, SubjectRepository, ExperimentRepository
-from .data_service import SubjectService, ExperimentService
 
 # Keep existing config system (it's already clean)
 from .config_manager import (
@@ -49,7 +48,6 @@ __all__ = [
     "validate_subject_id", "validate_experiment_id",
     # Services
     "ProjectManagerClean", "RepositoryFactory", "SubjectRepository", "ExperimentRepository",
-    "SubjectService", "ExperimentService",
     # Config system
     "ConfigManager", "get_config_manager", "init_config_manager",
     "get_config", "set_config", "delete_config",

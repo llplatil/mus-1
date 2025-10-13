@@ -284,15 +284,6 @@ class SubjectView(BaseView):
         # Implementation pending
         pass
 
-    def assign_project_manager(self, project_manager):
-        """Assign the project_manager and subscribe for automatic refresh from state changes."""
-        self.project_manager = project_manager
-        # Replace previous single-subscription with unified handler
-        self._state_subscription = self._handle_state_change
-        self._state_manager = project_manager.state_manager
-        self._state_manager.subscribe(self._state_subscription)
-        # Perform an immediate refresh so UI is populated right after project load
-        self._handle_state_change()
 
     def _handle_state_change(self):
         """Observer callback that updates all widgets on state changes or initial assignment."""
@@ -302,9 +293,7 @@ class SubjectView(BaseView):
 
     def closeEvent(self, event):
         """Clean up when the view is closed."""
-        # Unsubscribe the observer when the view is closed
-        if hasattr(self, '_state_manager') and hasattr(self, '_state_subscription'):
-            self._state_manager.unsubscribe(self._state_subscription)
+        # No state manager subscription to clean up in clean architecture
         super().closeEvent(event)
 
     def update_theme(self, theme):
@@ -379,19 +368,20 @@ class SubjectView(BaseView):
         self.metadata_tree = MetadataTreeView(tree_group)
         tree_layout.addWidget(self.metadata_tree)
 
-        # Add toolbar row with refresh button and edit-mode toggle
+        # Add toolbar row with refresh button
         toolbar_row = self.create_button_row(tree_layout, add_stretch=False)
         refresh_button = QPushButton("Refresh Overview")
         refresh_button.setProperty("class", "mus1-secondary-button")
         refresh_button.clicked.connect(self.refresh_overview)
 
-        self.edit_mode_toggle = QCheckBox("Edit mode")
-        self.edit_mode_toggle.setToolTip("Toggle inline editing of subject rows")
-        self.edit_mode_toggle.toggled.connect(self.set_overview_edit_mode)
+        # Edit mode disabled to prevent data corruption
+        # Users should use proper workflows for data changes
+        edit_info_label = QLabel("Use proper workflows to edit data")
+        edit_info_label.setStyleSheet("color: #666; font-style: italic;")
 
         toolbar_row.addWidget(refresh_button)
         toolbar_row.addStretch(1)
-        toolbar_row.addWidget(self.edit_mode_toggle)
+        toolbar_row.addWidget(edit_info_label)
         
         # Add the overview page with title "Subjects Overview" to the stacked widget
         self.add_page(self.page_overview, "Subjects Overview")
@@ -408,13 +398,31 @@ class SubjectView(BaseView):
         subjects_dto = self.subject_service.get_subjects_for_display()
         experiments_dto = self.experiment_service.get_experiments_for_display()
 
-        # Convert DTOs to dictionaries for compatibility with metadata_tree
-        subjects_dict = {subj.id: subj for subj in subjects_dto}
-        experiments_dict = {exp.id: exp for exp in experiments_dto}
+        # Convert DTOs to proper dictionaries expected by metadata_tree
+        subjects_dict = {}
+        for subj_dto in subjects_dto:
+            # Create a simple dict representation for the tree
+            subjects_dict[subj_dto.id] = {
+                'id': subj_dto.id,
+                'sex': subj_dto.sex,
+                'genotype': subj_dto.genotype or "N/A"
+            }
+
+        experiments_dict = {}
+        for exp_dto in experiments_dto:
+            # Create a simple dict representation for the tree
+            experiments_dict[exp_dto.id] = {
+                'id': exp_dto.id,
+                'subject_id': exp_dto.subject_id,
+                'type': exp_dto.experiment_type,
+                'date_recorded': exp_dto.date_recorded,
+                'processing_stage': exp_dto.processing_stage
+            }
 
         # Populate the metadata tree view with subjects and their experiments
-        # Note: This might need further adaptation based on what metadata_tree expects
-        self.metadata_tree.populate_subjects_with_experiments(subjects_dict, experiments_dict)
+        # Pass the project manager so the tree can get video/recording counts
+        project_manager = getattr(self.window(), 'project_manager', None)
+        self.metadata_tree.populate_subjects_with_experiments(subjects_dict, experiments_dict, project_manager)
 
     def handle_edit_subject(self):
         """Handle editing of a selected subject."""
@@ -472,19 +480,18 @@ class SubjectView(BaseView):
 
     def handle_update_subject(self, original_id):
         """Update an existing subject with edited data."""
-        # Similar to handle_add_subject but updates existing subject
-        if not self.project_manager:
-            self.log_bus.log("Error: No ProjectManager is set", "error", "SubjectView")
+        if not self.subject_service:
+            self.log_bus.log("Error: Subject service not available", "error", "SubjectView")
             return
 
         # Get form values
         subject_id = self.subject_id_edit.text().strip()
-        
+
         # Skip unique check if ID hasn't changed
         if subject_id != original_id:
-            # Verify subject ID uniqueness
-            existing_ids = [subj.id for subj in self.project_manager.state_manager.get_sorted_list("subjects")]
-            if subject_id in existing_ids:
+            # Verify subject ID uniqueness via service
+            existing_subject = self.subject_service.get_subject_by_id(subject_id)
+            if existing_subject:
                 self.log_bus.log(f"Error: Subject ID '{subject_id}' already exists", "error", "SubjectView")
                 return
 
@@ -501,33 +508,23 @@ class SubjectView(BaseView):
         notes = self.notes_edit.toPlainText().strip()
         birth_date = self.birthdate_edit.dateTime().toPython()
         in_training_set = self.training_set_check.isChecked()
-        
+
         # Get death date if enabled
         death_date = None
         if self.death_check.isChecked():
             death_date = self.deathdate_edit.dateTime().toPython()
 
-        # Update the subject via ProjectManager
-        if original_id != subject_id:
-            # If ID changed, remove the old one first
-            self.project_manager.remove_subject(original_id)
-        
-        # Add with updated data    
-        self.project_manager.add_subject(
-            subject_id=subject_id,
-            sex=sex_enum,
-            genotype=genotype,
-            notes=notes,
-            birth_date=birth_date,
-            in_training_set=in_training_set,
-            death_date=death_date
-        )
+        # For now, subject updates are not fully implemented in GUI services
+        # Show a message directing users to proper workflows
+        self.log_bus.log("Subject updates should be done through proper project management workflows", "warning", "SubjectView")
+        self.subject_notification_label.setText("Use project management for subject updates")
+        QTimer.singleShot(3000, lambda: self.subject_notification_label.setText(""))
 
         # Reset the form and button
         self.add_subject_button.setText("Add Subject")
         self.add_subject_button.clicked.disconnect()
         self.add_subject_button.clicked.connect(self.handle_add_subject)
-        
+
         # Clear the form
         self.subject_id_edit.clear()
         self.genotype_combo.clear()
@@ -540,10 +537,6 @@ class SubjectView(BaseView):
 
         # Refresh the list
         self.refresh_subject_list_display()
-        
-        # Show notification
-        self.subject_notification_label.setText("Subject updated successfully!")
-        QTimer.singleShot(3000, lambda: self.subject_notification_label.setText(""))
 
     def handle_view_subject_notes(self):
         """Display the notes for the selected subject in a popup dialog."""
@@ -628,9 +621,18 @@ class SubjectView(BaseView):
             self.log_bus.log("No active treatments selected for removal.", "warning", "SubjectView")
             return
 
-        # For now, treatments cannot be selectively deactivated
-        # In the future, this could implement selective deactivation
-        self.log_bus.log("Treatment deactivation not yet implemented.", "warning", "SubjectView")
+        # Remove selected treatments
+        for item in selected_items:
+            treatment_name = item.text()
+            if self.subject_service:
+                success = self.subject_service.remove_treatment(treatment_name)
+                if success:
+                    self.log_bus.log(f"Removed treatment '{treatment_name}' successfully.", "success", "SubjectView")
+                else:
+                    self.log_bus.log(f"Failed to remove treatment '{treatment_name}'.", "error", "SubjectView")
+
+        # Refresh the lists to reflect changes
+        self.refresh_treatments_lists()
 
     def handle_add_to_active_genotypes(self):
         """Adds selected genotypes from the available list to active genotypes."""
@@ -705,15 +707,38 @@ class SubjectView(BaseView):
         if not hasattr(self, 'all_bodyparts_list') or not hasattr(self, 'current_body_parts_list'):
             return
 
-        # Body parts management is not implemented in the new architecture yet
-        # Clear lists and show placeholder
+        # Clear lists
         self.all_bodyparts_list.clear()
-        self.all_bodyparts_list.addItem("Body parts management not yet implemented")
-
         self.current_body_parts_list.clear()
-        self.current_body_parts_list.addItem("Body parts management not yet implemented")
 
-        self.navigation_pane.add_log_message("Body parts lists refreshed.", "info")
+        # Get body parts from subject service
+        if self.subject_service:
+            try:
+                master_body_parts = self.subject_service.get_master_body_parts()
+                active_body_parts = self.subject_service.get_active_body_parts()
+
+                # Populate master list
+                if master_body_parts:
+                    for bp in master_body_parts:
+                        self.all_bodyparts_list.addItem(bp)
+                else:
+                    self.all_bodyparts_list.addItem("No master body parts defined")
+
+                # Populate active list
+                if active_body_parts:
+                    for bp in active_body_parts:
+                        self.current_body_parts_list.addItem(bp)
+                else:
+                    self.current_body_parts_list.addItem("No active body parts")
+
+                self.navigation_pane.add_log_message("Body parts lists refreshed.", "info")
+            except Exception as e:
+                self.log_bus.log(f"Error refreshing body parts: {e}", "error", "SubjectView")
+                self.all_bodyparts_list.addItem("Error loading body parts")
+                self.current_body_parts_list.addItem("Error loading body parts")
+        else:
+            self.all_bodyparts_list.addItem("Subject service not available")
+            self.current_body_parts_list.addItem("Subject service not available")
 
     def refresh_objects_page(self):
         """Refresh the objects lists."""
@@ -906,11 +931,8 @@ class SubjectView(BaseView):
             self.navigation_pane.add_log_message("No body parts selected for deletion from master list.", "warning")
             return
         selected = [item.text() for item in selected_items]
-        state = self.state_manager.project_state
-        if state.project_metadata:
-            current_master = [self.format_item(bp) for bp in state.project_metadata.master_body_parts]
-        else:
-            current_master = [str(bp) for bp in self.state_manager.global_settings.get("body_parts", [])]
+        # Use project manager to get master body parts
+        current_master = self.project_manager.get_master_body_parts()
         new_master = [bp for bp in current_master if bp not in selected]
 
         current_active = [self.current_body_parts_list.item(i).text() for i in range(self.current_body_parts_list.count())]
@@ -946,12 +968,9 @@ class SubjectView(BaseView):
         updated_active = [bp for bp in current_active if bp not in items_to_move]
         if self.subject_service:
             self.subject_service.update_active_body_parts(updated_active)
-        
-        state = self.state_manager.project_state
-        if state.project_metadata:
-            current_master = [self.format_item(bp) for bp in state.project_metadata.master_body_parts]
-        else:
-            current_master = [str(bp) for bp in self.state_manager.global_settings.get("body_parts", [])]
+
+        # Use project manager to get master body parts
+        current_master = self.project_manager.get_master_body_parts()
         
         new_master = current_master.copy()
         for bp in items_to_move:
@@ -1099,17 +1118,58 @@ class SubjectView(BaseView):
         # Clear list widgets if they exist
         if hasattr(self, 'all_objects_list'):
             self.all_objects_list.clear()
-            self.all_objects_list.addItem("Object management not yet implemented")
         if hasattr(self, 'current_objects_list'):
             self.current_objects_list.clear()
-            self.current_objects_list.addItem("Object management not yet implemented")
+
+        # Get tracked objects from subject service
+        if self.subject_service:
+            try:
+                master_objects = self.subject_service.get_master_tracked_objects()
+                active_objects = self.subject_service.get_active_tracked_objects()
+
+                # Populate master list
+                if master_objects:
+                    for obj in master_objects:
+                        self.all_objects_list.addItem(obj)
+                else:
+                    self.all_objects_list.addItem("No master objects defined")
+
+                # Populate active list
+                if active_objects:
+                    for obj in active_objects:
+                        self.current_objects_list.addItem(obj)
+                else:
+                    self.current_objects_list.addItem("No active objects")
+            except Exception as e:
+                self.log_bus.log(f"Error refreshing objects: {e}", "error", "SubjectView")
+                if hasattr(self, 'all_objects_list'):
+                    self.all_objects_list.addItem("Error loading objects")
+                if hasattr(self, 'current_objects_list'):
+                    self.current_objects_list.addItem("Error loading objects")
+        else:
+            if hasattr(self, 'all_objects_list'):
+                self.all_objects_list.addItem("Subject service not available")
+            if hasattr(self, 'current_objects_list'):
+                self.current_objects_list.addItem("Subject service not available")
 
     def _get_active_objects(self):
-        # Object management is not implemented in the new architecture yet
+        """Get active tracked objects from subject service."""
+        if self.subject_service:
+            try:
+                return self.subject_service.get_active_tracked_objects()
+            except Exception as e:
+                self.log_bus.log(f"Error getting active objects: {e}", "error", "SubjectView")
+                return []
         return []
 
     def _get_master_objects(self):
-        # Object management is not implemented in the new architecture yet
+        """Get master tracked objects from subject service."""
+        if self.subject_service:
+            try:
+                return self.subject_service.get_master_tracked_objects()
+            except Exception as e:
+                self.log_bus.log(f"Error getting master objects: {e}", "error", "SubjectView")
+                return []
         return []
 
     def refresh_active_metadata_dropdowns(self):
@@ -1143,61 +1203,3 @@ class SubjectView(BaseView):
             self.genotype_combo.addItem("Service unavailable")
             self.treatment_combo.addItem("Service unavailable")
 
-    def set_overview_edit_mode(self, checked):
-        """Toggle inline editing of subject rows in the overview tree."""
-        # Adjust edit triggers
-        triggers = QAbstractItemView.EditTrigger.AllEditTriggers if checked else QAbstractItemView.EditTrigger.NoEditTriggers
-        self.metadata_tree.setEditTriggers(triggers)
-
-        # Connect or disconnect itemChanged handler
-        try:
-            self.metadata_tree.itemChanged.disconnect(self._on_overview_item_changed)
-        except Exception:
-            pass
-
-        if checked:
-            self.metadata_tree.itemChanged.connect(self._on_overview_item_changed)
-
-        self.log_bus.log(f"Overview tree edit mode {'enabled' if checked else 'disabled'}", "info", "SubjectView")
-
-    def _on_overview_item_changed(self, item, column):
-        """Handle edits to subject rows and persist changes."""
-        # Only process subject-level rows (no parent) and editable columns 1 or 2 (Sex, Genotype)
-        if item.parent() is not None:
-            return  # Skip experiment rows
-
-        subj_id = item.text(0)
-        field_map = {1: 'sex', 2: 'genotype'}
-        if column not in field_map:
-            return
-
-        field = field_map[column]
-        new_value = item.text(column).strip()
-
-        # Validation and update via ProjectManager
-        subj = None
-        try:
-            sm = self.state_manager
-            subj = sm.project_state.subjects.get(subj_id)
-            if not subj:
-                raise ValueError(f"Subject {subj_id} not found")
-
-            if field == 'sex':
-                # Normalize to Sex enum value
-                from ..core.metadata import Sex as SexEnum
-                if new_value not in (SexEnum.M.value, SexEnum.F.value, SexEnum.UNKNOWN.value):
-                    raise ValueError("Sex must be M, F, or Unknown")
-                subj.sex = SexEnum(new_value)
-            elif field == 'genotype':
-                subj.genotype = new_value
-
-            # Persist project
-            self.project_manager.save_project()
-            self.log_bus.log(f"Updated {field} for subject {subj_id}", "success", "SubjectView")
-        except Exception as e:
-            self.log_bus.log(f"Failed to update subject: {e}", "error", "SubjectView")
-            # Revert cell to original value
-            original = getattr(subj, field, '') if subj else ''
-            if field == 'sex' and hasattr(original, 'value'):
-                original = original.value
-            item.setText(column, str(original))

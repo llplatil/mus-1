@@ -146,12 +146,13 @@ mus1 project list          # Production
 - **ProjectManagerClean**: Project operations with lab-colony hierarchy
 - **PluginManagerClean**: Plugin discovery and analysis execution
 
-### **Clean Separation Achieved**
-- ✅ **Single Source of Truth**: Each service has one clear responsibility
-- ✅ **Dependency Injection**: Services use repositories, not direct database access
-- ✅ **UI Independence**: Business logic separated from presentation
-- ✅ **Testability**: Each layer independently testable
-- ✅ **Configuration Hierarchy**: Install → User → Lab → Project settings
+### **Architecture Status (Partial)**
+- **✅ Repository Pattern**: Implemented with proper update/merge handling and video associations
+- **✅ Domain Models**: Entities exist in metadata.py with proper genotype aliasing
+- **✅ Service Layer**: Implemented for subject and experiment management with video linking
+- **🔄 Clean Separation**: Achieved for subject view and video linking - GUI uses services properly
+- **🔄 UI Independence**: Business logic separated for core functionality, some components still need migration
+
 
 ---
 
@@ -187,11 +188,11 @@ mus1 project list          # Production
 
 ### **Actual Launch Behavior**
 
-#### **GUI Launch (May Fail on macOS)**
+#### **GUI Launch (Partial)**
 ```bash
-# May work or fail depending on Qt platform plugin status
-mus1-gui                    # Production - may show Qt errors
-./dev-launch.sh gui         # Development - includes Qt diagnostics
+# Subject management and video linking now work
+mus1-gui                    # Production - subject/experiment features work
+./dev-launch.sh gui         # Development - subject/experiment features work
 ```
 
 #### **CLI Launch (Always Works)**
@@ -315,6 +316,11 @@ export QT_QPA_PLATFORM="xcb"
 
 
 ### **Clean Architecture Development**
+
+#### **Working Features**
+- **Video Linking**: Videos properly associated with experiments via database relationships
+- **Subject Management**: Subject creation with genotype handling and proper data flow
+- **Batch Creation**: Experiments can be grouped for analysis workflows
 
 #### **Adding New Features**
 - **Domain Entities**: Add to `metadata.py` with validation

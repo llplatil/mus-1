@@ -14,7 +14,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Any, Literal
 from enum import Enum
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 import logging
 
 logger = logging.getLogger("mus1.core.metadata")
@@ -160,10 +160,19 @@ class Subject:
     notes: str = ""
     date_added: datetime = field(default_factory=datetime.now)
 
+    def __post_init__(self):
+        """Handle any post-initialization logic."""
+        pass
+
     @property
     def genotype(self) -> Optional[str]:
         """Get the effective genotype (individual or colony default)."""
-        return self.individual_genotype  # For now, we'll handle colony genotype in repository queries
+        return self.individual_genotype
+
+    @genotype.setter
+    def genotype(self, value: Optional[str]):
+        """Set the genotype (maps to individual_genotype)."""
+        self.individual_genotype = value
 
     @property
     def treatment(self) -> Optional[str]:
@@ -265,13 +274,15 @@ class ColonyDTO(BaseModel):
     notes: str = ""
     date_added: datetime = Field(default_factory=datetime.now)
 
-    @validator("id")
+    @field_validator("id")
+    @classmethod
     def validate_id(cls, v: str) -> str:
         if not v or len(v.strip()) < 3:
             raise ValueError("Colony ID must be at least 3 characters")
         return v.strip()
 
-    @validator("name")
+    @field_validator("name")
+    @classmethod
     def validate_name(cls, v: str) -> str:
         if not v or len(v.strip()) < 3:
             raise ValueError("Colony name must be at least 3 characters")
@@ -290,8 +301,21 @@ class SubjectDTO(BaseModel):
     individual_treatment: Optional[str] = None
     notes: str = ""
     date_added: datetime = Field(default_factory=datetime.now)
+    genotype: Optional[str] = None  # Alias for individual_genotype
 
-    @validator("id")
+    @model_validator(mode='before')
+    @classmethod
+    def handle_genotype_alias(cls, values):
+        """Handle genotype parameter alias for backward compatibility."""
+        if isinstance(values, dict):
+            # Handle genotype alias for individual_genotype
+            if 'genotype' in values and values['genotype'] is not None:
+                if 'individual_genotype' not in values or values['individual_genotype'] is None:
+                    values['individual_genotype'] = values['genotype']
+        return values
+
+    @field_validator("id")
+    @classmethod
     def validate_id(cls, v: str) -> str:
         if not v or len(v.strip()) < 3:
             raise ValueError("Subject ID must be at least 3 characters")
@@ -308,13 +332,15 @@ class ExperimentDTO(BaseModel):
     notes: str = ""
     date_added: datetime = Field(default_factory=datetime.now)
 
-    @validator("id")
+    @field_validator("id")
+    @classmethod
     def validate_id(cls, v: str) -> str:
         if not v or len(v.strip()) < 3:
             raise ValueError("Experiment ID must be at least 3 characters")
         return v.strip()
 
-    @validator("date_recorded")
+    @field_validator("date_recorded")
+    @classmethod
     def validate_date_recorded(cls, v: datetime) -> datetime:
         if v > datetime.now():
             raise ValueError("Recording date cannot be in the future")

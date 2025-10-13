@@ -99,7 +99,7 @@ class MetadataTreeView(QTreeWidget):
         header.setSortIndicatorShown(True)
         self.setSortingEnabled(True)
         
-    def populate_subjects_with_experiments(self, subjects_dict, experiments_dict, state_manager=None):
+    def populate_subjects_with_experiments(self, subjects_dict, experiments_dict, project_manager=None):
         """
         Populate tree with subjects as parents and experiments as children.
         Adds a Genotype column when available so users can quickly see subject genotypes.
@@ -107,25 +107,42 @@ class MetadataTreeView(QTreeWidget):
         self.clear()
         # New header includes Genotype column
         self.setHeaderLabels(["Subject ID", "Sex", "Genotype", "Experiments", "Recordings"])
-        
+
         for subject_id, subject in subjects_dict.items():
             item = SubjectTreeWidgetItem(self)
-            # Allow editing (SubjectView guards commit handling)
-            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
+            # Disable editing to prevent data corruption - use proper workflows instead
+            # item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
             item.setText(0, subject_id)
-            item.setText(1, subject.sex.value if hasattr(subject.sex, 'value') else str(subject.sex))
-            # Safely handle missing genotype values
-            genotype_str = getattr(subject, 'genotype', None) or "N/A"
-            item.setText(2, str(genotype_str))
-            
+            # Handle both dict and object formats for backward compatibility
+            if isinstance(subject, dict):
+                sex_value = subject.get('sex', 'Unknown')
+                genotype_value = subject.get('genotype', 'N/A')
+            else:
+                sex_value = subject.sex.value if hasattr(subject.sex, 'value') else str(subject.sex)
+                genotype_value = getattr(subject, 'genotype', None) or "N/A"
+            item.setText(1, str(sex_value))
+            item.setText(2, str(genotype_value))
+
             # Count experiments
-            subject_experiments = [exp for exp in experiments_dict.values() if exp.subject_id == subject_id]
+            subject_experiments = []
+            for exp in experiments_dict.values():
+                if isinstance(exp, dict):
+                    exp_subject_id = exp.get('subject_id')
+                else:
+                    exp_subject_id = getattr(exp, 'subject_id', None)
+                if exp_subject_id == subject_id:
+                    subject_experiments.append(exp)
             item.setText(3, str(len(subject_experiments)))
-            # Recording count per subject
+
+            # Recording count per subject - count videos for all experiments of this subject
             rec_count = 0
-            if state_manager is not None:
+            if project_manager is not None:
                 try:
-                    rec_count = state_manager.get_recording_count_for_subject(subject_id)
+                    for exp in subject_experiments:
+                        exp_id = exp.get('id') if isinstance(exp, dict) else getattr(exp, 'id', None)
+                        if exp_id:
+                            videos = project_manager.get_videos_for_experiment(exp_id)
+                            rec_count += len(videos)
                 except Exception:
                     pass
             item.setText(4, str(rec_count))
@@ -133,18 +150,27 @@ class MetadataTreeView(QTreeWidget):
             # Add experiment children
             for experiment in subject_experiments:
                 exp_item = SubjectTreeWidgetItem(item)
-                exp_item.setText(0, experiment.id)
+                if isinstance(experiment, dict):
+                    exp_id = experiment.get('id', 'Unknown')
+                    exp_type = experiment.get('type', experiment.get('experiment_type', 'Unknown'))
+                else:
+                    exp_id = getattr(experiment, 'id', 'Unknown')
+                    exp_type = getattr(experiment, 'experiment_type', getattr(experiment, 'type', 'Unknown'))
+
+                exp_item.setText(0, str(exp_id))
                 exp_item.setText(1, "")  # Sex column blank for experiments
                 exp_item.setText(2, "")  # Genotype column blank for experiments
-                exp_item.setText(3, experiment.type)
+                exp_item.setText(3, str(exp_type))
+
                 # Column 4 – recordings per experiment
-                rec_exp = 0
-                if state_manager is not None:
+                exp_rec_count = 0
+                if project_manager is not None and exp_id != 'Unknown':
                     try:
-                        rec_exp = state_manager.get_recording_count_for_experiment(experiment.id)
+                        videos = project_manager.get_videos_for_experiment(exp_id)
+                        exp_rec_count = len(videos)
                     except Exception:
                         pass
-                exp_item.setText(4, str(rec_exp))
+                exp_item.setText(4, str(exp_rec_count))
         
         # Expand all items for better visibility
         self.expandAll()

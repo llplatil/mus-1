@@ -14,61 +14,42 @@ This roadmap shows current status and planned development priorities. Items are 
 ## Development Priorities
 
 ### High Priority
-1. **GUI Migration**: Update GUI components to use clean architecture
+1. **GUI Migration**: Update remaining GUI components to use clean architecture (Subject View ✅, Video Linking ✅)
 2. **Plugin Migration**: Migrate existing plugins to new service pattern
 3. **Code Cleanup**: Remove redundant DTOs and unused code
 
-4. **✅/🔄 COMPLETED/PARTIAL: Authoritative Setup & Project Flow**
-   - **✅ Make MUS1 root selection in GUI wizard authoritative**:
-     - Use page-selected root to construct `MUS1RootLocationDTO`
-     - Immediately re-initialize `ConfigManager` to `<root>/config/config.db` after MUS1 root step succeeds (before saving user/storage/lab)
-       - **✅ In `src/mus1/gui/setup_wizard.py`**: after calling `setup_service.setup_mus1_root_location`, call `init_config_manager(<root>/config/config.db)` and re-create the `SetupService` so subsequent `set_config` writes target the new DB
-       - **✅ In `src/mus1/core/setup_service.py`**: stop caching `config_manager` at construction; fetch via `get_config_manager()` inside each operation or provide a `rebind_config_manager()` used right after root commit
-       - **✅ Ensure `run_setup_workflow` executes MUS1 root first, checks success, then proceeds; short-circuit and surface error state if root fails
-   - **✅ Ensure setup workflow runs async**
-   - **🔄 Conclusion page per-step rendering pending**
-     - In `ConclusionPage`, render per-step statuses from `result["steps_completed"]` and `result["errors"]`; remove generic success text when errors exist
-   - **✅ Wire `ProjectView` to active `ProjectManagerClean` from `MainWindow`**
-   - **✅ Register newly created projects under labs**:
-     - Set `lab_id` in project config when lab is known/selected
-     - Append to `labs[lab_id].projects` with name/path/created_date
-   - Replace modal popups during setup with navigation/status log output for development builds (follow project logging bus guidelines) — 🔄 pending
+4. **🔄 PARTIAL: Setup & Project Flow**
+   - **❌ MUS1 root selection and ConfigManager re-initialization**: JSON serialization bugs break project loading
+   - **❌ Setup workflow async execution**: Works but error handling incomplete, conclusion page doesn't show per-step status
+   - **✅ ProjectView wiring**: Subject View and experiment management now use clean architecture
+   - **❌ Lab-project registration**: GUI integration broken despite database schema existing
+   - **❌ Modal popup replacement**: Still uses QMessageBox in development builds
 
-5. **🔄 PARTIALLY COMPLETED: Workgroup Model with Shareable Key (SQL, not JSON)**
-   - **✅ Add normalized tables in the configuration database for collaborative grouping**:
-     - **✅ In `src/mus1/core/schema.py` (config DB context), create `WorkgroupModel(id, name, share_key_hash, created_at)` and `WorkgroupMemberModel(workgroup_id, member_email, role, added_at)`**
-     - Store only a salted hash of the shareable key; never persist the raw key
-     - Provide key generation/rotation and join-by-key verification utilities in `src/mus1/core/setup_service.py`
-  - Wizard integration — 🔄 pending:
-     - Add a `Workgroup` page to create a workgroup (name) and generate a one-time display shareable key; allow joining an existing workgroup via key
-     - Persist membership using the current `user.email`; link selected `lab` records to `workgroup_id` when applicable
-  - CLI parity — 🔄 pending:
-     - Expose `mus1 setup workgroup create`, `mus1 setup workgroup rotate-key`, and `mus1 setup workgroup join --key` with clear `--help` entries
+5. **❌ NOT IMPLEMENTED: Workgroup Model**
+   - **✅ Database schema exists**: Models created but no functional UI or CLI implementation
 
-6. **✅ COMPLETED: Normalize Labs to SQL (avoid JSON in config entries)**
-   - **✅ Replace `labs` JSON blob in user scope with relational tables in the configuration database**:
-     - **✅ Create `LabModel(id, name, institution, pi_name, creator_id, created_at)` and `LabProjectModel(lab_id, name, path, created_date)`**
-     - **✅ Migrate reads/writes in `src/mus1/core/setup_service.py` from `set_config("labs", ...)` to SQL CRUD via a lightweight repository**
-   - **✅ Provide a one-time migration that reads existing `labs` config entry and populates the new tables** (via backward-compatible get_labs() method)
+   - **❌ No key generation/verification**: Utilities not implemented
 
-7. **✅ COMPLETED: GUI Tab Reorganization**
-   - **✅ Add Settings tab with User Settings, Lab Settings, and Workers**:
-     - Create `SettingsView` with navigation for "User Settings", "Lab Settings", "Workers"
-     - Move Workers functionality from `ProjectView` to `SettingsView`
-     - Keep Project tab focused on project-specific operations
-   - **✅ User Settings**: Profile management (name, email, organization, default directories)
-   - **✅ Lab Settings**: Lab creation, management, and project association viewing
-   - **✅ Workers**: SSH worker configuration moved from Project tab
+6. **❌ BROKEN: Lab Management**
+   - **✅ Database schema exists**: LabModel and LabProjectModel tables created
+   - **❌ Migration incomplete**: One-time migration not properly implemented
+   - **❌ GUI integration broken**: Lab-project association doesn't work in practice
 
-8. **Wizard UX & Preferences**
-   - Add a `Project Storage` page to choose `user.default_projects_dir` explicitly; create directory if missing
-   - Add an `App Preferences` page (theme, global sort mode, optional telemetry) and persist via `ConfigManager` under `user.*`
-   - Update `src/mus1/gui/setup_wizard.py` to remove `QMessageBox` info/critical usage in dev; surface messages via the navigation/status pane
+7. **❌ BROKEN: GUI Tab Reorganization**
+   - **❌ Settings tab exists**: Basic tab structure created but functionality broken
+   - **❌ User Settings**: Profile management has bugs due to state_manager references
+   - **❌ Lab Settings**: Lab creation/management broken
+   - **❌ Workers**: SSH worker configuration moved but may not work due to missing methods
 
-9. **Config Root Usage Consistency & Locator**
-   - Implement root pointer file at platform default path to rediscover chosen MUS1 root across launches/reinstalls — ✅ implemented
-   - Startup resolution order: env var → pointer → platform default → create default — ✅ implemented
-   - Wizard updates pointer after root selection; app rebinds ConfigManager immediately — ✅ implemented
+8. **❌ NOT IMPLEMENTED: Wizard UX & Preferences**
+
+   - **❌ No App Preferences page**: Theme/sort preferences not in wizard
+   - **❌ QMessageBox still used**: Modal popups not replaced with navigation log
+
+9. **❌ BROKEN: Config Root Usage Consistency**
+
+   - **❌ ConfigManager rebinding**: Works but project corruption makes it irrelevant
+   - **❌ Startup resolution**: Fails when projects are corrupted
    - In `src/mus1/main.py`, prefer configured `get_config("mus1.root_path")` for logs when present; fall back to `resolve_mus1_root()` only if unset — 🔄 pending
    - Implement optional "Copy existing configuration to new location" when creating a new root — 🔄 pending (wizard collects flag; service does not copy)
 11. **Lab-Centric Sharing (Planned)**
@@ -145,12 +126,16 @@ This roadmap shows current status and planned development priorities. Items are 
 - `src/mus1/gui/setup_wizard.py`: **✅ COMPLETED** - reordered workflow with proper ConfigManager re-initialization, async execution, error handling
 - `src/mus1/core/setup_service.py`: **✅ COMPLETED** - removed cached config reference, migrated lab CRUD to SQL repository with User/Lab entities
 - `src/mus1/core/config_manager.py`: **✅ COMPLETED** - `init_config_manager(path)` exposed and used for immediate rebind after root setup; root pointer implemented
-- `src/mus1/core/schema.py`: **✅ COMPLETED** - added UserModel, LabModel, LabProjectModel, WorkgroupModel, WorkgroupMemberModel tables
-- `src/mus1/core/repository.py`: **✅ COMPLETED** - added UserRepository, LabRepository with proper CRUD operations
-- `src/mus1/core/metadata.py`: **✅ COMPLETED** - added User, Lab, Workgroup domain models and DTOs
+- `src/mus1/core/schema.py`: **✅ COMPLETED** - added UserModel, LabModel, LabProjectModel, WorkgroupModel, WorkgroupMemberModel, experiment_videos tables
+- `src/mus1/core/repository.py`: **✅ COMPLETED** - added UserRepository, LabRepository, VideoRepository with proper CRUD operations including find_by_path and merge handling
+- `src/mus1/core/metadata.py`: **✅ COMPLETED** - added User, Lab, Workgroup domain models and DTOs; fixed Subject dataclass conflicts and genotype aliasing
+- `src/mus1/core/project_manager_clean.py`: **✅ COMPLETED** - added batch creation, video linking with proper SQL text() usage
 - `src/mus1/gui/settings_view.py`: **✅ COMPLETED** - new SettingsView with User Settings, Lab Settings, Workers pages
 - `src/mus1/gui/main_window.py`: **✅ COMPLETED** - added Settings tab, updated tab management and theme propagation
 - `src/mus1/gui/project_view.py`: **✅ COMPLETED** - removed Workers functionality, focused on project operations
+- `src/mus1/gui/subject_view.py`: **✅ COMPLETED** - migrated to clean architecture, removed state_manager dependencies, fixed metadata display data format
+- `src/mus1/gui/metadata_display.py`: **✅ COMPLETED** - added dict support for clean architecture data flow, disabled dangerous editing
+- `src/mus1/gui/experiment_view.py`: **✅ COMPLETED** - added batch creation functionality with experiment selection grid
 - `src/mus1/main.py`: prefer configured root for logs; avoid unconditional `resolve_mus1_root()` after setup — 🔄 pending
 - `src/mus1/core/setup_service.py`: implement optional copy of existing config on root creation — 🔄 pending
 - `src/mus1/core/simple_cli.py`: stop writing duplicate user profile keys; rely on SQL-backed services — 🔄 pending

@@ -1,7 +1,7 @@
 from .qt import (
     QWidget, QVBoxLayout, QFormLayout, QLabel, QLineEdit, QHBoxLayout,
     QPushButton, QListWidget, QListWidgetItem, QComboBox, QFileDialog, QMessageBox,
-    Qt
+    Qt, QCheckBox, QSlider
 )
 """
 Settings View - GUI for application-wide settings including users, labs, and workers.
@@ -22,10 +22,11 @@ class SettingsView(BaseView):
 
     def __init__(self, parent=None):
         super().__init__(parent, view_name="settings")
-        self.setup_navigation(["User Settings", "Lab Settings", "Workers"])
+        self.setup_navigation(["User Settings", "Lab Settings", "Workers", "General Settings"])
         self.setup_user_settings_page()
         self.setup_lab_settings_page()
         self.setup_workers_page()
+        self.setup_general_settings_page()
         # Do not change pages here; lifecycle handles activation
 
     # --- Lifecycle hooks ---
@@ -447,8 +448,229 @@ class SettingsView(BaseView):
         except Exception as e:
             self.navigation_pane.add_log_message(f"Remove worker failed: {e}", "error")
 
+    def setup_general_settings_page(self):
+        """Setup the General Settings page with application-wide settings."""
+        self.general_settings_page = QWidget()
+        layout = self.setup_page_layout(self.general_settings_page)
+
+        # 1. Display Settings Group
+        display_group, display_layout = self.create_form_section("Display Settings", layout)
+        theme_row = self.create_form_row(display_layout)
+        theme_label = self.create_form_label("Application Theme:")
+        self.theme_dropdown = QComboBox()
+        self.theme_dropdown.setProperty("class", "mus1-combo-box")
+        self.theme_dropdown.addItems(["dark", "light", "os"])
+        theme_button = QPushButton("Apply Theme")
+        theme_button.setProperty("class", "mus1-primary-button")
+        theme_button.clicked.connect(lambda: self.handle_change_theme(self.theme_dropdown.currentText()))
+        theme_row.addWidget(theme_label)
+        theme_row.addWidget(self.theme_dropdown, 1)
+        theme_row.addWidget(theme_button)
+
+        # 2. List Sort Settings Group
+        sort_group, sort_layout = self.create_form_section("List Sort Settings", layout)
+        sort_row = self.create_form_row(sort_layout)
+        sort_label = self.create_form_label("Global Sort Mode:")
+        self.sort_mode_dropdown = QComboBox()
+        self.sort_mode_dropdown.setProperty("class", "mus1-combo-box")
+        self.sort_mode_dropdown.addItems([
+            "Newest First",
+            "Recording Date",
+            "ID Order",
+            "By Type"
+        ])
+        sort_row.addWidget(sort_label)
+        sort_row.addWidget(self.sort_mode_dropdown, 1)
+        apply_sort_mode_button = QPushButton("Apply Sort Mode")
+        apply_sort_mode_button.setProperty("class", "mus1-primary-button")
+        apply_sort_mode_button.clicked.connect(lambda: self.on_sort_mode_changed(self.sort_mode_dropdown.currentText()))
+        sort_row.addWidget(apply_sort_mode_button)
+
+        # 3. Video Settings Group
+        video_group, video_layout = self.create_form_section("Video Settings", layout)
+
+        # Create the frame rate row first
+        frame_rate_row = self.create_form_row(video_layout)
+
+        self.enable_frame_rate_checkbox = QCheckBox("Enable Global Frame Rate")
+        self.enable_frame_rate_checkbox.setChecked(False)
+
+        self.frame_rate_slider = QSlider(Qt.Orientation.Horizontal)
+        self.frame_rate_slider.setRange(0, 120)
+        self.frame_rate_slider.setValue(60)
+        self.frame_rate_slider.setProperty("mus1-slider", True)
+        self.frame_rate_slider.setEnabled(False)
+        self.enable_frame_rate_checkbox.toggled.connect(self.frame_rate_slider.setEnabled)
+
+        # Create a label to display the current slider value
+        self.frame_rate_value_label = QLabel(str(self.frame_rate_slider.value()))
+        self.frame_rate_value_label.setFixedWidth(40)  # Fixed width for consistent UI sizing
+        self.frame_rate_slider.valueChanged.connect(lambda val: self.frame_rate_value_label.setText(str(val)))
+
+        frame_rate_row.addWidget(self.enable_frame_rate_checkbox)
+        frame_rate_row.addWidget(self.frame_rate_slider, 1)  # Slider with stretch factor
+        frame_rate_row.addWidget(self.frame_rate_value_label)
+        apply_frame_rate_button = QPushButton("Apply Frame Rate")
+        apply_frame_rate_button.setProperty("class", "mus1-primary-button")
+        apply_frame_rate_button.clicked.connect(self.handle_apply_frame_rate)
+        frame_rate_row.addWidget(apply_frame_rate_button)
+
+        help_label = QLabel("When enabled, this global frame rate will be used for all files unless explicitly overridden.")
+        help_label.setWordWrap(True)
+        help_label.setProperty("class", "mus1-help-text")
+        help_label.setVisible(False)
+        video_layout.addWidget(help_label)
+
+        self.enable_frame_rate_checkbox.toggled.connect(lambda checked: help_label.setVisible(checked))
+
+        apply_button_row = self.create_button_row(layout)
+        apply_settings_button = QPushButton("Apply All Settings")
+        apply_settings_button.setProperty("class", "mus1-primary-button")
+        apply_settings_button.clicked.connect(self.handle_apply_general_settings)
+        apply_button_row.addWidget(apply_settings_button)
+
+        layout.addStretch(1)
+        self.add_page(self.general_settings_page, "General Settings")
+
+        # Initialize settings from state
+        self.update_sort_mode_from_state()
+        self.update_frame_rate_from_state()
+
+    def handle_apply_general_settings(self):
+        """Apply the general settings."""
+        # First, apply the theme based on the theme dropdown
+        theme_choice = self.theme_dropdown.currentText()
+
+        # Retrieve other settings from the UI
+        sort_mode = self.sort_mode_dropdown.currentText()
+        frame_rate_enabled = self.enable_frame_rate_checkbox.isChecked()
+        frame_rate = self.frame_rate_slider.value()  # Get value from slider instead of spin box
+
+        # Create settings dictionary with all values
+        settings = {
+            "theme_mode": theme_choice,
+            "global_sort_mode": sort_mode,
+            "global_frame_rate_enabled": frame_rate_enabled,
+            "global_frame_rate": frame_rate
+        }
+
+        # Update settings using project config
+        if self.window().project_manager:
+            self.window().project_manager.config.settings.update(settings)
+            # Save the project to persist these settings
+            self.window().project_manager.save_project()
+
+            # Call through MainWindow to propagate theme changes across the application
+            self.window().change_theme(theme_choice)
+
+        self.navigation_pane.add_log_message("Applied general settings to current project.", "success")
+
+    def handle_apply_frame_rate(self):
+        """Handle the 'Apply Frame Rate' button click."""
+        frame_rate_enabled = self.enable_frame_rate_checkbox.isChecked()
+        frame_rate = self.frame_rate_slider.value()
+
+        # Create settings dictionary with frame rate values
+        settings = {
+            "global_frame_rate_enabled": frame_rate_enabled,
+            "global_frame_rate": frame_rate
+        }
+
+        # Update settings using project config
+        if self.window().project_manager:
+            self.window().project_manager.config.settings.update(settings)
+            # Save project to persist changes
+            self.window().project_manager.save_project()
+
+        self.navigation_pane.add_log_message(f"Applied frame rate settings: {'Enabled' if frame_rate_enabled else 'Disabled'}, {frame_rate} fps", "success")
+
+    def on_sort_mode_changed(self, new_sort_mode: str):
+        """Update the project config's global_sort_mode and refresh data."""
+        if self.window().project_manager:
+            # Update sort mode using project config
+            self.window().project_manager.config.settings["global_sort_mode"] = new_sort_mode
+            # Save project to persist changes
+            self.window().project_manager.save_project()
+
+            # Refresh lists to show new sorting (repositories will use the updated sort mode)
+            self.refresh_lists()
+
+    def handle_change_theme(self, theme_choice: str):
+        """
+        UI handler for theme change requests, delegates actual change to MainWindow.
+        """
+        main_window = self.window()
+        if main_window:
+            main_window.change_theme(theme_choice)
+
+    def update_frame_rate_from_state(self):
+        """Update frame rate settings from the current state using DataManager resolution."""
+        # Frame rate management is not implemented in the new architecture yet
+        # Set default values for now
+        frame_rate_enabled = False
+        display_rate = 60  # Default frame rate
+
+        # Update UI elements if they exist
+        if hasattr(self, 'frame_rate_slider'):
+             # Ensure value is within slider range
+             display_rate = max(self.frame_rate_slider.minimum(), min(display_rate, self.frame_rate_slider.maximum()))
+             self.frame_rate_slider.setValue(display_rate)
+        if hasattr(self, 'enable_frame_rate_checkbox'):
+            # Block signals temporarily to avoid triggering handler during update
+            self.enable_frame_rate_checkbox.blockSignals(True)
+            self.enable_frame_rate_checkbox.setChecked(frame_rate_enabled)
+            self.enable_frame_rate_checkbox.blockSignals(False)
+
+        self.navigation_pane.add_log_message("Frame rate management not yet implemented in clean architecture.", "info")
+        if hasattr(self, 'frame_rate_value_label'):
+             self.frame_rate_value_label.setText(str(display_rate))
+
+    def update_sort_mode_from_state(self):
+        """Update sort mode dropdown from the current state."""
+        # Check if we have the sort mode dropdown
+        if not hasattr(self, 'sort_mode_dropdown'):
+            return
+
+        # Get current sort mode from project config, default to "Newest First"
+        pm = self.window().project_manager if self.window() else None
+        if pm:
+            current_sort_mode = pm.config.settings.get("global_sort_mode", "Newest First")
+            index = self.sort_mode_dropdown.findText(current_sort_mode)
+            if index >= 0:
+                self.sort_mode_dropdown.setCurrentIndex(index)
+        else:
+            # Default to first item if no project loaded
+            self.sort_mode_dropdown.setCurrentIndex(0)
+
+        self.navigation_pane.add_log_message("Sort mode loaded from project settings.", "info")
+
+    def update_theme_dropdown_from_state(self):
+        """Update theme dropdown based on current theme setting"""
+        if not hasattr(self, 'theme_dropdown'):
+            return
+
+        # Get current theme from config manager
+        try:
+            from ..core.config_manager import get_config_manager
+            config_manager = get_config_manager()
+            current_theme = config_manager.get("ui.theme", "dark")  # Default to dark
+
+            # Update dropdown to match current theme
+            index = self.theme_dropdown.findText(current_theme)
+            if index >= 0:
+                self.theme_dropdown.setCurrentIndex(index)
+                self.navigation_pane.add_log_message(f"Theme dropdown set to: {current_theme}", "info")
+            else:
+                self.navigation_pane.add_log_message(f"Theme '{current_theme}' not found in dropdown options", "warning")
+        except Exception as e:
+            self.navigation_pane.add_log_message(f"Error loading theme setting: {e}", "error")
+
     def refresh_lists(self):
         """Refresh all lists in the settings view."""
         self.load_user_settings()
         self.load_labs()
         self.refresh_workers_list()
+        # Initialize general settings from state
+        self.update_sort_mode_from_state()
+        self.update_frame_rate_from_state()
+        self.update_theme_dropdown_from_state()

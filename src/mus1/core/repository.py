@@ -7,6 +7,7 @@ This provides a clean abstraction over the SQLite database for domain operations
 from typing import List, Optional, Dict, Any
 from pathlib import Path
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 from .metadata import Subject, Experiment, VideoFile, Worker, ScanTarget
 from .schema import (
     Database, SubjectModel, ExperimentModel, VideoModel,
@@ -212,32 +213,71 @@ class VideoRepository(BaseRepository):
 
     def save(self, video: VideoFile) -> VideoFile:
         """Save a video file record."""
-        db_video = VideoModel(
-            path=str(video.path),
-            hash=video.hash,
-            recorded_time=video.recorded_time,
-            size_bytes=video.size_bytes,
-            last_modified=video.last_modified,
-            date_added=video.date_added
-        )
         with self._get_session() as session:
-            session.add(db_video)
-            session.commit()
-            # Convert back to domain object
-            return VideoFile(
-                path=Path(db_video.path),
-                hash=db_video.hash,
-                recorded_time=db_video.recorded_time,
-                size_bytes=db_video.size_bytes,
-                last_modified=db_video.last_modified,
-                date_added=db_video.date_added
-            )
+            # Check if video already exists by path
+            existing = session.query(VideoModel).filter(VideoModel.path == str(video.path)).first()
+
+            if existing:
+                # Update existing record
+                existing.hash = video.hash
+                existing.recorded_time = video.recorded_time
+                existing.size_bytes = video.size_bytes
+                existing.last_modified = video.last_modified
+                existing.date_added = video.date_added
+                session.commit()
+                # Return updated video
+                return VideoFile(
+                    path=Path(existing.path),
+                    hash=existing.hash,
+                    recorded_time=existing.recorded_time,
+                    size_bytes=existing.size_bytes,
+                    last_modified=existing.last_modified,
+                    date_added=existing.date_added
+                )
+            else:
+                # Create new record
+                db_video = VideoModel(
+                    path=str(video.path),
+                    hash=video.hash,
+                    recorded_time=video.recorded_time,
+                    size_bytes=video.size_bytes,
+                    last_modified=video.last_modified,
+                    date_added=video.date_added
+                )
+                session.add(db_video)
+                session.commit()
+                # Convert back to domain object
+                return VideoFile(
+                    path=Path(db_video.path),
+                    hash=db_video.hash,
+                    recorded_time=db_video.recorded_time,
+                    size_bytes=db_video.size_bytes,
+                    last_modified=db_video.last_modified,
+                    date_added=db_video.date_added
+                )
 
     def find_by_hash(self, hash_value: str) -> Optional[VideoFile]:
         """Find video by hash."""
         with self._get_session() as session:
             db_video = session.query(VideoModel).filter(
                 VideoModel.hash == hash_value
+            ).first()
+            if db_video:
+                return VideoFile(
+                    path=Path(db_video.path),
+                    hash=db_video.hash,
+                    recorded_time=db_video.recorded_time,
+                    size_bytes=db_video.size_bytes,
+                    last_modified=db_video.last_modified,
+                    date_added=db_video.date_added
+                )
+        return None
+
+    def find_by_path(self, path: Path) -> Optional[VideoFile]:
+        """Find video by path."""
+        with self._get_session() as session:
+            db_video = session.query(VideoModel).filter(
+                VideoModel.path == str(path)
             ).first()
             if db_video:
                 return VideoFile(

@@ -285,74 +285,66 @@ CREATE TABLE experiments (
 
 ## Current Status
 
-### Working Components
-- **Application-level user and lab management**: SQL-based user/lab entities with proper relationships
-- **Complete user-lab-project-workgroup hierarchy**: Full relational schema with foreign keys
-- **Re-runnable setup wizard**: Can be launched anytime via `--setup` flag or GUI menu
-- **Clean entry point flow**: Setup Wizard → User/Lab Selection → Project Management
-- **Project creation and management**: Centralized in Project tab with lab association
-- **Clean setup workflow**: Proper ConfigManager re-initialization after MUS1 root selection
-- **Organized GUI architecture**: Settings tab with User Settings, Lab Settings, and Workers
-- SQLite-based domain models with lab-colony hierarchy
-- Repository pattern for data access
-- Clean project management with colony relationships
-- Core plugin system with entry-point discovery (GUI integration pending)
-- Hierarchical configuration system
-- Simple CLI interface with setup flag support
+### Actually Working Components
+- **CLI Interface**: Basic command-line operations work reliably
+- **Setup Wizard**: Can be launched via `--setup` flag, basic user profile creation works
+- **Video Linking System**: Videos can be linked to experiments with proper association tables
+- **Subject Management**: Subject creation and genotype handling works with proper data relationships
+- **Batch Creation**: Experiments can be grouped into batches for analysis
+- **SQL Schema**: Database tables exist for users, labs, colonies, subjects, experiments, videos
+- **Repository Pattern**: Data access layer implemented with proper update/merge handling
+- **Project Discovery**: Can find projects in configured locations
+- **Configuration System**: Basic hierarchical config with JSON serialization
 
-### Known Limitations
-- Some plugins require updates for new service pattern
-- Windows/Linux video scanners lack OS-specific optimizations
-- Workgroup features partially implemented (models exist, UI integration pending)
-- Setup wizard still uses modal popups (`QMessageBox`) for some flows; per dev guidelines, these should be replaced by the navigation/status log in development builds
-- Conclusion page does not render per-step statuses from `steps_completed`/`errors`; it shows generic success/failure
-- `main.py` currently resolves logs root via `resolve_mus1_root()`; should prefer configured `mus1.root_path` when present
-- CLI `simple_cli.py` persists user profile fields in ConfigManager; conflicts with the “SQL authoritative” model until migration is wired
-- "Copy existing configuration to new location" flag is collected by the wizard but not acted on in `SetupService`
-- GUI does not yet surface discovered plugins; Experiment view lists use placeholders
+### Known Issues & Remaining Components
+- **GUI Has Some Remaining Bugs**: Subject View and video linking now work, some AttributeError issues remain in other views
+- **State Manager References**: Resolved in Subject View and core video linking functionality
+- **Incomplete Clean Architecture Migration**: Subject View and experiment management now use clean architecture, some components still need migration
+- **Signal Handling Issues**: Most signal disconnections fixed, some warnings remain in edge cases
+- **Plugin System**: Entry-point discovery exists but GUI integration is broken
+- **Workgroup Features**: Models exist but no functional UI implementation
+- **Modal Popups**: Still used in development builds instead of navigation log as per guidelines
+- **User Profile Persistence**: CLI and GUI store user data in conflicting ways
+- **Setup Workflow**: Async execution implemented but error handling incomplete
+- **Lab-Project Association**: Database schema exists but GUI integration broken
 
 ## Findings from Initial Setup and Project Creation Audit (2025-09)
 
 This section documents concrete gaps discovered during the "user → lab setup → drive selection → project creation" flow and the corrections applied.
 
-### ✅ **RESCOPED: MUS1 Root Selection Removed from Wizard**
-- Change: The wizard no longer selects the application root. The app root is determined deterministically (env var → root pointer → platform default → create).
-- Impact: The wizard cannot inadvertently redirect logs/config to lab/project drives. Root relocation is handled by a startup prompt when a prior pointer is invalid.
+### **Incomplete/Incorrect Claims - Current Status**
 
-### ✅/🔄 **SETUP WORKFLOW: Async Execution Implemented; Per-Step UI Pending**
-- Problem: `SetupWorker.run()` was invoked on the GUI thread; failure paths didn't update the conclusion page.
-- Impact: Potential UI freezes; conclusion page stuck on "in progress" after errors.
-- Status: **Fixed (Async)**. Worker runs in a `QThread`, and both success and error paths emit through `setup_completed`.
-- Status: **Outstanding (Per-Step UI)**. Conclusion page does not yet render per-step statuses/errors from the workflow result; it shows generic success/failure.
+Many of the claimed fixes are not actually working due to critical bugs:
 
-### ✅ **FIXED: ProjectView Not Wired to Active ProjectManagerClean**
-- Problem: Methods referenced `self.project_manager` which wasn't set; some other places used `self.window().project_manager`.
-- Impact: Rename/settings/admin actions failed silently.
-- Status: **Fixed**. `set_gui_services` now also wires `self.project_manager = self.window().project_manager` when available.
+#### **❌ BROKEN: JSON Serialization Issues**
+- **Problem**: Path objects in config cause serialization failures, corrupting project.json files
+- **Impact**: Projects fail to load, requiring manual recovery or recreation
+- **Status**: **Still Broken**. Recent attempts to fix caused more corruption.
 
-### ✅ **FIXED: New Projects Not Registered Under Labs**
-- Problem: Project creation didn't append to `labs[lab_id].projects` and didn't set `lab_id` in project config.
-- Impact: Discovery (which prioritizes labs) missed new projects; lab linkage broken.
-- Status: **Fixed**. When exactly one lab exists, the dialog associates the project via `ProjectManagerClean.set_lab_id()` and appends to the lab's `projects` list.
+#### **❌ BROKEN: GUI State Manager References**
+- **Problem**: GUI code still references non-existent `state_manager` objects
+- **Impact**: AttributeError exceptions throughout the GUI
+- **Status**: **Still Broken**. Migration to clean architecture is incomplete.
 
-### ✅ **FIXED: ConfigManager Instancing**
-- Problem: `SetupService` cached ConfigManager instance, preventing proper re-initialization after MUS1 root changes.
-- Impact: Setup writes went to wrong database when custom root was selected.
-- Status: **Fixed**. `SetupService` now fetches fresh ConfigManager instances for each operation, allowing proper re-initialization.
+#### **❌ BROKEN: Signal Handling Issues**
+- **Problem**: Qt signal disconnections fail with runtime warnings
+- **Impact**: GUI instability and warning spam
+- **Status**: **Still Broken**. Signal management needs proper cleanup.
 
-### ✅ **IMPLEMENTED: Application-Level User and Lab Management**
-- Problem: Labs stored as JSON blobs in config; no proper user management or relational structure.
-- Impact: Difficult to manage users across projects, no proper lab relationships.
-- Status: **Implemented**. Added SQL schema with `UserModel`, `LabModel`, `LabProjectModel` tables. Created repositories and updated setup to store users/labs in SQL database with proper relationships.
+#### **❌ BROKEN: Project Loading**
+- **Problem**: Due to JSON corruption and missing methods, project loading often fails
+- **Impact**: Users cannot reliably open existing projects
+- **Status**: **Still Broken**. Requires comprehensive fix of serialization and missing methods.
 
-### ✅ **IMPLEMENTED: GUI Tab Reorganization**
-### ✅ **FIXED: App Logging/Config Path Consistency**
-- Result: Logging is configured via `LoggingEventBus.configure_app_file_handler()` and always uses the OS app root. This is fully decoupled from lab/project storage.
-- Follow-up: Prefer central helpers for app paths; direct calls to `resolve_mus1_root()` remain acceptable for app-root concerns.
+#### **❌ BROKEN: Lab-Project Association**
+- **Problem**: Database schema exists but GUI integration is broken
+- **Impact**: Projects not properly linked to labs in practice
+- **Status**: **Still Broken**. GUI doesn't properly register projects with labs.
 
-### ✅ **IMPLEMENTED: Copy Existing Configuration (Best-Effort)**
-- Behavior: `SetupService.setup_mus1_root_location` supports best-effort copying of an existing `config.db` to a new root when requested and a valid source exists.
-- Note: The wizard’s default flow does not move the app root.
+#### **❌ BROKEN: Clean Architecture Migration**
+- **Problem**: Many GUI components still use old patterns and direct database access
+- **Impact**: Inconsistent data handling and broken features
+- **Status**: **Still Broken**. Migration is partial and incomplete.
 
 ### ✅/🔄 **User Profile Single Source of Truth**
 - Implemented: Only `user.id` is persisted in ConfigManager; user fields live in SQL. A one-time migration from legacy keys to SQL is invoked at startup.
