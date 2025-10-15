@@ -1,0 +1,876 @@
+from .qt import (
+    QWidget, QVBoxLayout, QFormLayout, QLabel, QLineEdit, QHBoxLayout,
+    QPushButton, QListWidget, QListWidgetItem, QComboBox, QFileDialog, QMessageBox,
+    Qt, QCheckBox, QSlider, QGroupBox
+)
+"""
+Lab View - GUI for lab-wide management including colonies, shared projects, and lab settings.
+
+This view provides centralized management for:
+- Colony management within labs
+- Shared projects accessible to lab members
+- Lab member management
+- Lab settings and configuration
+"""
+
+from pathlib import Path
+from .base_view import BaseView
+from typing import Dict, Any
+
+
+class LabView(BaseView):
+    """Lab view for lab-wide management and configuration."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent, view_name="lab")
+        self.lab_service = None
+        self.setup_navigation(["Colonies", "Shared Projects", "Lab Members", "Lab Settings"])
+        self.setup_colonies_page()
+        self.setup_shared_projects_page()
+        self.setup_lab_members_page()
+        self.setup_lab_settings_page()
+        # Do not change pages here; lifecycle handles activation
+
+    # --- Lifecycle hooks ---
+    def on_services_ready(self, services):
+        super().on_services_ready(services)
+        # Services is the factory, create our lab service
+        self.lab_service = services.create_lab_service()
+
+    def on_activated(self):
+        # Refresh data when lab tab becomes active
+        self.refresh_lab_data()
+        # Also refresh lab-specific data for currently selected lab
+        self.load_colonies()
+        self.load_shared_projects()
+        self.load_lab_members()
+
+    def setup_colonies_page(self):
+        """Setup the Colonies page for managing colonies within the lab."""
+        self.colonies_page = QWidget()
+        layout = self.setup_page_layout(self.colonies_page)
+
+        # Colonies List Group
+        self.colonies_list = QListWidget()
+        self.colonies_list.setProperty("class", "mus1-list-widget")
+        self.create_form_with_list("Lab Colonies", self.colonies_list, layout)
+
+        # Colony Details Group
+        details_group, details_layout = self.create_form_section("Colony Details", layout)
+
+        # Create labeled input rows using helper method
+        self.colony_name_edit = QLineEdit()
+        self.colony_name_edit.setProperty("class", "mus1-text-input")
+        self.create_labeled_input_row("Colony Name:", self.colony_name_edit, details_layout)
+
+        self.colony_strain_edit = QLineEdit()
+        self.colony_strain_edit.setProperty("class", "mus1-text-input")
+        self.create_labeled_input_row("Background Strain:", self.colony_strain_edit, details_layout)
+
+        self.colony_gene_edit = QLineEdit()
+        self.colony_gene_edit.setProperty("class", "mus1-text-input")
+        self.create_labeled_input_row("Gene of Interest:", self.colony_gene_edit, details_layout)
+
+        # Genotype Distribution Group
+        genotype_group, genotype_layout = self.create_form_section("Genotype Distribution", layout)
+
+        # Show the three genotypes that exist within this colony for the gene of interest
+        genotype_info = QLabel("Within this colony, subjects will have genotypes: KO, HET, WT\nfor the gene of interest. Cross-breeding maintains this distribution.")
+        genotype_info.setWordWrap(True)
+        genotype_info.setProperty("class", "mus1-help-text")
+        genotype_layout.addWidget(genotype_info)
+
+        # Subjects in Colony Group
+        self.colony_subjects_list = QListWidget()
+        self.colony_subjects_list.setProperty("class", "mus1-list-widget")
+        self.create_form_with_list("Subjects in Colony", self.colony_subjects_list, layout)
+
+        # Action buttons
+        button_row = self.create_button_row(layout)
+        create_btn = QPushButton("Create New Colony")
+        create_btn.setProperty("class", "mus1-primary-button")
+        create_btn.clicked.connect(self.handle_create_colony)
+        button_row.addWidget(create_btn)
+
+        update_btn = QPushButton("Update Colony")
+        update_btn.setProperty("class", "mus1-secondary-button")
+        update_btn.clicked.connect(self.handle_update_colony)
+        button_row.addWidget(update_btn)
+
+        layout.addStretch(1)
+        self.add_page(self.colonies_page, "Colonies")
+
+        # Connect colony selection
+        self.colonies_list.itemSelectionChanged.connect(self.on_colony_selected)
+
+        # Load colonies
+        self.load_colonies()
+
+    def setup_shared_projects_page(self):
+        """Setup the Shared Projects page for managing lab-shared projects."""
+        self.shared_projects_page = QWidget()
+        layout = self.setup_page_layout(self.shared_projects_page)
+
+        # Shared Projects List Group
+        self.shared_projects_list = QListWidget()
+        self.shared_projects_list.setProperty("class", "mus1-list-widget")
+        self.create_form_with_list("Shared Projects", self.shared_projects_list, layout)
+
+        # Project Details Group
+        details_group, details_layout = self.create_form_section("Project Details", layout)
+
+        # Create labeled input rows
+        self.shared_project_name_edit = QLineEdit()
+        self.shared_project_name_edit.setProperty("class", "mus1-text-input")
+        self.create_labeled_input_row("Name:", self.shared_project_name_edit, details_layout)
+
+        self.shared_project_path_edit = QLineEdit()
+        self.shared_project_path_edit.setProperty("class", "mus1-text-input")
+        path_row = self.create_form_row(details_layout)
+        path_label = self.create_form_label("Path:")
+        path_browse_btn = QPushButton("Browse...")
+        path_browse_btn.setProperty("class", "mus1-secondary-button")
+        path_browse_btn.clicked.connect(self._browse_shared_project_path)
+        path_row.addWidget(path_label)
+        path_row.addWidget(self.shared_project_path_edit, 1)
+        path_row.addWidget(path_browse_btn)
+
+        # Action buttons
+        button_row = self.create_button_row(layout)
+        add_btn = QPushButton("Add Shared Project")
+        add_btn.setProperty("class", "mus1-primary-button")
+        add_btn.clicked.connect(self.handle_add_shared_project)
+        button_row.addWidget(add_btn)
+
+        remove_btn = QPushButton("Remove Selected")
+        remove_btn.setProperty("class", "mus1-secondary-button")
+        remove_btn.clicked.connect(self.handle_remove_shared_project)
+        button_row.addWidget(remove_btn)
+
+        layout.addStretch(1)
+        self.add_page(self.shared_projects_page, "Shared Projects")
+
+        # Load shared projects
+        self.load_shared_projects()
+
+    def setup_lab_members_page(self):
+        """Setup the Lab Members page for managing lab membership."""
+        self.lab_members_page = QWidget()
+        layout = self.setup_page_layout(self.lab_members_page)
+
+        # Current Lab Members List Group
+        self.lab_members_list = QListWidget()
+        self.lab_members_list.setProperty("class", "mus1-list-widget")
+        self.create_form_with_list("Current Lab Members", self.lab_members_list, layout)
+
+        # Add Member Group
+        add_group, add_layout = self.create_form_section("Add Lab Member", layout)
+
+        # Create labeled input rows
+        self.member_email_edit = QLineEdit()
+        self.member_email_edit.setProperty("class", "mus1-text-input")
+        self.create_labeled_input_row("Email:", self.member_email_edit, add_layout)
+
+        self.member_role_combo = QComboBox()
+        self.member_role_combo.setProperty("class", "mus1-combo-box")
+        self.member_role_combo.addItems(["member", "admin"])
+        role_row = self.create_form_row(add_layout)
+        role_label = self.create_form_label("Role:")
+        role_row.addWidget(role_label)
+        role_row.addWidget(self.member_role_combo, 1)
+
+        # Action buttons
+        button_row = self.create_button_row(layout)
+        add_btn = QPushButton("Add Member")
+        add_btn.setProperty("class", "mus1-primary-button")
+        add_btn.clicked.connect(self.handle_add_lab_member)
+        button_row.addWidget(add_btn)
+
+        remove_btn = QPushButton("Remove Selected Member")
+        remove_btn.setProperty("class", "mus1-secondary-button")
+        remove_btn.clicked.connect(self.handle_remove_lab_member)
+        button_row.addWidget(remove_btn)
+
+        layout.addStretch(1)
+        self.add_page(self.lab_members_page, "Lab Members")
+
+        # Load lab members
+        self.load_lab_members()
+
+    def setup_lab_settings_page(self):
+        """Setup the Lab Settings page (moved from Settings view)."""
+        self.lab_settings_page = QWidget()
+        layout = self.setup_page_layout(self.lab_settings_page)
+
+        # Labs List Group
+        self.labs_list = QListWidget()
+        self.labs_list.setProperty("class", "mus1-list-widget")
+        self.create_form_with_list("Your Labs", self.labs_list, layout)
+
+        # Lab Details Group
+        details_group, details_layout = self.create_form_section("Lab Details", layout)
+
+        # Create labeled input rows using helper method
+        self.lab_name_edit = QLineEdit()
+        self.lab_name_edit.setProperty("class", "mus1-text-input")
+        self.create_labeled_input_row("Name:", self.lab_name_edit, details_layout)
+
+        self.lab_institution_edit = QLineEdit()
+        self.lab_institution_edit.setProperty("class", "mus1-text-input")
+        self.create_labeled_input_row("Institution:", self.lab_institution_edit, details_layout)
+
+        self.lab_pi_edit = QLineEdit()
+        self.lab_pi_edit.setProperty("class", "mus1-text-input")
+        self.create_labeled_input_row("PI Name:", self.lab_pi_edit, details_layout)
+
+        # Projects in Lab Group
+        self.lab_projects_list = QListWidget()
+        self.lab_projects_list.setProperty("class", "mus1-list-widget")
+        self.create_form_with_list("Projects in Lab", self.lab_projects_list, layout)
+
+        # Action buttons
+        button_row = self.create_button_row(layout)
+        create_btn = QPushButton("Create New Lab")
+        create_btn.setProperty("class", "mus1-primary-button")
+        create_btn.clicked.connect(self.handle_create_lab)
+        button_row.addWidget(create_btn)
+
+        update_btn = QPushButton("Update Lab")
+        update_btn.setProperty("class", "mus1-secondary-button")
+        update_btn.clicked.connect(self.handle_update_lab)
+        button_row.addWidget(update_btn)
+
+        layout.addStretch(1)
+        self.add_page(self.lab_settings_page, "Lab Settings")
+
+        # Connect lab selection
+        self.labs_list.itemSelectionChanged.connect(self.on_lab_selected)
+
+        # Load labs
+        self.load_labs()
+
+    # ---- Colonies Methods ----
+    def load_colonies(self):
+        """Load lab colonies for the currently selected lab."""
+        try:
+            # Get the currently selected lab
+            current_lab_item = self.labs_list.currentItem()
+            if not current_lab_item:
+                self.colonies_list.clear()
+                self.navigation_pane.add_log_message("No lab selected - cannot load colonies", "warning")
+                return
+
+            lab_id = current_lab_item.data(Qt.ItemDataRole.UserRole)
+
+            # Get colonies from database
+            from ..core.setup_service import get_setup_service
+            from ..core.repository import get_repository_factory
+
+            setup_service = get_setup_service()
+            db = setup_service._get_database()
+            repo_factory = get_repository_factory(db)
+
+            # Get colonies for this lab
+            colonies = repo_factory.colonies.find_by_lab(lab_id)
+
+            self.colonies_list.clear()
+            for colony in colonies:
+                display_text = f"{colony.gene_of_interest} Colony ({colony.background_strain} background)"
+                item = QListWidgetItem(display_text)
+                # Store colony data for operations
+                item.setData(Qt.ItemDataRole.UserRole, colony.id)
+                item.setData(Qt.ItemDataRole.UserRole + 1, {
+                    'id': colony.id,
+                    'gene_of_interest': colony.gene_of_interest,
+                    'background_strain': colony.background_strain,
+                    'name': colony.name
+                })
+                self.colonies_list.addItem(item)
+
+            self.navigation_pane.add_log_message(f"Loaded {len(colonies)} colonies", "info")
+
+        except Exception as e:
+            self.navigation_pane.add_log_message(f"Error loading colonies: {e}", "error")
+            self.colonies_list.clear()
+
+    def on_colony_selected(self):
+        """Handle colony selection."""
+        current_item = self.colonies_list.currentItem()
+        if not current_item:
+            return
+
+        colony_data = current_item.data(Qt.ItemDataRole.UserRole + 1)
+
+        self.colony_name_edit.setText(colony_data.get('name', ''))
+        self.colony_gene_edit.setText(colony_data.get('gene_of_interest', ''))
+        self.colony_strain_edit.setText(colony_data.get('background_strain', ''))
+
+        # Load subjects for this colony
+        self.load_colony_subjects(colony_data['id'])
+
+    def load_colony_subjects(self, colony_id):
+        """Load subjects for a colony."""
+        try:
+            from ..core.setup_service import get_setup_service
+            from ..core.schema import SubjectModel
+
+            setup_service = get_setup_service()
+            db = setup_service._get_database()
+
+            # Get subjects for this colony directly from database
+            with db.get_session() as session:
+                db_subjects = session.query(SubjectModel).filter(
+                    SubjectModel.colony_id == colony_id
+                ).all()
+
+                self.colony_subjects_list.clear()
+                for db_subject in db_subjects:
+                    genotype_display = db_subject.genotype if db_subject.genotype else "Unknown"
+                    display_text = f"{db_subject.name} ({genotype_display})"
+                    item = QListWidgetItem(display_text)
+                    self.colony_subjects_list.addItem(item)
+
+                self.navigation_pane.add_log_message(f"Loaded {len(db_subjects)} subjects for colony", "info")
+
+        except Exception as e:
+            self.navigation_pane.add_log_message(f"Error loading colony subjects: {e}", "error")
+            self.colony_subjects_list.clear()
+
+    def handle_create_colony(self):
+        """Create a new colony."""
+        colony_name = self.colony_name_edit.text().strip()
+        gene_of_interest = self.colony_gene_edit.text().strip()
+        background_strain = self.colony_strain_edit.text().strip()
+
+        if not colony_name:
+            QMessageBox.warning(self, "Validation Error", "Colony name is required")
+            return
+
+        if not gene_of_interest:
+            QMessageBox.warning(self, "Validation Error", "Gene of interest is required")
+            return
+
+        if not background_strain:
+            QMessageBox.warning(self, "Validation Error", "Background strain is required")
+            return
+
+        # Get the currently selected lab
+        current_lab_item = self.labs_list.currentItem()
+        if not current_lab_item:
+            QMessageBox.warning(self, "No Selection", "Please select a lab first")
+            return
+
+        lab_id = current_lab_item.data(Qt.ItemDataRole.UserRole)
+
+        try:
+            from ..core.setup_service import get_setup_service
+            from ..core.repository import get_repository_factory
+            from ..core.metadata import Colony
+            import uuid
+            from datetime import datetime
+
+            setup_service = get_setup_service()
+            db = setup_service._get_database()
+            repo_factory = get_repository_factory(db)
+
+            # Create colony
+            colony = Colony(
+                id=str(uuid.uuid4()),
+                name=colony_name,
+                lab_id=lab_id,
+                genotype_of_interest=gene_of_interest,
+                background_strain=background_strain,
+                date_added=datetime.now()
+            )
+
+            # Save to database
+            repo_factory.colonies.save(colony)
+
+            self.navigation_pane.add_log_message(f"Colony '{colony_name}' created successfully", "success")
+
+            # Refresh colonies list
+            self.load_colonies()
+
+            # Clear form
+            self.colony_name_edit.clear()
+            self.colony_gene_edit.clear()
+            self.colony_strain_edit.clear()
+
+        except Exception as e:
+            self.navigation_pane.add_log_message(f"Error creating colony: {e}", "error")
+            QMessageBox.warning(self, "Error", f"Failed to create colony: {str(e)}")
+
+    def handle_update_colony(self):
+        """Update selected colony."""
+        current_item = self.colonies_list.currentItem()
+        if not current_item:
+            QMessageBox.warning(self, "No Selection", "Please select a colony to update.")
+            return
+
+        colony_name = self.colony_name_edit.text().strip()
+        gene_of_interest = self.colony_gene_edit.text().strip()
+        background_strain = self.colony_strain_edit.text().strip()
+
+        if not colony_name:
+            QMessageBox.warning(self, "Validation Error", "Colony name is required.")
+            return
+
+        if not gene_of_interest:
+            QMessageBox.warning(self, "Validation Error", "Gene of interest is required.")
+            return
+
+        if not background_strain:
+            QMessageBox.warning(self, "Validation Error", "Background strain is required.")
+            return
+
+        colony_data = current_item.data(Qt.ItemDataRole.UserRole + 1)
+        colony_id = colony_data['id']
+
+        try:
+            from ..core.setup_service import get_setup_service
+            from ..core.repository import get_repository_factory
+            from ..core.metadata import Colony
+
+            setup_service = get_setup_service()
+            db = setup_service._get_database()
+            repo_factory = get_repository_factory(db)
+
+            # Get existing colony
+            existing_colony = repo_factory.colonies.find_by_id(colony_id)
+            if not existing_colony:
+                QMessageBox.warning(self, "Not Found", "Colony not found")
+                return
+
+            # Update colony
+            updated_colony = Colony(
+                id=existing_colony.id,
+                name=colony_name,
+                lab_id=existing_colony.lab_id,
+                genotype_of_interest=gene_of_interest,
+                background_strain=background_strain,
+                common_traits=existing_colony.common_traits,
+                notes=existing_colony.notes,
+                date_added=existing_colony.date_added
+            )
+
+            # Save to database
+            repo_factory.colonies.save(updated_colony)
+
+            self.navigation_pane.add_log_message(f"Colony '{colony_name}' updated successfully", "success")
+
+            # Refresh colonies list
+            self.load_colonies()
+
+            # Clear form
+            self.colony_name_edit.clear()
+            self.colony_gene_edit.clear()
+            self.colony_strain_edit.clear()
+
+        except Exception as e:
+            self.navigation_pane.add_log_message(f"Error updating colony: {e}", "error")
+            QMessageBox.warning(self, "Error", f"Failed to update colony: {str(e)}")
+
+    # ---- Shared Projects Methods ----
+    def load_shared_projects(self):
+        """Load projects registered with the currently selected lab."""
+        try:
+            # Get the currently selected lab
+            current_lab_item = self.labs_list.currentItem()
+            if not current_lab_item:
+                self.shared_projects_list.clear()
+                self.navigation_pane.add_log_message("No lab selected - cannot load projects", "warning")
+                return
+
+            lab_id = current_lab_item.data(Qt.ItemDataRole.UserRole)
+
+            # Get projects from database
+            from ..core.setup_service import get_setup_service
+            from ..core.repository import get_repository_factory
+
+            setup_service = get_setup_service()
+            db = setup_service._get_database()
+            repo_factory = get_repository_factory(db)
+
+            # Get projects for this lab
+            projects = repo_factory.labs.get_projects(lab_id)
+
+            self.shared_projects_list.clear()
+            for project in projects:
+                display_text = f"{project['name']} - {project['path']}"
+                item = QListWidgetItem(display_text)
+                # Store project data for operations
+                item.setData(Qt.ItemDataRole.UserRole, project['id'])
+                item.setData(Qt.ItemDataRole.UserRole + 1, project)
+                self.shared_projects_list.addItem(item)
+
+            self.navigation_pane.add_log_message(f"Loaded {len(projects)} lab projects", "info")
+
+        except Exception as e:
+            self.navigation_pane.add_log_message(f"Error loading shared projects: {e}", "error")
+            self.shared_projects_list.clear()
+
+    def _browse_shared_project_path(self):
+        """Browse for shared project path."""
+        directory = QFileDialog.getExistingDirectory(self, "Select Shared Project Directory")
+        if directory:
+            self.shared_project_path_edit.setText(directory)
+
+    def handle_add_shared_project(self):
+        """Add a project to the lab."""
+        project_name = self.shared_project_name_edit.text().strip()
+        project_path = self.shared_project_path_edit.text().strip()
+
+        if not project_name:
+            QMessageBox.warning(self, "Validation Error", "Project name is required")
+            return
+
+        if not project_path:
+            QMessageBox.warning(self, "Validation Error", "Project path is required")
+            return
+
+        # Get the currently selected lab
+        current_lab_item = self.labs_list.currentItem()
+        if not current_lab_item:
+            QMessageBox.warning(self, "No Selection", "Please select a lab first")
+            return
+
+        lab_id = current_lab_item.data(Qt.ItemDataRole.UserRole)
+
+        try:
+            from ..core.setup_service import get_setup_service
+            from ..core.repository import get_repository_factory
+            from pathlib import Path
+            from datetime import datetime
+
+            setup_service = get_setup_service()
+            db = setup_service._get_database()
+            repo_factory = get_repository_factory(db)
+
+            # Validate project path exists and has mus1.db
+            project_path_obj = Path(project_path)
+            if not project_path_obj.exists():
+                QMessageBox.warning(self, "Invalid Path", "Project path does not exist")
+                return
+
+            if not (project_path_obj / "mus1.db").exists():
+                QMessageBox.warning(self, "Invalid Project", "Selected directory is not a valid MUS1 project (missing mus1.db)")
+                return
+
+            # Check if project is already registered with this lab
+            existing_projects = repo_factory.labs.get_projects(lab_id)
+            if any(p['name'] == project_name for p in existing_projects):
+                QMessageBox.warning(self, "Already Registered", f"Project '{project_name}' is already registered with this lab")
+                return
+
+            # Add project to lab
+            repo_factory.labs.add_project(lab_id, project_name, project_path_obj, datetime.now())
+
+            self.navigation_pane.add_log_message(f"Added project '{project_name}' to lab", "success")
+
+            # Refresh projects list
+            self.load_shared_projects()
+
+            # Clear form
+            self.shared_project_name_edit.clear()
+            self.shared_project_path_edit.clear()
+
+        except Exception as e:
+            self.navigation_pane.add_log_message(f"Error adding project: {e}", "error")
+            QMessageBox.warning(self, "Error", f"Failed to add project: {str(e)}")
+
+    def handle_remove_shared_project(self):
+        """Remove selected project from lab."""
+        current_item = self.shared_projects_list.currentItem()
+        if not current_item:
+            QMessageBox.information(self, "Shared Projects", "Select a project to remove.")
+            return
+
+        # Get the currently selected lab
+        current_lab_item = self.labs_list.currentItem()
+        if not current_lab_item:
+            QMessageBox.warning(self, "No Selection", "Please select a lab first")
+            return
+
+        lab_id = current_lab_item.data(Qt.ItemDataRole.UserRole)
+        project_data = current_item.data(Qt.ItemDataRole.UserRole + 1)
+        project_name = project_data['name']
+
+        # Confirm removal
+        reply = QMessageBox.question(
+            self, "Confirm Removal",
+            f"Are you sure you want to remove project '{project_name}' from this lab?\n\n"
+            f"This will only remove the association - the project files will not be deleted.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        try:
+            from ..core.setup_service import get_setup_service
+            from ..core.schema import LabProjectModel
+
+            setup_service = get_setup_service()
+            db = setup_service._get_database()
+
+            # Remove project association from database
+            with db.get_session() as session:
+                result = session.query(LabProjectModel).filter(
+                    LabProjectModel.lab_id == lab_id,
+                    LabProjectModel.name == project_name
+                ).delete()
+                session.commit()
+
+                if result > 0:
+                    self.navigation_pane.add_log_message(f"Removed project '{project_name}' from lab", "success")
+                    # Refresh projects list
+                    self.load_shared_projects()
+                else:
+                    QMessageBox.warning(self, "Not Found", "Project association was not found")
+
+        except Exception as e:
+            self.navigation_pane.add_log_message(f"Error removing project: {e}", "error")
+            QMessageBox.warning(self, "Error", f"Failed to remove project: {str(e)}")
+
+    # ---- Lab Members Methods ----
+    def load_lab_members(self):
+        """Load lab members for the currently selected lab."""
+        if not self.lab_service:
+            self.lab_members_list.clear()
+            self.navigation_pane.add_log_message("Lab service not available", "error")
+            return
+
+        try:
+            # Get the currently selected lab
+            current_lab_item = self.labs_list.currentItem()
+            if not current_lab_item:
+                self.lab_members_list.clear()
+                self.navigation_pane.add_log_message("No lab selected - cannot load members", "warning")
+                return
+
+            lab_id = current_lab_item.data(Qt.ItemDataRole.UserRole)
+
+            # Get members for this lab
+            members = self.lab_service.get_lab_members(lab_id)
+
+            self.lab_members_list.clear()
+            for member in members:
+                display_text = f"{member['email']} ({member['role']})"
+                item = QListWidgetItem(display_text)
+                # Store user_id and role for potential operations
+                item.setData(Qt.ItemDataRole.UserRole, member['user_id'])
+                item.setData(Qt.ItemDataRole.UserRole + 1, member['role'])
+                self.lab_members_list.addItem(item)
+
+            self.navigation_pane.add_log_message(f"Loaded {len(members)} lab members", "info")
+
+        except Exception as e:
+            self.navigation_pane.add_log_message(f"Error loading lab members: {e}", "error")
+            self.lab_members_list.clear()
+
+    def handle_add_lab_member(self):
+        """Add a lab member."""
+        if not self.lab_service:
+            QMessageBox.warning(self, "Error", "Lab service not available")
+            return
+
+        member_email = self.member_email_edit.text().strip()
+        member_role = self.member_role_combo.currentText()
+
+        if not member_email:
+            QMessageBox.warning(self, "Validation Error", "Email is required")
+            return
+
+        # Get the currently selected lab
+        current_lab_item = self.labs_list.currentItem()
+        if not current_lab_item:
+            QMessageBox.warning(self, "No Selection", "Please select a lab first")
+            return
+
+        lab_id = current_lab_item.data(Qt.ItemDataRole.UserRole)
+
+        success = self.lab_service.add_lab_member(lab_id, member_email, member_role)
+
+        if success:
+            # Refresh the members list
+            self.load_lab_members()
+            # Clear form
+            self.member_email_edit.clear()
+
+    def handle_remove_lab_member(self):
+        """Remove selected lab member."""
+        if not self.lab_service:
+            QMessageBox.warning(self, "Error", "Lab service not available")
+            return
+
+        current_item = self.lab_members_list.currentItem()
+        if not current_item:
+            QMessageBox.information(self, "Lab Members", "Select a member to remove.")
+            return
+
+        # Get the currently selected lab
+        current_lab_item = self.labs_list.currentItem()
+        if not current_lab_item:
+            QMessageBox.warning(self, "No Selection", "Please select a lab first")
+            return
+
+        lab_id = current_lab_item.data(Qt.ItemDataRole.UserRole)
+        user_id = current_item.data(Qt.ItemDataRole.UserRole)
+        member_info = current_item.text()
+
+        # Don't allow removing yourself if you're the creator
+        lab_data = current_lab_item.data(Qt.ItemDataRole.UserRole + 1)
+        from ..core.config_manager import get_config
+        current_user_id = get_config("user.id", scope="user")
+        if user_id == current_user_id and lab_data.get('creator_id') == current_user_id:
+            QMessageBox.warning(self, "Cannot Remove", "You cannot remove yourself as the lab creator.")
+            return
+
+        # Confirm removal
+        reply = QMessageBox.question(
+            self, "Confirm Removal",
+            f"Are you sure you want to remove {member_info} from this lab?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        success = self.lab_service.remove_lab_member(lab_id, user_id)
+
+        if success:
+            # Refresh the members list
+            self.load_lab_members()
+
+    # ---- Lab Settings Methods (moved from Settings view) ----
+    def load_labs(self):
+        """Load user's labs."""
+        if not self.lab_service:
+            self.navigation_pane.add_log_message("Lab service not available", "error")
+            return
+
+        try:
+            labs = self.lab_service.get_labs()
+
+            self.labs_list.clear()
+            for lab_data in labs:
+                display_text = f"{lab_data['name']} ({lab_data.get('institution', 'Unknown')})"
+                item = QListWidgetItem(display_text)
+                item.setData(Qt.ItemDataRole.UserRole, lab_data['id'])
+                item.setData(Qt.ItemDataRole.UserRole + 1, lab_data)
+                self.labs_list.addItem(item)
+        except Exception as e:
+            self.navigation_pane.add_log_message(f"Error loading labs: {e}", "error")
+
+    def on_lab_selected(self):
+        """Handle lab selection."""
+        current_item = self.labs_list.currentItem()
+        if not current_item:
+            return
+
+        lab_data = current_item.data(Qt.ItemDataRole.UserRole + 1)
+        self.lab_name_edit.setText(lab_data.get('name', ''))
+        self.lab_institution_edit.setText(lab_data.get('institution', ''))
+        self.lab_pi_edit.setText(lab_data.get('pi_name', ''))
+
+        # Load projects for this lab
+        self.lab_projects_list.clear()
+        projects = lab_data.get('projects', [])
+        for project in projects:
+            item = QListWidgetItem(f"{project['name']} - {project['path']}")
+            self.lab_projects_list.addItem(item)
+
+        # Load members for this lab
+        self.load_lab_members()
+
+    def handle_create_lab(self):
+        """Create a new lab."""
+        try:
+            from ..core.setup_service import get_setup_service, LabDTO
+            from ..core.config_manager import get_config
+
+            lab_name = self.lab_name_edit.text().strip()
+            if not lab_name:
+                QMessageBox.warning(self, "Validation Error", "Lab name is required")
+                return
+
+            # Generate lab ID from name
+            lab_id = lab_name.lower().replace(' ', '_').replace('-', '_')
+
+            # Get current user as creator
+            user_id = get_config("user.id", scope="user")
+            if not user_id:
+                QMessageBox.warning(self, "Error", "No user configured")
+                return
+
+            lab_dto = LabDTO(
+                id=lab_id,
+                name=lab_name,
+                institution=self.lab_institution_edit.text().strip(),
+                pi_name=self.lab_pi_edit.text().strip(),
+                creator_id=user_id
+            )
+
+            setup_service = get_setup_service()
+            result = setup_service.create_lab(lab_dto)
+
+            if result["success"]:
+                # Add creator as admin member
+                from ..core.repository import get_repository_factory
+                db = setup_service._get_database()
+                repo_factory = get_repository_factory(db)
+                from datetime import datetime
+                repo_factory.labs.add_member(lab_id, user_id, "admin", datetime.now())
+
+                self.navigation_pane.add_log_message(f"Lab '{lab_name}' created successfully", "success")
+                self.load_labs()  # Refresh the list
+                # Clear form
+                self.lab_name_edit.clear()
+                self.lab_institution_edit.clear()
+                self.lab_pi_edit.clear()
+            else:
+                QMessageBox.warning(self, "Error", result["message"])
+
+        except Exception as e:
+            self.navigation_pane.add_log_message(f"Error creating lab: {e}", "error")
+
+    def handle_update_lab(self):
+        """Update selected lab."""
+        current_item = self.labs_list.currentItem()
+        if not current_item:
+            QMessageBox.warning(self, "No Selection", "Please select a lab to update.")
+            return
+
+        lab_id = current_item.data(Qt.ItemDataRole.UserRole)
+        lab_name = self.lab_name_edit.text().strip()
+        institution = self.lab_institution_edit.text().strip()
+        pi_name = self.lab_pi_edit.text().strip()
+
+        if not lab_name:
+            QMessageBox.warning(self, "Validation Error", "Lab name is required.")
+            return
+
+        try:
+            from ..core.setup_service import get_setup_service
+            setup_service = get_setup_service()
+
+            # Update lab in the database
+            result = setup_service.update_lab(lab_id, name=lab_name, institution=institution, pi_name=pi_name)
+
+            if result["success"]:
+                self.navigation_pane.add_log_message(f"Lab '{lab_name}' updated successfully", "success")
+                self.load_labs()  # Refresh the list
+                # Clear form
+                self.lab_name_edit.clear()
+                self.lab_institution_edit.clear()
+                self.lab_pi_edit.clear()
+            else:
+                QMessageBox.warning(self, "Update Failed", result["message"])
+
+        except Exception as e:
+            self.navigation_pane.add_log_message(f"Error updating lab: {e}", "error")
+
+    def refresh_lab_data(self):
+        """Refresh all lab-related data."""
+        self.load_labs()
+        # Lab-specific data will be loaded when a lab is selected

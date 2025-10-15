@@ -8,9 +8,7 @@ SOURCE="drive:leftovers"
 
 # List of MKV files to download
 files=(
-    "217m_t1.mkv"
-    "214m_t1.mkv" 
-    "Copy of OFP20 760 M Het 040223.mkv"
+
     "218_t2.mkv"
     "217_t2.mkv"
     "217_t3.mkv"

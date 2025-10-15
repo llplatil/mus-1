@@ -13,6 +13,7 @@ from .qt import (
 from .project_view import ProjectView
 from .subject_view import SubjectView
 from .experiment_view import ExperimentView
+from .lab_view import LabView
 from .settings_view import SettingsView
 from .user_lab_selection_dialog import UserLabSelectionDialog
 from .gui_services import GUIServiceFactory
@@ -169,6 +170,7 @@ class MainWindow(QMainWindow):
     def setup_views(self):
         """Initialize all view tabs with proper configuration."""
         # Create the main view tabs
+        self.lab_view = LabView(self)
         self.project_view = ProjectView(self)
         self.subject_view = SubjectView(self)
         self.experiment_view = ExperimentView(self)
@@ -181,6 +183,7 @@ class MainWindow(QMainWindow):
              self.log_bus.log("ProjectView does not have 'project_renamed' signal.", "warning", "MainWindow")
 
         # Add tabs to the tab widget
+        self.tab_widget.addTab(self.lab_view, "Lab")
         self.tab_widget.addTab(self.project_view, "Project")
         self.tab_widget.addTab(self.subject_view, "Subjects")
         self.tab_widget.addTab(self.experiment_view, "Experiments")
@@ -196,7 +199,7 @@ class MainWindow(QMainWindow):
     def register_log_observers(self):
         """Register all navigation panes as log observers."""
         # Each view has a navigation pane that can display logs
-        views = [self.project_view, self.subject_view, self.experiment_view, self.settings_view]
+        views = [self.lab_view, self.project_view, self.subject_view, self.experiment_view, self.settings_view]
 
         for view in views:
             if hasattr(view, 'navigation_pane'):
@@ -285,6 +288,8 @@ class MainWindow(QMainWindow):
             self.project_view.set_initial_project(project_name)
 
             # Set services on views via lifecycle hook
+            if hasattr(self.lab_view, 'on_services_ready'):
+                self.lab_view.on_services_ready(self.gui_services)  # Pass factory for lab services
             if hasattr(self.project_view, 'on_services_ready'):
                 self.project_view.on_services_ready(self.gui_services.create_project_service())
             if hasattr(self.subject_view, 'on_services_ready'):
@@ -336,6 +341,8 @@ class MainWindow(QMainWindow):
             self.project_view.set_initial_project(project_name)
 
             # Set services on views via lifecycle hook
+            if hasattr(self.lab_view, 'on_services_ready'):
+                self.lab_view.on_services_ready(self.gui_services)  # Pass factory for lab services
             if hasattr(self.project_view, 'on_services_ready'):
                 self.project_view.on_services_ready(self.gui_services.create_project_service())
             if hasattr(self.subject_view, 'on_services_ready'):
@@ -360,6 +367,9 @@ class MainWindow(QMainWindow):
         """Refresh data in all views."""
         self.log_bus.log("Refreshing all views...", "info", "MainWindow")
         # Use getattr for safer checks
+        if getattr(self.lab_view, 'refresh_lab_data', None):
+            self.lab_view.refresh_lab_data()
+
         if getattr(self.experiment_view, 'refresh_data', None):
             self.experiment_view.refresh_data()
 
@@ -502,7 +512,7 @@ class MainWindow(QMainWindow):
 
     def propagate_theme_to_views(self, theme):
         """Propagate theme changes to all views."""
-        for view in [self.project_view, self.subject_view, self.experiment_view, self.settings_view]:
+        for view in [self.lab_view, self.project_view, self.subject_view, self.experiment_view, self.settings_view]:
             if view and hasattr(view, 'update_theme'):
                 view.update_theme(theme)
 

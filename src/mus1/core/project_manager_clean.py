@@ -804,6 +804,18 @@ class ProjectManagerClean:
         """Get all available genotypes for this project."""
         return self.config.settings.get('available_genotypes', [])
 
+    def update_available_genotypes(self, genotypes: List[str]) -> None:
+        """Update the list of available genotypes for this project."""
+        self.config.settings['available_genotypes'] = genotypes
+        self._save_config(self.config)
+        logger.info(f"Updated available genotypes for project {self.config.name}: {genotypes}")
+
+    def update_available_treatments(self, treatments: List[str]) -> None:
+        """Update the list of available treatments for this project."""
+        self.config.settings['available_treatments'] = treatments
+        self._save_config(self.config)
+        logger.info(f"Updated available treatments for project {self.config.name}: {treatments}")
+
     def remove_treatment(self, name: str) -> bool:
         """Remove a treatment from available treatments."""
         treatments = self.config.settings.get('available_treatments', [])

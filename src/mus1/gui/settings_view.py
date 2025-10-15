@@ -22,9 +22,8 @@ class SettingsView(BaseView):
 
     def __init__(self, parent=None):
         super().__init__(parent, view_name="settings")
-        self.setup_navigation(["User Settings", "Lab Settings", "Workers", "General Settings"])
+        self.setup_navigation(["User Settings", "Workers", "General Settings"])
         self.setup_user_settings_page()
-        self.setup_lab_settings_page()
         self.setup_workers_page()
         self.setup_general_settings_page()
         # Do not change pages here; lifecycle handles activation
@@ -98,57 +97,6 @@ class SettingsView(BaseView):
         # Load current user settings
         self.load_user_settings()
 
-    def setup_lab_settings_page(self):
-        """Setup the Lab Settings page."""
-        self.lab_settings_page = QWidget()
-        layout = self.setup_page_layout(self.lab_settings_page)
-
-        # Labs List Group
-        self.labs_list = QListWidget()
-        self.labs_list.setProperty("class", "mus1-list-widget")
-        self.create_form_with_list("Your Labs", self.labs_list, layout)
-
-        # Lab Details Group
-        details_group, details_layout = self.create_form_section("Lab Details", layout)
-
-        # Create labeled input rows using helper method
-        self.lab_name_edit = QLineEdit()
-        self.lab_name_edit.setProperty("class", "mus1-text-input")
-        self.create_labeled_input_row("Name:", self.lab_name_edit, details_layout)
-
-        self.lab_institution_edit = QLineEdit()
-        self.lab_institution_edit.setProperty("class", "mus1-text-input")
-        self.create_labeled_input_row("Institution:", self.lab_institution_edit, details_layout)
-
-        self.lab_pi_edit = QLineEdit()
-        self.lab_pi_edit.setProperty("class", "mus1-text-input")
-        self.create_labeled_input_row("PI Name:", self.lab_pi_edit, details_layout)
-
-        # Projects in Lab Group
-        self.lab_projects_list = QListWidget()
-        self.lab_projects_list.setProperty("class", "mus1-list-widget")
-        self.create_form_with_list("Projects in Lab", self.lab_projects_list, layout)
-
-        # Action buttons
-        button_row = self.create_button_row(layout)
-        create_btn = QPushButton("Create New Lab")
-        create_btn.setProperty("class", "mus1-primary-button")
-        create_btn.clicked.connect(self.handle_create_lab)
-        button_row.addWidget(create_btn)
-
-        update_btn = QPushButton("Update Lab")
-        update_btn.setProperty("class", "mus1-secondary-button")
-        update_btn.clicked.connect(self.handle_update_lab)
-        button_row.addWidget(update_btn)
-
-        layout.addStretch(1)
-        self.add_page(self.lab_settings_page, "Labs")
-
-        # Connect lab selection
-        self.labs_list.itemSelectionChanged.connect(self.on_lab_selected)
-
-        # Load labs
-        self.load_labs()
 
     def setup_workers_page(self):
         """Setup Workers management page (moved from ProjectView)."""
@@ -218,40 +166,6 @@ class SettingsView(BaseView):
         except Exception as e:
             self.navigation_pane.add_log_message(f"Error loading user settings: {e}", "error")
 
-    def load_labs(self):
-        """Load user's labs."""
-        try:
-            from ..core.setup_service import get_setup_service
-            setup_service = get_setup_service()
-            labs = setup_service.get_labs()
-
-            self.labs_list.clear()
-            for lab_id, lab_data in labs.items():
-                display_text = f"{lab_data['name']} ({lab_data.get('institution', 'Unknown')})"
-                item = QListWidgetItem(display_text)
-                item.setData(Qt.ItemDataRole.UserRole, lab_id)
-                item.setData(Qt.ItemDataRole.UserRole + 1, lab_data)
-                self.labs_list.addItem(item)
-        except Exception as e:
-            self.navigation_pane.add_log_message(f"Error loading labs: {e}", "error")
-
-    def on_lab_selected(self):
-        """Handle lab selection."""
-        current_item = self.labs_list.currentItem()
-        if not current_item:
-            return
-
-        lab_data = current_item.data(Qt.ItemDataRole.UserRole + 1)
-        self.lab_name_edit.setText(lab_data.get('name', ''))
-        self.lab_institution_edit.setText(lab_data.get('institution', ''))
-        self.lab_pi_edit.setText(lab_data.get('pi_name', ''))
-
-        # Load projects for this lab
-        self.lab_projects_list.clear()
-        projects = lab_data.get('projects', [])
-        for project in projects:
-            item = QListWidgetItem(f"{project['name']} - {project['path']}")
-            self.lab_projects_list.addItem(item)
 
     def _browse_projects_dir(self):
         """Browse for projects directory."""
@@ -284,85 +198,6 @@ class SettingsView(BaseView):
         except Exception as e:
             self.navigation_pane.add_log_message(f"Error saving user settings: {e}", "error")
 
-    def handle_create_lab(self):
-        """Create a new lab."""
-        try:
-            from ..core.setup_service import get_setup_service, LabDTO
-            from ..core.config_manager import get_config
-
-            lab_name = self.lab_name_edit.text().strip()
-            if not lab_name:
-                QMessageBox.warning(self, "Validation Error", "Lab name is required")
-                return
-
-            # Generate lab ID from name
-            lab_id = lab_name.lower().replace(' ', '_').replace('-', '_')
-
-            # Get current user as creator
-            user_id = get_config("user.id", scope="user")
-            if not user_id:
-                QMessageBox.warning(self, "Error", "No user configured")
-                return
-
-            lab_dto = LabDTO(
-                id=lab_id,
-                name=lab_name,
-                institution=self.lab_institution_edit.text().strip(),
-                pi_name=self.lab_pi_edit.text().strip(),
-                creator_id=user_id
-            )
-
-            setup_service = get_setup_service()
-            result = setup_service.create_lab(lab_dto)
-
-            if result["success"]:
-                self.navigation_pane.add_log_message(f"Lab '{lab_name}' created successfully", "success")
-                self.load_labs()  # Refresh the list
-                # Clear form
-                self.lab_name_edit.clear()
-                self.lab_institution_edit.clear()
-                self.lab_pi_edit.clear()
-            else:
-                QMessageBox.warning(self, "Error", result["message"])
-
-        except Exception as e:
-            self.navigation_pane.add_log_message(f"Error creating lab: {e}", "error")
-
-    def handle_update_lab(self):
-        """Update selected lab."""
-        current_item = self.labs_list.currentItem()
-        if not current_item:
-            QMessageBox.warning(self, "No Selection", "Please select a lab to update.")
-            return
-
-        lab_id = current_item.data(Qt.ItemDataRole.UserRole)
-        lab_name = self.lab_name_edit.text().strip()
-        institution = self.lab_institution_edit.text().strip()
-        pi_name = self.lab_pi_edit.text().strip()
-
-        if not lab_name:
-            QMessageBox.warning(self, "Validation Error", "Lab name is required.")
-            return
-
-        try:
-            from ..core.setup_service import get_setup_service
-            setup_service = get_setup_service()
-
-            # Update lab in the database
-            result = setup_service.update_lab(lab_id, name=lab_name, institution=institution, pi_name=pi_name)
-
-            if result["success"]:
-                self.navigation_pane.add_log_message(f"Lab '{lab_name}' updated successfully", "success")
-                self.load_labs()  # Refresh the list
-                # Clear form
-                self.lab_name_edit.clear()
-                self.lab_institution_edit.clear()
-                self.lab_pi_edit.clear()
-            else:
-                QMessageBox.warning(self, "Update Failed", result["message"])
-
-        except Exception as e:
-            self.navigation_pane.add_log_message(f"Error updating lab: {e}", "error")
 
     def refresh_workers_list(self):
         """Refresh the workers list."""
@@ -668,7 +503,6 @@ class SettingsView(BaseView):
     def refresh_lists(self):
         """Refresh all lists in the settings view."""
         self.load_user_settings()
-        self.load_labs()
         self.refresh_workers_list()
         # Initialize general settings from state
         self.update_sort_mode_from_state()

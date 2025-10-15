@@ -80,6 +80,14 @@ class ColonyRepository(BaseRepository):
 class SubjectRepository(BaseRepository):
     """Repository for subject operations."""
 
+    def find_by_colony(self, colony_id: str) -> List[Subject]:
+        """Find subjects by colony ID."""
+        with self._get_session() as session:
+            db_subjects = session.query(SubjectModel).filter(
+                SubjectModel.colony_id == colony_id
+            ).all()
+            return [model_to_subject(db_subject) for db_subject in db_subjects]
+
     def save(self, subject: Subject) -> Subject:
         """Save a subject."""
         db_subject = subject_to_model(subject)

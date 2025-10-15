@@ -793,6 +793,414 @@ class SetupService:
             "lab": colony_dto.lab_id
         }
 
+    def get_lab_members(self, lab_id: str) -> Dict[str, Any]:
+        """
+        Get all members of a lab with their user details.
+
+        Args:
+            lab_id: The lab ID
+
+        Returns:
+            Dict with members list and metadata
+        """
+        if not self.lab_exists(lab_id):
+            return {
+                "success": False,
+                "message": f"Lab '{lab_id}' not found",
+                "members": []
+            }
+
+        from .repository import get_repository_factory
+
+        db = self._get_database()
+        repo_factory = get_repository_factory(db)
+
+        # Get members
+        members = repo_factory.labs.list_members(lab_id)
+        members_with_details = []
+
+        for member in members:
+            user = repo_factory.users.find_by_id(member['user_id'])
+            if user:
+                members_with_details.append({
+                    'user_id': user.id,
+                    'email': user.email,
+                    'name': user.name,
+                    'role': member['role'],
+                    'joined_at': member['joined_at']
+                })
+
+        return {
+            "success": True,
+            "members": members_with_details
+        }
+
+    def add_lab_member(self, lab_id: str, user_email: str, role: str = "member") -> Dict[str, Any]:
+        """
+        Add a user as a member of a lab.
+
+        Args:
+            lab_id: The lab ID
+            user_email: Email of the user to add
+            role: Role for the user (admin, member)
+
+        Returns:
+            Dict with success status
+        """
+        if not self.lab_exists(lab_id):
+            return {
+                "success": False,
+                "message": f"Lab '{lab_id}' not found"
+            }
+
+        if role not in ["admin", "member"]:
+            return {
+                "success": False,
+                "message": "Invalid role. Must be 'admin' or 'member'"
+            }
+
+        from .repository import get_repository_factory
+
+        db = self._get_database()
+        repo_factory = get_repository_factory(db)
+
+        # Find user by email
+        user = repo_factory.users.find_by_email(user_email)
+        if not user:
+            return {
+                "success": False,
+                "message": f"User with email '{user_email}' not found"
+            }
+
+        # Check if already a member
+        existing_members = repo_factory.labs.list_members(lab_id)
+        if any(m['user_id'] == user.id for m in existing_members):
+            return {
+                "success": False,
+                "message": f"User '{user_email}' is already a member of this lab"
+            }
+
+        # Add member
+        repo_factory.labs.add_member(lab_id, user.id, role, datetime.now())
+
+        return {
+            "success": True,
+            "message": f"User '{user_email}' added as {role} to lab",
+            "user_id": user.id
+        }
+
+    def remove_lab_member(self, lab_id: str, user_id: str) -> Dict[str, Any]:
+        """
+        Remove a user from a lab.
+
+        Args:
+            lab_id: The lab ID
+            user_id: The user ID to remove
+
+        Returns:
+            Dict with success status
+        """
+        if not self.lab_exists(lab_id):
+            return {
+                "success": False,
+                "message": f"Lab '{lab_id}' not found"
+            }
+
+        from .repository import get_repository_factory
+
+        db = self._get_database()
+        repo_factory = get_repository_factory(db)
+
+        # Verify user exists
+        user = repo_factory.users.find_by_id(user_id)
+        if not user:
+            return {
+                "success": False,
+                "message": f"User '{user_id}' not found"
+            }
+
+        # Don't allow removing the creator
+        lab = repo_factory.labs.find_by_id(lab_id)
+        if lab and lab.creator_id == user_id:
+            return {
+                "success": False,
+                "message": "Cannot remove the lab creator"
+            }
+
+        # Remove member
+        success = repo_factory.labs.remove_member(lab_id, user_id)
+
+        if success:
+            return {
+                "success": True,
+                "message": f"User '{user.email}' removed from lab"
+            }
+        else:
+            return {
+                "success": False,
+                "message": f"User '{user.email}' was not a member of this lab"
+            }
+
+    def get_lab_colonies(self, lab_id: str) -> Dict[str, Any]:
+        """
+        Get all colonies for a lab.
+
+        Args:
+            lab_id: The lab ID
+
+        Returns:
+            Dict with colonies list
+        """
+        if not self.lab_exists(lab_id):
+            return {
+                "success": False,
+                "message": f"Lab '{lab_id}' not found",
+                "colonies": []
+            }
+
+        from .repository import get_repository_factory
+
+        db = self._get_database()
+        repo_factory = get_repository_factory(db)
+
+        colonies = repo_factory.colonies.find_by_lab(lab_id)
+
+        return {
+            "success": True,
+            "colonies": [{
+                "id": c.id,
+                "name": c.name,
+                "genotype_of_interest": c.genotype_of_interest,
+                "background_strain": c.background_strain,
+                "date_added": c.date_added.isoformat()
+            } for c in colonies]
+        }
+
+    def get_colony_subjects(self, colony_id: str) -> Dict[str, Any]:
+        """
+        Get all subjects for a colony.
+
+        Args:
+            colony_id: The colony ID
+
+        Returns:
+            Dict with subjects list
+        """
+        from .repository import get_repository_factory
+
+        db = self._get_database()
+        repo_factory = get_repository_factory(db)
+
+        colony = repo_factory.colonies.find_by_id(colony_id)
+        if not colony:
+            return {
+                "success": False,
+                "message": f"Colony '{colony_id}' not found",
+                "subjects": []
+            }
+
+        subjects = repo_factory.subjects.find_by_colony(colony_id)
+
+        return {
+            "success": True,
+            "subjects": [{
+                "id": s.id,
+                "sex": s.sex.value if s.sex else "",
+                "genotype": s.genotype,
+                "birth_date": s.birth_date.isoformat() if s.birth_date else None,
+                "date_added": s.date_added.isoformat()
+            } for s in subjects]
+        }
+
+    def create_colony(self, lab_id: str, colony_dto: ColonyDTO) -> Dict[str, Any]:
+        """
+        Create a new colony in a lab.
+
+        Args:
+            lab_id: The lab ID
+            colony_dto: Colony data
+
+        Returns:
+            Dict with success status
+        """
+        if not self.lab_exists(lab_id):
+            return {
+                "success": False,
+                "message": f"Lab '{lab_id}' not found"
+            }
+
+        colony_dto.lab_id = lab_id  # Ensure colony belongs to the lab
+        return self.add_colony_to_lab(colony_dto)
+
+    def update_colony(self, colony_id: str, name: Optional[str] = None,
+                     genotype_of_interest: Optional[str] = None,
+                     background_strain: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Update an existing colony.
+
+        Args:
+            colony_id: The colony ID
+            name: New name (optional)
+            genotype_of_interest: New genotype (optional)
+            background_strain: New background strain (optional)
+
+        Returns:
+            Dict with success status
+        """
+        from .repository import get_repository_factory
+
+        db = self._get_database()
+        repo_factory = get_repository_factory(db)
+
+        colony = repo_factory.colonies.find_by_id(colony_id)
+        if not colony:
+            return {
+                "success": False,
+                "message": f"Colony '{colony_id}' not found"
+            }
+
+        # Apply updates
+        if name is not None:
+            colony.name = name
+        if genotype_of_interest is not None:
+            colony.genotype_of_interest = genotype_of_interest
+        if background_strain is not None:
+            colony.background_strain = background_strain
+
+        saved_colony = repo_factory.colonies.save(colony)
+
+        return {
+            "success": True,
+            "message": "Colony updated successfully",
+            "colony": saved_colony
+        }
+
+    def get_lab_projects(self, lab_id: str) -> Dict[str, Any]:
+        """
+        Get all projects registered with a lab.
+
+        Args:
+            lab_id: The lab ID
+
+        Returns:
+            Dict with projects list
+        """
+        if not self.lab_exists(lab_id):
+            return {
+                "success": False,
+                "message": f"Lab '{lab_id}' not found",
+                "projects": []
+            }
+
+        from .repository import get_repository_factory
+
+        db = self._get_database()
+        repo_factory = get_repository_factory(db)
+
+        projects = repo_factory.labs.get_projects(lab_id)
+
+        return {
+            "success": True,
+            "projects": projects
+        }
+
+    def add_lab_project(self, lab_id: str, project_name: str, project_path: str) -> Dict[str, Any]:
+        """
+        Register a project with a lab.
+
+        Args:
+            lab_id: The lab ID
+            project_name: Name of the project
+            project_path: Path to the project
+
+        Returns:
+            Dict with success status
+        """
+        if not self.lab_exists(lab_id):
+            return {
+                "success": False,
+                "message": f"Lab '{lab_id}' not found"
+            }
+
+        from pathlib import Path
+        from .repository import get_repository_factory
+
+        db = self._get_database()
+        repo_factory = get_repository_factory(db)
+
+        project_path_obj = Path(project_path)
+
+        # Validate project path exists and has mus1.db
+        if not project_path_obj.exists():
+            return {
+                "success": False,
+                "message": f"Project path does not exist: {project_path}"
+            }
+
+        if not (project_path_obj / "mus1.db").exists():
+            return {
+                "success": False,
+                "message": f"Invalid project directory (missing mus1.db): {project_path}"
+            }
+
+        # Check if project is already registered
+        existing_projects = repo_factory.labs.get_projects(lab_id)
+        if any(p['name'] == project_name for p in existing_projects):
+            return {
+                "success": False,
+                "message": f"Project '{project_name}' is already registered with this lab"
+            }
+
+        # Add project to lab
+        repo_factory.labs.add_project(lab_id, project_name, project_path_obj, datetime.now())
+
+        return {
+            "success": True,
+            "message": f"Project '{project_name}' registered with lab"
+        }
+
+    def remove_lab_project(self, lab_id: str, project_name: str) -> Dict[str, Any]:
+        """
+        Remove a project registration from a lab.
+
+        Args:
+            lab_id: The lab ID
+            project_name: Name of the project to remove
+
+        Returns:
+            Dict with success status
+        """
+        if not self.lab_exists(lab_id):
+            return {
+                "success": False,
+                "message": f"Lab '{lab_id}' not found"
+            }
+
+        from .repository import get_repository_factory
+        from .schema import LabProjectModel
+
+        db = self._get_database()
+        repo_factory = get_repository_factory(db)
+
+        # Remove project association
+        with db.get_session() as session:
+            result = session.query(LabProjectModel).filter(
+                LabProjectModel.lab_id == lab_id,
+                LabProjectModel.name == project_name
+            ).delete()
+            session.commit()
+
+            if result > 0:
+                return {
+                    "success": True,
+                    "message": f"Project '{project_name}' removed from lab"
+                }
+            else:
+                return {
+                    "success": False,
+                    "message": f"Project '{project_name}' was not registered with this lab"
+                }
+
     # ===========================================
     # LAB STORAGE ROOT MANAGEMENT
     # ===========================================

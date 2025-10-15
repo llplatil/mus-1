@@ -305,6 +305,22 @@ class GUISubjectService:
             return False
 
     # ---- Body parts and objects (shims for GUI use) ----
+    def get_master_body_parts(self) -> List[str]:
+        """Get master body parts from the project."""
+        try:
+            return self.project_manager.get_master_body_parts()
+        except Exception as e:
+            self.log_bus.log(f"Error getting master body parts: {e}", "error", "GUISubjectService")
+            return []
+
+    def get_active_body_parts(self) -> List[str]:
+        """Get active body parts from the project."""
+        try:
+            return self.project_manager.get_active_body_parts()
+        except Exception as e:
+            self.log_bus.log(f"Error getting active body parts: {e}", "error", "GUISubjectService")
+            return []
+
     def update_active_body_parts(self, active_list: list[str]) -> None:
         """Update active body parts in the project."""
         try:
@@ -318,6 +334,90 @@ class GUISubjectService:
             self.project_manager.update_master_body_parts(master_list)
         except Exception as e:
             self.log_bus.log(f"Error updating master body parts: {e}", "error", "GUISubjectService")
+
+    # ---- Master metadata management (project level) ----
+    def get_master_genotypes(self) -> List[str]:
+        """Get available genotypes from the project."""
+        try:
+            return self.project_manager.get_available_genotypes()
+        except Exception as e:
+            self.log_bus.log(f"Error getting available genotypes: {e}", "error", "GUISubjectService")
+            return []
+
+    def get_master_treatments(self) -> List[str]:
+        """Get available treatments from the project."""
+        try:
+            return self.project_manager.get_available_treatments()
+        except Exception as e:
+            self.log_bus.log(f"Error getting available treatments: {e}", "error", "GUISubjectService")
+            return []
+
+    def get_master_tracked_objects(self) -> List[str]:
+        """Get master tracked objects from the project."""
+        try:
+            return self.project_manager.get_master_tracked_objects()
+        except Exception as e:
+            self.log_bus.log(f"Error getting master tracked objects: {e}", "error", "GUISubjectService")
+            return []
+
+    def update_master_genotypes(self, genotypes: List[str]) -> None:
+        """Update available genotypes in the project."""
+        try:
+            self.project_manager.update_available_genotypes(genotypes)
+        except Exception as e:
+            self.log_bus.log(f"Error updating genotypes: {e}", "error", "GUISubjectService")
+
+    def update_master_treatments(self, treatments: List[str]) -> None:
+        """Update available treatments in the project."""
+        try:
+            self.project_manager.update_available_treatments(treatments)
+        except Exception as e:
+            self.log_bus.log(f"Error updating treatments: {e}", "error", "GUISubjectService")
+
+    def update_master_tracked_objects(self, objects: List[str]) -> None:
+        """Update master tracked objects in the project."""
+        try:
+            self.project_manager.update_master_tracked_objects(objects)
+        except Exception as e:
+            self.log_bus.log(f"Error updating master tracked objects: {e}", "error", "GUISubjectService")
+
+    # ---- Colony-level metadata management ----
+    def get_colony_genotypes(self, colony_id: str) -> List[str]:
+        """Get genotypes available for a specific colony."""
+        try:
+            # For now, colonies inherit from project master lists
+            # In the future, this could filter based on colony-specific settings
+            return self.get_master_genotypes()
+        except Exception as e:
+            self.log_bus.log(f"Error getting colony genotypes for {colony_id}: {e}", "error", "GUISubjectService")
+            return []
+
+    def get_colony_treatments(self, colony_id: str) -> List[str]:
+        """Get treatments available for a specific colony."""
+        try:
+            # For now, colonies inherit from project master lists
+            return self.get_master_treatments()
+        except Exception as e:
+            self.log_bus.log(f"Error getting colony treatments for {colony_id}: {e}", "error", "GUISubjectService")
+            return []
+
+    def get_colony_tracked_objects(self, colony_id: str) -> List[str]:
+        """Get tracked objects available for a specific colony."""
+        try:
+            # For now, colonies inherit from project master lists
+            return self.get_master_tracked_objects()
+        except Exception as e:
+            self.log_bus.log(f"Error getting colony tracked objects for {colony_id}: {e}", "error", "GUISubjectService")
+            return []
+
+    def get_colony_body_parts(self, colony_id: str) -> List[str]:
+        """Get body parts available for a specific colony."""
+        try:
+            # For now, colonies inherit from project master lists
+            return self.get_master_body_parts()
+        except Exception as e:
+            self.log_bus.log(f"Error getting colony body parts for {colony_id}: {e}", "error", "GUISubjectService")
+            return []
 
     def add_treatment(self, name: str) -> None:
         try:
@@ -505,6 +605,250 @@ class GUIProjectService:
             return {}
 
 
+class LabService:
+    """Service for GUI lab operations."""
+
+    def __init__(self):
+        self.setup_service = None
+        self.log_bus = LoggingEventBus.get_instance()
+
+    def set_services(self, setup_service):
+        """Set the setup service."""
+        self.setup_service = setup_service
+
+    def get_labs(self) -> List[Dict[str, Any]]:
+        """Get all labs for display."""
+        if not self.setup_service:
+            self.log_bus.log("Setup service not available", "error", "LabService")
+            return []
+
+        try:
+            labs = self.setup_service.get_labs()
+            return list(labs.values())
+        except Exception as e:
+            self.log_bus.log(f"Error loading labs: {e}", "error", "LabService")
+            return []
+
+    def get_lab_members(self, lab_id: str) -> List[Dict[str, Any]]:
+        """Get members of a lab."""
+        if not self.setup_service:
+            self.log_bus.log("Setup service not available", "error", "LabService")
+            return []
+
+        try:
+            result = self.setup_service.get_lab_members(lab_id)
+            return result.get("members", [])
+        except Exception as e:
+            self.log_bus.log(f"Error loading lab members: {e}", "error", "LabService")
+            return []
+
+    def add_lab_member(self, lab_id: str, email: str, role: str = "member") -> bool:
+        """Add a member to a lab."""
+        if not self.setup_service:
+            self.log_bus.log("Setup service not available", "error", "LabService")
+            return False
+
+        try:
+            result = self.setup_service.add_lab_member(lab_id, email, role)
+            if result["success"]:
+                self.log_bus.log(result["message"], "success", "LabService")
+                return True
+            else:
+                self.log_bus.log(result["message"], "error", "LabService")
+                return False
+        except Exception as e:
+            self.log_bus.log(f"Error adding lab member: {e}", "error", "LabService")
+            return False
+
+    def remove_lab_member(self, lab_id: str, user_id: str) -> bool:
+        """Remove a member from a lab."""
+        if not self.setup_service:
+            self.log_bus.log("Setup service not available", "error", "LabService")
+            return False
+
+        try:
+            result = self.setup_service.remove_lab_member(lab_id, user_id)
+            if result["success"]:
+                self.log_bus.log(result["message"], "success", "LabService")
+                return True
+            else:
+                self.log_bus.log(result["message"], "error", "LabService")
+                return False
+        except Exception as e:
+            self.log_bus.log(f"Error removing lab member: {e}", "error", "LabService")
+            return False
+
+    def get_lab_colonies(self, lab_id: str) -> List[Dict[str, Any]]:
+        """Get colonies for a lab."""
+        if not self.setup_service:
+            self.log_bus.log("Setup service not available", "error", "LabService")
+            return []
+
+        try:
+            result = self.setup_service.get_lab_colonies(lab_id)
+            return result.get("colonies", [])
+        except Exception as e:
+            self.log_bus.log(f"Error loading lab colonies: {e}", "error", "LabService")
+            return []
+
+    def create_colony(self, lab_id: str, colony_id: str, name: str, genotype: str = None, background: str = None) -> bool:
+        """Create a new colony in a lab."""
+        if not self.setup_service:
+            self.log_bus.log("Setup service not available", "error", "LabService")
+            return False
+
+        try:
+            from ..core.metadata import ColonyDTO
+            colony_dto = ColonyDTO(
+                id=colony_id,
+                name=name,
+                genotype_of_interest=genotype,
+                background_strain=background
+            )
+            result = self.setup_service.create_colony(lab_id, colony_dto)
+            if result["success"]:
+                self.log_bus.log(result["message"], "success", "LabService")
+                return True
+            else:
+                self.log_bus.log(result["message"], "error", "LabService")
+                return False
+        except Exception as e:
+            self.log_bus.log(f"Error creating colony: {e}", "error", "LabService")
+            return False
+
+    def update_colony(self, colony_id: str, name: str = None, genotype: str = None, background: str = None) -> bool:
+        """Update an existing colony."""
+        if not self.setup_service:
+            self.log_bus.log("Setup service not available", "error", "LabService")
+            return False
+
+        try:
+            result = self.setup_service.update_colony(colony_id, name, genotype, background)
+            if result["success"]:
+                self.log_bus.log(result["message"], "success", "LabService")
+                return True
+            else:
+                self.log_bus.log(result["message"], "error", "LabService")
+                return False
+        except Exception as e:
+            self.log_bus.log(f"Error updating colony: {e}", "error", "LabService")
+            return False
+
+    def get_colony_subjects(self, colony_id: str) -> List[Dict[str, Any]]:
+        """Get subjects for a colony."""
+        if not self.setup_service:
+            self.log_bus.log("Setup service not available", "error", "LabService")
+            return []
+
+        try:
+            result = self.setup_service.get_colony_subjects(colony_id)
+            return result.get("subjects", [])
+        except Exception as e:
+            self.log_bus.log(f"Error loading colony subjects: {e}", "error", "LabService")
+            return []
+
+    def get_lab_projects(self, lab_id: str) -> List[Dict[str, Any]]:
+        """Get projects registered with a lab."""
+        if not self.setup_service:
+            self.log_bus.log("Setup service not available", "error", "LabService")
+            return []
+
+        try:
+            result = self.setup_service.get_lab_projects(lab_id)
+            return result.get("projects", [])
+        except Exception as e:
+            self.log_bus.log(f"Error loading lab projects: {e}", "error", "LabService")
+            return []
+
+    def add_lab_project(self, lab_id: str, project_name: str, project_path: str) -> bool:
+        """Add a project to a lab."""
+        if not self.setup_service:
+            self.log_bus.log("Setup service not available", "error", "LabService")
+            return False
+
+        try:
+            result = self.setup_service.add_lab_project(lab_id, project_name, project_path)
+            if result["success"]:
+                self.log_bus.log(result["message"], "success", "LabService")
+                return True
+            else:
+                self.log_bus.log(result["message"], "error", "LabService")
+                return False
+        except Exception as e:
+            self.log_bus.log(f"Error adding project to lab: {e}", "error", "LabService")
+            return False
+
+    def remove_lab_project(self, lab_id: str, project_name: str) -> bool:
+        """Remove a project from a lab."""
+        if not self.setup_service:
+            self.log_bus.log("Setup service not available", "error", "LabService")
+            return False
+
+        try:
+            result = self.setup_service.remove_lab_project(lab_id, project_name)
+            if result["success"]:
+                self.log_bus.log(result["message"], "success", "LabService")
+                return True
+            else:
+                self.log_bus.log(result["message"], "error", "LabService")
+                return False
+        except Exception as e:
+            self.log_bus.log(f"Error removing project from lab: {e}", "error", "LabService")
+            return False
+
+    def create_lab(self, lab_id: str, name: str, institution: str = None, pi_name: str = None) -> bool:
+        """Create a new lab."""
+        if not self.setup_service:
+            self.log_bus.log("Setup service not available", "error", "LabService")
+            return False
+
+        try:
+            from ..core.metadata import LabDTO
+            from ..core.config_manager import get_config
+
+            user_id = get_config("user.id", scope="user")
+            if not user_id:
+                self.log_bus.log("No user configured", "error", "LabService")
+                return False
+
+            lab_dto = LabDTO(
+                id=lab_id,
+                name=name,
+                institution=institution,
+                pi_name=pi_name,
+                creator_id=user_id
+            )
+
+            result = self.setup_service.create_lab(lab_dto)
+            if result["success"]:
+                self.log_bus.log(f"Lab '{name}' created successfully", "success", "LabService")
+                return True
+            else:
+                self.log_bus.log(result["message"], "error", "LabService")
+                return False
+        except Exception as e:
+            self.log_bus.log(f"Error creating lab: {e}", "error", "LabService")
+            return False
+
+    def update_lab(self, lab_id: str, name: str = None, institution: str = None, pi_name: str = None) -> bool:
+        """Update an existing lab."""
+        if not self.setup_service:
+            self.log_bus.log("Setup service not available", "error", "LabService")
+            return False
+
+        try:
+            result = self.setup_service.update_lab(lab_id, name, institution, pi_name)
+            if result["success"]:
+                self.log_bus.log(f"Lab '{lab_id}' updated successfully", "success", "LabService")
+                return True
+            else:
+                self.log_bus.log(result["message"], "error", "LabService")
+                return False
+        except Exception as e:
+            self.log_bus.log(f"Error updating lab: {e}", "error", "LabService")
+            return False
+
+
 class GUIServiceFactory:
     """Factory for creating GUI services."""
 
@@ -522,3 +866,10 @@ class GUIServiceFactory:
     def create_project_service(self) -> GUIProjectService:
         """Create project service."""
         return GUIProjectService(self.project_manager)
+
+    def create_lab_service(self) -> LabService:
+        """Create lab service."""
+        from ..core.setup_service import get_setup_service
+        lab_service = LabService()
+        lab_service.set_services(get_setup_service())
+        return lab_service

@@ -615,24 +615,47 @@ class SubjectView(BaseView):
         self.log_bus.log("All available treatments are already active.", "info", "SubjectView")
 
     def handle_remove_active_treatments(self):
-        """Removes selected treatments from the active treatments list."""
+        """Removes selected treatments from the colony active list."""
         selected_items = self.current_treatments_list.selectedItems()
         if not selected_items:
-            self.log_bus.log("No active treatments selected for removal.", "warning", "SubjectView")
+            self.log_bus.log("No treatments selected for removal from colony.", "warning", "SubjectView")
             return
 
-        # Remove selected treatments
-        for item in selected_items:
-            treatment_name = item.text()
-            if self.subject_service:
-                success = self.subject_service.remove_treatment(treatment_name)
-                if success:
-                    self.log_bus.log(f"Removed treatment '{treatment_name}' successfully.", "success", "SubjectView")
-                else:
-                    self.log_bus.log(f"Failed to remove treatment '{treatment_name}'.", "error", "SubjectView")
+        # This would need colony-specific treatment management
+        # For now, just show that it's not implemented
+        self.log_bus.log("Colony-specific treatment management not yet implemented.", "info", "SubjectView")
 
-        # Refresh the lists to reflect changes
-        self.refresh_treatments_lists()
+    def handle_promote_treatments_to_master(self):
+        """Promote selected colony treatments to project master level."""
+        selected_items = self.current_treatments_list.selectedItems()
+        if not selected_items:
+            self.navigation_pane.add_log_message("No treatments selected to promote.", "warning")
+            return
+
+        selected_names = [item.text() for item in selected_items]
+
+        try:
+            # Get current master treatments
+            current_master = self.subject_service.get_master_treatments()
+
+            # Add selected items to master (avoiding duplicates)
+            updated_master = current_master.copy()
+            added_count = 0
+            for tr in selected_names:
+                if tr not in updated_master:
+                    updated_master.append(tr)
+                    added_count += 1
+
+            if added_count > 0:
+                self.subject_service.update_master_treatments(updated_master)
+                self.navigation_pane.add_log_message(f"Promoted {added_count} treatment(s) to project master.", "success")
+                self.refresh_treatments_lists()
+            else:
+                self.navigation_pane.add_log_message("All selected treatments already exist in project master.", "info")
+
+        except Exception as e:
+            self.log_bus.log(f"Error promoting treatments: {e}", "error", "SubjectView")
+            self.navigation_pane.add_log_message(f"Error promoting treatments: {str(e)}", "error")
 
     def handle_add_to_active_genotypes(self):
         """Adds selected genotypes from the available list to active genotypes."""
@@ -646,15 +669,47 @@ class SubjectView(BaseView):
         self.log_bus.log("All available genotypes are already active.", "info", "SubjectView")
 
     def handle_remove_active_genotypes(self):
-        """Removes selected genotypes from the active genotypes list."""
+        """Removes selected genotypes from the colony active list."""
         selected_items = self.current_genotypes_list.selectedItems()
         if not selected_items:
-            self.log_bus.log("No active genotypes selected for removal.", "warning", "SubjectView")
+            self.log_bus.log("No genotypes selected for removal from colony.", "warning", "SubjectView")
             return
 
-        # For now, all available genotypes are automatically active
-        # In the future, this could implement selective activation
-        self.log_bus.log("All available genotypes are already active.", "info", "SubjectView")
+        # This would need colony-specific genotype management
+        # For now, just show that it's not implemented
+        self.log_bus.log("Colony-specific genotype management not yet implemented.", "info", "SubjectView")
+
+    def handle_promote_genotypes_to_master(self):
+        """Promote selected colony genotypes to project master level."""
+        selected_items = self.current_genotypes_list.selectedItems()
+        if not selected_items:
+            self.navigation_pane.add_log_message("No genotypes selected to promote.", "warning")
+            return
+
+        selected_names = [item.text() for item in selected_items]
+
+        try:
+            # Get current master genotypes
+            current_master = self.subject_service.get_master_genotypes()
+
+            # Add selected items to master (avoiding duplicates)
+            updated_master = current_master.copy()
+            added_count = 0
+            for gt in selected_names:
+                if gt not in updated_master:
+                    updated_master.append(gt)
+                    added_count += 1
+
+            if added_count > 0:
+                self.subject_service.update_master_genotypes(updated_master)
+                self.navigation_pane.add_log_message(f"Promoted {added_count} genotype(s) to project master.", "success")
+                self.refresh_genotypes_lists()
+            else:
+                self.navigation_pane.add_log_message("All selected genotypes already exist in project master.", "info")
+
+        except Exception as e:
+            self.log_bus.log(f"Error promoting genotypes: {e}", "error", "SubjectView")
+            self.navigation_pane.add_log_message(f"Error promoting genotypes: {str(e)}", "error")
 
     def refresh_treatments_lists(self):
         """Refresh the available and active treatments list widgets."""
@@ -757,49 +812,59 @@ class SubjectView(BaseView):
         return item.name if hasattr(item, "name") else str(item)
 
     def setup_genotypes_page(self):
-        """Initialize the Genotypes page."""
+        """Initialize the Genotypes page with project master ↔ colony active management."""
         self.genotypes_page = QWidget()
         layout = self.setup_page_layout(self.genotypes_page)
 
-        # ---- Genotypes Management Section ----
-        genotypes_group, genotypes_layout = self.create_form_section("Genotypes Management", layout)
+        # ---- Add New Genotype Section ----
+        add_group, add_layout = self.create_form_section("Add Genotype", layout)
 
-        new_genotype_row = self.create_form_row(genotypes_layout)
-        new_genotype_label = self.create_form_label("New Genotype:")
+        add_row = self.create_form_row(add_layout)
+        add_label = self.create_form_label("New Genotype:")
         self.new_genotype_line_edit = QLineEdit()
         self.new_genotype_line_edit.setPlaceholderText("Enter new genotype name...")
         self.new_genotype_line_edit.setProperty("class", "mus1-text-input")
-        genotype_add_button = QPushButton("Add Genotype")
-        genotype_add_button.setProperty("class", "mus1-primary-button")
-        genotype_add_button.clicked.connect(self.handle_add_genotype)
-        new_genotype_row.addWidget(new_genotype_label)
-        new_genotype_row.addWidget(self.new_genotype_line_edit, 1)
-        new_genotype_row.addWidget(genotype_add_button)
+        add_genotype_button = QPushButton("Add to Project Master")
+        add_genotype_button.setProperty("class", "mus1-primary-button")
+        add_genotype_button.clicked.connect(self.handle_add_genotype)
+        add_row.addWidget(add_label)
+        add_row.addWidget(self.new_genotype_line_edit, 1)
+        add_row.addWidget(add_genotype_button)
+
+        # ---- Genotypes Management Section ----
+        genotypes_group, genotypes_layout = self.create_form_section("Manage Genotypes (Project Master ↔ Colony Active)", layout)
 
         genotypes_lists_layout = QHBoxLayout()
         genotypes_layout.addLayout(genotypes_lists_layout)
 
-        available_genotype_col, available_genotype_layout = self.create_form_section("Available Genotypes:", None, is_subgroup=True)
+        available_genotype_col, available_genotype_layout = self.create_form_section("Project Master Genotypes", None, is_subgroup=True)
         self.all_genotypes_list = QListWidget()
         self.all_genotypes_list.setProperty("class", "mus1-list-widget")
         self.all_genotypes_list.setSelectionMode(QListWidget.SelectionMode.ExtendedSelection)
         available_genotype_layout.addWidget(self.all_genotypes_list)
-        available_genotype_buttons = self.create_button_row(available_genotype_layout, True)
-        add_to_active_genotype_button = QPushButton("Add Selected to Active →")
+        available_genotype_buttons = self.create_button_row(available_genotype_layout, False)
+        add_to_active_genotype_button = QPushButton("Add Selected to Colony →")
         add_to_active_genotype_button.setProperty("class", "mus1-secondary-button")
         add_to_active_genotype_button.clicked.connect(self.handle_add_to_active_genotypes)
         available_genotype_buttons.addWidget(add_to_active_genotype_button)
+        available_genotype_buttons.addStretch(1)
 
-        active_genotype_col, active_genotype_layout = self.create_form_section("Active Genotypes:", None, is_subgroup=True)
+        active_genotype_col, active_genotype_layout = self.create_form_section("Colony Active Genotypes", None, is_subgroup=True)
         self.current_genotypes_list = QListWidget()
         self.current_genotypes_list.setProperty("class", "mus1-list-widget")
         self.current_genotypes_list.setSelectionMode(QListWidget.SelectionMode.ExtendedSelection)
         active_genotype_layout.addWidget(self.current_genotypes_list)
-        active_genotype_buttons = self.create_button_row(active_genotype_layout, True)
-        remove_genotype_button = QPushButton("← Remove Selected")
+        active_genotype_buttons = self.create_button_row(active_genotype_layout, False)
+        remove_genotype_button = QPushButton("← Remove from Colony")
         remove_genotype_button.setProperty("class", "mus1-secondary-button")
         remove_genotype_button.clicked.connect(self.handle_remove_active_genotypes)
         active_genotype_buttons.addWidget(remove_genotype_button)
+
+        promote_genotype_button = QPushButton("↑ Promote to Project Master")
+        promote_genotype_button.setProperty("class", "mus1-primary-button")
+        promote_genotype_button.clicked.connect(self.handle_promote_genotypes_to_master)
+        active_genotype_buttons.addWidget(promote_genotype_button)
+        active_genotype_buttons.addStretch(1)
 
         genotypes_lists_layout.addWidget(available_genotype_col, 1)
         genotypes_lists_layout.addWidget(active_genotype_col, 1)
@@ -809,51 +874,59 @@ class SubjectView(BaseView):
         self.refresh_genotypes_lists()
 
     def setup_treatments_page(self):
-        """Initialize the Treatments page."""
+        """Initialize the Treatments page with project master ↔ colony active management."""
         self.treatments_page = QWidget()
         layout = self.setup_page_layout(self.treatments_page)
 
-        # ---- Treatments Management Section ----
-        treatments_group, treatments_layout = self.create_form_section("Treatments Management", layout)
+        # ---- Add New Treatment Section ----
+        add_group, add_layout = self.create_form_section("Add Treatment", layout)
 
-        # New Treatment entry row
-        new_treatment_row = self.create_form_row(treatments_layout)
-        new_treatment_label = self.create_form_label("New Treatment:")
+        add_row = self.create_form_row(add_layout)
+        add_label = self.create_form_label("New Treatment:")
         self.new_treatment_line_edit = QLineEdit()
         self.new_treatment_line_edit.setPlaceholderText("Enter new treatment name...")
         self.new_treatment_line_edit.setProperty("class", "mus1-text-input")
-        treatment_add_button = QPushButton("Add Treatment")
-        treatment_add_button.setProperty("class", "mus1-primary-button")
-        treatment_add_button.clicked.connect(self.handle_add_treatment)
-        new_treatment_row.addWidget(new_treatment_label)
-        new_treatment_row.addWidget(self.new_treatment_line_edit, 1)
-        new_treatment_row.addWidget(treatment_add_button)
+        add_treatment_button = QPushButton("Add to Project Master")
+        add_treatment_button.setProperty("class", "mus1-primary-button")
+        add_treatment_button.clicked.connect(self.handle_add_treatment)
+        add_row.addWidget(add_label)
+        add_row.addWidget(self.new_treatment_line_edit, 1)
+        add_row.addWidget(add_treatment_button)
 
-        # Treatments lists: available and active
+        # ---- Treatments Management Section ----
+        treatments_group, treatments_layout = self.create_form_section("Manage Treatments (Project Master ↔ Colony Active)", layout)
+
         treatments_lists_layout = QHBoxLayout()
         treatments_layout.addLayout(treatments_lists_layout)
 
-        available_treatment_col, available_treatment_layout = self.create_form_section("Available Treatments:", None, is_subgroup=True)
+        available_treatment_col, available_treatment_layout = self.create_form_section("Project Master Treatments", None, is_subgroup=True)
         self.all_treatments_list = QListWidget()
         self.all_treatments_list.setProperty("class", "mus1-list-widget")
         self.all_treatments_list.setSelectionMode(QListWidget.SelectionMode.ExtendedSelection)
         available_treatment_layout.addWidget(self.all_treatments_list)
-        available_treatment_buttons = self.create_button_row(available_treatment_layout, True)
-        add_to_active_treatment_button = QPushButton("Add Selected to Active →")
+        available_treatment_buttons = self.create_button_row(available_treatment_layout, False)
+        add_to_active_treatment_button = QPushButton("Add Selected to Colony →")
         add_to_active_treatment_button.setProperty("class", "mus1-secondary-button")
         add_to_active_treatment_button.clicked.connect(self.handle_add_to_active_treatments)
         available_treatment_buttons.addWidget(add_to_active_treatment_button)
+        available_treatment_buttons.addStretch(1)
 
-        active_treatment_col, active_treatment_layout = self.create_form_section("Active Treatments:", None, is_subgroup=True)
+        active_treatment_col, active_treatment_layout = self.create_form_section("Colony Active Treatments", None, is_subgroup=True)
         self.current_treatments_list = QListWidget()
         self.current_treatments_list.setProperty("class", "mus1-list-widget")
         self.current_treatments_list.setSelectionMode(QListWidget.SelectionMode.ExtendedSelection)
         active_treatment_layout.addWidget(self.current_treatments_list)
-        active_treatment_buttons = self.create_button_row(active_treatment_layout, True)
-        remove_treatment_button = QPushButton("← Remove Selected")
+        active_treatment_buttons = self.create_button_row(active_treatment_layout, False)
+        remove_treatment_button = QPushButton("← Remove from Colony")
         remove_treatment_button.setProperty("class", "mus1-secondary-button")
         remove_treatment_button.clicked.connect(self.handle_remove_active_treatments)
         active_treatment_buttons.addWidget(remove_treatment_button)
+
+        promote_treatment_button = QPushButton("↑ Promote to Project Master")
+        promote_treatment_button.setProperty("class", "mus1-primary-button")
+        promote_treatment_button.clicked.connect(self.handle_promote_treatments_to_master)
+        active_treatment_buttons.addWidget(promote_treatment_button)
+        active_treatment_buttons.addStretch(1)
 
         treatments_lists_layout.addWidget(available_treatment_col, 1)
         treatments_lists_layout.addWidget(active_treatment_col, 1)
@@ -863,56 +936,77 @@ class SubjectView(BaseView):
         self.refresh_treatments_lists()
 
     def setup_body_parts_page(self):
-        """Initialize the user interface for managing body parts (Master vs Active)."""
+        """Initialize the user interface for managing body parts (Project Master ↔ Colony Active)."""
         self.bodyparts_page = QWidget()
         layout = self.setup_page_layout(self.bodyparts_page)
 
-        # --- Renamed and Kept: Manage Body Parts Section ---
-        management_group, management_layout = self.create_form_section("Manage Body Parts (Master vs Active)", layout) # Renamed title slightly for clarity
+        # ---- Add New Body Part Section ----
+        add_group, add_layout = self.create_form_section("Add Body Part", layout)
+
+        add_row = self.create_form_row(add_layout)
+        add_label = self.create_form_label("New Body Part:")
+        self.new_bodypart_line_edit = QLineEdit()
+        self.new_bodypart_line_edit.setPlaceholderText("Enter new body part name...")
+        self.new_bodypart_line_edit.setProperty("class", "mus1-text-input")
+        add_bodypart_button = QPushButton("Add to Project Master")
+        add_bodypart_button.setProperty("class", "mus1-primary-button")
+        add_bodypart_button.clicked.connect(self.handle_add_bodypart)
+        add_row.addWidget(add_label)
+        add_row.addWidget(self.new_bodypart_line_edit, 1)
+        add_row.addWidget(add_bodypart_button)
+
+        # --- Enhanced: Manage Body Parts Section ---
+        management_group, management_layout = self.create_form_section("Manage Body Parts (Project Master ↔ Colony Active)", layout)
 
         columns_layout = QHBoxLayout()
         columns_layout.setSpacing(self.SECTION_SPACING)
         management_layout.addLayout(columns_layout)
 
-        # Master Column (Available Body Parts)
-        master_column, master_layout = self.create_form_section("Master Body Parts", None, is_subgroup=True)
+        # Project Master Column
+        master_column, master_layout = self.create_form_section("Project Master Body Parts", None, is_subgroup=True)
 
         self.all_bodyparts_list = QListWidget()
         self.all_bodyparts_list.setProperty("class", "mus1-list-widget")
         self.all_bodyparts_list.setSelectionMode(QListWidget.SelectionMode.ExtendedSelection)
         master_layout.addWidget(self.all_bodyparts_list)
 
-        master_buttons_row = self.create_button_row(master_layout) # Keep this row
+        master_buttons_row = self.create_button_row(master_layout)
 
         # Button to remove from master list completely
-        remove_from_master_button = QPushButton("Remove Selected from Master")
+        remove_from_master_button = QPushButton("Remove from Master")
         remove_from_master_button.setProperty("class", "mus1-secondary-button")
         remove_from_master_button.clicked.connect(self.handle_remove_from_master)
         master_buttons_row.addWidget(remove_from_master_button)
 
-        # Button to move selected from master TO active
-        add_to_active_button = QPushButton("Add Selected to Active →")
+        # Button to move selected from master TO colony active
+        add_to_active_button = QPushButton("Add Selected to Colony →")
         add_to_active_button.setProperty("class", "mus1-secondary-button")
         add_to_active_button.clicked.connect(self.handle_add_selected_bodyparts_to_active)
         master_buttons_row.addWidget(add_to_active_button)
-        master_buttons_row.addStretch(1) # Ensure buttons align left/as desired
+        master_buttons_row.addStretch(1)
 
-        # Active Column
-        active_column, active_layout = self.create_form_section("Active Body Parts (Used in Experiments)", None, is_subgroup=True) # Added clarity to title
+        # Colony Active Column
+        active_column, active_layout = self.create_form_section("Colony Active Body Parts", None, is_subgroup=True)
 
         self.current_body_parts_list = QListWidget()
         self.current_body_parts_list.setProperty("class", "mus1-list-widget")
         self.current_body_parts_list.setSelectionMode(QListWidget.SelectionMode.ExtendedSelection)
         active_layout.addWidget(self.current_body_parts_list)
 
-        active_buttons_row = self.create_button_row(active_layout) # Keep this row
+        active_buttons_row = self.create_button_row(active_layout)
 
-        # Button to remove selected FROM active (moves back to master implicitly if not deleted)
-        remove_button = QPushButton("← Remove Selected from Active List")
+        # Button to remove selected FROM colony active
+        remove_button = QPushButton("← Remove from Colony")
         remove_button.setProperty("class", "mus1-secondary-button")
         remove_button.clicked.connect(self.handle_remove_active_bodyparts)
         active_buttons_row.addWidget(remove_button)
-        active_buttons_row.addStretch(1) # Ensure buttons align left/as desired
+
+        # Button to promote colony items to project master
+        promote_button = QPushButton("↑ Promote to Project Master")
+        promote_button.setProperty("class", "mus1-primary-button")
+        promote_button.clicked.connect(self.handle_promote_bodyparts_to_master)
+        active_buttons_row.addWidget(promote_button)
+        active_buttons_row.addStretch(1)
 
         # Add columns to layout
         columns_layout.addWidget(master_column, 1)
@@ -921,7 +1015,7 @@ class SubjectView(BaseView):
         layout.addStretch(1)
         self.add_page(self.bodyparts_page, "Bodyparts")
 
-        # Refresh the lists initially (this function should still work)
+        # Refresh the lists initially
         self.refresh_body_parts_page()
 
     def handle_remove_from_master(self):
@@ -983,60 +1077,125 @@ class SubjectView(BaseView):
         self.navigation_pane.add_log_message(f"Moved {len(items_to_move)} body parts from active to master list.", "success")
         self.refresh_body_parts_page()
 
+    def handle_add_bodypart(self):
+        """Add a new body part to the project master list."""
+        new_bp = self.new_bodypart_line_edit.text().strip()
+        if not new_bp:
+            self.navigation_pane.add_log_message("Body part name cannot be empty.", "warning")
+            return
+
+        try:
+            # Add to master body parts
+            current_master = self.subject_service.get_master_body_parts()
+            if new_bp in current_master:
+                self.navigation_pane.add_log_message(f"Body part '{new_bp}' already exists in master list.", "warning")
+                return
+
+            updated_master = current_master + [new_bp]
+            self.subject_service.update_master_body_parts(updated_master)
+
+            self.new_bodypart_line_edit.clear()
+            self.navigation_pane.add_log_message(f"Added body part '{new_bp}' to project master.", "success")
+            self.refresh_body_parts_page()
+        except Exception as e:
+            self.log_bus.log(f"Error adding body part: {e}", "error", "SubjectView")
+            self.navigation_pane.add_log_message(f"Error adding body part: {str(e)}", "error")
+
+    def handle_promote_bodyparts_to_master(self):
+        """Promote selected colony body parts to project master level."""
+        selected_items = self.current_body_parts_list.selectedItems()
+        if not selected_items:
+            self.navigation_pane.add_log_message("No body parts selected to promote.", "warning")
+            return
+
+        selected_names = [item.text() for item in selected_items]
+
+        try:
+            # Get current lists
+            current_master = self.subject_service.get_master_body_parts()
+
+            # Add selected items to master (avoiding duplicates)
+            updated_master = current_master.copy()
+            added_count = 0
+            for bp in selected_names:
+                if bp not in updated_master:
+                    updated_master.append(bp)
+                    added_count += 1
+
+            if added_count > 0:
+                self.subject_service.update_master_body_parts(updated_master)
+                self.navigation_pane.add_log_message(f"Promoted {added_count} body part(s) to project master.", "success")
+                self.refresh_body_parts_page()
+            else:
+                self.navigation_pane.add_log_message("All selected body parts already exist in project master.", "info")
+
+        except Exception as e:
+            self.log_bus.log(f"Error promoting body parts: {e}", "error", "SubjectView")
+            self.navigation_pane.add_log_message(f"Error promoting body parts: {str(e)}", "error")
+
     def setup_objects_page(self):
-        """Setup the Objects page with object list widgets."""
+        """Setup the Objects page with project master ↔ colony active management."""
         self.objects_page = QWidget()
         layout = self.setup_page_layout(self.objects_page)
 
-        objects_group, objects_layout = self.create_form_section("Objects Management", layout)
+        # ---- Add New Object Section ----
+        add_group, add_layout = self.create_form_section("Add Object", layout)
 
-        add_row = self.create_form_row(objects_layout)
-        new_object_label = self.create_form_label("New Object:")
+        add_row = self.create_form_row(add_layout)
+        add_label = self.create_form_label("New Object:")
         self.new_object_line_edit = QLineEdit()
         self.new_object_line_edit.setPlaceholderText("Enter new object name...")
         self.new_object_line_edit.setProperty("class", "mus1-text-input")
-        add_button = QPushButton("Add Object")
+        add_button = QPushButton("Add to Project Master")
         add_button.setProperty("class", "mus1-primary-button")
-        add_button.clicked.connect(self.add_object_by_name)
-        add_row.addWidget(new_object_label)
+        add_button.clicked.connect(self.handle_add_object)
+        add_row.addWidget(add_label)
         add_row.addWidget(self.new_object_line_edit, 1)
         add_row.addWidget(add_button)
+
+        # ---- Objects Management Section ----
+        objects_group, objects_layout = self.create_form_section("Manage Objects (Project Master ↔ Colony Active)", layout)
 
         lists_layout = QHBoxLayout()
         lists_layout.setSpacing(self.SECTION_SPACING)
         objects_layout.addLayout(lists_layout)
 
-        # Available (Master) Objects Column
-        available_column, available_layout = self.create_form_section("Available Objects:", None, is_subgroup=True)
+        # Project Master Objects Column
+        available_column, available_layout = self.create_form_section("Project Master Objects", None, is_subgroup=True)
         self.all_objects_list = QListWidget()
         self.all_objects_list.setProperty("class", "mus1-list-widget")
         self.all_objects_list.setSelectionMode(QListWidget.SelectionMode.ExtendedSelection)
         available_layout.addWidget(self.all_objects_list)
-        
-        # Button row for available (master) objects
-        available_button_row = self.create_button_row(available_layout, add_stretch=True)
-        add_to_active_button = QPushButton("Add Selected to Active →")
+
+        available_button_row = self.create_button_row(available_layout, add_stretch=False)
+        add_to_active_button = QPushButton("Add Selected to Colony →")
         add_to_active_button.setProperty("class", "mus1-secondary-button")
         add_to_active_button.clicked.connect(self.move_objects_master_to_active)
         available_button_row.addWidget(add_to_active_button)
-        remove_from_master_object_button = QPushButton("Remove Selected from Master")
+        remove_from_master_object_button = QPushButton("Remove from Master")
         remove_from_master_object_button.setProperty("class", "mus1-secondary-button")
         remove_from_master_object_button.clicked.connect(self.delete_object_from_master)
         available_button_row.addWidget(remove_from_master_object_button)
+        available_button_row.addStretch(1)
 
-        # Active Objects Column
-        active_column, active_layout = self.create_form_section("Active Objects:", None, is_subgroup=True)
+        # Colony Active Objects Column
+        active_column, active_layout = self.create_form_section("Colony Active Objects", None, is_subgroup=True)
         self.current_objects_list = QListWidget()
         self.current_objects_list.setProperty("class", "mus1-list-widget")
         self.current_objects_list.setSelectionMode(QListWidget.SelectionMode.ExtendedSelection)
         active_layout.addWidget(self.current_objects_list)
-        
-        # Button row for active objects with a "move back" button
-        active_button_row = self.create_button_row(active_layout, add_stretch=True)
-        remove_from_active_object_button = QPushButton("← Remove Selected from Active")
+
+        active_button_row = self.create_button_row(active_layout, add_stretch=False)
+        remove_from_active_object_button = QPushButton("← Remove from Colony")
         remove_from_active_object_button.setProperty("class", "mus1-secondary-button")
         remove_from_active_object_button.clicked.connect(self.move_objects_active_to_master)
         active_button_row.addWidget(remove_from_active_object_button)
+
+        promote_object_button = QPushButton("↑ Promote to Project Master")
+        promote_object_button.setProperty("class", "mus1-primary-button")
+        promote_object_button.clicked.connect(self.handle_promote_objects_to_master)
+        active_button_row.addWidget(promote_object_button)
+        active_button_row.addStretch(1)
 
         lists_layout.addWidget(available_column, 1)
         lists_layout.addWidget(active_column, 1)
@@ -1045,74 +1204,151 @@ class SubjectView(BaseView):
         self.add_page(self.objects_page, "Objects")
         self.refresh_objects_ui()
 
-    def add_object_by_name(self):
+    def handle_add_object(self):
+        """Add a new object to the project master list."""
         new_obj = self.new_object_line_edit.text().strip()
         if not new_obj:
-            self.navigation_pane.add_log_message("No object name entered.", 'warning')
+            self.navigation_pane.add_log_message("Object name cannot be empty.", "warning")
             return
+
         try:
-            self.window().project_manager.add_tracked_object(new_obj)
+            # Add to master tracked objects
+            current_master = self.subject_service.get_master_tracked_objects()
+            if new_obj in current_master:
+                self.navigation_pane.add_log_message(f"Object '{new_obj}' already exists in master list.", "warning")
+                return
+
+            updated_master = current_master + [new_obj]
+            self.subject_service.update_master_tracked_objects(updated_master)
+
             self.new_object_line_edit.clear()
-            self.navigation_pane.add_log_message(f"Added new object: {new_obj}", 'success')
-        except ValueError as e:
-            self.navigation_pane.add_log_message(str(e), 'warning')
-        self.refresh_objects_ui()
+            self.navigation_pane.add_log_message(f"Added object '{new_obj}' to project master.", "success")
+            self.refresh_objects_ui()
+        except Exception as e:
+            self.log_bus.log(f"Error adding object: {e}", "error", "SubjectView")
+            self.navigation_pane.add_log_message(f"Error adding object: {str(e)}", "error")
 
-    def move_objects_master_to_active(self):
-        selected_items = self.all_objects_list.selectedItems()
-        if not selected_items:
-            self.navigation_pane.add_log_message("No objects selected to move to Active.", 'warning')
-            return
-        master_list = self._get_master_objects()
-        active_list = self._get_active_objects()
-        existing_active = [self.format_item(obj) for obj in active_list]
-        selected_names = [item.text() for item in selected_items]
-        moving_objects = [obj for obj in master_list if self.format_item(obj) in selected_names]
-        for obj in moving_objects:
-            if self.format_item(obj) not in existing_active:
-                active_list.append(obj)
-        if self.subject_service:
-            self.subject_service.update_tracked_objects(active_list, list_type="active")
-        self.navigation_pane.add_log_message(f"Moved {len(moving_objects)} object(s) from Master to Active.", 'success')
-        self.refresh_objects_ui()
-
-    def move_objects_active_to_master(self):
+    def handle_promote_objects_to_master(self):
+        """Promote selected colony objects to project master level."""
         selected_items = self.current_objects_list.selectedItems()
         if not selected_items:
-            self.navigation_pane.add_log_message("No objects selected to move back to Master.", 'warning')
+            self.navigation_pane.add_log_message("No objects selected to promote.", "warning")
             return
-        active_list = self._get_active_objects()
-        master_list = self._get_master_objects()
-        selected_names = [item.text() for item in selected_items]
-        active_list = [obj for obj in active_list if self.format_item(obj) not in selected_names]
-        master_names = [self.format_item(obj) for obj in master_list]
-        for item in selected_items:
-            obj_name = item.text()
-            if obj_name not in master_names:
-                # Object management is not implemented in the new architecture yet
-                # This would need to be updated when object management is added
-                pass
-        if self.subject_service:
-            self.subject_service.update_tracked_objects(active_list, list_type="active")
-            self.subject_service.update_tracked_objects(master_list, list_type="master")
-        self.navigation_pane.add_log_message(f"Moved {len(selected_items)} object(s) from Active to Master.", 'success')
-        self.refresh_objects_ui()
 
-    def delete_object_from_master(self):
+        selected_names = [item.text() for item in selected_items]
+
+        try:
+            # Get current master objects
+            current_master = self.subject_service.get_master_tracked_objects()
+
+            # Add selected items to master (avoiding duplicates)
+            updated_master = current_master.copy()
+            added_count = 0
+            for obj in selected_names:
+                if obj not in updated_master:
+                    updated_master.append(obj)
+                    added_count += 1
+
+            if added_count > 0:
+                self.subject_service.update_master_tracked_objects(updated_master)
+                self.navigation_pane.add_log_message(f"Promoted {added_count} object(s) to project master.", "success")
+                self.refresh_objects_ui()
+            else:
+                self.navigation_pane.add_log_message("All selected objects already exist in project master.", "info")
+
+        except Exception as e:
+            self.log_bus.log(f"Error promoting objects: {e}", "error", "SubjectView")
+            self.navigation_pane.add_log_message(f"Error promoting objects: {str(e)}", "error")
+
+    def move_objects_master_to_active(self):
+        """Move selected objects from project master to colony active."""
         selected_items = self.all_objects_list.selectedItems()
         if not selected_items:
-            self.navigation_pane.add_log_message("No objects selected for deletion from Master.", 'warning')
+            self.navigation_pane.add_log_message("No objects selected to move to colony.", 'warning')
             return
+
         selected_names = [item.text() for item in selected_items]
-        master_list = self._get_master_objects()
-        active_list = self._get_active_objects()
-        master_list = [obj for obj in master_list if self.format_item(obj) not in selected_names]
-        active_list = [obj for obj in active_list if self.format_item(obj) not in selected_names]
-        if self.subject_service:
-            self.subject_service.update_tracked_objects(master_list, list_type="master")
-        self.window().project_manager.update_tracked_objects(active_list, list_type="active")
-        self.navigation_pane.add_log_message(f"Deleted {len(selected_names)} object(s) from Master.", 'success')
-        self.refresh_objects_ui()
+
+        try:
+            # Get current colony active objects
+            current_active = self.subject_service.get_active_tracked_objects()
+
+            # Add selected items to active (avoiding duplicates)
+            updated_active = current_active.copy()
+            added_count = 0
+            for obj in selected_names:
+                if obj not in updated_active:
+                    updated_active.append(obj)
+                    added_count += 1
+
+            if added_count > 0:
+                # For now, this updates the project-level active list
+                # In the future, this should update colony-specific lists
+                if self.subject_service:
+                    self.subject_service.update_tracked_objects(updated_active, list_type="active")
+                self.navigation_pane.add_log_message(f"Added {added_count} object(s) to colony active.", 'success')
+                self.refresh_objects_ui()
+            else:
+                self.navigation_pane.add_log_message("All selected objects already active in colony.", 'info')
+
+        except Exception as e:
+            self.log_bus.log(f"Error moving objects to active: {e}", "error", "SubjectView")
+            self.navigation_pane.add_log_message(f"Error moving objects: {str(e)}", "error")
+
+    def move_objects_active_to_master(self):
+        """Move selected objects from colony active back to available status."""
+        selected_items = self.current_objects_list.selectedItems()
+        if not selected_items:
+            self.navigation_pane.add_log_message("No objects selected to remove from colony.", 'warning')
+            return
+
+        selected_names = [item.text() for item in selected_items]
+
+        try:
+            # Get current colony active objects
+            current_active = self.subject_service.get_active_tracked_objects()
+
+            # Remove selected items from active
+            updated_active = [obj for obj in current_active if obj not in selected_names]
+
+            if self.subject_service:
+                self.subject_service.update_tracked_objects(updated_active, list_type="active")
+
+            self.navigation_pane.add_log_message(f"Removed {len(selected_names)} object(s) from colony active.", 'success')
+            self.refresh_objects_ui()
+
+        except Exception as e:
+            self.log_bus.log(f"Error moving objects from active: {e}", "error", "SubjectView")
+            self.navigation_pane.add_log_message(f"Error moving objects: {str(e)}", "error")
+
+    def delete_object_from_master(self):
+        """Delete selected objects from project master list."""
+        selected_items = self.all_objects_list.selectedItems()
+        if not selected_items:
+            self.navigation_pane.add_log_message("No objects selected for deletion from master.", 'warning')
+            return
+
+        selected_names = [item.text() for item in selected_items]
+
+        try:
+            # Get current master objects
+            current_master = self.subject_service.get_master_tracked_objects()
+            current_active = self.subject_service.get_active_tracked_objects()
+
+            # Remove from master and active lists
+            updated_master = [obj for obj in current_master if obj not in selected_names]
+            updated_active = [obj for obj in current_active if obj not in selected_names]
+
+            self.subject_service.update_master_tracked_objects(updated_master)
+            if self.subject_service:
+                self.subject_service.update_tracked_objects(updated_active, list_type="active")
+
+            self.navigation_pane.add_log_message(f"Deleted {len(selected_names)} object(s) from project master.", 'success')
+            self.refresh_objects_ui()
+
+        except Exception as e:
+            self.log_bus.log(f"Error deleting objects: {e}", "error", "SubjectView")
+            self.navigation_pane.add_log_message(f"Error deleting objects: {str(e)}", "error")
 
     def refresh_objects_ui(self):
         # Clear list widgets if they exist
