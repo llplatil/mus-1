@@ -17,7 +17,7 @@ import json
 import platform
 from datetime import datetime
 
-from .metadata import ProjectConfig, SubjectDTO, ExperimentDTO, ColonyDTO, Colony, Worker, ScanTarget, WorkerProvider, ScanTargetKind
+from .metadata import ProjectConfig, SubjectDTO, ExperimentDTO, ColonyDTO, Colony, Worker, ScanTarget, WorkerProvider, ScanTargetKind, LabDTO
 from .config_manager import get_config_manager, set_config, get_config
 from .repository import ColonyRepository, SubjectRepository, ExperimentRepository
 from .schema import Database
@@ -122,7 +122,8 @@ def init_project(
 
     # Validate lab association
     if lab_id:
-        labs = get_config("labs", scope="user") or {}
+        setup_service = get_setup_service()
+        labs = setup_service.get_labs()
         if lab_id not in labs:
             rich_print(f"[red]✗[/red] Lab '{lab_id}' not found")
             rich_print("[blue]ℹ[/blue] Run 'mus1 lab list' to see available labs")
@@ -156,18 +157,11 @@ def init_project(
 
     # Register project with lab if specified
     if lab_id:
-        labs = get_config("labs", scope="user") or {}
-        if lab_id in labs:
-            lab_config = labs[lab_id]
-            projects = lab_config.get("projects", [])
-            projects.append({
-                "name": name,
-                "path": str(project_path),
-                "created_date": config.date_created.isoformat()
-            })
-            lab_config["projects"] = projects
-            labs[lab_id] = lab_config
-            set_config("labs", labs, scope="user")
+        try:
+            setup_service.add_lab_project(lab_id, name, str(project_path))
+        except Exception as e:
+            rich_print(f"[yellow]⚠[/yellow] Could not register project with lab: {e}")
+            rich_print("[blue]ℹ[/blue] Project created but lab association may need manual setup")
 
     rich_print("[green]✓[/green] Project created successfully!")
     rich_print(f"[blue]ℹ[/blue] Name: {name}")
@@ -1011,61 +1005,61 @@ def setup_wizard():
 def create_lab(
     lab_id: str = typer.Argument(..., help="Unique lab identifier"),
     name: str = typer.Argument(..., help="Full lab name"),
-    description: Optional[str] = typer.Option(None, help="Lab description"),
     institution: Optional[str] = typer.Option(None, help="Institution name"),
     pi_name: Optional[str] = typer.Option(None, help="Principal Investigator name"),
 ):
-    """Create a new lab configuration."""
-    config_manager = get_config_manager()
+    """Create a new lab using the setup service."""
+    setup_service = get_setup_service()
 
-    # Check if lab already exists
-    existing_labs = get_config("labs", scope="user") or {}
-    if lab_id in existing_labs:
-        rich_print(f"[red]✗[/red] Lab '{lab_id}' already exists")
+    # Get current user ID for lab creator
+    user_id = get_config("user.id", scope="user")
+    if not user_id:
+        rich_print("[red]✗[/red] No user configured. Run 'mus1 setup user' first.")
         raise typer.Exit(1)
 
     # Interactive prompts for missing info
-    if not description:
-        description = Prompt.ask("Enter lab description", default="")
     if not institution:
         institution = Prompt.ask("Enter institution name", default="")
     if not pi_name:
         pi_name = Prompt.ask("Enter PI name", default="")
 
-    # Create lab configuration
-    lab_config = {
-        "id": lab_id,
-        "name": name,
-        "description": description,
-        "institution": institution,
-        "pi_name": pi_name,
-        "created_date": datetime.now().isoformat(),
-        "colonies": [],
-        "projects": []
-    }
+    # Create lab DTO
+    lab_dto = LabDTO(
+        id=lab_id,
+        name=name,
+        institution=institution,
+        pi_name=pi_name,
+        creator_id=user_id
+    )
 
-    # Save to user config
-    if not existing_labs:
-        existing_labs = {}
-    existing_labs[lab_id] = lab_config
-    set_config("labs", existing_labs, scope="user")
+    # Create lab using setup service
+    try:
+        result = setup_service.create_lab(lab_dto)
+        if result["success"]:
+            rich_print("[green]✓[/green] Lab created successfully!")
+            rich_print(f"[blue]ℹ[/blue] Lab ID: {lab_id}")
+            rich_print(f"[blue]ℹ[/blue] Name: {name}")
+            if institution:
+                rich_print(f"[blue]ℹ[/blue] Institution: {institution}")
+            if pi_name:
+                rich_print(f"[blue]ℹ[/blue] PI: {pi_name}")
 
-    rich_print("[green]✓[/green] Lab created successfully!")
-    rich_print(f"[blue]ℹ[/blue] Lab ID: {lab_id}")
-    rich_print(f"[blue]ℹ[/blue] Name: {name}")
-    rich_print(f"[blue]ℹ[/blue] Institution: {institution}")
-    rich_print(f"[blue]ℹ[/blue] PI: {pi_name}")
-
-    rich_print("\n[bold]Next steps:[/bold]")
-    rich_print(f"1. Create colonies: 'mus1 lab add-colony {lab_id}'")
-    rich_print(f"2. Create projects: 'mus1 project init \"Project Name\" --lab {lab_id}'")
+            rich_print("\n[bold]Next steps:[/bold]")
+            rich_print(f"1. Add colonies: 'mus1 lab add-colony {lab_id}'")
+            rich_print(f"2. Create projects: 'mus1 project init \"Project Name\" --lab {lab_id}'")
+        else:
+            rich_print(f"[red]✗[/red] Failed to create lab: {result['message']}")
+            raise typer.Exit(1)
+    except Exception as e:
+        rich_print(f"[red]✗[/red] Error creating lab: {e}")
+        raise typer.Exit(1)
 
 
 @lab_app.command("list")
 def list_labs():
     """List all configured labs."""
-    config_manager = get_config_manager()
-    labs = get_config("labs", scope="user") or {}
+    setup_service = get_setup_service()
+    labs = setup_service.get_labs()
 
     if not labs:
         rich_print("[yellow]⚠[/yellow] No labs configured yet")
@@ -1077,19 +1071,15 @@ def list_labs():
     table.add_column("Name", style="white")
     table.add_column("Institution", style="white")
     table.add_column("PI", style="white")
-    table.add_column("Colonies", style="green", justify="right")
-    table.add_column("Projects", style="blue", justify="right")
+    table.add_column("Created", style="white")
 
-    for lab_id, lab_config in labs.items():
-        colonies_count = len(lab_config.get("colonies", []))
-        projects_count = len(lab_config.get("projects", []))
+    for lab in labs.values():
         table.add_row(
-            lab_id,
-            lab_config.get("name", "Unknown"),
-            lab_config.get("institution", "Unknown"),
-            lab_config.get("pi_name", "Unknown"),
-            str(colonies_count),
-            str(projects_count)
+            lab.get("id", "Unknown"),
+            lab.get("name", "Unknown"),
+            lab.get("institution", "Unknown"),
+            lab.get("pi_name", "Unknown"),
+            lab.get("created_at", "Unknown")[:10] if lab.get("created_at") else "Unknown"
         )
 
     rich_print(table)
@@ -1104,23 +1094,7 @@ def add_colony_to_lab(
     background: Optional[str] = typer.Option(None, help="Background strain"),
 ):
     """Add a colony to an existing lab."""
-    config_manager = get_config_manager()
-
-    # Get existing labs
-    labs = get_config("labs", scope="user") or {}
-    if lab_id not in labs:
-        rich_print(f"[red]✗[/red] Lab '{lab_id}' not found")
-        rich_print("[blue]ℹ[/blue] Run 'mus1 lab list' to see available labs")
-        raise typer.Exit(1)
-
-    # Check if colony already exists in this lab
-    lab_config = labs[lab_id]
-    colonies = lab_config.get("colonies", [])
-    existing_colony_ids = [c.get("id") for c in colonies]
-
-    if colony_id in existing_colony_ids:
-        rich_print(f"[red]✗[/red] Colony '{colony_id}' already exists in lab '{lab_id}'")
-        raise typer.Exit(1)
+    setup_service = get_setup_service()
 
     # Interactive prompts for missing info
     if not genotype:
@@ -1128,30 +1102,33 @@ def add_colony_to_lab(
     if not background:
         background = Prompt.ask("Enter background strain", default="")
 
-    # Create colony configuration
-    colony_config = {
-        "id": colony_id,
-        "name": name,
-        "genotype_of_interest": genotype,
-        "background_strain": background,
-        "created_date": datetime.now().isoformat(),
-        "subjects": []
-    }
+    # Create colony DTO
+    colony_dto = ColonyDTO(
+        id=colony_id,
+        name=name,
+        genotype_of_interest=genotype,
+        background_strain=background,
+        lab_id=lab_id
+    )
 
-    # Add to lab
-    colonies.append(colony_config)
-    lab_config["colonies"] = colonies
-    labs[lab_id] = lab_config
-    set_config("labs", labs, scope="user")
-
-    rich_print("[green]✓[/green] Colony added to lab successfully!")
-    rich_print(f"[blue]ℹ[/blue] Lab: {lab_id}")
-    rich_print(f"[blue]ℹ[/blue] Colony ID: {colony_id}")
-    rich_print(f"[blue]ℹ[/blue] Name: {name}")
-    if genotype:
-        rich_print(f"[blue]ℹ[/blue] Genotype: {genotype}")
-    if background:
-        rich_print(f"[blue]ℹ[/blue] Background: {background}")
+    # Create colony using setup service
+    try:
+        result = setup_service.create_colony(lab_id, colony_dto)
+        if result["success"]:
+            rich_print("[green]✓[/green] Colony added to lab successfully!")
+            rich_print(f"[blue]ℹ[/blue] Lab: {lab_id}")
+            rich_print(f"[blue]ℹ[/blue] Colony ID: {colony_id}")
+            rich_print(f"[blue]ℹ[/blue] Name: {name}")
+            if genotype:
+                rich_print(f"[blue]ℹ[/blue] Genotype: {genotype}")
+            if background:
+                rich_print(f"[blue]ℹ[/blue] Background: {background}")
+        else:
+            rich_print(f"[red]✗[/red] Failed to add colony: {result['message']}")
+            raise typer.Exit(1)
+    except Exception as e:
+        rich_print(f"[red]✗[/red] Error adding colony: {e}")
+        raise typer.Exit(1)
 
 
 # ===========================================

@@ -15,6 +15,7 @@ This view provides centralized management for:
 from pathlib import Path
 from .base_view import BaseView
 from typing import Dict, Any
+from ..core.setup_service import SharedStorageDTO
 
 
 class SettingsView(BaseView):
@@ -84,12 +85,35 @@ class SettingsView(BaseView):
         shared_row.addWidget(self.shared_dir_edit, 1)
         shared_row.addWidget(self.shared_dir_btn)
 
+        # Shared Storage Group (Global Configuration)
+        storage_group, storage_layout = self.create_form_section("Shared Storage", layout)
+
+        storage_row = self.create_form_row(storage_layout)
+        storage_label = self.create_form_label("Shared Storage Root:")
+        self.shared_storage_edit = QLineEdit()
+        self.shared_storage_edit.setProperty("class", "mus1-text-input")
+        self.shared_storage_btn = QPushButton("Browse...")
+        self.shared_storage_btn.setProperty("class", "mus1-secondary-button")
+        self.shared_storage_btn.clicked.connect(self._browse_shared_storage)
+        storage_row.addWidget(storage_label)
+        storage_row.addWidget(self.shared_storage_edit, 1)
+        storage_row.addWidget(self.shared_storage_btn)
+
+        storage_help = QLabel("Global shared storage root used for collaborative projects. Projects under this path will be discoverable by all users.")
+        storage_help.setWordWrap(True)
+        storage_help.setStyleSheet("color: gray; font-size: 11px;")
+        storage_layout.addWidget(storage_help)
+
         # Save button
         button_row = self.create_button_row(layout)
         save_btn = QPushButton("Save User Settings")
         save_btn.setProperty("class", "mus1-primary-button")
         save_btn.clicked.connect(self.handle_save_user_settings)
+        save_storage_btn = QPushButton("Save Storage Settings")
+        save_storage_btn.setProperty("class", "mus1-primary-button")
+        save_storage_btn.clicked.connect(self.handle_save_storage_settings)
         button_row.addWidget(save_btn)
+        button_row.addWidget(save_storage_btn)
 
         layout.addStretch(1)
         self.add_page(self.user_settings_page, "User")
@@ -163,6 +187,11 @@ class SettingsView(BaseView):
                 self.user_org_edit.setText(profile.organization or "")
                 self.projects_dir_edit.setText(str(profile.default_projects_dir or ""))
                 self.shared_dir_edit.setText(str(profile.default_shared_dir or ""))
+
+            # Load shared storage setting
+            shared_storage_path = svc.get_shared_storage_path()
+            if shared_storage_path:
+                self.shared_storage_edit.setText(str(shared_storage_path))
         except Exception as e:
             self.navigation_pane.add_log_message(f"Error loading user settings: {e}", "error")
 
@@ -178,6 +207,12 @@ class SettingsView(BaseView):
         directory = QFileDialog.getExistingDirectory(self, "Select Shared Directory")
         if directory:
             self.shared_dir_edit.setText(directory)
+
+    def _browse_shared_storage(self):
+        """Browse for shared storage root directory."""
+        directory = QFileDialog.getExistingDirectory(self, "Select Shared Storage Root")
+        if directory:
+            self.shared_storage_edit.setText(directory)
 
     def handle_save_user_settings(self):
         """Save user settings."""
@@ -197,6 +232,48 @@ class SettingsView(BaseView):
                 self.navigation_pane.add_log_message(result.get("message", "Failed to save user settings"), "error")
         except Exception as e:
             self.navigation_pane.add_log_message(f"Error saving user settings: {e}", "error")
+
+    def handle_save_storage_settings(self):
+        """Save shared storage settings."""
+        try:
+            from pathlib import Path
+            from ..core.setup_service import get_setup_service
+            svc = get_setup_service()
+
+            storage_path_str = self.shared_storage_edit.text().strip()
+            if not storage_path_str:
+                # Clear shared storage setting
+                from ..core.config_manager import set_config
+                set_config("storage.shared_root", None, scope="user")
+                self.navigation_pane.add_log_message("Shared storage cleared", "success")
+                return
+
+            storage_path = Path(storage_path_str)
+
+            # Validate the path exists and is a directory
+            if not storage_path.exists():
+                QMessageBox.warning(self, "Invalid Path", f"Shared storage path does not exist: {storage_path}")
+                return
+            if not storage_path.is_dir():
+                QMessageBox.warning(self, "Invalid Path", f"Shared storage path is not a directory: {storage_path}")
+                return
+
+            # Configure shared storage
+            result = svc.setup_shared_storage(
+                SharedStorageDTO(
+                    path=storage_path,
+                    create_if_missing=False,  # Directory should already exist
+                    verify_permissions=True
+                )
+            )
+
+            if result.get("success"):
+                self.navigation_pane.add_log_message("Shared storage settings saved successfully", "success")
+            else:
+                self.navigation_pane.add_log_message(result.get("message", "Failed to save shared storage settings"), "error")
+
+        except Exception as e:
+            self.navigation_pane.add_log_message(f"Error saving shared storage settings: {e}", "error")
 
 
     def refresh_workers_list(self):
@@ -508,3 +585,13 @@ class SettingsView(BaseView):
         self.update_sort_mode_from_state()
         self.update_frame_rate_from_state()
         self.update_theme_dropdown_from_state()
+
+        # Also refresh shared storage setting
+        try:
+            from ..core.setup_service import get_setup_service
+            svc = get_setup_service()
+            shared_storage_path = svc.get_shared_storage_path()
+            if shared_storage_path and hasattr(self, 'shared_storage_edit'):
+                self.shared_storage_edit.setText(str(shared_storage_path))
+        except Exception:
+            pass

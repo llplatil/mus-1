@@ -150,7 +150,7 @@ class Colony:
 class Subject:
     """Core subject entity."""
     id: str
-    colony_id: str
+    colony_id: Optional[str] = None  # Subjects can exist without colonies
     sex: Sex = Sex.UNKNOWN
     designation: SubjectDesignation = SubjectDesignation.EXPERIMENTAL
     birth_date: Optional[datetime] = None
@@ -292,7 +292,7 @@ class ColonyDTO(BaseModel):
 class SubjectDTO(BaseModel):
     """Data transfer object for subject data."""
     id: str
-    colony_id: str
+    colony_id: Optional[str] = None  # Subjects can exist without colonies
     sex: Sex = Sex.UNKNOWN
     designation: SubjectDesignation = SubjectDesignation.EXPERIMENTAL
     birth_date: Optional[datetime] = None

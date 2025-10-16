@@ -11,11 +11,13 @@ from .qt import (
     QCheckBox,
     QTextEdit,
     QListWidget,
+    QListWidgetItem,
     QPushButton,
     QLabel,
     QDateTime,
     QTimer,
     QAbstractItemView,
+    QMessageBox,
 )
 
 from ..core.metadata import Sex
@@ -66,13 +68,14 @@ class SubjectView(BaseView):
     # --- Lifecycle hooks ---
     def on_services_ready(self, services):
         super().on_services_ready(services)
-        # services is now the GUIServiceFactory, create the services we need
-        self.gui_services = services.create_subject_service()
+        # services is now the GUIServiceFactory, store it and create the services we need
+        self.service_factory = services
         self.subject_service = services.create_subject_service()
         self.experiment_service = services.create_experiment_service()
         try:
             self.refresh_subject_list_display()
             self.refresh_overview()
+            self.refresh_colony_combo()  # Refresh colonies now that services are available
             self.change_page(0)
         except Exception:
             pass
@@ -82,6 +85,8 @@ class SubjectView(BaseView):
         self.refresh_subject_list_display()
         if self.pages.currentIndex() == 0:
             self.refresh_overview()
+        elif self.pages.currentIndex() == 5:  # Subjects page
+            self.refresh_colony_combo()
 
     def setup_add_subject_page(self):
         """Setup the Subjects page (previously named Add Subject)."""
@@ -111,10 +116,15 @@ class SubjectView(BaseView):
         # Similarly, add a combo box for Treatment
         self.treatment_combo = QComboBox()
         self.treatment_combo.setProperty("class", "mus1-combo-box")
+        # Add optional colony selection
+        self.add_subject_colony_combo = QComboBox()
+        self.add_subject_colony_combo.setProperty("class", "mus1-combo-box")
+        self.add_subject_colony_combo.addItem("No Colony", None)  # Allow subjects without colonies
         left_form_layout.addRow("Subject ID:", self.subject_id_edit)
         left_form_layout.addRow("Sex:", self.sex_combo)
         left_form_layout.addRow("Genotype:", self.genotype_combo)
         left_form_layout.addRow("Treatment:", self.treatment_combo)
+        left_form_layout.addRow("Colony (Optional):", self.add_subject_colony_combo)
         
         # Right column
         right_form_layout = QFormLayout()
@@ -178,11 +188,35 @@ class SubjectView(BaseView):
         buttons_row.addWidget(edit_button)
         buttons_row.addWidget(remove_button)
         buttons_row.addWidget(view_notes_button)
+
+        # Colony management section
+        colony_group, colony_layout = self.create_form_section("Colony Management", add_layout)
+
+        # Colony selection dropdown
+        colony_select_layout = QHBoxLayout()
+        colony_select_layout.addWidget(QLabel("Select Colony:"))
+        self.colony_combo = QComboBox()
+        self.colony_combo.setProperty("class", "mus1-combo-box")
+        colony_select_layout.addWidget(self.colony_combo, 1)
+        colony_layout.addLayout(colony_select_layout)
+
+        # Colony management buttons
+        colony_buttons_row = self.create_button_row(colony_layout)
+        add_to_colony_button = QPushButton("Add Selected Subject to Colony")
+        add_to_colony_button.setProperty("class", "mus1-primary-button")
+        add_to_colony_button.clicked.connect(self.handle_add_subject_to_colony)
+        colony_buttons_row.addWidget(add_to_colony_button)
+
+        remove_from_colony_button = QPushButton("Remove Selected Subject from Colony")
+        remove_from_colony_button.setProperty("class", "mus1-secondary-button")
+        remove_from_colony_button.clicked.connect(self.handle_remove_subject_from_colony)
+        colony_buttons_row.addWidget(remove_from_colony_button)
         
         add_layout.addStretch(1)
         
         # Before adding the page, refresh the genotype and treatment dropdowns from active metadata
         self.refresh_active_metadata_dropdowns()
+        self.refresh_colony_combo()
         self.add_page(self.page_add_subject, "Subjects")
     
     def handle_add_subject(self):
@@ -212,6 +246,7 @@ class SubjectView(BaseView):
         genotype = self.genotype_combo.currentText().strip() or None
         notes = self.notes_edit.toPlainText().strip() if hasattr(self, 'notes_edit') else ""
         birth_date = self.birthdate_edit.dateTime().toPython()
+        colony_id = self.add_subject_colony_combo.currentData()  # Can be None
 
         # Determine designation based on training set checkbox (if available)
         designation = "experimental"  # Default
@@ -226,6 +261,7 @@ class SubjectView(BaseView):
             sex=sex_value if sex_enum else "UNKNOWN",
             genotype=genotype,
             birth_date=birth_date,
+            colony_id=colony_id,  # Pass the selected colony (can be None)
             notes=notes,
             designation=designation
         )
@@ -234,6 +270,7 @@ class SubjectView(BaseView):
             # Clear the input fields after successful addition
             self.subject_id_edit.clear()
             self.genotype_combo.clear()
+            self.add_subject_colony_combo.setCurrentIndex(0)  # Reset to "No Colony"
             if hasattr(self, 'notes_edit'):
                 self.notes_edit.clear()
             if hasattr(self, 'training_set_check'):
@@ -271,13 +308,17 @@ class SubjectView(BaseView):
             birth_str = subj_dto.birth_date.strftime('%Y-%m-%d %H:%M:%S') if subj_dto.birth_date else 'N/A'
 
             # Create the basic details string
+            colony_info = f" | Colony: {subj_dto.colony_name or 'None'}" if hasattr(subj_dto, 'colony_name') else ""
             details = (f"ID: {subj_dto.id} | Sex: {subj_dto.sex_display} | Genotype: {subj_dto.genotype or 'N/A'} "
-                      f"| Age: {subj_dto.age_display}")
+                      f"| Age: {subj_dto.age_display}{colony_info}")
 
             # Add notes snippet if available (though Subject model may not have notes yet)
             # details += f" | Notes: {subj_dto.notes or 'None'}"
 
-            self.subjects_list.addItem(details)
+            # Create list item and store subject ID as data for easy retrieval
+            item = QListWidgetItem(details)
+            item.setData(Qt.ItemDataRole.UserRole, subj_dto.id)
+            self.subjects_list.addItem(item)
 
     def refresh_experiment_list_by_subject_display(self):
         """Refresh the list widget displaying experiments by subject."""
@@ -336,22 +377,20 @@ class SubjectView(BaseView):
             # Refresh the subjects list and the active dropdowns
             self.refresh_subject_list_display()
             self.refresh_active_metadata_dropdowns()
+            self.refresh_colony_combo()
 
     def handle_remove_selected_subject(self):
         """Handle removal of the selected subject from the list."""
         selected_item = self.subjects_list.currentItem()
         if not selected_item:
             return
-        text = selected_item.text()
-        parts = text.split('|')
-        if not parts:
+
+        # Get subject ID from stored data
+        subject_id = selected_item.data(Qt.ItemDataRole.UserRole)
+        if not subject_id:
+            self.navigation_pane.add_log_message("Could not retrieve subject ID.", "error")
             return
-        # Expecting item text format "ID: <subject_id> | ..."
-        id_part = parts[0].strip()
-        if id_part.startswith("ID:"):
-            subject_id = id_part[3:].strip()
-        else:
-            subject_id = id_part
+
         if self.subject_service:
             self.subject_service.remove_subject(subject_id)
             self.refresh_subject_list_display()
@@ -388,7 +427,7 @@ class SubjectView(BaseView):
 
     def refresh_overview(self):
         """Refresh the Subjects Overview display using metadata_tree."""
-        if not self.subject_service or not self.gui_services:
+        if not self.subject_service:
             # Clear the tree view if services are not available
             if hasattr(self, 'metadata_tree'):
                 self.metadata_tree.clear()
@@ -430,18 +469,12 @@ class SubjectView(BaseView):
         if not selected_item:
             self.navigation_pane.add_log_message("No subject selected for editing.", "warning")
             return
-        
-        # Extract subject ID from the selected item text
-        item_text = selected_item.text()
-        parts = item_text.split('|')
-        if not parts:
+
+        # Get subject ID from stored data
+        subject_id = selected_item.data(Qt.ItemDataRole.UserRole)
+        if not subject_id:
+            self.navigation_pane.add_log_message("Could not retrieve subject ID.", "error")
             return
-        
-        id_part = parts[0].strip()
-        if id_part.startswith("ID:"):
-            subject_id = id_part[3:].strip()
-        else:
-            subject_id = id_part
         
         # Get the subject using GUI services
         subject_dto = self.subject_service.get_subject_by_id(subject_id)
@@ -544,18 +577,12 @@ class SubjectView(BaseView):
         if not selected_item:
             self.navigation_pane.add_log_message("No subject selected for viewing notes.", "warning")
             return
-        
-        # Extract subject ID
-        item_text = selected_item.text()
-        parts = item_text.split('|')
-        if not parts:
+
+        # Get subject ID from stored data
+        subject_id = selected_item.data(Qt.ItemDataRole.UserRole)
+        if not subject_id:
+            self.navigation_pane.add_log_message("Could not retrieve subject ID.", "error")
             return
-        
-        id_part = parts[0].strip()
-        if id_part.startswith("ID:"):
-            subject_id = id_part[3:].strip()
-        else:
-            subject_id = id_part
         
         # Get the subject using GUI services
         subject_dto = self.subject_service.get_subject_by_id(subject_id)
@@ -710,6 +737,129 @@ class SubjectView(BaseView):
         except Exception as e:
             self.log_bus.log(f"Error promoting genotypes: {e}", "error", "SubjectView")
             self.navigation_pane.add_log_message(f"Error promoting genotypes: {str(e)}", "error")
+
+    def refresh_colony_combo(self):
+        """Populate the colony dropdown with available colonies for the current lab."""
+        if not hasattr(self, 'colony_combo'):
+            return
+
+        self.colony_combo.clear()
+        self.colony_combo.addItem("Select Colony...", None)
+
+        # Get current lab ID from main window
+        main_window = self.window()
+        current_lab_id = getattr(main_window, 'selected_lab_id', None) if main_window else None
+
+        if not current_lab_id:
+            self.log_bus.log("No lab selected - cannot load colonies", "info", "SubjectView")
+            return
+
+        # Get colonies for the project
+        if not self.subject_service:
+            self.log_bus.log("Subject service not available - colonies will load when services are ready", "info", "SubjectView")
+            return
+
+        try:
+            colonies = self.subject_service.get_colonies_for_display()
+            for colony in colonies:
+                display_text = f"{colony.get('name', 'Unknown')} ({colony.get('genotype_of_interest', 'N/A')} - {colony.get('background_strain', 'N/A')})"
+                self.colony_combo.addItem(display_text, colony.get('id'))
+            self.log_bus.log(f"Loaded {len(colonies)} colonies for project", "info", "SubjectView")
+        except Exception as e:
+            self.log_bus.log(f"Error loading colonies for combo: {e}", "error", "SubjectView")
+
+    def handle_add_subject_to_colony(self):
+        """Add the selected subject to the selected colony."""
+        if not self.subject_service or not self.service_factory:
+            QMessageBox.warning(self, "Error", "Services not available")
+            return
+
+        # Get selected subject
+        selected_item = self.subjects_list.currentItem()
+        if not selected_item:
+            QMessageBox.warning(self, "No Selection", "Please select a subject first")
+            return
+
+        # Get subject ID from stored data
+        subject_id = selected_item.data(Qt.ItemDataRole.UserRole)
+        if not subject_id:
+            QMessageBox.warning(self, "Error", "Could not retrieve subject ID")
+            return
+
+        # Get selected colony
+        colony_id = self.colony_combo.currentData()
+        if not colony_id:
+            QMessageBox.warning(self, "No Selection", "Please select a colony")
+            return
+
+        # Add subject to colony using project manager
+        try:
+            # Get the subject and update its colony_id
+            subject = self.subject_service.get_subject_by_id(subject_id)
+            if not subject:
+                QMessageBox.warning(self, "Error", f"Subject '{subject_id}' not found")
+                return
+
+            # Update the subject's colony_id through the GUI service
+            # For now, we'll need to implement this in the GUI service
+            success = self.subject_service.update_subject_colony(subject_id, colony_id)
+
+            if success:
+                QMessageBox.information(self, "Success", f"Subject '{subject_id}' successfully added to colony")
+                # Refresh the subject list to show updated colony membership
+                self.refresh_subject_list_display()
+                # Refresh metadata display to show colony info
+                if hasattr(self, 'refresh_overview'):
+                    self.refresh_overview()
+            else:
+                QMessageBox.warning(self, "Error", f"Failed to add subject '{subject_id}' to colony")
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"Failed to add subject to colony: {str(e)}")
+
+    def handle_remove_subject_from_colony(self):
+        """Remove the selected subject from its current colony."""
+        if not self.subject_service or not self.service_factory:
+            QMessageBox.warning(self, "Error", "Services not available")
+            return
+
+        # Get selected subject
+        selected_item = self.subjects_list.currentItem()
+        if not selected_item:
+            QMessageBox.warning(self, "No Selection", "Please select a subject first")
+            return
+
+        # Get subject ID from stored data
+        subject_id = selected_item.data(Qt.ItemDataRole.UserRole)
+        if not subject_id:
+            QMessageBox.warning(self, "Error", "Could not retrieve subject ID")
+            return
+
+        # Confirm removal
+        reply = QMessageBox.question(
+            self, "Confirm Removal",
+            f"Are you sure you want to remove subject '{subject_id}' from its current colony?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        # Remove subject from colony using project manager
+        try:
+            # Update the subject's colony_id to None through the GUI service
+            success = self.subject_service.update_subject_colony(subject_id, None)
+
+            if success:
+                QMessageBox.information(self, "Success", f"Subject '{subject_id}' successfully removed from colony")
+                # Refresh the subject list to show updated colony membership
+                self.refresh_subject_list_display()
+                # Refresh metadata display to show colony info
+                if hasattr(self, 'refresh_overview'):
+                    self.refresh_overview()
+            else:
+                QMessageBox.warning(self, "Error", f"Failed to remove subject '{subject_id}' from colony")
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"Failed to remove subject from colony: {str(e)}")
 
     def refresh_treatments_lists(self):
         """Refresh the available and active treatments list widgets."""
@@ -1020,20 +1170,29 @@ class SubjectView(BaseView):
 
     def handle_remove_from_master(self):
         """Delete selected body parts from the master list."""
+        if not self.subject_service:
+            self.navigation_pane.add_log_message("Subject service not available.", "error")
+            return
+
         selected_items = self.all_bodyparts_list.selectedItems()
         if not selected_items:
             self.navigation_pane.add_log_message("No body parts selected for deletion from master list.", "warning")
             return
+
         selected = [item.text() for item in selected_items]
-        # Use project manager to get master body parts
-        current_master = self.project_manager.get_master_body_parts()
+
+        # Get current master body parts
+        current_master = self.subject_service.get_master_body_parts()
         new_master = [bp for bp in current_master if bp not in selected]
 
+        # Also remove from active list if present
         current_active = [self.current_body_parts_list.item(i).text() for i in range(self.current_body_parts_list.count())]
         new_active = [bp for bp in current_active if bp not in selected]
-        
-        self.window().project_manager.update_master_body_parts(new_master)
-        self.window().project_manager.update_active_body_parts(new_active)
+
+        # Update both lists
+        self.subject_service.update_master_body_parts(new_master)
+        self.subject_service.update_active_body_parts(new_active)
+
         self.navigation_pane.add_log_message(f"Deleted {len(selected)} body parts from project.", "success")
         self.refresh_body_parts_page()
 
@@ -1057,23 +1216,28 @@ class SubjectView(BaseView):
         if not selected_items:
             self.navigation_pane.add_log_message("No body parts selected from active list.", "warning")
             return
+
+        if not self.subject_service:
+            self.navigation_pane.add_log_message("Subject service not available.", "error")
+            return
+
         current_active = [self.current_body_parts_list.item(i).text() for i in range(self.current_body_parts_list.count())]
         items_to_move = [item.text() for item in selected_items]
         updated_active = [bp for bp in current_active if bp not in items_to_move]
-        if self.subject_service:
-            self.subject_service.update_active_body_parts(updated_active)
 
-        # Use project manager to get master body parts
-        current_master = self.project_manager.get_master_body_parts()
-        
+        # Update active body parts
+        self.subject_service.update_active_body_parts(updated_active)
+
+        # Get current master body parts and add the moved items
+        current_master = self.subject_service.get_master_body_parts()
+
         new_master = current_master.copy()
         for bp in items_to_move:
             if bp not in new_master:
                 new_master.append(bp)
         if new_master != current_master:
-            if self.subject_service:
-                self.subject_service.update_master_body_parts(new_master)
-        
+            self.subject_service.update_master_body_parts(new_master)
+
         self.navigation_pane.add_log_message(f"Moved {len(items_to_move)} body parts from active to master list.", "success")
         self.refresh_body_parts_page()
 
@@ -1409,14 +1573,17 @@ class SubjectView(BaseView):
         return []
 
     def refresh_active_metadata_dropdowns(self):
-        """Populate the genotype and treatment dropdowns in the Add Subject page from the available lists."""
+        """Populate the genotype, treatment, and colony dropdowns in the Add Subject page from the available lists."""
         self.genotype_combo.clear()
         self.treatment_combo.clear()
+        self.add_subject_colony_combo.clear()
+        self.add_subject_colony_combo.addItem("No Colony", None)  # Always allow no colony
 
-        # Get available genotypes and treatments from the service
+        # Get available genotypes, treatments, and colonies from the service
         if self.subject_service:
             available_genotypes = self.subject_service.get_available_genotypes()
             available_treatments = self.subject_service.get_available_treatments()
+            available_colonies = self.subject_service.get_colonies_for_display()
 
             # Populate genotype combo
             if available_genotypes:
@@ -1434,8 +1601,15 @@ class SubjectView(BaseView):
                     self.treatment_combo.addItem(treatment)
             else:
                 self.treatment_combo.addItem("No treatments configured")
+
+            # Populate colony combo
+            if available_colonies:
+                for colony in available_colonies:
+                    display_text = f"{colony.get('name', 'Unknown')} ({colony.get('genotype_of_interest', 'N/A')} - {colony.get('background_strain', 'N/A')})"
+                    self.add_subject_colony_combo.addItem(display_text, colony.get('id'))
         else:
             # Fallback if service not available
             self.genotype_combo.addItem("Service unavailable")
             self.treatment_combo.addItem("Service unavailable")
+            self.add_subject_colony_combo.addItem("Service unavailable")
 

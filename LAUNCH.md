@@ -74,7 +74,7 @@ mus1-gui
    - Shared storage configuration (optional)
    - First lab creation (optional)
 3. **Configuration Persistence**: All preferences saved to SQLite
-4. **User/Lab Selection**: Dialog guides user profile and lab selection
+4. **User/Lab Selection**: Enhanced dialog with user profile, lab selection, and optional project pre-selection
 5. **Project Management**: Project creation and selection handled in Project tab
 
 #### **External Configuration Roots (Best Practices)**
@@ -319,8 +319,18 @@ export QT_QPA_PLATFORM="xcb"
 
 #### **Working Features**
 - **Video Linking**: Videos properly associated with experiments via database relationships
-- **Subject Management**: Subject creation with genotype handling and proper data flow
+- **Subject Management**: Subject creation with genotype handling and manual colony assignment
+- **Lab Management**: Complete lab creation, member management, colony management, and project registration
+- **User Experience**: Enhanced user/lab selection with optional project pre-selection
+- **Colony Management**: Manual subject-to-colony assignment/removal with validation
 - **Batch Creation**: Experiments can be grouped for analysis workflows
+
+#### **Recent Enhancements (2025-01)**
+- **Enhanced User/Lab Selection Dialog**: Added optional project pre-selection for faster workflow
+- **Complete Lab Management System**: Full CRUD operations for labs, members, colonies, and projects
+- **Manual Colony Assignment**: Direct UI for adding/removing subjects from colonies
+- **Improved Metadata Display**: Colony membership shown in subject overview tree
+- **Service Layer Extensions**: Comprehensive lab management methods in SetupService and LabService
 
 #### **Adding New Features**
 - **Domain Entities**: Add to `metadata.py` with validation

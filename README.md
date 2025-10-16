@@ -43,34 +43,39 @@ mus1 --setup               # CLI mode with setup wizard
 ## Current Status
 
 ### ⚠️ **Remaining Issues**
-- **GUI has some remaining bugs** - subject management and video linking now work, but other components may have issues
+- **GUI has some remaining bugs** - subject management, video linking, and lab management now work, but other components may have issues
 - **JSON serialization issues** cause project files to become corrupted
-- **Incomplete clean architecture migration** - subject view and video linking migrated, other components still need work
+- **Incomplete clean architecture migration** - subject view, video linking, and lab management migrated, other components still need work
 - **Project loading fails** due to corruption and missing methods in some areas
 
 ### ✅ **What Works**
 - **CLI Interface**: Basic command-line operations work reliably
+- **Setup Wizard**: Can be launched via `--setup` flag, basic user profile creation works
 - **Video Linking System**: Videos can be linked to experiments with proper association tables
 - **Subject Management**: Subject creation and genotype handling works with proper data relationships
+- **Lab Management**: Complete lab creation, member management, colony management, and project registration
+- **Colony Management**: Manual subject-to-colony assignment/removal with proper validation
+- **User Experience**: Enhanced user/lab selection dialog with optional project pre-selection
 - **Batch Creation**: Experiments can be grouped into batches for analysis
 - **Database Schema**: SQL tables exist for users, labs, colonies, subjects, experiments, videos
-- **Setup Wizard**: Can be launched via `--setup` flag, basic user profile creation works
 - **Repository Pattern**: Data access layer implemented with proper update/merge handling
 
 ### ❌ **What's Broken**
 - **GUI**: Some remaining AttributeError and signal disconnection issues (subject view and video linking fixed)
 
-- **State Management**: References resolved in subject view and core functionality
-- **Lab-Project Association**: Database schema exists but GUI integration broken
+- **State Management**: References resolved in subject view, video linking, and lab management
+- **Lab-Project Association**: Complete GUI integration with project registration and management
 - **Plugin System**: Entry-point discovery exists but GUI integration broken
 
 ## Features (Planned/Partial)
 
-### 🎯 **Application-Level User & Lab Management (Partial)**
-- Database schema exists for user/lab management
-- Basic setup wizard works for user profile creation
-- Subject management with proper genotype handling works
-- Lab-project association broken in GUI
+### 🎯 **Application-Level User & Lab Management (Complete)**
+- Complete user profile management with SQL-backed persistence
+- Full lab creation and management with institution/PI tracking
+- Member management with role-based permissions (admin/member)
+- Colony management with genotype tracking and subject assignment
+- Project registration and association with labs
+- Enhanced user/lab selection dialog with optional project pre-selection
 
 ### 🔄 **Setup Wizard (Partial)**
 - Can be launched via `--setup` flag

@@ -1012,6 +1012,81 @@ class SetupService:
             } for s in subjects]
         }
 
+    def add_subject_to_colony(self, subject_id: str, colony_id: str) -> Dict[str, Any]:
+        """
+        Add a subject to a colony by updating its colony_id.
+
+        Args:
+            subject_id: The subject ID
+            colony_id: The colony ID
+
+        Returns:
+            Dict with success status
+        """
+        from .repository import get_repository_factory
+
+        db = self._get_database()
+        repo_factory = get_repository_factory(db)
+
+        # Verify subject exists
+        subject = repo_factory.subjects.find_by_id(subject_id)
+        if not subject:
+            return {
+                "success": False,
+                "message": f"Subject '{subject_id}' not found"
+            }
+
+        # Verify colony exists
+        colony = repo_factory.colonies.find_by_id(colony_id)
+        if not colony:
+            return {
+                "success": False,
+                "message": f"Colony '{colony_id}' not found"
+            }
+
+        # Update subject's colony_id
+        subject.colony_id = colony_id
+        saved_subject = repo_factory.subjects.save(subject)
+
+        return {
+            "success": True,
+            "message": f"Subject '{subject_id}' added to colony '{colony_id}'",
+            "subject": saved_subject
+        }
+
+    def remove_subject_from_colony(self, subject_id: str) -> Dict[str, Any]:
+        """
+        Remove a subject from its current colony by setting colony_id to None.
+
+        Args:
+            subject_id: The subject ID
+
+        Returns:
+            Dict with success status
+        """
+        from .repository import get_repository_factory
+
+        db = self._get_database()
+        repo_factory = get_repository_factory(db)
+
+        # Verify subject exists
+        subject = repo_factory.subjects.find_by_id(subject_id)
+        if not subject:
+            return {
+                "success": False,
+                "message": f"Subject '{subject_id}' not found"
+            }
+
+        old_colony_id = subject.colony_id
+        subject.colony_id = None
+        saved_subject = repo_factory.subjects.save(subject)
+
+        return {
+            "success": True,
+            "message": f"Subject '{subject_id}' removed from colony '{old_colony_id}'",
+            "subject": saved_subject
+        }
+
     def create_colony(self, lab_id: str, colony_dto: ColonyDTO) -> Dict[str, Any]:
         """
         Create a new colony in a lab.

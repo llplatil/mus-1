@@ -5,7 +5,7 @@ from pathlib import Path
 # Core components
 from .core.logging_bus import LoggingEventBus
 from .core.config_manager import ConfigManager, resolve_mus1_root, get_root_pointer_info, get_config
-from .core.theme_manager import ThemeManager
+from .gui.theme_manager import ThemeManager
 
 # Qt imports - unified PyQt6 facade
 from .gui.qt import QApplication, QIcon, QFileDialog, QMessageBox

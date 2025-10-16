@@ -53,9 +53,9 @@ class SubjectTreeWidgetItem(QTreeWidgetItem):
         if tree is None:
             return super().__lt__(other)
         column = tree.sortColumn()
-        # Columns: 0 Subject ID, 1 Sex, 2 Genotype, 3 Experiments
-        # For numeric columns (0, 3, 4) attempt int comparison (4 = Recordings)
-        if column in (0, 3, 4):
+        # Columns: 0 Subject ID, 1 Sex, 2 Genotype, 3 Colony, 4 Experiments, 5 Recordings
+        # For numeric columns (0, 4, 5) attempt int comparison (5 = Recordings)
+        if column in (0, 4, 5):
             try:
                 return int(self.text(column)) < int(other.text(column))
             except ValueError:
@@ -105,8 +105,8 @@ class MetadataTreeView(QTreeWidget):
         Adds a Genotype column when available so users can quickly see subject genotypes.
         """
         self.clear()
-        # New header includes Genotype column
-        self.setHeaderLabels(["Subject ID", "Sex", "Genotype", "Experiments", "Recordings"])
+        # New header includes Genotype and Colony columns
+        self.setHeaderLabels(["Subject ID", "Sex", "Genotype", "Colony", "Experiments", "Recordings"])
 
         for subject_id, subject in subjects_dict.items():
             item = SubjectTreeWidgetItem(self)
@@ -117,11 +117,14 @@ class MetadataTreeView(QTreeWidget):
             if isinstance(subject, dict):
                 sex_value = subject.get('sex', 'Unknown')
                 genotype_value = subject.get('genotype', 'N/A')
+                colony_value = subject.get('colony_name', 'N/A')
             else:
                 sex_value = subject.sex.value if hasattr(subject.sex, 'value') else str(subject.sex)
                 genotype_value = getattr(subject, 'genotype', None) or "N/A"
+                colony_value = getattr(subject, 'colony_name', None) or "N/A"
             item.setText(1, str(sex_value))
             item.setText(2, str(genotype_value))
+            item.setText(3, str(colony_value))
 
             # Count experiments
             subject_experiments = []
@@ -145,7 +148,7 @@ class MetadataTreeView(QTreeWidget):
                             rec_count += len(videos)
                 except Exception:
                     pass
-            item.setText(4, str(rec_count))
+            item.setText(5, str(rec_count))
             
             # Add experiment children
             for experiment in subject_experiments:
@@ -160,9 +163,10 @@ class MetadataTreeView(QTreeWidget):
                 exp_item.setText(0, str(exp_id))
                 exp_item.setText(1, "")  # Sex column blank for experiments
                 exp_item.setText(2, "")  # Genotype column blank for experiments
-                exp_item.setText(3, str(exp_type))
+                exp_item.setText(3, "")  # Colony column blank for experiments
+                exp_item.setText(4, str(exp_type))
 
-                # Column 4 – recordings per experiment
+                # Column 5 – recordings per experiment
                 exp_rec_count = 0
                 if project_manager is not None and exp_id != 'Unknown':
                     try:
@@ -170,7 +174,7 @@ class MetadataTreeView(QTreeWidget):
                         exp_rec_count = len(videos)
                     except Exception:
                         pass
-                exp_item.setText(4, str(exp_rec_count))
+                exp_item.setText(5, str(exp_rec_count))
         
         # Expand all items for better visibility
         self.expandAll()

@@ -45,7 +45,10 @@ class ExperimentView(BaseView):
     # --- Lifecycle hooks ---
     def on_services_ready(self, services):
         super().on_services_ready(services)
+        # services is the GUIServiceFactory, create the services we need
         self.gui_services = services
+        self.experiment_service = services.create_experiment_service()
+        self.subject_service = services.create_subject_service()
         try:
             # Ensure UI controls like combos are populated once
             # then show default page
@@ -373,10 +376,10 @@ class ExperimentView(BaseView):
         logger.debug(f"Refreshing data for page: {page_title} (Index: {current_index})")
 
         if page_title == "Add Experiment":
-             # Populate subject combo using GUI services
+             # Populate subject combo using subject service
              self.subject_id_combo.clear()
-             if self.gui_services:
-                 subjects = self.gui_services.get_subjects_for_display()
+             if self.subject_service:
+                 subjects = self.subject_service.get_subjects_for_display()
                  if subjects:
                      for subject in subjects:
                          display_text = f"{subject.id} ({subject.sex_display}, {subject.age_display})"
@@ -384,7 +387,7 @@ class ExperimentView(BaseView):
                  else:
                       self.subject_id_combo.addItem("No subjects available", None)
              else:
-                 self.subject_id_combo.addItem("GUI services not available", None)
+                 self.subject_id_combo.addItem("Subject service not available", None)
 
              # Populate experiment type combo with basic types for now
              # TODO: Get from configuration when implemented

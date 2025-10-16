@@ -537,6 +537,7 @@ class LabRepository(BaseRepository):
                 LabProjectModel.lab_id == lab_id
             ).all()
             return [{
+                'id': p.id,
                 'name': p.name,
                 'path': p.path,
                 'created_date': p.created_date

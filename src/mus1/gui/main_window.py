@@ -19,10 +19,9 @@ from .user_lab_selection_dialog import UserLabSelectionDialog
 from .gui_services import GUIServiceFactory
 from ..core.logging_bus import LoggingEventBus
 from ..core.project_manager_clean import ProjectManagerClean
-from ..core import ThemeManager
+from .theme_manager import ThemeManager
 from ..core.setup_service import get_setup_service
 import logging
-import sys
 from pathlib import Path
 
 logger = logging.getLogger("mus1.gui.main_window")
@@ -54,6 +53,10 @@ class MainWindow(QMainWindow):
         self.gui_services = None
         self.selected_project_name = selected_project
         self.setup_completed = setup_completed
+
+        # Initialize user and lab selection (will be set later)
+        self.selected_user_id = None
+        self.selected_lab_id = None
 
         # Initialize theme manager (will be updated when project is loaded)
         self.theme_manager = None
@@ -211,7 +214,7 @@ class MainWindow(QMainWindow):
         Handle tab change events.
         Updates active log observers and refreshes the current view if needed.
         """
-        tab_names = ["Project", "Subjects", "Experiments", "Settings"]
+        tab_names = ["Lab", "Project", "Subjects", "Experiments", "Settings"]
         current_tab_name = tab_names[index] if index < len(tab_names) else "Unknown"
         
         # Log the tab change
@@ -255,8 +258,48 @@ class MainWindow(QMainWindow):
             # Project already loaded, just refresh
             return
         else:
-            # Show user/lab selection dialog
-            self.show_user_lab_selection_dialog()
+            # Check if we have saved selections and try to restore them
+            if self.try_restore_selections():
+                # Successfully restored selections, proceed to project management
+                self.tab_widget.setCurrentWidget(self.project_view)
+            else:
+                # Show user/lab selection dialog
+                self.show_user_lab_selection_dialog()
+
+    def try_restore_selections(self):
+        """Try to restore previously saved user and lab selections."""
+        try:
+            from ..core.config_manager import get_config
+
+            # Get saved selections
+            saved_user_id = get_config("app.selected_user_id", scope="user")
+            saved_lab_id = get_config("app.selected_lab_id", scope="user")
+
+            if saved_user_id and saved_lab_id:
+                # Validate that the saved selections still exist
+                setup_service = get_setup_service()
+
+                # Check if user exists
+                users = setup_service.get_all_users()
+                if not any(user.get('id') == saved_user_id for user in users):
+                    return False
+
+                # Check if lab exists
+                labs = setup_service.get_labs()
+                if not any(lab_id == saved_lab_id for lab_id in labs.keys()):
+                    return False
+
+                # Selections are valid, restore them
+                self.selected_user_id = saved_user_id
+                self.selected_lab_id = saved_lab_id
+
+                self.log_bus.log(f"Restored user: {self.selected_user_id}, lab: {self.selected_lab_id}", "info", "MainWindow")
+                return True
+
+        except Exception as e:
+            self.log_bus.log(f"Failed to restore selections: {e}", "warning", "MainWindow")
+
+        return False
 
     def load_project(self, project_name):
         """
@@ -287,17 +330,17 @@ class MainWindow(QMainWindow):
             # Initialize views
             self.project_view.set_initial_project(project_name)
 
-            # Set services on views via lifecycle hook
+            # Set services on views via lifecycle hook - pass factory to all views for consistency
             if hasattr(self.lab_view, 'on_services_ready'):
-                self.lab_view.on_services_ready(self.gui_services)  # Pass factory for lab services
+                self.lab_view.on_services_ready(self.gui_services)  # LabView creates lab service internally
             if hasattr(self.project_view, 'on_services_ready'):
-                self.project_view.on_services_ready(self.gui_services.create_project_service())
+                self.project_view.on_services_ready(self.gui_services)  # ProjectView creates project service internally
             if hasattr(self.subject_view, 'on_services_ready'):
-                self.subject_view.on_services_ready(self.gui_services)  # Pass factory for both subject and experiment services
+                self.subject_view.on_services_ready(self.gui_services)  # SubjectView creates subject/experiment services internally
             if hasattr(self.experiment_view, 'on_services_ready'):
-                self.experiment_view.on_services_ready(self.gui_services.create_experiment_service())
+                self.experiment_view.on_services_ready(self.gui_services)  # ExperimentView creates experiment service internally
             if hasattr(self.settings_view, 'on_services_ready'):
-                self.settings_view.on_services_ready(self.gui_services.create_project_service())
+                self.settings_view.on_services_ready(self.gui_services)  # SettingsView doesn't use services
 
             # Refresh and apply theme
             self.refresh_all_views()
@@ -340,17 +383,17 @@ class MainWindow(QMainWindow):
             # Initialize views
             self.project_view.set_initial_project(project_name)
 
-            # Set services on views via lifecycle hook
+            # Set services on views via lifecycle hook - pass factory to all views for consistency
             if hasattr(self.lab_view, 'on_services_ready'):
-                self.lab_view.on_services_ready(self.gui_services)  # Pass factory for lab services
+                self.lab_view.on_services_ready(self.gui_services)  # LabView creates lab service internally
             if hasattr(self.project_view, 'on_services_ready'):
-                self.project_view.on_services_ready(self.gui_services.create_project_service())
+                self.project_view.on_services_ready(self.gui_services)  # ProjectView creates project service internally
             if hasattr(self.subject_view, 'on_services_ready'):
-                self.subject_view.on_services_ready(self.gui_services)  # Pass factory for both subject and experiment services
+                self.subject_view.on_services_ready(self.gui_services)  # SubjectView creates subject/experiment services internally
             if hasattr(self.experiment_view, 'on_services_ready'):
-                self.experiment_view.on_services_ready(self.gui_services.create_experiment_service())
+                self.experiment_view.on_services_ready(self.gui_services)  # ExperimentView creates experiment service internally
             if hasattr(self.settings_view, 'on_services_ready'):
-                self.settings_view.on_services_ready(self.gui_services.create_project_service())
+                self.settings_view.on_services_ready(self.gui_services)  # SettingsView doesn't use services
 
             # Refresh and apply theme
             self.refresh_all_views()
@@ -470,11 +513,19 @@ class MainWindow(QMainWindow):
             self.selected_user_id = dialog.selected_user_id
             self.selected_lab_id = dialog.selected_lab_id
 
-            self.log_bus.log(f"Selected user: {self.selected_user_id}, lab: {self.selected_lab_id}", "info", "MainWindow")
+            selected_project_path = getattr(dialog, 'selected_project_path', None)
 
-            # Now switch to project management tab
-            self.tab_widget.setCurrentWidget(self.project_view)
-            # The project_view will handle project creation/selection from here
+            self.log_bus.log(f"Selected user: {self.selected_user_id}, lab: {self.selected_lab_id}", "info", "MainWindow")
+            if selected_project_path:
+                self.log_bus.log(f"Selected project: {selected_project_path}", "info", "MainWindow")
+
+            # If a project was selected, load it directly
+            if selected_project_path:
+                self.load_project_path(selected_project_path)
+            else:
+                # Now switch to project management tab
+                self.tab_widget.setCurrentWidget(self.project_view)
+                # The project_view will handle project creation/selection from here
         else:
             # User cancelled the dialog
             self.log_bus.log("User/lab selection cancelled.", "warning", "MainWindow")

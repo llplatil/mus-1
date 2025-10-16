@@ -18,13 +18,17 @@ from ..core.logging_bus import LoggingEventBus
 
 class SubjectDisplayDTO:
     """DTO for displaying subject information in GUI."""
-    def __init__(self, subject: Subject):
+    def __init__(self, subject: Subject, colony_name: str = None):
         self.id = subject.id
         self.sex = subject.sex.value if subject.sex else ""
         self.genotype = subject.genotype or ""
         self.birth_date = subject.birth_date
         self.age_days = subject.age_days
         self.date_added = subject.date_added
+        # Add colony information
+        self.colony_id = subject.colony_id
+        # Colony name will be resolved separately since subjects may not have colony relationship loaded
+        self.colony_name = colony_name
 
     @property
     def sex_display(self) -> str:
@@ -68,7 +72,12 @@ class GUISubjectService:
         """Get all subjects formatted for GUI display."""
         try:
             subjects = self.project_manager.list_subjects()
-            return [SubjectDisplayDTO(subject) for subject in subjects]
+
+            # Build a lookup of colony names for efficient lookup
+            colonies = self.project_manager.list_colonies()
+            colony_lookup = {colony.id: colony.name for colony in colonies}
+
+            return [SubjectDisplayDTO(subject, colony_lookup.get(subject.colony_id)) for subject in subjects]
         except Exception as e:
             self.log_bus.log(f"Error loading subjects: {e}", "error", "GUISubjectService")
             return []
@@ -123,20 +132,18 @@ class GUISubjectService:
                     self.log_bus.log(f"Invalid designation value: {designation}", "error", "GUISubjectService")
                     return None
 
-            # Ensure a colony exists - use default if not specified
-            if not colony_id:
-                colony_id = self._ensure_default_colony()
-
-            # Validate colony exists
-            colony = self.project_manager.get_colony(colony_id)
-            if not colony:
-                self.log_bus.log(f"Colony '{colony_id}' does not exist", "error", "GUISubjectService")
-                return None
+            # Validate colony exists if one is specified
+            if colony_id:
+                colony = self.project_manager.get_colony(colony_id)
+                if not colony:
+                    self.log_bus.log(f"Colony '{colony_id}' does not exist", "error", "GUISubjectService")
+                    return None
 
             # Create subject with comprehensive metadata for future compatibility
+            # colony_id is now optional - subjects can exist without colonies
             subject = Subject(
                 id=subject_id,
-                colony_id=colony_id,
+                colony_id=colony_id,  # Can be None
                 sex=sex_enum,
                 designation=designation_enum,
                 birth_date=birth_date,
@@ -147,7 +154,8 @@ class GUISubjectService:
                 subject.genotype = genotype
 
             saved_subject = self.project_manager.add_subject(subject)
-            self.log_bus.log(f"Subject {subject_id} added to colony '{colony_id}' successfully", "success", "GUISubjectService")
+            colony_msg = f" to colony '{colony_id}'" if colony_id else ""
+            self.log_bus.log(f"Subject {subject_id} added{colony_msg} successfully", "success", "GUISubjectService")
             return saved_subject
 
         except ValueError as ve:
@@ -504,12 +512,53 @@ class GUIExperimentService:
     def get_colonies_for_display(self) -> List[Dict[str, str]]:
         """Get all colonies formatted for GUI display."""
         try:
-            # For now, return a simple list with the default colony
-            # In the future, this could return all colonies from the project manager
-            return [{"id": "default", "name": "Default Colony", "background_strain": "Unknown"}]
+            # Get colonies from the project manager
+            colonies = self.project_manager.list_colonies()
+            result = [{
+                "id": c.id,
+                "name": c.name,
+                "genotype_of_interest": c.genotype_of_interest,
+                "background_strain": c.background_strain
+            } for c in colonies]
+
+            # If no colonies found for the project's lab, try to get all colonies
+            # This allows showing colonies even when project has no lab_id set
+            if not result:
+                try:
+                    all_colonies = self.project_manager.repos.colonies.find_all()
+                    result = [{
+                        "id": c.id,
+                        "name": c.name,
+                        "genotype_of_interest": c.genotype_of_interest,
+                        "background_strain": c.background_strain
+                    } for c in all_colonies]
+                except Exception:
+                    pass
+
+            return result
         except Exception as e:
             self.log_bus.log(f"Error loading colonies: {e}", "error", "GUISubjectService")
             return []
+
+    def update_subject_colony(self, subject_id: str, colony_id: Optional[str]) -> bool:
+        """Update a subject's colony membership."""
+        try:
+            # Get the subject
+            subject = self.project_manager.get_subject(subject_id)
+            if not subject:
+                self.log_bus.log(f"Subject {subject_id} not found", "error", "GUISubjectService")
+                return False
+
+            # Update the colony_id
+            subject.colony_id = colony_id
+
+            # Save the subject
+            self.project_manager.add_subject(subject)
+            self.log_bus.log(f"Updated colony for subject {subject_id} to {colony_id}", "info", "GUISubjectService")
+            return True
+        except Exception as e:
+            self.log_bus.log(f"Error updating subject colony: {e}", "error", "GUISubjectService")
+            return False
 
     def add_experiment(self, experiment_id: str, subject_id: str, experiment_type: str,
                       date_recorded: datetime, processing_stage: str = "planned") -> Optional[Experiment]:
@@ -703,7 +752,8 @@ class LabService:
                 id=colony_id,
                 name=name,
                 genotype_of_interest=genotype,
-                background_strain=background
+                background_strain=background,
+                lab_id=lab_id
             )
             result = self.setup_service.create_colony(lab_id, colony_dto)
             if result["success"]:
@@ -746,6 +796,42 @@ class LabService:
         except Exception as e:
             self.log_bus.log(f"Error loading colony subjects: {e}", "error", "LabService")
             return []
+
+    def add_subject_to_colony(self, subject_id: str, colony_id: str) -> bool:
+        """Add a subject to a colony."""
+        if not self.setup_service:
+            self.log_bus.log("Setup service not available", "error", "LabService")
+            return False
+
+        try:
+            result = self.setup_service.add_subject_to_colony(subject_id, colony_id)
+            if result["success"]:
+                self.log_bus.log(result["message"], "success", "LabService")
+                return True
+            else:
+                self.log_bus.log(result["message"], "error", "LabService")
+                return False
+        except Exception as e:
+            self.log_bus.log(f"Error adding subject to colony: {e}", "error", "LabService")
+            return False
+
+    def remove_subject_from_colony(self, subject_id: str) -> bool:
+        """Remove a subject from its colony."""
+        if not self.setup_service:
+            self.log_bus.log("Setup service not available", "error", "LabService")
+            return False
+
+        try:
+            result = self.setup_service.remove_subject_from_colony(subject_id)
+            if result["success"]:
+                self.log_bus.log(result["message"], "success", "LabService")
+                return True
+            else:
+                self.log_bus.log(result["message"], "error", "LabService")
+                return False
+        except Exception as e:
+            self.log_bus.log(f"Error removing subject from colony: {e}", "error", "LabService")
+            return False
 
     def get_lab_projects(self, lab_id: str) -> List[Dict[str, Any]]:
         """Get projects registered with a lab."""
@@ -846,6 +932,24 @@ class LabService:
                 return False
         except Exception as e:
             self.log_bus.log(f"Error updating lab: {e}", "error", "LabService")
+            return False
+
+    def associate_project_with_lab(self, lab_id: str, project_name: str, project_path: str) -> bool:
+        """Associate a project with a lab."""
+        if not self.setup_service:
+            self.log_bus.log("Setup service not available", "error", "LabService")
+            return False
+
+        try:
+            result = self.setup_service.add_lab_project(lab_id, project_name, project_path)
+            if result["success"]:
+                self.log_bus.log(f"Project '{project_name}' associated with lab '{lab_id}' successfully", "success", "LabService")
+                return True
+            else:
+                self.log_bus.log(result["message"], "error", "LabService")
+                return False
+        except Exception as e:
+            self.log_bus.log(f"Error associating project with lab: {e}", "error", "LabService")
             return False
 
 

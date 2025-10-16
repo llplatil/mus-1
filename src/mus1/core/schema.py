@@ -39,7 +39,7 @@ class SubjectModel(Base):
     __tablename__ = 'subjects'
 
     id = Column(String, primary_key=True)
-    colony_id = Column(String, ForeignKey('colonies.id'), nullable=False)
+    colony_id = Column(String, ForeignKey('colonies.id'), nullable=True)  # Subjects can exist without colonies
     sex = Column(SQLEnum(Sex), nullable=False)
     designation = Column(SQLEnum(SubjectDesignation), nullable=True)
     birth_date = Column(DateTime, nullable=True)

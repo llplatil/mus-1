@@ -146,6 +146,15 @@ class ProjectDiscoveryService:
         except Exception:
             pass
 
+        # Priority 5: Local projects directory (fallback for unregistered projects)
+        try:
+            from .config_manager import resolve_mus1_root
+            mus1_root = resolve_mus1_root()
+            local_projects_dir = mus1_root / "projects"
+            self._discover_projects_in_directory(local_projects_dir, projects)
+        except Exception:
+            pass
+
         return projects
 
     def _discover_projects_in_directory(self, directory: Path, projects: List[Path]):

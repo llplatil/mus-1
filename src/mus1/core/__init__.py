@@ -30,7 +30,6 @@ from .config_manager import (
     set_config,
     delete_config
 )
-from .theme_manager import ThemeManager
 
 # Clean plugin system (imported separately to avoid circular imports)
 # from .plugin_manager_clean import PluginManagerClean, PluginService
@@ -51,8 +50,6 @@ __all__ = [
     # Config system
     "ConfigManager", "get_config_manager", "init_config_manager",
     "get_config", "set_config", "delete_config",
-    # Theme system
-    "ThemeManager",
     # Clean plugin system (commented out to avoid circular imports)
     # "PluginManagerClean", "PluginService"
 ] 

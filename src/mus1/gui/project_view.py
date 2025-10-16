@@ -93,8 +93,9 @@ class ProjectView(BaseView):
     # --- Lifecycle hooks ---
     def on_services_ready(self, services):
         super().on_services_ready(services)
+        # services is the GUIServiceFactory, create the project service we need
         self.gui_services = services
-        self.project_service = services
+        self.project_service = services.create_project_service()
 
     def format_item(self, item):
         """Utility to return the proper display string for an item."""
@@ -600,22 +601,15 @@ class ProjectView(BaseView):
             # Associate with lab if specified
             if lab_id:
                 project_manager.set_lab_id(lab_id)
-                # Register with lab in database
-                from ..core.schema import Database
-                from ..core.repository import get_repository_factory
-                from ..core.config_manager import get_config_manager
-                from datetime import datetime
-
-                config_manager = get_config_manager()
-                db = Database(str(config_manager.db_path))
-                db.create_tables()
-                repo_factory = get_repository_factory(db)
-                repo_factory.labs.add_project(
+                # Register with lab using service layer
+                lab_service = self.gui_services.create_lab_service()
+                success = lab_service.associate_project_with_lab(
                     lab_id=lab_id,
                     project_name=project_name,
-                    project_path=project_path,
-                    created_date=datetime.now()
+                    project_path=str(project_path)
                 )
+                if not success:
+                    self.navigation_pane.add_log_message(f"Warning: Failed to associate project with lab '{lab_id}'", "warning")
 
             # Switch to the newly created project
             self.window().load_project_path(project_path)

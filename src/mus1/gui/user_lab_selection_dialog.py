@@ -19,6 +19,7 @@ class UserLabSelectionDialog(QDialog):
         self.setObjectName("userLabSelectionDialog")
         self.selected_user_id = None
         self.selected_lab_id = None
+        self.selected_project_path = None
 
         self.setWindowTitle("MUS1 User & Lab Selection")
         self.setMinimumSize(600, 400)
@@ -38,8 +39,9 @@ class UserLabSelectionDialog(QDialog):
         welcome_label.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         main_layout.addWidget(welcome_label)
 
-        subtitle_label = QLabel("Please select your user profile and lab to continue.")
+        subtitle_label = QLabel("Please select your user profile and lab. You can optionally select a project to work with immediately.")
         subtitle_label.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        subtitle_label.setWordWrap(True)
         main_layout.addWidget(subtitle_label)
 
         # User selection section
@@ -73,9 +75,41 @@ class UserLabSelectionDialog(QDialog):
 
         self.lab_combo = QComboBox(lab_group)
         self.lab_combo.setProperty("class", "mus1-combo-box")
+        self.lab_combo.currentIndexChanged.connect(self.on_lab_changed)
         lab_layout.addWidget(self.lab_combo)
 
         main_layout.addWidget(lab_group)
+
+        # Optional Project selection section
+        project_group = QFrame(self)
+        project_group.setProperty("class", "mus1-panel")
+        project_group.setFrameStyle(QFrame.Shape.Box | QFrame.Shadow.Plain)
+        project_layout = QVBoxLayout(project_group)
+        project_layout.setContentsMargins(20, 20, 20, 20)
+
+        project_title = QLabel("Optional: Select Project of Interest", project_group)
+        project_title.setProperty("class", "mus1-section-title")
+        project_layout.addWidget(project_title)
+
+        # Checkbox to enable project selection
+        self.enable_project_checkbox = QCheckBox("Select a specific project to work with", project_group)
+        self.enable_project_checkbox.setChecked(True)  # Enable by default so projects are visible
+        self.enable_project_checkbox.toggled.connect(self.toggle_project_selection)
+        project_layout.addWidget(self.enable_project_checkbox)
+
+        # Project selection combo (enabled by default since checkbox is checked)
+        self.project_combo = QComboBox(project_group)
+        self.project_combo.setProperty("class", "mus1-combo-box")
+        self.project_combo.setEnabled(True)  # Enabled by default
+        self.project_combo.addItem("Select a project...", None)
+        project_layout.addWidget(self.project_combo)
+
+        # Help text
+        help_text = QLabel("Skip this to browse all available projects later.")
+        help_text.setStyleSheet("color: gray; font-size: 11px;")
+        project_layout.addWidget(help_text)
+
+        main_layout.addWidget(project_group)
 
         # Buttons
         button_layout = QHBoxLayout()
@@ -96,6 +130,32 @@ class UserLabSelectionDialog(QDialog):
         # Load data
         self.load_users()
         self.load_labs()
+        self.restore_previous_selections()
+        self.load_projects_for_lab()
+
+    def restore_previous_selections(self):
+        """Restore previously selected user and lab from config."""
+        try:
+            # Restore user selection
+            saved_user_id = get_config("app.selected_user_id", scope="user")
+            if saved_user_id:
+                self.selected_user_id = saved_user_id
+                index = self.user_combo.findData(saved_user_id)
+                if index >= 0:
+                    self.user_combo.setCurrentIndex(index)
+                    self.on_user_changed(index)
+
+            # Restore lab selection
+            saved_lab_id = get_config("app.selected_lab_id", scope="user")
+            if saved_lab_id:
+                self.selected_lab_id = saved_lab_id
+                index = self.lab_combo.findData(saved_lab_id)
+                if index >= 0:
+                    self.lab_combo.setCurrentIndex(index)
+                    self.on_lab_changed(index)
+        except Exception:
+            # Silently ignore restoration errors
+            pass
 
     def load_users(self):
         """Load available user profiles."""
@@ -154,6 +214,14 @@ class UserLabSelectionDialog(QDialog):
         if user_id:
             self.load_labs()  # Reload labs in case user permissions affect visibility
 
+    def on_lab_changed(self, index):
+        """Handle lab selection change."""
+        lab_id = self.lab_combo.currentData()
+        self.selected_lab_id = lab_id
+
+        # Reload projects for the selected lab
+        self.load_projects_for_lab()
+
     def accept_selection(self):
         """Accept the user and lab selection."""
         self.selected_user_id = self.user_combo.currentData()
@@ -167,8 +235,69 @@ class UserLabSelectionDialog(QDialog):
             QMessageBox.warning(self, "Selection Required", "Please select a lab.")
             return
 
+        # Persist selections to config
+        try:
+            set_config("app.selected_user_id", self.selected_user_id, scope="user")
+            set_config("app.selected_lab_id", self.selected_lab_id, scope="user")
+        except Exception:
+            # Silently ignore persistence errors
+            pass
+
         # Store selections for later retrieval
+        selected_project_data = self.project_combo.currentData()
+        if selected_project_data:
+            self.selected_project_path = selected_project_data
         self.accept()
+
+    def toggle_project_selection(self, enabled):
+        """Enable or disable project selection based on checkbox."""
+        self.project_combo.setEnabled(enabled)
+        if not enabled:
+            self.project_combo.setCurrentIndex(0)  # Reset to "Select a project..."
+            self.selected_project_path = None
+        else:
+            # Load projects when checkbox is enabled
+            self.load_projects_for_lab()
+
+    def load_projects_for_lab(self):
+        """Load available projects for the currently selected lab, or all projects if no lab selected."""
+        self.project_combo.clear()
+        self.project_combo.addItem("Select a project...", None)
+
+        # Only load projects if project selection is enabled
+        if not self.enable_project_checkbox.isChecked():
+            return
+
+        lab_id = self.lab_combo.currentData()
+
+        try:
+            if lab_id:
+                # If a lab is selected, first try to get lab-registered projects
+                setup_service = get_setup_service()
+                lab_projects = setup_service.get_lab_projects(lab_id).get("projects", [])
+
+                if lab_projects:
+                    for project in lab_projects:
+                        # Format: "Project Name — Path"
+                        display_text = f"{project['name']} — {project['path']}"
+                        self.project_combo.addItem(display_text, project['path'])
+                    return
+
+            # If no lab selected, or no lab-registered projects, show all discoverable projects
+            from ..core.project_discovery_service import get_project_discovery_service
+            discovery_service = get_project_discovery_service()
+            all_projects = discovery_service.discover_existing_projects()
+
+            if all_projects:
+                for project_path in all_projects:
+                    project_name = project_path.name
+                    display_text = f"{project_name} — {project_path}"
+                    self.project_combo.addItem(display_text, str(project_path))
+            else:
+                self.project_combo.addItem("No projects found", None)
+
+        except Exception as e:
+            self.project_combo.addItem("Error loading projects", None)
 
     def setup_background(self):
         """Set up the background with the M1 logo as a dark grayscale watermark"""

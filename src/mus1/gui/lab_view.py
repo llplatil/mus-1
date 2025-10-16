@@ -40,10 +40,29 @@ class LabView(BaseView):
     def on_activated(self):
         # Refresh data when lab tab becomes active
         self.refresh_lab_data()
+
+        # Auto-select the lab that was chosen in user/lab selection dialog
+        main_window = self.window()
+        if main_window and hasattr(main_window, 'selected_lab_id') and main_window.selected_lab_id:
+            self._auto_select_lab(main_window.selected_lab_id)
+
         # Also refresh lab-specific data for currently selected lab
         self.load_colonies()
         self.load_shared_projects()
         self.load_lab_members()
+
+    def _auto_select_lab(self, lab_id: str):
+        """Automatically select the lab with the given ID in the labs list."""
+        if not hasattr(self, 'labs_list'):
+            return
+
+        # Find the item with matching lab_id
+        for i in range(self.labs_list.count()):
+            item = self.labs_list.item(i)
+            if item and item.data(Qt.ItemDataRole.UserRole) == lab_id:
+                self.labs_list.setCurrentItem(item)
+                self.navigation_pane.add_log_message(f"Auto-selected lab: {item.text()}", "info")
+                break
 
     def setup_colonies_page(self):
         """Setup the Colonies page for managing colonies within the lab."""
@@ -252,6 +271,11 @@ class LabView(BaseView):
     # ---- Colonies Methods ----
     def load_colonies(self):
         """Load lab colonies for the currently selected lab."""
+        if not self.lab_service:
+            self.colonies_list.clear()
+            self.navigation_pane.add_log_message("Lab service not available", "error")
+            return
+
         try:
             # Get the currently selected lab
             current_lab_item = self.labs_list.currentItem()
@@ -262,29 +286,16 @@ class LabView(BaseView):
 
             lab_id = current_lab_item.data(Qt.ItemDataRole.UserRole)
 
-            # Get colonies from database
-            from ..core.setup_service import get_setup_service
-            from ..core.repository import get_repository_factory
-
-            setup_service = get_setup_service()
-            db = setup_service._get_database()
-            repo_factory = get_repository_factory(db)
-
             # Get colonies for this lab
-            colonies = repo_factory.colonies.find_by_lab(lab_id)
+            colonies = self.lab_service.get_lab_colonies(lab_id)
 
             self.colonies_list.clear()
             for colony in colonies:
-                display_text = f"{colony.gene_of_interest} Colony ({colony.background_strain} background)"
+                display_text = f"{colony['genotype_of_interest']} Colony ({colony['background_strain']} background)"
                 item = QListWidgetItem(display_text)
                 # Store colony data for operations
-                item.setData(Qt.ItemDataRole.UserRole, colony.id)
-                item.setData(Qt.ItemDataRole.UserRole + 1, {
-                    'id': colony.id,
-                    'gene_of_interest': colony.gene_of_interest,
-                    'background_strain': colony.background_strain,
-                    'name': colony.name
-                })
+                item.setData(Qt.ItemDataRole.UserRole, colony['id'])
+                item.setData(Qt.ItemDataRole.UserRole + 1, colony)
                 self.colonies_list.addItem(item)
 
             self.navigation_pane.add_log_message(f"Loaded {len(colonies)} colonies", "info")
@@ -302,7 +313,7 @@ class LabView(BaseView):
         colony_data = current_item.data(Qt.ItemDataRole.UserRole + 1)
 
         self.colony_name_edit.setText(colony_data.get('name', ''))
-        self.colony_gene_edit.setText(colony_data.get('gene_of_interest', ''))
+        self.colony_gene_edit.setText(colony_data.get('genotype_of_interest', ''))
         self.colony_strain_edit.setText(colony_data.get('background_strain', ''))
 
         # Load subjects for this colony
@@ -310,27 +321,23 @@ class LabView(BaseView):
 
     def load_colony_subjects(self, colony_id):
         """Load subjects for a colony."""
+        if not self.lab_service:
+            self.colony_subjects_list.clear()
+            self.navigation_pane.add_log_message("Lab service not available", "error")
+            return
+
         try:
-            from ..core.setup_service import get_setup_service
-            from ..core.schema import SubjectModel
+            # Get subjects for this colony
+            subjects = self.lab_service.get_colony_subjects(colony_id)
 
-            setup_service = get_setup_service()
-            db = setup_service._get_database()
+            self.colony_subjects_list.clear()
+            for subject in subjects:
+                genotype_display = subject.get('genotype') or "Unknown"
+                display_text = f"{subject['id']} ({genotype_display})"
+                item = QListWidgetItem(display_text)
+                self.colony_subjects_list.addItem(item)
 
-            # Get subjects for this colony directly from database
-            with db.get_session() as session:
-                db_subjects = session.query(SubjectModel).filter(
-                    SubjectModel.colony_id == colony_id
-                ).all()
-
-                self.colony_subjects_list.clear()
-                for db_subject in db_subjects:
-                    genotype_display = db_subject.genotype if db_subject.genotype else "Unknown"
-                    display_text = f"{db_subject.name} ({genotype_display})"
-                    item = QListWidgetItem(display_text)
-                    self.colony_subjects_list.addItem(item)
-
-                self.navigation_pane.add_log_message(f"Loaded {len(db_subjects)} subjects for colony", "info")
+            self.navigation_pane.add_log_message(f"Loaded {len(subjects)} subjects for colony", "info")
 
         except Exception as e:
             self.navigation_pane.add_log_message(f"Error loading colony subjects: {e}", "error")
@@ -338,6 +345,10 @@ class LabView(BaseView):
 
     def handle_create_colony(self):
         """Create a new colony."""
+        if not self.lab_service:
+            QMessageBox.warning(self, "Error", "Lab service not available")
+            return
+
         colony_name = self.colony_name_edit.text().strip()
         gene_of_interest = self.colony_gene_edit.text().strip()
         background_strain = self.colony_strain_edit.text().strip()
@@ -362,32 +373,13 @@ class LabView(BaseView):
 
         lab_id = current_lab_item.data(Qt.ItemDataRole.UserRole)
 
-        try:
-            from ..core.setup_service import get_setup_service
-            from ..core.repository import get_repository_factory
-            from ..core.metadata import Colony
-            import uuid
-            from datetime import datetime
+        # Generate colony ID
+        import uuid
+        colony_id = str(uuid.uuid4())
 
-            setup_service = get_setup_service()
-            db = setup_service._get_database()
-            repo_factory = get_repository_factory(db)
+        success = self.lab_service.create_colony(lab_id, colony_id, colony_name, gene_of_interest, background_strain)
 
-            # Create colony
-            colony = Colony(
-                id=str(uuid.uuid4()),
-                name=colony_name,
-                lab_id=lab_id,
-                genotype_of_interest=gene_of_interest,
-                background_strain=background_strain,
-                date_added=datetime.now()
-            )
-
-            # Save to database
-            repo_factory.colonies.save(colony)
-
-            self.navigation_pane.add_log_message(f"Colony '{colony_name}' created successfully", "success")
-
+        if success:
             # Refresh colonies list
             self.load_colonies()
 
@@ -396,12 +388,12 @@ class LabView(BaseView):
             self.colony_gene_edit.clear()
             self.colony_strain_edit.clear()
 
-        except Exception as e:
-            self.navigation_pane.add_log_message(f"Error creating colony: {e}", "error")
-            QMessageBox.warning(self, "Error", f"Failed to create colony: {str(e)}")
-
     def handle_update_colony(self):
         """Update selected colony."""
+        if not self.lab_service:
+            QMessageBox.warning(self, "Error", "Lab service not available")
+            return
+
         current_item = self.colonies_list.currentItem()
         if not current_item:
             QMessageBox.warning(self, "No Selection", "Please select a colony to update.")
@@ -426,38 +418,9 @@ class LabView(BaseView):
         colony_data = current_item.data(Qt.ItemDataRole.UserRole + 1)
         colony_id = colony_data['id']
 
-        try:
-            from ..core.setup_service import get_setup_service
-            from ..core.repository import get_repository_factory
-            from ..core.metadata import Colony
+        success = self.lab_service.update_colony(colony_id, colony_name, gene_of_interest, background_strain)
 
-            setup_service = get_setup_service()
-            db = setup_service._get_database()
-            repo_factory = get_repository_factory(db)
-
-            # Get existing colony
-            existing_colony = repo_factory.colonies.find_by_id(colony_id)
-            if not existing_colony:
-                QMessageBox.warning(self, "Not Found", "Colony not found")
-                return
-
-            # Update colony
-            updated_colony = Colony(
-                id=existing_colony.id,
-                name=colony_name,
-                lab_id=existing_colony.lab_id,
-                genotype_of_interest=gene_of_interest,
-                background_strain=background_strain,
-                common_traits=existing_colony.common_traits,
-                notes=existing_colony.notes,
-                date_added=existing_colony.date_added
-            )
-
-            # Save to database
-            repo_factory.colonies.save(updated_colony)
-
-            self.navigation_pane.add_log_message(f"Colony '{colony_name}' updated successfully", "success")
-
+        if success:
             # Refresh colonies list
             self.load_colonies()
 
@@ -466,13 +429,14 @@ class LabView(BaseView):
             self.colony_gene_edit.clear()
             self.colony_strain_edit.clear()
 
-        except Exception as e:
-            self.navigation_pane.add_log_message(f"Error updating colony: {e}", "error")
-            QMessageBox.warning(self, "Error", f"Failed to update colony: {str(e)}")
-
     # ---- Shared Projects Methods ----
     def load_shared_projects(self):
         """Load projects registered with the currently selected lab."""
+        if not self.lab_service:
+            self.shared_projects_list.clear()
+            self.navigation_pane.add_log_message("Lab service not available", "error")
+            return
+
         try:
             # Get the currently selected lab
             current_lab_item = self.labs_list.currentItem()
@@ -483,16 +447,8 @@ class LabView(BaseView):
 
             lab_id = current_lab_item.data(Qt.ItemDataRole.UserRole)
 
-            # Get projects from database
-            from ..core.setup_service import get_setup_service
-            from ..core.repository import get_repository_factory
-
-            setup_service = get_setup_service()
-            db = setup_service._get_database()
-            repo_factory = get_repository_factory(db)
-
             # Get projects for this lab
-            projects = repo_factory.labs.get_projects(lab_id)
+            projects = self.lab_service.get_lab_projects(lab_id)
 
             self.shared_projects_list.clear()
             for project in projects:
@@ -517,6 +473,10 @@ class LabView(BaseView):
 
     def handle_add_shared_project(self):
         """Add a project to the lab."""
+        if not self.lab_service:
+            QMessageBox.warning(self, "Error", "Lab service not available")
+            return
+
         project_name = self.shared_project_name_edit.text().strip()
         project_path = self.shared_project_path_edit.text().strip()
 
@@ -536,37 +496,9 @@ class LabView(BaseView):
 
         lab_id = current_lab_item.data(Qt.ItemDataRole.UserRole)
 
-        try:
-            from ..core.setup_service import get_setup_service
-            from ..core.repository import get_repository_factory
-            from pathlib import Path
-            from datetime import datetime
+        success = self.lab_service.add_lab_project(lab_id, project_name, project_path)
 
-            setup_service = get_setup_service()
-            db = setup_service._get_database()
-            repo_factory = get_repository_factory(db)
-
-            # Validate project path exists and has mus1.db
-            project_path_obj = Path(project_path)
-            if not project_path_obj.exists():
-                QMessageBox.warning(self, "Invalid Path", "Project path does not exist")
-                return
-
-            if not (project_path_obj / "mus1.db").exists():
-                QMessageBox.warning(self, "Invalid Project", "Selected directory is not a valid MUS1 project (missing mus1.db)")
-                return
-
-            # Check if project is already registered with this lab
-            existing_projects = repo_factory.labs.get_projects(lab_id)
-            if any(p['name'] == project_name for p in existing_projects):
-                QMessageBox.warning(self, "Already Registered", f"Project '{project_name}' is already registered with this lab")
-                return
-
-            # Add project to lab
-            repo_factory.labs.add_project(lab_id, project_name, project_path_obj, datetime.now())
-
-            self.navigation_pane.add_log_message(f"Added project '{project_name}' to lab", "success")
-
+        if success:
             # Refresh projects list
             self.load_shared_projects()
 
@@ -574,12 +506,12 @@ class LabView(BaseView):
             self.shared_project_name_edit.clear()
             self.shared_project_path_edit.clear()
 
-        except Exception as e:
-            self.navigation_pane.add_log_message(f"Error adding project: {e}", "error")
-            QMessageBox.warning(self, "Error", f"Failed to add project: {str(e)}")
-
     def handle_remove_shared_project(self):
         """Remove selected project from lab."""
+        if not self.lab_service:
+            QMessageBox.warning(self, "Error", "Lab service not available")
+            return
+
         current_item = self.shared_projects_list.currentItem()
         if not current_item:
             QMessageBox.information(self, "Shared Projects", "Select a project to remove.")
@@ -606,31 +538,11 @@ class LabView(BaseView):
         if reply != QMessageBox.StandardButton.Yes:
             return
 
-        try:
-            from ..core.setup_service import get_setup_service
-            from ..core.schema import LabProjectModel
+        success = self.lab_service.remove_lab_project(lab_id, project_name)
 
-            setup_service = get_setup_service()
-            db = setup_service._get_database()
-
-            # Remove project association from database
-            with db.get_session() as session:
-                result = session.query(LabProjectModel).filter(
-                    LabProjectModel.lab_id == lab_id,
-                    LabProjectModel.name == project_name
-                ).delete()
-                session.commit()
-
-                if result > 0:
-                    self.navigation_pane.add_log_message(f"Removed project '{project_name}' from lab", "success")
-                    # Refresh projects list
-                    self.load_shared_projects()
-                else:
-                    QMessageBox.warning(self, "Not Found", "Project association was not found")
-
-        except Exception as e:
-            self.navigation_pane.add_log_message(f"Error removing project: {e}", "error")
-            QMessageBox.warning(self, "Error", f"Failed to remove project: {str(e)}")
+        if success:
+            # Refresh projects list
+            self.load_shared_projects()
 
     # ---- Lab Members Methods ----
     def load_lab_members(self):
@@ -785,57 +697,36 @@ class LabView(BaseView):
 
     def handle_create_lab(self):
         """Create a new lab."""
-        try:
-            from ..core.setup_service import get_setup_service, LabDTO
-            from ..core.config_manager import get_config
+        if not self.lab_service:
+            QMessageBox.warning(self, "Error", "Lab service not available")
+            return
 
-            lab_name = self.lab_name_edit.text().strip()
-            if not lab_name:
-                QMessageBox.warning(self, "Validation Error", "Lab name is required")
-                return
+        lab_name = self.lab_name_edit.text().strip()
+        if not lab_name:
+            QMessageBox.warning(self, "Validation Error", "Lab name is required")
+            return
 
-            # Generate lab ID from name
-            lab_id = lab_name.lower().replace(' ', '_').replace('-', '_')
+        # Generate lab ID from name
+        lab_id = lab_name.lower().replace(' ', '_').replace('-', '_')
 
-            # Get current user as creator
-            user_id = get_config("user.id", scope="user")
-            if not user_id:
-                QMessageBox.warning(self, "Error", "No user configured")
-                return
+        institution = self.lab_institution_edit.text().strip()
+        pi_name = self.lab_pi_edit.text().strip()
 
-            lab_dto = LabDTO(
-                id=lab_id,
-                name=lab_name,
-                institution=self.lab_institution_edit.text().strip(),
-                pi_name=self.lab_pi_edit.text().strip(),
-                creator_id=user_id
-            )
+        success = self.lab_service.create_lab(lab_id, lab_name, institution, pi_name)
 
-            setup_service = get_setup_service()
-            result = setup_service.create_lab(lab_dto)
-
-            if result["success"]:
-                # Add creator as admin member
-                from ..core.repository import get_repository_factory
-                db = setup_service._get_database()
-                repo_factory = get_repository_factory(db)
-                from datetime import datetime
-                repo_factory.labs.add_member(lab_id, user_id, "admin", datetime.now())
-
-                self.navigation_pane.add_log_message(f"Lab '{lab_name}' created successfully", "success")
-                self.load_labs()  # Refresh the list
-                # Clear form
-                self.lab_name_edit.clear()
-                self.lab_institution_edit.clear()
-                self.lab_pi_edit.clear()
-            else:
-                QMessageBox.warning(self, "Error", result["message"])
-
-        except Exception as e:
-            self.navigation_pane.add_log_message(f"Error creating lab: {e}", "error")
+        if success:
+            self.load_labs()  # Refresh the list
+            # Clear form
+            self.lab_name_edit.clear()
+            self.lab_institution_edit.clear()
+            self.lab_pi_edit.clear()
 
     def handle_update_lab(self):
         """Update selected lab."""
+        if not self.lab_service:
+            QMessageBox.warning(self, "Error", "Lab service not available")
+            return
+
         current_item = self.labs_list.currentItem()
         if not current_item:
             QMessageBox.warning(self, "No Selection", "Please select a lab to update.")
@@ -850,25 +741,14 @@ class LabView(BaseView):
             QMessageBox.warning(self, "Validation Error", "Lab name is required.")
             return
 
-        try:
-            from ..core.setup_service import get_setup_service
-            setup_service = get_setup_service()
+        success = self.lab_service.update_lab(lab_id, lab_name, institution, pi_name)
 
-            # Update lab in the database
-            result = setup_service.update_lab(lab_id, name=lab_name, institution=institution, pi_name=pi_name)
-
-            if result["success"]:
-                self.navigation_pane.add_log_message(f"Lab '{lab_name}' updated successfully", "success")
-                self.load_labs()  # Refresh the list
-                # Clear form
-                self.lab_name_edit.clear()
-                self.lab_institution_edit.clear()
-                self.lab_pi_edit.clear()
-            else:
-                QMessageBox.warning(self, "Update Failed", result["message"])
-
-        except Exception as e:
-            self.navigation_pane.add_log_message(f"Error updating lab: {e}", "error")
+        if success:
+            self.load_labs()  # Refresh the list
+            # Clear form
+            self.lab_name_edit.clear()
+            self.lab_institution_edit.clear()
+            self.lab_pi_edit.clear()
 
     def refresh_lab_data(self):
         """Refresh all lab-related data."""
