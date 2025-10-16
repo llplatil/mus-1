@@ -598,8 +598,13 @@ class ProjectView(BaseView):
                 except Exception as e:
                     self.navigation_pane.add_log_message(f"Failed to persist shared root on project: {e}", "warning")
 
-            # Associate with lab if specified
-            if lab_id:
+            # Associate with lab if specified or requested for local
+            if lab_id or (location_type == "local" and getattr(self, 'register_with_lab_check', None) and self.register_with_lab_check.isChecked()):
+                if not lab_id:
+                    # Try to use currently selected lab from the UI if available
+                    if hasattr(self.window(), 'selected_lab_id'):
+                        lab_id = self.window().selected_lab_id
+                
                 project_manager.set_lab_id(lab_id)
                 # Register with lab using service layer
                 lab_service = self.gui_services.create_lab_service()
@@ -622,6 +627,19 @@ class ProjectView(BaseView):
 
             # Clear the form
             self.new_project_name_edit.clear()
+
+            # Refresh project list and align filter to show the new project
+            try:
+                self.populate_project_list()
+                if hasattr(self, 'switch_location_combo'):
+                    self.switch_location_combo.setCurrentIndex(1 if location_type == 'shared' else 0)
+                # Auto-select newly created project in dropdown
+                if hasattr(self, 'switch_project_combo'):
+                    idx = self.switch_project_combo.findText(project_name)
+                    if idx >= 0:
+                        self.switch_project_combo.setCurrentIndex(idx)
+            except Exception:
+                pass
 
         except Exception as e:
             self.navigation_pane.add_log_message(f"Error creating project: {e}", "error")
@@ -800,6 +818,14 @@ class ProjectView(BaseView):
         self.switch_project_button = QPushButton("Switch")
         self.switch_project_button.setProperty("class", "mus1-primary-button")
         self.switch_project_button.clicked.connect(self.handle_switch_project)
+
+        # Registration preference
+        register_group, register_layout_container = self.create_form_section("Registration", layout)
+        reg_row = self.create_form_row(register_layout_container)
+        self.register_with_lab_check = QCheckBox("Register newly created Local projects with selected lab")
+        self.register_with_lab_check.setChecked(False)
+        reg_row.addWidget(self.register_with_lab_check)
+        layout.addWidget(register_group)
         
         selector_layout.addWidget(switch_label)
         selector_layout.addWidget(self.switch_location_combo)
@@ -862,7 +888,21 @@ class ProjectView(BaseView):
                 if project_info.get('shared_root'):
                     shared_root = project_info['shared_root']
 
-            # If no project-specific shared root, try global config
+            # If no project-specific shared root, try lab storage root
+            if not shared_root:
+                try:
+                    current_lab_id = None
+                    if hasattr(self.window(), 'selected_lab_id'):
+                        current_lab_id = self.window().selected_lab_id
+                    if current_lab_id:
+                        from ..core.config_manager import get_lab_storage_root as _glsr
+                        lab_root = _glsr(current_lab_id)
+                        if lab_root:
+                            shared_root = str(lab_root)
+                except Exception:
+                    pass
+
+            # If still none, try global config
             if not shared_root:
                 from ..core.setup_service import get_setup_service
                 setup_service = get_setup_service()

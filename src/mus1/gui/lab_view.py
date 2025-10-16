@@ -36,6 +36,7 @@ class LabView(BaseView):
         super().on_services_ready(services)
         # Services is the factory, create our lab service
         self.lab_service = services.create_lab_service()
+        self.navigation_pane.add_log_message("LabView services ready", "info")
 
     def on_activated(self):
         # Refresh data when lab tab becomes active
@@ -44,25 +45,43 @@ class LabView(BaseView):
         # Auto-select the lab that was chosen in user/lab selection dialog
         main_window = self.window()
         if main_window and hasattr(main_window, 'selected_lab_id') and main_window.selected_lab_id:
-            self._auto_select_lab(main_window.selected_lab_id)
+            self.navigation_pane.add_log_message(f"Auto-selecting lab: {main_window.selected_lab_id}", "info")
+            # Try immediate selection first
+            self._delayed_auto_select(main_window.selected_lab_id)
+        else:
+            self.navigation_pane.add_log_message("No lab selected from user/lab dialog", "warning")
 
-        # Also refresh lab-specific data for currently selected lab
-        self.load_colonies()
-        self.load_shared_projects()
-        self.load_lab_members()
+    def _delayed_auto_select(self, lab_id: str):
+        """Delayed auto-selection after labs are loaded."""
+        from .qt import QTimer
+        # Use a short timer to ensure labs are fully loaded
+        QTimer.singleShot(100, lambda: self._do_auto_select(lab_id))
 
-    def _auto_select_lab(self, lab_id: str):
-        """Automatically select the lab with the given ID in the labs list."""
+    def _do_auto_select(self, lab_id: str):
+        """Automatically select the lab with the given ID in the labs list and load associated data."""
         if not hasattr(self, 'labs_list'):
+            self.navigation_pane.add_log_message("labs_list not available for auto-select", "error")
             return
+
+        self.navigation_pane.add_log_message(f"Looking for lab {lab_id} in {self.labs_list.count()} items", "info")
 
         # Find the item with matching lab_id
         for i in range(self.labs_list.count()):
             item = self.labs_list.item(i)
-            if item and item.data(Qt.ItemDataRole.UserRole) == lab_id:
+            item_lab_id = item.data(Qt.ItemDataRole.UserRole) if item else None
+            self.navigation_pane.add_log_message(f"Item {i}: {item_lab_id}", "info")
+            if item and item_lab_id == lab_id:
                 self.labs_list.setCurrentItem(item)
                 self.navigation_pane.add_log_message(f"Auto-selected lab: {item.text()}", "info")
-                break
+
+                # Now load lab-specific data for the selected lab
+                self.navigation_pane.add_log_message(f"Lab selected, loading lab-specific data", "info")
+                self.load_colonies()
+                self.load_shared_projects()
+                self.load_lab_members()
+                return
+
+        self.navigation_pane.add_log_message(f"Lab {lab_id} not found in labs list", "warning")
 
     def setup_colonies_page(self):
         """Setup the Colonies page for managing colonies within the lab."""
@@ -271,6 +290,7 @@ class LabView(BaseView):
     # ---- Colonies Methods ----
     def load_colonies(self):
         """Load lab colonies for the currently selected lab."""
+        self.navigation_pane.add_log_message("Loading colonies...", "info")
         if not self.lab_service:
             self.colonies_list.clear()
             self.navigation_pane.add_log_message("Lab service not available", "error")
@@ -285,9 +305,11 @@ class LabView(BaseView):
                 return
 
             lab_id = current_lab_item.data(Qt.ItemDataRole.UserRole)
+            self.navigation_pane.add_log_message(f"Loading colonies for lab: {lab_id}", "info")
 
             # Get colonies for this lab
             colonies = self.lab_service.get_lab_colonies(lab_id)
+            self.navigation_pane.add_log_message(f"Retrieved {len(colonies)} colonies from service", "info")
 
             self.colonies_list.clear()
             for colony in colonies:
@@ -298,7 +320,7 @@ class LabView(BaseView):
                 item.setData(Qt.ItemDataRole.UserRole + 1, colony)
                 self.colonies_list.addItem(item)
 
-            self.navigation_pane.add_log_message(f"Loaded {len(colonies)} colonies", "info")
+            self.navigation_pane.add_log_message(f"Loaded {len(colonies)} colonies into list", "info")
 
         except Exception as e:
             self.navigation_pane.add_log_message(f"Error loading colonies: {e}", "error")
@@ -657,12 +679,14 @@ class LabView(BaseView):
     # ---- Lab Settings Methods (moved from Settings view) ----
     def load_labs(self):
         """Load user's labs."""
+        self.navigation_pane.add_log_message("Loading labs...", "info")
         if not self.lab_service:
             self.navigation_pane.add_log_message("Lab service not available", "error")
             return
 
         try:
             labs = self.lab_service.get_labs()
+            self.navigation_pane.add_log_message(f"Retrieved {len(labs)} labs from service", "info")
 
             self.labs_list.clear()
             for lab_data in labs:
@@ -671,6 +695,7 @@ class LabView(BaseView):
                 item.setData(Qt.ItemDataRole.UserRole, lab_data['id'])
                 item.setData(Qt.ItemDataRole.UserRole + 1, lab_data)
                 self.labs_list.addItem(item)
+            self.navigation_pane.add_log_message(f"Added {len(labs)} labs to list", "info")
         except Exception as e:
             self.navigation_pane.add_log_message(f"Error loading labs: {e}", "error")
 
@@ -752,5 +777,7 @@ class LabView(BaseView):
 
     def refresh_lab_data(self):
         """Refresh all lab-related data."""
+        self.navigation_pane.add_log_message("Refreshing lab data...", "info")
         self.load_labs()
+        self.navigation_pane.add_log_message(f"Labs list now has {self.labs_list.count() if hasattr(self, 'labs_list') else 0} items", "info")
         # Lab-specific data will be loaded when a lab is selected

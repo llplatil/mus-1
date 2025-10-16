@@ -36,7 +36,7 @@ class MainWindow(QMainWindow):
     - Handles global menu actions
     - Manages project selection and view setup
     """
-    def __init__(self, project_path=None, selected_project=None, setup_completed=False):
+    def __init__(self, project_path=None, selected_project=None, setup_completed=False, theme_manager: ThemeManager | None = None):
         super().__init__()
 
         # Set object name and class for styling
@@ -58,8 +58,8 @@ class MainWindow(QMainWindow):
         self.selected_user_id = None
         self.selected_lab_id = None
 
-        # Initialize theme manager (will be updated when project is loaded)
-        self.theme_manager = None
+        # Initialize theme manager (provided by main.py)
+        self.theme_manager = theme_manager
         
         # Get the LoggingEventBus singleton
         self.log_bus = LoggingEventBus.get_instance()
@@ -258,13 +258,8 @@ class MainWindow(QMainWindow):
             # Project already loaded, just refresh
             return
         else:
-            # Check if we have saved selections and try to restore them
-            if self.try_restore_selections():
-                # Successfully restored selections, proceed to project management
-                self.tab_widget.setCurrentWidget(self.project_view)
-            else:
-                # Show user/lab selection dialog
-                self.show_user_lab_selection_dialog()
+            # Always show user/lab selection dialog (it will be pre-populated with saved selections)
+            self.show_user_lab_selection_dialog()
 
     def try_restore_selections(self):
         """Try to restore previously saved user and lab selections."""
@@ -281,7 +276,7 @@ class MainWindow(QMainWindow):
 
                 # Check if user exists
                 users = setup_service.get_all_users()
-                if not any(user.get('id') == saved_user_id for user in users):
+                if not any(user_data.get('id') == saved_user_id for user_data in users.values()):
                     return False
 
                 # Check if lab exists
@@ -321,7 +316,13 @@ class MainWindow(QMainWindow):
             # Initialize project manager
             self.project_manager = ProjectManagerClean(project_path)
             self.gui_services = GUIServiceFactory(self.project_manager)
-            self.theme_manager = ThemeManager()
+            # ThemeManager is provided by main; do not create a new instance here
+
+            # Initialize plugin manager for the project
+            from ..core.plugin_manager_clean import PluginManagerClean
+            self.plugin_manager = PluginManagerClean(self.project_manager.db)
+            # Set plugin manager on GUI services so all views can access it
+            self.gui_services.set_plugin_manager(self.plugin_manager)
 
             # Update UI state
             self.selected_project_name = project_name
@@ -374,7 +375,13 @@ class MainWindow(QMainWindow):
             # Initialize project components
             self.project_manager = ProjectManagerClean(project_path)
             self.gui_services = GUIServiceFactory(self.project_manager)
-            self.theme_manager = ThemeManager()
+            # ThemeManager is provided by main; do not create a new instance here
+
+            # Initialize plugin manager for the project
+            from ..core.plugin_manager_clean import PluginManagerClean
+            self.plugin_manager = PluginManagerClean(self.project_manager.db)
+            # Set plugin manager on GUI services so all views can access it
+            self.gui_services.set_plugin_manager(self.plugin_manager)
 
             # Update UI state
             self.selected_project_name = project_name
@@ -521,7 +528,7 @@ class MainWindow(QMainWindow):
 
             # If a project was selected, load it directly
             if selected_project_path:
-                self.load_project_path(selected_project_path)
+                self.load_project_path(Path(selected_project_path))
             else:
                 # Now switch to project management tab
                 self.tab_widget.setCurrentWidget(self.project_view)

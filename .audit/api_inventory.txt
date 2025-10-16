@@ -1,0 +1,157 @@
+src/mus1/core/config_manager.py:class ConfigManager
+src/mus1/core/config_manager.py:class ConfigScope
+src/mus1/core/config_manager.py:def delete_config(key, scope)
+src/mus1/core/config_manager.py:def get_active_user_id()
+src/mus1/core/config_manager.py:def get_app_logs_dir()
+src/mus1/core/config_manager.py:def get_app_root()
+src/mus1/core/config_manager.py:def get_config(key, default, scope)
+src/mus1/core/config_manager.py:def get_config_manager()
+src/mus1/core/config_manager.py:def get_lab_storage_root(lab_id)
+src/mus1/core/config_manager.py:def get_root_pointer_info()
+src/mus1/core/config_manager.py:def init_config_manager(db_path)
+src/mus1/core/config_manager.py:def resolve_mus1_root()
+src/mus1/core/config_manager.py:def set_config(key, value, scope, persist)
+src/mus1/core/config_manager.py:def set_lab_storage_root(lab_id, path)
+src/mus1/core/config_manager.py:def set_root_pointer(root_path)
+src/mus1/core/credentials.py:def get_credential(alias)
+src/mus1/core/credentials.py:def load_credentials()
+src/mus1/core/credentials.py:def remove_credential(alias)
+src/mus1/core/credentials.py:def save_credentials(creds)
+src/mus1/core/credentials.py:def set_credential(alias)
+src/mus1/core/job_provider.py:class JobResult
+src/mus1/core/job_provider.py:class LocalJobProvider
+src/mus1/core/job_provider.py:class SshJobProvider
+src/mus1/core/job_provider.py:class SshWslJobProvider
+src/mus1/core/job_provider.py:class WslJobProvider
+src/mus1/core/job_provider.py:def run_on_worker(worker, command, cwd, env, timeout, allocate_tty, stream_output, log_prefix)
+src/mus1/core/logging_bus.py:class LogObserver
+src/mus1/core/logging_bus.py:class LoggingEventBus
+src/mus1/core/metadata.py:class Colony
+src/mus1/core/metadata.py:class ColonyDTO
+src/mus1/core/metadata.py:class Experiment
+src/mus1/core/metadata.py:class ExperimentDTO
+src/mus1/core/metadata.py:class HasDateAdded
+src/mus1/core/metadata.py:class HasName
+src/mus1/core/metadata.py:class InheritancePattern
+src/mus1/core/metadata.py:class Lab
+src/mus1/core/metadata.py:class LabDTO
+src/mus1/core/metadata.py:class PluginMetadata
+src/mus1/core/metadata.py:class PluginResult
+src/mus1/core/metadata.py:class ProcessingStage
+src/mus1/core/metadata.py:class ProjectConfig
+src/mus1/core/metadata.py:class ScanTarget
+src/mus1/core/metadata.py:class ScanTargetDTO
+src/mus1/core/metadata.py:class ScanTargetKind
+src/mus1/core/metadata.py:class Sex
+src/mus1/core/metadata.py:class Subject
+src/mus1/core/metadata.py:class SubjectDTO
+src/mus1/core/metadata.py:class SubjectDesignation
+src/mus1/core/metadata.py:class User
+src/mus1/core/metadata.py:class UserDTO
+src/mus1/core/metadata.py:class VideoFile
+src/mus1/core/metadata.py:class VideoFileDTO
+src/mus1/core/metadata.py:class Worker
+src/mus1/core/metadata.py:class WorkerDTO
+src/mus1/core/metadata.py:class WorkerProvider
+src/mus1/core/metadata.py:class Workgroup
+src/mus1/core/metadata.py:class WorkgroupDTO
+src/mus1/core/metadata.py:class WorkgroupMember
+src/mus1/core/metadata.py:def validate_experiment_id(experiment_id)
+src/mus1/core/metadata.py:def validate_subject_id(subject_id)
+src/mus1/core/plugin_manager_clean.py:class PluginManagerClean
+src/mus1/core/plugin_manager_clean.py:class PluginService
+src/mus1/core/project_discovery_service.py:class ProjectDiscoveryService
+src/mus1/core/project_discovery_service.py:def get_project_discovery_service()
+src/mus1/core/project_manager_clean.py:class ProjectManagerClean
+src/mus1/core/repository.py:class BaseRepository
+src/mus1/core/repository.py:class BodyPartRepository
+src/mus1/core/repository.py:class ColonyRepository
+src/mus1/core/repository.py:class ExperimentRepository
+src/mus1/core/repository.py:class GenotypeRepository
+src/mus1/core/repository.py:class LabRepository
+src/mus1/core/repository.py:class MetadataRepository
+src/mus1/core/repository.py:class RepositoryFactory
+src/mus1/core/repository.py:class ScanTargetRepository
+src/mus1/core/repository.py:class SubjectRepository
+src/mus1/core/repository.py:class TrackedObjectRepository
+src/mus1/core/repository.py:class TreatmentRepository
+src/mus1/core/repository.py:class UserRepository
+src/mus1/core/repository.py:class VideoRepository
+src/mus1/core/repository.py:class WorkerRepository
+src/mus1/core/repository.py:def get_repository_factory(db)
+src/mus1/core/scanners/base_scanner.py:class BaseScanner
+src/mus1/core/scanners/remote.py:def collect_from_target(state_manager, data_manager, target)
+src/mus1/core/scanners/remote.py:def collect_from_targets(state_manager, data_manager, targets)
+src/mus1/core/scanners/remote.py:def collect_from_targets_parallel(state_manager, data_manager, targets)
+src/mus1/core/scanners/video_discovery.py:def default_roots_if_missing(roots)
+src/mus1/core/scanners/video_discovery.py:def get_scanner()
+src/mus1/core/scanners/video_discovery.py:def select_local_scanner()
+src/mus1/core/schema.py:class BodyPartModel
+src/mus1/core/schema.py:class ColonyModel
+src/mus1/core/schema.py:class Database
+src/mus1/core/schema.py:class ExperimentModel
+src/mus1/core/schema.py:class GenotypeModel
+src/mus1/core/schema.py:class LabMemberModel
+src/mus1/core/schema.py:class LabModel
+src/mus1/core/schema.py:class LabProjectModel
+src/mus1/core/schema.py:class LabScanTargetModel
+src/mus1/core/schema.py:class LabWorkerModel
+src/mus1/core/schema.py:class MetadataItemModel
+src/mus1/core/schema.py:class PluginMetadataModel
+src/mus1/core/schema.py:class PluginResultModel
+src/mus1/core/schema.py:class ProjectModel
+src/mus1/core/schema.py:class ScanTargetModel
+src/mus1/core/schema.py:class SubjectModel
+src/mus1/core/schema.py:class TrackedObjectModel
+src/mus1/core/schema.py:class TreatmentModel
+src/mus1/core/schema.py:class UserModel
+src/mus1/core/schema.py:class VideoModel
+src/mus1/core/schema.py:class WorkerModel
+src/mus1/core/schema.py:class WorkgroupMemberModel
+src/mus1/core/schema.py:class WorkgroupModel
+src/mus1/core/schema.py:def colony_to_model(colony)
+src/mus1/core/schema.py:def experiment_to_model(experiment)
+src/mus1/core/schema.py:def lab_to_model(lab)
+src/mus1/core/schema.py:def model_to_colony(model)
+src/mus1/core/schema.py:def model_to_experiment(model)
+src/mus1/core/schema.py:def model_to_lab(model)
+src/mus1/core/schema.py:def model_to_plugin_metadata(model)
+src/mus1/core/schema.py:def model_to_plugin_result(model)
+src/mus1/core/schema.py:def model_to_subject(model)
+src/mus1/core/schema.py:def model_to_user(model)
+src/mus1/core/schema.py:def model_to_workgroup(model)
+src/mus1/core/schema.py:def plugin_metadata_to_model(metadata)
+src/mus1/core/schema.py:def plugin_result_to_model(result)
+src/mus1/core/schema.py:def subject_to_model(subject)
+src/mus1/core/schema.py:def user_to_model(user)
+src/mus1/core/schema.py:def workgroup_to_model(workgroup)
+src/mus1/core/setup_service.py:class ColonyDTO
+src/mus1/core/setup_service.py:class LabDTO
+src/mus1/core/setup_service.py:class MUS1RootLocationDTO
+src/mus1/core/setup_service.py:class SetupService
+src/mus1/core/setup_service.py:class SetupStatusDTO
+src/mus1/core/setup_service.py:class SetupWorkflowDTO
+src/mus1/core/setup_service.py:class SharedStorageDTO
+src/mus1/core/setup_service.py:class UserProfileDTO
+src/mus1/core/setup_service.py:def get_setup_service()
+src/mus1/core/simple_cli.py:def add_colony_to_lab(lab_id, colony_id, name, genotype, background)
+src/mus1/core/simple_cli.py:def add_experiment(experiment_id, subject_id, experiment_type, date_recorded, project_path)
+src/mus1/core/simple_cli.py:def add_subject(subject_id, sex, designation, genotype, project_path)
+src/mus1/core/simple_cli.py:def create_lab(lab_id, name, institution, pi_name)
+src/mus1/core/simple_cli.py:def init_project(name, path, lab_id, use_shared, shared_root)
+src/mus1/core/simple_cli.py:def list_experiments(project_path)
+src/mus1/core/simple_cli.py:def list_labs()
+src/mus1/core/simple_cli.py:def list_projects()
+src/mus1/core/simple_cli.py:def list_subjects(project_path)
+src/mus1/core/simple_cli.py:def main(ctx, verbose, setup)
+src/mus1/core/simple_cli.py:def project_status(path)
+src/mus1/core/simple_cli.py:def run_demo(demo_type)
+src/mus1/core/simple_cli.py:def scan_videos(path, output)
+src/mus1/core/simple_cli.py:def setup_mus1_root(path, create, copy_config)
+src/mus1/core/simple_cli.py:def setup_shared_storage(path, create, verify_permissions)
+src/mus1/core/simple_cli.py:def setup_status()
+src/mus1/core/simple_cli.py:def setup_user(name, email, organization, default_projects_dir, default_shared_dir, force)
+src/mus1/core/simple_cli.py:def setup_wizard()
+src/mus1/core/utils/file_hash.py:def compute_full_hash(file_path)
+src/mus1/core/utils/file_hash.py:def compute_sample_hash(file_path, chunk_size)
+src/mus1/core/utils/file_hash.py:def file_identity_signature(file_path)

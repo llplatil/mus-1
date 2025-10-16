@@ -1,0 +1,5 @@
+[1m=============[0m
+[1mImport Linter[0m
+[1m=============[0m
+[22m[0m
+[31m[1mCould not read any configuration.[0m

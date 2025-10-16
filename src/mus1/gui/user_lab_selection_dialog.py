@@ -39,7 +39,7 @@ class UserLabSelectionDialog(QDialog):
         welcome_label.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         main_layout.addWidget(welcome_label)
 
-        subtitle_label = QLabel("Please select your user profile and lab. You can optionally select a project to work with immediately.")
+        subtitle_label = QLabel("Please select your user profile and lab. Your previous selections will be remembered for quick access. You can optionally select a project to work with immediately.")
         subtitle_label.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         subtitle_label.setWordWrap(True)
         main_layout.addWidget(subtitle_label)
@@ -115,7 +115,7 @@ class UserLabSelectionDialog(QDialog):
         button_layout = QHBoxLayout()
         button_layout.addStretch()
 
-        self.continue_button = QPushButton("Continue to Project Management")
+        self.continue_button = QPushButton("Continue")
         self.continue_button.setProperty("class", "mus1-primary-button")
         self.continue_button.clicked.connect(self.accept_selection)
         button_layout.addWidget(self.continue_button)
@@ -134,7 +134,7 @@ class UserLabSelectionDialog(QDialog):
         self.load_projects_for_lab()
 
     def restore_previous_selections(self):
-        """Restore previously selected user and lab from config."""
+        """Restore previously selected user, lab, and project from config."""
         try:
             # Restore user selection
             saved_user_id = get_config("app.selected_user_id", scope="user")
@@ -153,6 +153,19 @@ class UserLabSelectionDialog(QDialog):
                 if index >= 0:
                     self.lab_combo.setCurrentIndex(index)
                     self.on_lab_changed(index)
+
+            # Restore project selection
+            saved_project_path = get_config("app.selected_project_path", scope="user")
+            if saved_project_path:
+                # Load projects first to populate the combo box
+                self.load_projects_for_lab()
+                # Find the project in the combo box
+                for i in range(self.project_combo.count()):
+                    project_data = self.project_combo.itemData(i)
+                    if project_data == saved_project_path:
+                        self.project_combo.setCurrentIndex(i)
+                        self.selected_project_path = saved_project_path
+                        break
         except Exception:
             # Silently ignore restoration errors
             pass
@@ -239,6 +252,8 @@ class UserLabSelectionDialog(QDialog):
         try:
             set_config("app.selected_user_id", self.selected_user_id, scope="user")
             set_config("app.selected_lab_id", self.selected_lab_id, scope="user")
+            if self.selected_project_path:
+                set_config("app.selected_project_path", self.selected_project_path, scope="user")
         except Exception:
             # Silently ignore persistence errors
             pass

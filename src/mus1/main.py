@@ -111,8 +111,8 @@ def main():
     # Show project selection dialog
     from .gui.main_window import MainWindow
 
-    # Pass setup completion status to MainWindow
-    main_window = MainWindow(selected_project=None, setup_completed=setup_completed)
+    # Pass setup completion status and ThemeManager to MainWindow
+    main_window = MainWindow(selected_project=None, setup_completed=setup_completed, theme_manager=theme_manager)
     main_window.apply_theme()
     main_window.show()
 

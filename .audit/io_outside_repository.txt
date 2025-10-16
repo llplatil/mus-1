@@ -1,0 +1,23 @@
+src/mus1/core/config_manager.py:59:with open(pointer_path, "r") as f:
+src/mus1/core/config_manager.py:75:with open(pointer_path, "w") as f:
+src/mus1/core/config_manager.py:106:with open(pointer_path, "r") as f:
+src/mus1/core/config_manager.py:594:with open(file_path, 'w') as f:
+src/mus1/core/config_manager.py:601:with open(file_path, 'r') as f:
+src/mus1/core/credentials.py:18:with open(p, "r", encoding="utf-8") as f:
+src/mus1/core/credentials.py:33:with open(p, "w", encoding="utf-8") as f:
+src/mus1/core/project_manager_clean.py:41:with open(self.config_path) as f:
+src/mus1/core/project_manager_clean.py:62:shutil.copy2(self.config_path, backup_path)
+src/mus1/core/project_manager_clean.py:123:with open(self.config_path, 'w') as f:
+src/mus1/core/project_manager_clean.py:700:shutil.move(str(self.project_path), str(new_path))
+src/mus1/core/project_manager_clean.py:729:shutil.move(str(self.project_path), str(new_project_path))
+src/mus1/core/job_provider.py:84:proc = subprocess.Popen(full_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1)
+src/mus1/core/job_provider.py:166:proc = subprocess.Popen(full_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1)
+src/mus1/core/job_provider.py:232:proc = subprocess.Popen(command, cwd=str(cwd) if cwd else None, env=full_env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1)
+src/mus1/core/job_provider.py:307:proc = subprocess.Popen(full_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1)
+src/mus1/core/simple_cli.py:149:with open(config_path, 'w') as f:
+src/mus1/core/simple_cli.py:264:with open(config_path) as f:
+src/mus1/core/simple_cli.py:504:with open(output, 'w') as f:
+src/mus1/core/setup_service.py:244:shutil.copy2(src_db, dst_db)
+src/mus1/core/setup_service.py:293:with open(pointer_path, "w") as f:
+src/mus1/core/utils/file_hash.py:21:with open(file_path, "rb") as f:
+src/mus1/core/utils/file_hash.py:60:with open(file_path, "rb") as f:

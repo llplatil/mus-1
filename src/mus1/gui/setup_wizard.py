@@ -12,23 +12,22 @@ Integration points:
 """
 
 from __future__ import annotations
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any
 from pathlib import Path
 import platform
-from datetime import datetime
 
 from .qt import (
-    QApplication, QWizard, QWizardPage, QLabel, QLineEdit, QVBoxLayout,
-    QHBoxLayout, QFormLayout, QCheckBox, QPushButton, QProgressBar,
-    QTextEdit, QMessageBox, QGroupBox, QRadioButton, QButtonGroup,
-    QFileDialog, QComboBox, QSpinBox, QDialogButtonBox,
-    Qt, Signal, QThread, QObject, QFont, QPixmap, QIcon
+    QWizard, QWizardPage, QLabel, QLineEdit, QVBoxLayout,
+    QHBoxLayout, QFormLayout, QCheckBox, QPushButton,
+    QTextEdit, QMessageBox, QGroupBox, QRadioButton,
+    Qt, Signal, QThread, QObject, QFileDialog
 )
 
 from ..core.setup_service import (
-    SetupService, UserProfileDTO, SharedStorageDTO, LabDTO, ColonyDTO,
+    UserProfileDTO, SharedStorageDTO,
     SetupWorkflowDTO, SetupStatusDTO, get_setup_service, MUS1RootLocationDTO
 )
+from ..core.metadata import LabDTO
 from ..core.config_manager import resolve_mus1_root
 from ..core.config_manager import init_config_manager
 
@@ -390,6 +389,24 @@ class UserProfilePage(QWizardPage):
 
         layout = QVBoxLayout()
 
+        # Existing user selection
+        from ..core.setup_service import get_setup_service as _get_ss
+        self.use_existing_user_checkbox = QCheckBox("Use existing user")
+        layout.addWidget(self.use_existing_user_checkbox)
+        self.existing_user_combo = QComboBox()
+        self.existing_user_combo.setEnabled(False)
+        layout.addWidget(self.existing_user_combo)
+        try:
+            svc = _get_ss()
+            users = svc.get_all_users() or {}
+            # Expect dict of id -> profile
+            for uid, profile in users.items():
+                display = f"{profile.get('name','')} <{profile.get('email','')}>"
+                self.existing_user_combo.addItem(display, uid)
+        except Exception:
+            pass
+        self.use_existing_user_checkbox.toggled.connect(self.existing_user_combo.setEnabled)
+
         # Form layout for inputs
         form_layout = QFormLayout()
 
@@ -430,6 +447,12 @@ class UserProfilePage(QWizardPage):
 
     def validatePage(self) -> bool:
         """Validate user input."""
+        if self.use_existing_user_checkbox.isChecked():
+            # Using existing user selection
+            if self.existing_user_combo.currentIndex() < 0:
+                QMessageBox.warning(self, "Validation Error", "Please select an existing user")
+                return False
+            return True
         name = self.name_edit.text().strip()
         email = self.email_edit.text().strip()
         organization = self.organization_edit.text().strip()
@@ -554,6 +577,26 @@ class LabSetupPage(QWizardPage):
         desc_label.setWordWrap(True)
         layout.addWidget(desc_label)
 
+        # Existing or new lab controls
+        self.use_existing_lab_checkbox = QCheckBox("Use existing lab")
+        layout.addWidget(self.use_existing_lab_checkbox)
+        self.existing_lab_combo = QComboBox()
+        self.existing_lab_combo.setEnabled(False)
+        layout.addWidget(self.existing_lab_combo)
+        try:
+            from ..core.setup_service import get_setup_service as _get_ss
+            svc = _get_ss()
+            labs = svc.get_labs() or {}
+            # Expect dict id -> data
+            for lid, lab in labs.items():
+                name = lab.get('name', lid)
+                inst = lab.get('institution')
+                display = f"{name} ({inst})" if inst else name
+                self.existing_lab_combo.addItem(display, lid)
+        except Exception:
+            pass
+        self.use_existing_lab_checkbox.toggled.connect(self.existing_lab_combo.setEnabled)
+
         # Create lab checkbox
         self.create_checkbox = QCheckBox("Create a lab now")
         self.create_checkbox.setChecked(True)
@@ -595,6 +638,8 @@ class LabSetupPage(QWizardPage):
 
         # Connect signals
         self.create_checkbox.toggled.connect(self.toggle_lab_config)
+        # Disable creation group when using existing lab
+        self.use_existing_lab_checkbox.toggled.connect(lambda checked: self.toggle_lab_config(not checked and self.create_checkbox.isChecked()))
         self.lab_name_edit.textChanged.connect(self.update_lab_id)
 
         self.setLayout(layout)
@@ -625,6 +670,11 @@ class LabSetupPage(QWizardPage):
 
     def validatePage(self) -> bool:
         """Validate lab configuration."""
+        if self.use_existing_lab_checkbox.isChecked():
+            if self.existing_lab_combo.currentIndex() < 0:
+                QMessageBox.warning(self, "Validation Error", "Please select an existing lab")
+                return False
+            return True
         if not self.create_checkbox.isChecked():
             return True  # Skip validation if not creating lab
 
@@ -789,6 +839,8 @@ class MUS1SetupWizard(QWizard):
         self.user_dto = None
         self.shared_dto = None
         self.lab_dto = None
+        self.selected_user_id = None
+        self.selected_lab_id = None
 
         # Add pages
         self.addPage(WelcomePage())
@@ -856,15 +908,20 @@ class MUS1SetupWizard(QWizard):
 
         # User profile
         user_page = self.page(2)  # UserProfilePage
-        self.user_dto = UserProfileDTO(
-            name=user_page.field("user_name").strip(),
-            email=user_page.field("user_email").strip(),
-            organization=user_page.field("user_organization").strip(),
-            default_projects_dir=Path.home() / "Documents" / "MUS1" / "Projects" if platform.system() == "Darwin"
-                                 else Path.home() / "mus1-projects",
-            default_shared_dir=Path("/Volumes/CuSSD3") if platform.system() == "Darwin"
-                             else Path.home() / "mus1-shared"
-        )
+        if hasattr(user_page, 'use_existing_user_checkbox') and user_page.use_existing_user_checkbox.isChecked():
+            # Use existing user
+            self.user_dto = None
+            self.selected_user_id = user_page.existing_user_combo.currentData()
+        else:
+            self.user_dto = UserProfileDTO(
+                name=user_page.field("user_name").strip(),
+                email=user_page.field("user_email").strip(),
+                organization=user_page.field("user_organization").strip(),
+                default_projects_dir=Path.home() / "Documents" / "MUS1" / "Projects" if platform.system() == "Darwin"
+                                     else Path.home() / "mus1-projects",
+                default_shared_dir=Path("/Volumes/CuSSD3") if platform.system() == "Darwin"
+                                 else Path.home() / "mus1-shared"
+            )
 
         # Shared storage
         storage_page = self.page(3)  # SharedStoragePage
@@ -877,7 +934,11 @@ class MUS1SetupWizard(QWizard):
 
         # Lab
         lab_page = self.page(4)  # LabSetupPage
-        if lab_page.create_checkbox.isChecked():
+        if hasattr(lab_page, 'use_existing_lab_checkbox') and lab_page.use_existing_lab_checkbox.isChecked():
+            self.lab_dto = None
+            self.selected_lab_id = lab_page.existing_lab_combo.currentData()
+            self._lab_storage_root = None
+        elif lab_page.create_checkbox.isChecked():
             lab_id = lab_page.lab_id_edit.text().strip()
             lab_name = lab_page.lab_name_edit.text().strip()
             # Generate creator_id from user email (same logic as in setup_service)
@@ -906,6 +967,14 @@ class MUS1SetupWizard(QWizard):
                 from ..core.setup_service import get_setup_service
                 svc = get_setup_service()
                 svc.set_lab_storage_root(self.lab_dto.id, self._lab_storage_root)
+            # If shared storage was set and a project is active, offer to set project shared_root
+            parent = self.parent()
+            if getattr(self, 'shared_dto', None) and parent and hasattr(parent, 'project_manager') and parent.project_manager:
+                try:
+                    parent.project_manager.set_shared_root(self.shared_dto.path)
+                    parent.project_manager.save_project()
+                except Exception:
+                    pass
         except Exception:
             pass
         QMessageBox.information(
@@ -935,10 +1004,16 @@ class MUS1SetupWizard(QWizard):
     def update_conclusion_page(self, result: dict):
         """Update the conclusion page when setup completes."""
         conclusion_page = self.page(5)  # Conclusion page is at index 5
-        if result.get("success"):
-            conclusion_page.show_setup_success(self)
-        else:
-            conclusion_page.show_setup_error(result)
+        try:
+            # Cast to the concrete page type that defines the methods
+            from typing import Any
+            cp: Any = conclusion_page
+            if result.get("success"):
+                cp.show_setup_success(self)
+            else:
+                cp.show_setup_error(result)
+        except Exception:
+            pass
 
 
 # ===========================================

@@ -41,7 +41,7 @@ This roadmap shows current status and planned development priorities. Items are 
    - **✅ GUI integration complete**: Full lab creation, member management, colony management, project registration
 
 8. **✅ IMPLEMENTED: GUI Tab Reorganization**
-   - **✅ Settings tab exists**: Complete tab structure with User Settings, Lab Settings, Workers pages
+   - **✅ Settings tab exists**: Complete tab structure with User, Lab, Workers pages
    - **✅ User Settings**: Profile management working correctly with clean architecture
    - **✅ Lab Settings**: Complete lab management system with creation, member management, colony management
    - **❌ Workers**: SSH worker configuration moved but may not work due to missing methods
@@ -77,18 +77,37 @@ This roadmap shows current status and planned development priorities. Items are 
   - In `src/mus1/main.py`, when configuring logs, prefer configured `get_config("mus1.root_path")` when present; fall back to `resolve_mus1_root()` only if unset — 🔄 pending
   - Audit imports using `resolve_mus1_root()` and switch to configuration value post-setup where appropriate — 🔄 pending
 
+### High Priority (New): Duplicate DTOs/Validators Consolidation and DB Alignment
+
+- **Problem**: Duplicate DTOs (`LabDTO`, `ColonyDTO`) exist as Pydantic models in `metadata.py` and as dataclasses in `setup_service.py`. Validation rules (ID/name length, date checks) are duplicated across models and service `__post_init__`, creating drift and maintenance overhead.
+
+- **Decision/Approach**: Adopt a single DTO source using Pydantic models in `metadata.py`. Service layer should import and use these DTOs exclusively. Centralize validation in Pydantic validators. Use repositories for all entity ↔ SQL transformations. Treat `ProjectConfig` as a thin read model only.
+
+- **Tasks**:
+  1. Remove `LabDTO` and `ColonyDTO` dataclasses from `src/mus1/core/setup_service.py`.
+  2. Update `SetupService` methods to accept `metadata.LabDTO` and `metadata.ColonyDTO`.
+  3. Migrate any `__post_init__` validations to Pydantic validators if not already present; delete duplicates in services.
+  4. Ensure repository save/find methods perform transformations between domain dataclasses and SQLAlchemy models; remove field duplication in services.
+  5. Treat `ProjectConfig` as a read/view model: enforce validation either in DTOs or within repository save paths; avoid duplicating the same checks in multiple layers.
+  6. Run `.audit` checks (pylint duplicates, vulture, ruff) and delete unused/duplicate code.
+  7. Add import-linter contract to prevent service-layer DTO definitions that duplicate `metadata.py` DTOs.
+
+- **Expected Outcome**: Single source of truth for DTOs and validation; reduced duplication and drift risk; clearer layering with repositories owning persistence transformations.
+
 ### Medium Priority
 1. **Scanner Improvements**: OS-specific video scanners for Windows/Linux
 2. **Remote Processing**: SSH-based worker execution and scanning
 3. **Advanced Features**: Distributed processing and job orchestration
 
-10. **Persistent User Profile — Single Source of Truth**
-   - Make the SQL `users` table authoritative for user profile persistence
-   - Store only `user.id` in `ConfigManager` as the active-user pointer — ✅ in services; 🔄 legacy CLI writes duplicate user fields
-   - Update `SetupService.is_user_configured()` and `get_user_profile()` to query repositories — ✅ implemented
-   - Add `UserService` with `get_current_user()`, `set_current_user_by_email()`, `update_profile()`, `delete_profile()`
-   - One-time migration: if legacy config keys `user.name/email/organization` exist and SQL has no user, seed `users` and remove those keys — 🔄 migration module present; not wired at startup
-   - Decide on stable `User.id` (UUID recommended) and handle email change/migration if using email-derived IDs
+
+## 10. **Persistent User Profile — Single Source of Truth**
+- Make the SQL `users` table authoritative for user profile persistence
+- Store only `user.id` in `ConfigManager` as the active-user pointer — ✅ in services; 🔄 legacy CLI writes duplicate user fields
+- Update `SetupService.is_user_configured()` and `get_user_profile()` to query repositories — ✅ implemented
+- Add `UserService` with `get_current_user()`, `set_current_user_by_email()`, `update_profile()`, `delete_profile()`
+- One-time migration: if legacy config keys `user.name/email/organization` exist and SQL has no user, seed `users` and remove those keys — 🔄 migration module present; not wired at startup
+- Decide on stable `User.id` (UUID recommended) and handle email change/migration if using email-derived IDs
+
 
 ## Intended Setup/Project Logic (Authoritative)
 
@@ -125,6 +144,7 @@ This roadmap shows current status and planned development priorities. Items are 
 - `MainWindow` owns `ProjectManagerClean`
 - Views (e.g., `ProjectView`) use the active `project_manager` from `MainWindow`
 
+
 ## Implementation Notes (File-Level Targets)
 
 ### ✅ **COMPLETED - Clean Architecture Migration**
@@ -158,6 +178,7 @@ This roadmap shows current status and planned development priorities. Items are 
 - `src/mus1/core/simple_cli.py`: Stop writing duplicate user profile keys — **CLEANUP**
 - `src/mus1/gui/setup_wizard.py`: Show per-step statuses/errors on conclusion page — **UX IMPROVEMENT**
 
+
 ## Recent Enhancements (2025-01)
 
 ### ✅ **Enhanced User Experience**
@@ -178,6 +199,7 @@ This roadmap shows current status and planned development priorities. Items are 
 - **Improved Metadata Tree**: Enhanced tree view with colony information and better column sorting
 - **Validation & Error Handling**: Comprehensive error messages and confirmation dialogs
 
+
 ## Code Review Findings (2025-01)
 
 ### ✅ **Clean Architecture - FULLY IMPLEMENTED**
@@ -197,6 +219,7 @@ This roadmap shows current status and planned development priorities. Items are 
 - **Test Quality**: **COMPREHENSIVE** - 62 tests covering all relationships
 - **GUI State**: **CLEAN** - No direct database access, proper service usage
 - **Configuration**: **ROBUST** - JSON serialization with Path handling works correctly
+
 
 ## Future Features
 

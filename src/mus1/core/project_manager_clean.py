@@ -842,22 +842,26 @@ class ProjectManagerClean:
 
     def update_active_body_parts(self, active_list: List[str]) -> None:
         """Update active body parts in the project."""
+        # For now, store in config until full migration to database
         self.config.settings['active_body_parts'] = active_list
         self._save_config(self.config)
         logger.info(f"Updated active body parts: {active_list}")
 
     def update_master_body_parts(self, master_list: List[str]) -> None:
         """Update master body parts in the project."""
+        # TODO: Migrate to database storage
         self.config.settings['master_body_parts'] = master_list
         self._save_config(self.config)
         logger.info(f"Updated master body parts: {master_list}")
 
     def get_active_body_parts(self) -> List[str]:
         """Get active body parts for this project."""
+        # TODO: Migrate to database storage
         return self.config.settings.get('active_body_parts', [])
 
     def get_master_body_parts(self) -> List[str]:
         """Get master body parts for this project."""
+        # TODO: Migrate to database storage
         return self.config.settings.get('master_body_parts', [])
 
     def update_tracked_objects(self, items: List[str], list_type: str) -> None:

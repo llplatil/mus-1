@@ -1,0 +1,6 @@
+src/mus1/core/config_manager.py:30:logger = logging.getLogger("mus1.core.config_manager")
+src/mus1/core/metadata.py:20:logger = logging.getLogger("mus1.core.metadata")
+src/mus1/core/plugin_manager_clean.py:23:logger = logging.getLogger("mus1.core.plugin_manager_clean")
+src/mus1/core/project_discovery_service.py:45:logging.getLogger("mus1").warning(
+src/mus1/core/project_manager_clean.py:17:logger = logging.getLogger(__name__)
+src/mus1/core/scanners/base_scanner.py:8:logger = logging.getLogger(__name__)

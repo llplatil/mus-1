@@ -1,0 +1,9 @@
+************* Module mus1.core.logging_bus
+src/mus1/core/logging_bus.py:1:0: R0801: Similar lines in 2 files
+==mus1.core.metadata:[90:95]
+==mus1.core.setup_service:[59:64]
+    id: str
+    name: str
+    creator_id: str  # Reference to creating user
+    institution: Optional[str] = None
+    pi_name: Optional[str] = None (duplicate-code)

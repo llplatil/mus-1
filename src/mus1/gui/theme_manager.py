@@ -1,5 +1,4 @@
-from .qt import QPalette, QColor, QApplication
-QT_BACKEND = "PyQt6"
+from .qt import QPalette, QColor, QApplication, QT_BACKEND
 
 # PyQt6 uses enum values
 PALETTE_WINDOW = QPalette.ColorRole.Window
@@ -217,15 +216,9 @@ class ThemeManager:
             palette.setColor(PALETTE_HIGHLIGHT, QColor(colors.get("$SELECTION_BG", "#0078D7")))
             palette.setColor(PALETTE_HIGHLIGHTED_TEXT, QColor(colors.get("$SELECTION_TEXT", "#FFFFFF")))
 
-            # Handle disabled state colors (can derive or use defaults)
-            if QT_BACKEND == "PyQt6":
-                # PyQt6 syntax for disabled colors
-                palette.setColor(QPalette.ColorGroup.Disabled, PALETTE_TEXT, QColor(colors.get("$BORDER_COLOR", "#A0A0A0")))
-                palette.setColor(QPalette.ColorGroup.Disabled, PALETTE_BUTTON_TEXT, QColor(colors.get("$BORDER_COLOR", "#A0A0A0")))
-            else:
-                # PySide6 syntax
-                palette.setColor(QPalette.Disabled, PALETTE_TEXT, QColor(colors.get("$BORDER_COLOR", "#A0A0A0")))
-                palette.setColor(QPalette.Disabled, PALETTE_BUTTON_TEXT, QColor(colors.get("$BORDER_COLOR", "#A0A0A0")))
+            # Handle disabled state colors using unified enum access from facade
+            palette.setColor(QPalette.ColorGroup.Disabled, PALETTE_TEXT, QColor(colors.get("$BORDER_COLOR", "#A0A0A0")))
+            palette.setColor(QPalette.ColorGroup.Disabled, PALETTE_BUTTON_TEXT, QColor(colors.get("$BORDER_COLOR", "#A0A0A0")))
 
         except KeyError as e:
              logger.error(f"Missing color variable for QPalette setup: {e}. Using fallback defaults.")

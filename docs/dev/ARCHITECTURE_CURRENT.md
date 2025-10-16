@@ -363,12 +363,15 @@ CREATE TABLE experiments (
 - **Repository Pattern**: Data access layer implemented with proper update/merge handling
 - **Project Discovery**: Can find projects in configured locations
 - **Configuration System**: Hierarchical config with JSON serialization and Path object handling
+- **Service Factory Architecture**: GUIServiceFactory provides clean service layer separation for most operations
 - **Functional Tests**: All 62 functional tests pass, including 14 relationship validation tests (9 core + 5 gap documentation tests)
 
 ### Known Issues & Remaining Components
 - **GUI State Manager References**: Some legacy references remain (commented out) but don't break functionality
-- **Plugin System GUI Integration**: PluginManagerClean exists but is not connected to GUI components - plugin lists remain empty
+- **Plugin System GUI Integration**: ✅ **RESOLVED** - GUIPluginService now properly integrated through GUIServiceFactory
 - **Clean Architecture Migration**: Most GUI views properly use service layer, no direct database access found
+- **Service Factory Architecture Violations**: LabService bypasses ProjectManagerClean, violating clean architecture data flow
+- **Repository Layer Gaps**: Missing experiment-video repository methods prevent PluginService from accessing video relationships
 - **Workgroup Features**: Models exist but no functional UI implementation
 - **Modal Popups**: Still used in development builds instead of navigation log as per guidelines
 - **User Profile Persistence**: CLI and GUI store user data in conflicting ways
@@ -395,29 +398,30 @@ Many of the claimed fixes are not actually working due to critical bugs:
 - **Status**: **Mostly Complete**. GUI views use service layer, no direct database access found.
 - **Validation**: All functional tests pass, indicating proper separation of concerns.
 
-#### **🔄 PARTIAL: Plugin System GUI Integration**
-- **Status**: **Partially Working**. PluginManagerClean exists with full functionality, but not connected to GUI.
-- **Impact**: Plugin lists in Experiment View remain empty, but core plugin system works.
+#### **✅ WORKING: Plugin System GUI Integration**
+- **Status**: **Fully Working**. GUIPluginService properly integrated through GUIServiceFactory.
+- **Implementation**: Plugin discovery, selection, and execution available through clean service interfaces.
+- **Validation**: Plugin lists populate correctly in Experiment View.
 
 #### **❓ UNKNOWN: Lab-Project Association**
 - **Status**: **Needs Verification**. Database schema exists but GUI integration status unclear.
 - **Action Needed**: Verify if lab-project registration works in practice.
 
 #### **❌ MISSING: Experiment-Video Repository Methods**
-- **Problem**: PluginService cannot access experiment-video relationships because repository layer lacks these methods.
-- **Impact**: Plugins cannot get video data for experiments, though ProjectManagerClean handles this directly.
-- **Status**: **Missing Implementation**. Repository pattern incomplete for experiment-video associations.
+- **Problem**: Repository layer lacks experiment-video relationship methods.
+- **Impact**: GUIPluginService cannot access video data for experiments through clean repository pattern.
+- **Workaround**: ProjectManagerClean handles experiment-video associations directly.
+- **Status**: **Missing Implementation**. Violates repository pattern completeness for experiment-video associations.
 
 ### ✅/🔄 **User Profile Single Source of Truth**
 - Implemented: Only `user.id` is persisted in ConfigManager; user fields live in SQL. A one-time migration from legacy keys to SQL is invoked at startup.
 - Outstanding: If any legacy CLI path persists duplicate user fields, it should be updated to stop writing them.
 
-### 🔄 **PARTIAL: Plugin Discovery surfaced in GUI**
+### ✅ **WORKING: Plugin Discovery surfaced in GUI**
 - Intended: GUI should list discovered plugins via the clean plugin manager.
-- Current: PluginManagerClean exists with full plugin discovery and management capabilities, but GUI components are not connected.
-- Issue: Experiment View has plugin selection UI but lists remain empty because `set_plugin_manager()` is never called.
-- Impact: Users cannot select plugins in the GUI, though plugins can be used programmatically.
-- Status: **Core Working, GUI Integration Missing**. Plugin discovery, registration, and analysis execution all work; GUI connection needs MainWindow to create PluginManagerClean and pass to ExperimentView.
+- Current: GUIPluginService properly integrated through GUIServiceFactory provides plugin discovery and selection.
+- Implementation: Experiment View plugin lists populate correctly through service factory pattern.
+- Status: **Fully Working**. Plugin discovery, registration, selection, and execution all work through clean GUI service interfaces.
 
 ### Reinforced Design Principles
 - Deterministic root resolution is the baseline; GUI no longer selects the app root. A startup prompt handles relocating to an existing config when needed.
@@ -431,13 +435,117 @@ Many of the claimed fixes are not actually working due to critical bugs:
 ### GUI Identity
 - The main window title surfaces the active user (name and email) derived from the SQL profile.
 
+## Service Factory Pattern Implementation
+
+### **Architecture Overview**
+MUS1 implements a **GUIServiceFactory** pattern for clean separation between GUI presentation and business logic:
+
+```python
+# Service Factory Creation
+self.gui_services = GUIServiceFactory(self.project_manager)
+
+# Lifecycle Injection to Views
+view.on_services_ready(self.gui_services)  # Injects service factory
+
+# Views Create Specific Services
+self.subject_service = services.create_subject_service()
+self.experiment_service = services.create_experiment_service()
+self.plugin_service = services.create_plugin_service()
+```
+
+### **Working Service Implementations ✅**
+- **GUISubjectService**: Uses ProjectManagerClean, provides SubjectDisplayDTOs
+- **GUIExperimentService**: Uses ProjectManagerClean, handles experiment operations
+- **GUIProjectService**: Uses ProjectManagerClean, provides project information
+- **GUIPluginService**: Uses PluginManagerClean, provides plugin discovery/execution
+
+### **Architectural Violations ❌**
+- **LabService**: Bypasses ProjectManagerClean, uses SetupService directly
+- **Repository Gaps**: Missing experiment-video repository methods
+- **Inconsistent Data Flow**: Some services respect domain boundaries, others don't
+
+### **Impact**
+- Service factory provides excellent separation for most operations
+- Architectural violations create inconsistent data access patterns
+- Plugin system now properly integrated through service factory ✅
+
 ## Key Features
 
 - **Deterministic Configuration**: Clean priority chain for MUS1 root resolution
 - **Single Source of Truth**: All configuration in one SQLite database
-- **Clean Architecture**: Proper layer separation with repository pattern - **FULLY IMPLEMENTED**
+- **Clean Architecture**: Proper layer separation with repository pattern - **MOSTLY IMPLEMENTED** (service factory violations remain)
 - **Lab-Colony-Subject Hierarchy**: Flexible subject management with optional colony relationships
-- **Plugin System**: Core automatic discovery and clean service integration (GUI surfacing needs completion)
+- **Service Factory Pattern**: GUIServiceFactory provides clean service layer separation (with some architectural violations)
+- **Plugin System**: Full automatic discovery, selection, and execution through GUIPluginService
 - **Test Coverage**: 62 functional tests all passing, validating business logic integrity
 - **Metadata Management**: Project-scoped objects, bodyparts, treatments, genotypes (stored in project config JSON)
+
+
+## 🔎 Duplication Hotspots and Consistent Approach (New)
+
+- **Duplicate DTOs**: `LabDTO` and `ColonyDTO` exist in both `metadata.py` (Pydantic) and `setup_service.py` (dataclasses) with overlapping fields and validation.
+  - Similar field blocks cause drift risk and repeated validation (length checks on IDs/names).
+- **Scattered Validators**: ID/name/date rules are duplicated across Pydantic validators, dataclass `__post_init__`, and standalone functions in `metadata.py`.
+- **ProjectConfig vs ProjectModel**: `ProjectConfig` dataclass mirrors `ProjectModel` table fields; validation exists outside repository/DB path too.
+
+### Recommended Consistent Approach
+
+- **Single DTO Source**: Keep all DTOs as Pydantic models in `metadata.py`. Remove dataclass DTO definitions from `setup_service.py` and import the Pydantic DTOs instead.
+- **Centralize Validation**: Encode ID/name/date rules in Pydantic validators and delete equivalent `__post_init__` checks in services.
+- **Repository-Centric Transformations**: Do conversions (DTO ↔ domain ↔ SQLAlchemy) in repositories; services orchestrate flows without redefining field sets.
+- **Thin View Models**: Use `ProjectConfig` only as a thin read model constructed by repositories on top of `ProjectModel` when needed; avoid duplicating validation rules.
+
+### Concrete Fix Steps
+
+1) **Consolidate DTOs**
+   - Delete `LabDTO` and `ColonyDTO` dataclasses in `setup_service.py`.
+   - Update `SetupService` signatures to accept/import `metadata.LabDTO` and `metadata.ColonyDTO`.
+   - Convert `Path`-typed fields at boundaries to strings where necessary (Pydantic can validate/serialize consistently).
+
+2) **Unify Validators**
+   - Keep ID/name checks in Pydantic validators (`metadata.py`).
+   - Remove duplicated `__post_init__` checks in `setup_service.py`.
+   - Replace ad-hoc helper functions with shared validators or model mixins when applicable.
+
+3) **Align with Repository Layer**
+   - Ensure repositories perform the entity-model mapping; avoid re-specifying field sets in services.
+   - Keep `ProjectConfig` as a read/view model only; move its validation to DTOs or repo save path.
+
+4) **Audit and Remove Dead Code**
+   - Follow `.audit/pylint_duplicates.txt` and `.audit/vulture.txt` to delete unused/duplicate code and imports.
+
+5) **Tests & CI**
+   - Run functional tests and add CI checks for import-linter and ruff to prevent regressions.
+
+## GUI Architecture Addendum (2025-10)
+
+### Qt Binding Facade
+- All GUI modules must import Qt types from `mus1/gui/qt.py`. This facade detects PySide6/PyQt6 and exposes unified enums (`QPalette.ColorRole`, `Qt.AspectRatioMode`, etc.).
+- Direct imports from `PySide6`/`PyQt6` are not allowed in GUI code.
+
+### Theming
+- Single source: `mus1/gui/theme_manager.py`. The previous duplicate in `mus1/core/theme_manager.py` was removed.
+- App creates one `ThemeManager` in `mus1/main.py` and passes it to `MainWindow(theme_manager=...)`.
+- `ThemeManager.apply_theme(app)` sets the application palette and processes `themes/mus1.qss` by substituting `$VARIABLES` based on Light/Dark.
+- `MainWindow.apply_theme()` propagates the effective theme to views via `update_theme(theme)`.
+
+Usage example:
+```python
+# main.py
+config_manager = ConfigManager()
+app = QApplication(sys.argv)
+theme_manager = ThemeManager(config_manager)
+theme_manager.apply_theme(app)
+main_window = MainWindow(theme_manager=theme_manager)
+main_window.apply_theme()
+```
+
+### Shared Background Watermark
+- Common helper `mus1/gui/background.py` provides `apply_watermark_background(widget)`.
+- Dialogs call this from `setup_background()` and `resizeEvent` to keep visuals consistent.
+
+
+### Risks and Mitigations
+- Mixing DTO types during refactor → Mitigate by changing imports in one PR and running all functional tests.
+- Service call sites expecting dataclass instances → Update service parameters to accept Pydantic DTOs and adjust call sites.
 

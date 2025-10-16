@@ -49,6 +49,7 @@ class ExperimentView(BaseView):
         self.gui_services = services
         self.experiment_service = services.create_experiment_service()
         self.subject_service = services.create_subject_service()
+        self.plugin_service = services.create_plugin_service()
         try:
             # Ensure UI controls like combos are populated once
             # then show default page
@@ -59,10 +60,6 @@ class ExperimentView(BaseView):
 
     def on_activated(self):
         self.refresh_data()
-
-    def set_plugin_manager(self, plugin_manager):
-        """Set the plugin manager when a project is loaded."""
-        self.plugin_manager = plugin_manager
 
     def setup_add_experiment_page(self):
         """Sets up the 'Add Experiment' sub-page according to the new workflow."""
@@ -548,7 +545,7 @@ class ExperimentView(BaseView):
 
             # Call GUI service with simplified parameters for now
             # TODO: Add plugin support when plugins are integrated
-            experiment = self.gui_services.add_experiment(
+            experiment = self.experiment_service.add_experiment(
                 experiment_id=experiment_id,
                 subject_id=subject_id,
                 experiment_type=exp_type,
@@ -632,7 +629,7 @@ class ExperimentView(BaseView):
              self.experimentListWidget.addItem("Error: GUI services unavailable.")
              return
 
-        experiments = self.gui_services.get_experiments_for_display()
+        experiments = self.experiment_service.get_experiments_for_display()
         self.experimentListWidget.clear()
 
         if experiments:
@@ -689,7 +686,7 @@ class ExperimentView(BaseView):
 
         try:
             # Get all experiments
-            experiments = self.gui_services.get_experiments_for_display()
+            experiments = self.experiment_service.get_experiments_for_display()
 
             if experiments:
                 # Convert to format expected by MetadataGridDisplay
@@ -897,9 +894,9 @@ class ExperimentView(BaseView):
         self.experiment_subtype_combo.addItem("(none)", None)
 
         # Fetch plugin groups from core (PluginManager owns selection logic)
-        importer_plugins = self.plugin_manager.get_importer_plugins()
-        analysis_plugins = self.plugin_manager.get_analysis_plugins_for_type(selected_type)
-        exporter_plugins = self.plugin_manager.get_exporter_plugins() if hasattr(self, 'exporter_plugin_list') else []
+        importer_plugins = self.plugin_service.get_importer_plugins()
+        analysis_plugins = self.plugin_service.get_analysis_plugins_for_type(selected_type)
+        exporter_plugins = self.plugin_service.get_exporter_plugins() if hasattr(self, 'exporter_plugin_list') else []
 
         # Populate Data Handler/Importer List
         try:
@@ -943,9 +940,11 @@ class ExperimentView(BaseView):
                 for i in range(self.data_handler_plugin_list.count()):
                     item = self.data_handler_plugin_list.item(i)
                     if item.isSelected():
-                        plugin = item.data(Qt.ItemDataRole.UserRole)
-                        if plugin and plugin not in selected_plugins:
-                            selected_plugins.append(plugin)
+                        plugin_data = item.data(Qt.ItemDataRole.UserRole)
+                        if isinstance(plugin_data, dict) and 'plugin' in plugin_data:
+                            plugin = plugin_data['plugin']
+                            if plugin and plugin not in selected_plugins:
+                                selected_plugins.append(plugin)
         except RuntimeError:
             pass
 
@@ -955,10 +954,12 @@ class ExperimentView(BaseView):
                 for i in range(self.analysis_plugin_list.count()):
                      item = self.analysis_plugin_list.item(i)
                      if item.isSelected():
-                         plugin = item.data(Qt.ItemDataRole.UserRole)
-                         # Avoid adding the same plugin twice if it's both a handler and analyzer
-                         if plugin and plugin not in selected_plugins:
-                             selected_plugins.append(plugin)
+                         plugin_data = item.data(Qt.ItemDataRole.UserRole)
+                         if isinstance(plugin_data, dict) and 'plugin' in plugin_data:
+                             plugin = plugin_data['plugin']
+                             # Avoid adding the same plugin twice if it's both a handler and analyzer
+                             if plugin and plugin not in selected_plugins:
+                                 selected_plugins.append(plugin)
         except RuntimeError:
             pass
 
@@ -968,9 +969,11 @@ class ExperimentView(BaseView):
                 for i in range(self.exporter_plugin_list.count()):
                     item = self.exporter_plugin_list.item(i)
                     if item.isSelected():
-                        plugin = item.data(Qt.ItemDataRole.UserRole)
-                        if plugin and plugin not in selected_plugins:
-                            selected_plugins.append(plugin)
+                        plugin_data = item.data(Qt.ItemDataRole.UserRole)
+                        if isinstance(plugin_data, dict) and 'plugin' in plugin_data:
+                            plugin = plugin_data['plugin']
+                            if plugin and plugin not in selected_plugins:
+                                selected_plugins.append(plugin)
         except RuntimeError:
             pass
 
@@ -1622,9 +1625,9 @@ class ExperimentView(BaseView):
         if not selected_type:
             return # No type selected, nothing to discover
 
-        # Discover plugins using plugin manager
-        if not self.plugin_manager:
-            logger.warning("Plugin manager not available for discovery.")
+        # Discover plugins using plugin service
+        if not self.plugin_service:
+            logger.warning("Plugin service not available for discovery.")
             return
 
         # Update subtype list based on selected type
@@ -1635,16 +1638,16 @@ class ExperimentView(BaseView):
         self.experiment_subtype_combo.addItem("(none)", None)
 
         # Fetch plugin groups from core (PluginManager owns selection logic)
-        importer_plugins = self.plugin_manager.get_importer_plugins()
-        analysis_plugins = self.plugin_manager.get_analysis_plugins_for_type(selected_type)
-        exporter_plugins = self.plugin_manager.get_exporter_plugins() if hasattr(self, 'exporter_plugin_list') else []
+        importer_plugins = self.plugin_service.get_importer_plugins()
+        analysis_plugins = self.plugin_service.get_analysis_plugins_for_type(selected_type)
+        exporter_plugins = self.plugin_service.get_exporter_plugins() if hasattr(self, 'exporter_plugin_list') else []
 
         # Populate Importer List
         try:
             if hasattr(self, 'importer_plugin_list') and self.importer_plugin_list:
-                for plugin in importer_plugins:
-                    item = QListWidgetItem(plugin.plugin_self_metadata().name)
-                    item.setData(Qt.ItemDataRole.UserRole, plugin) # Store the actual plugin object
+                for plugin_data in importer_plugins:
+                    item = QListWidgetItem(plugin_data['name'])
+                    item.setData(Qt.ItemDataRole.UserRole, plugin_data) # Store the plugin data dict
                     self.importer_plugin_list.addItem(item)
         except RuntimeError:
             pass
@@ -1652,9 +1655,9 @@ class ExperimentView(BaseView):
         # Populate Analysis Plugin List
         try:
             if hasattr(self, 'analysis_plugin_list') and self.analysis_plugin_list:
-                for plugin in analysis_plugins:
-                    item = QListWidgetItem(plugin.plugin_self_metadata().name)
-                    item.setData(Qt.ItemDataRole.UserRole, plugin) # Store the actual plugin object
+                for plugin_data in analysis_plugins:
+                    item = QListWidgetItem(plugin_data['name'])
+                    item.setData(Qt.ItemDataRole.UserRole, plugin_data) # Store the plugin data dict
                     self.analysis_plugin_list.addItem(item)
         except RuntimeError:
             pass
@@ -1662,9 +1665,9 @@ class ExperimentView(BaseView):
         # Populate Exporter Plugin List (if present)
         try:
             if hasattr(self, 'exporter_plugin_list') and self.exporter_plugin_list:
-                for plugin in exporter_plugins:
-                    item = QListWidgetItem(plugin.plugin_self_metadata().name)
-                    item.setData(Qt.ItemDataRole.UserRole, plugin)
+                for plugin_data in exporter_plugins:
+                    item = QListWidgetItem(plugin_data['name'])
+                    item.setData(Qt.ItemDataRole.UserRole, plugin_data) # Store the plugin data dict
                     self.exporter_plugin_list.addItem(item)
         except RuntimeError:
             pass
@@ -1676,7 +1679,3 @@ class ExperimentView(BaseView):
         """Show an error message dialog."""
         QMessageBox.critical(self, title, message)
 
-    def _get_selected_plugins(self) -> List['BasePlugin']:
-        """Get the currently selected plugins."""
-        # Plugin selection not yet implemented in clean architecture
-        return []

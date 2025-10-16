@@ -14,7 +14,7 @@ import platform
 
 from .config_manager import get_config_manager, set_config, get_config
 from .config_manager import set_lab_storage_root as cfg_set_lab_root
-from .metadata import Colony, Subject, Experiment, Worker, ScanTarget, WorkerProvider, ScanTargetKind
+from .metadata import LabDTO, ColonyDTO  # Use Pydantic DTOs as single source
 from .schema import model_to_colony
 
 
@@ -54,43 +54,10 @@ class SharedStorageDTO:
             raise ValueError("Shared storage path is required")
 
 
-@dataclass
-class LabDTO:
-    """Data transfer object for lab creation."""
-    id: str
-    name: str
-    creator_id: str
-    institution: Optional[str] = None
-    pi_name: Optional[str] = None
-    created_at: Optional[datetime] = None
-
-    def __post_init__(self):
-        """Validate lab data."""
-        if not self.id or len(self.id.strip()) < 3:
-            raise ValueError("Lab ID must be at least 3 characters")
-        if not self.name or len(self.name.strip()) < 3:
-            raise ValueError("Lab name must be at least 3 characters")
-        if not self.creator_id:
-            raise ValueError("Creator ID is required")
+# Removed local LabDTO dataclass; use metadata.LabDTO
 
 
-@dataclass
-class ColonyDTO:
-    """Data transfer object for colony creation."""
-    id: str
-    name: str
-    genotype_of_interest: Optional[str] = None
-    background_strain: Optional[str] = None
-    lab_id: str = ""
-
-    def __post_init__(self):
-        """Validate colony data."""
-        if not self.id or len(self.id.strip()) < 3:
-            raise ValueError("Colony ID must be at least 3 characters")
-        if not self.name or len(self.name.strip()) < 3:
-            raise ValueError("Colony name must be at least 3 characters")
-        if not self.lab_id:
-            raise ValueError("Lab ID is required for colony")
+# Removed local ColonyDTO dataclass; use metadata.ColonyDTO
 
 
 @dataclass
@@ -114,7 +81,7 @@ class SetupWorkflowDTO:
     shared_storage: Optional[SharedStorageDTO] = None
     lab: Optional[LabDTO] = None
     colony: Optional[ColonyDTO] = None
-    steps_completed: List[str] = None
+    steps_completed: Optional[List[str]] = None
 
     def __post_init__(self):
         if self.steps_completed is None:
@@ -275,7 +242,7 @@ class SetupService:
 
             # Check for existing root pointer and handle cleanup/warnings
             existing_pointer = get_root_pointer_info()
-            warning_messages = []
+            warning_messages: List[str] = []
 
             if existing_pointer["exists"]:
                 if existing_pointer["valid"]:
@@ -294,19 +261,19 @@ class SetupService:
                 import json
                 json.dump({"root": str(root_dto.path), "updated_at": datetime.now().isoformat()}, f)
 
-            # Add warnings to result if any
-            if warning_messages:
-                result["warnings"] = warning_messages
+            # Collect warnings; they will be included in the returned dict below
+            collected_warnings = warning_messages
 
         except Exception as e:
             # Non-fatal; root pointer is best-effort
-            result["warnings"] = result.get("warnings", []) + [f"Failed to update root pointer: {e}"]
+            collected_warnings = [f"Failed to update root pointer: {e}"]
 
         return {
             "success": True,
             "message": "MUS1 root location configured successfully",
             "path": root_dto.path,
-            "config_path": str(get_config_manager().db_path)
+            "config_path": str(get_config_manager().db_path),
+            "warnings": collected_warnings if 'collected_warnings' in locals() and collected_warnings else []
         }
 
     def _get_default_mus1_root(self) -> Path:
@@ -717,7 +684,6 @@ class SetupService:
 
         # Create Lab entity in SQL database
         from .metadata import Lab
-        from .schema import Database
         from .repository import get_repository_factory
 
         lab_entity = Lab(
@@ -1251,11 +1217,9 @@ class SetupService:
                 "message": f"Lab '{lab_id}' not found"
             }
 
-        from .repository import get_repository_factory
         from .schema import LabProjectModel
 
         db = self._get_database()
-        repo_factory = get_repository_factory(db)
 
         # Remove project association
         with db.get_session() as session:
@@ -1329,7 +1293,13 @@ class SetupService:
         Returns:
             Dict with workflow results
         """
-        results = {
+        from typing import TypedDict, List as _List
+        class WorkflowResult(TypedDict):
+            success: bool
+            steps_completed: _List[str]
+            errors: _List[str]
+
+        results: WorkflowResult = {
             "success": True,
             "steps_completed": [],
             "errors": []
@@ -1380,7 +1350,8 @@ class SetupService:
             results["success"] = False
             results["errors"].append(f"Workflow error: {str(e)}")
 
-        return results
+        from typing import cast
+        return cast(Dict[str, Any], results)
 
 
 # ===========================================

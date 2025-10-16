@@ -6,6 +6,7 @@ in metadata.py. These are the actual database tables.
 """
 
 import json
+from datetime import datetime
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, Float, Boolean, Text, ForeignKey, Enum as SQLEnum
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, sessionmaker
@@ -90,6 +91,33 @@ if experiment_videos is None:
         Column('experiment_id', String, ForeignKey('experiments.id')),
         Column('video_id', Integer, ForeignKey('videos.id'))
     )
+
+class MetadataItemModel(Base):
+    """Base class for metadata items (objects, bodyparts, treatments, genotypes)."""
+    __abstract__ = True
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String, nullable=False, unique=True)
+    lab_id = Column(String, ForeignKey('labs.id'), nullable=True)  # Optional lab association
+    project_id = Column(String, nullable=True)  # For future project-specific metadata
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+class TrackedObjectModel(MetadataItemModel):
+    """Database model for tracked objects."""
+    __tablename__ = 'tracked_objects'
+
+class BodyPartModel(MetadataItemModel):
+    """Database model for body parts."""
+    __tablename__ = 'body_parts'
+
+class TreatmentModel(MetadataItemModel):
+    """Database model for treatments."""
+    __tablename__ = 'treatments'
+
+class GenotypeModel(MetadataItemModel):
+    """Database model for genotypes."""
+    __tablename__ = 'genotypes'
 
 class WorkerModel(Base):
     """Database model for workers."""

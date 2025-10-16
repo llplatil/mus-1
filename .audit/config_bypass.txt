@@ -1,0 +1,2 @@
+src/mus1/core/simple_cli.py:66:os.environ['MUS1_SETUP_REQUESTED'] = '1'
+src/mus1/core/setup_service.py:253:os.environ["MUS1_ROOT"] = str(root_dto.path)

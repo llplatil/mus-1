@@ -6,23 +6,22 @@ This replaces the 2910-line grab-bag CLI with focused commands.
 
 from __future__ import annotations
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional
 import typer
 from rich import print as rich_print
 from rich.prompt import Prompt, Confirm
 from rich.table import Table
 from rich.panel import Panel
-from rich.text import Text
 import json
 import platform
-from datetime import datetime
+# from datetime import datetime  # not needed at module scope
 
-from .metadata import ProjectConfig, SubjectDTO, ExperimentDTO, ColonyDTO, Colony, Worker, ScanTarget, WorkerProvider, ScanTargetKind, LabDTO
-from .config_manager import get_config_manager, set_config, get_config
-from .repository import ColonyRepository, SubjectRepository, ExperimentRepository
+from .metadata import ProjectConfig, SubjectDTO, ExperimentDTO, ColonyDTO, LabDTO
+from .config_manager import get_config_manager, get_config
+from .repository import SubjectRepository, ExperimentRepository
 from .schema import Database
 from .setup_service import (
-    SetupService, SetupStatusDTO, get_setup_service, MUS1RootLocationDTO,
+    get_setup_service, MUS1RootLocationDTO,
     UserProfileDTO, SharedStorageDTO
 )
 
@@ -60,7 +59,6 @@ def main(
 
         # Launch GUI with setup flag if requested
         if setup:
-            import sys
             import os
             # Set environment variable or modify sys.argv to pass setup flag to GUI
             os.environ['MUS1_SETUP_REQUESTED'] = '1'
@@ -88,7 +86,7 @@ def init_project(
     shared_root: Optional[Path] = typer.Option(None, help="Specific shared root path"),
 ):
     """Initialize a new MUS1 project with lab association and shared storage support."""
-    config_manager = get_config_manager()
+    _ = get_config_manager()
 
     # Determine project path
     if not path:
@@ -180,7 +178,7 @@ def init_project(
 @project_app.command("list")
 def list_projects():
     """List all MUS1 projects from configured locations."""
-    config_manager = get_config_manager()
+    _ = get_config_manager()
 
     # Get projects from user configuration
     labs = get_config("labs", scope="user") or {}
@@ -335,28 +333,11 @@ def add_subject(
     from .repository import get_repository_factory
     repos = get_repository_factory(db)
 
-    # Convert DTO to domain object (need colony_id)
-    # For CLI, we'll use a default colony or create one
-    colony_id = "default"
-    colony_repo = repos.colonies
-
-    # Check if default colony exists, create if not
-    if not colony_repo.find_by_id(colony_id):
-        from .metadata import Colony
-        default_colony = Colony(
-            id=colony_id,
-            lab_id="default_lab",  # Default lab for CLI usage
-            name="Default Colony",
-            genotype_of_interest="Unknown",
-            background_strain="Unknown"
-        )
-        colony_repo.save(default_colony)
-
-    # Create domain subject
+    # Create domain subject (CLI subjects can exist without colonies)
     from .metadata import Subject
     subject_domain = Subject(
         id=subject_dto.id,
-        colony_id=colony_id,
+        colony_id=None,  # CLI subjects don't require colonies
         sex=subject_dto.sex,
         designation=subject_dto.designation,
         individual_genotype=subject_dto.individual_genotype
@@ -405,7 +386,7 @@ def add_experiment(
     repos = get_repository_factory(db)
 
     # Convert DTO to domain object
-    from .metadata import Experiment, ProcessingStage
+    from .metadata import Experiment
     experiment_domain = Experiment(
         id=experiment_dto.id,
         subject_id=experiment_dto.subject_id,
@@ -584,7 +565,8 @@ def setup_user(
     # Check if user config already exists
     if setup_service.is_user_configured() and not force:
         existing_profile = setup_service.get_user_profile()
-        rich_print(f"[yellow]⚠[/yellow] User configuration already exists for: {existing_profile.name}")
+        user_name_display = existing_profile.name if existing_profile else "Unknown"
+        rich_print(f"[yellow]⚠[/yellow] User configuration already exists for: {user_name_display}")
         if not Confirm.ask("Overwrite existing configuration?"):
             rich_print("[blue]ℹ[/blue] Setup cancelled")
             return
@@ -909,8 +891,7 @@ def setup_wizard():
 
     lab_created = False
     if create_lab_now:
-        from .setup_service import LabDTO
-        from .metadata import User
+        from .metadata import LabDTO
 
         lab_id = Prompt.ask("Enter lab identifier (e.g., 'copperlab')", default="mylab")
         lab_name = Prompt.ask("Enter full lab name", default=f"{organization} Lab")

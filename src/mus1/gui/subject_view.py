@@ -746,25 +746,25 @@ class SubjectView(BaseView):
         self.colony_combo.clear()
         self.colony_combo.addItem("Select Colony...", None)
 
-        # Get current lab ID from main window
-        main_window = self.window()
-        current_lab_id = getattr(main_window, 'selected_lab_id', None) if main_window else None
+        # Get current lab ID from config (user scope)
+        from ..core.config_manager import get_config
+        current_lab_id = get_config("app.selected_lab_id", scope="user")
 
         if not current_lab_id:
             self.log_bus.log("No lab selected - cannot load colonies", "info", "SubjectView")
             return
 
-        # Get colonies for the project
+        # Get colonies for the current lab
         if not self.subject_service:
             self.log_bus.log("Subject service not available - colonies will load when services are ready", "info", "SubjectView")
             return
 
         try:
-            colonies = self.subject_service.get_colonies_for_display()
+            colonies = self.subject_service.get_colonies_for_display(lab_id=current_lab_id)
             for colony in colonies:
                 display_text = f"{colony.get('name', 'Unknown')} ({colony.get('genotype_of_interest', 'N/A')} - {colony.get('background_strain', 'N/A')})"
                 self.colony_combo.addItem(display_text, colony.get('id'))
-            self.log_bus.log(f"Loaded {len(colonies)} colonies for project", "info", "SubjectView")
+            self.log_bus.log(f"Loaded {len(colonies)} colonies for lab {current_lab_id}", "info", "SubjectView")
         except Exception as e:
             self.log_bus.log(f"Error loading colonies for combo: {e}", "error", "SubjectView")
 
@@ -794,14 +794,19 @@ class SubjectView(BaseView):
 
         # Add subject to colony using project manager
         try:
-            # Get the subject and update its colony_id
+            # Get the subject and check if it's already in this colony
             subject = self.subject_service.get_subject_by_id(subject_id)
             if not subject:
                 QMessageBox.warning(self, "Error", f"Subject '{subject_id}' not found")
                 return
 
+            # Check if subject is already in the selected colony
+            if subject.colony_id == colony_id:
+                QMessageBox.information(self, "Already Assigned",
+                    f"Subject '{subject_id}' is already assigned to this colony.")
+                return
+
             # Update the subject's colony_id through the GUI service
-            # For now, we'll need to implement this in the GUI service
             success = self.subject_service.update_subject_colony(subject_id, colony_id)
 
             if success:
@@ -1602,9 +1607,12 @@ class SubjectView(BaseView):
             else:
                 self.treatment_combo.addItem("No treatments configured")
 
-            # Populate colony combo
-            if available_colonies:
-                for colony in available_colonies:
+            # Populate colony combo - get colonies for current lab
+            from ..core.config_manager import get_config
+            current_lab_id = get_config("app.selected_lab_id", scope="user")
+            if current_lab_id:
+                lab_colonies = self.subject_service.get_colonies_for_display(lab_id=current_lab_id)
+                for colony in lab_colonies:
                     display_text = f"{colony.get('name', 'Unknown')} ({colony.get('genotype_of_interest', 'N/A')} - {colony.get('background_strain', 'N/A')})"
                     self.add_subject_colony_combo.addItem(display_text, colony.get('id'))
         else:

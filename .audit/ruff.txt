@@ -1,0 +1,1026 @@
+[1m[91mF401 [0m[[1m[96m*[0m] [1m`typing.List` imported but unused[0m
+  [1m[94m-->[0m src/mus1/core/config_manager.py:24:41
+   [1m[94m|[0m
+[1m[94m22 |[0m import platform
+[1m[94m23 |[0m from pathlib import Path
+[1m[94m24 |[0m from typing import Dict, Any, Optional, List, Union, Callable
+   [1m[94m|[0m                                         [1m[91m^^^^[0m
+[1m[94m25 |[0m from dataclasses import dataclass, field
+[1m[94m26 |[0m from datetime import datetime
+   [1m[94m|[0m
+[1m[96mhelp[0m: [1mRemove unused import[0m
+
+[1m[91mF401 [0m[[1m[96m*[0m] [1m`typing.Union` imported but unused[0m
+  [1m[94m-->[0m src/mus1/core/config_manager.py:24:47
+   [1m[94m|[0m
+[1m[94m22 |[0m import platform
+[1m[94m23 |[0m from pathlib import Path
+[1m[94m24 |[0m from typing import Dict, Any, Optional, List, Union, Callable
+   [1m[94m|[0m                                               [1m[91m^^^^^[0m
+[1m[94m25 |[0m from dataclasses import dataclass, field
+[1m[94m26 |[0m from datetime import datetime
+   [1m[94m|[0m
+[1m[96mhelp[0m: [1mRemove unused import[0m
+
+[1m[91mF401 [0m[[1m[96m*[0m] [1m`typing.Callable` imported but unused[0m
+  [1m[94m-->[0m src/mus1/core/config_manager.py:24:54
+   [1m[94m|[0m
+[1m[94m22 |[0m import platform
+[1m[94m23 |[0m from pathlib import Path
+[1m[94m24 |[0m from typing import Dict, Any, Optional, List, Union, Callable
+   [1m[94m|[0m                                                      [1m[91m^^^^^^^^[0m
+[1m[94m25 |[0m from dataclasses import dataclass, field
+[1m[94m26 |[0m from datetime import datetime
+   [1m[94m|[0m
+[1m[96mhelp[0m: [1mRemove unused import[0m
+
+[1m[91mF401 [0m[[1m[96m*[0m] [1m`os` imported but unused[0m
+ [1m[94m-->[0m src/mus1/core/logging_bus.py:3:8
+  [1m[94m|[0m
+[1m[94m1 |[0m from datetime import datetime
+[1m[94m2 |[0m import logging
+[1m[94m3 |[0m import os
+  [1m[94m|[0m        [1m[91m^^[0m
+[1m[94m4 |[0m from pathlib import Path
+[1m[94m5 |[0m from typing import List, Callable, Protocol, Optional, Dict
+  [1m[94m|[0m
+[1m[96mhelp[0m: [1mRemove unused import: `os`[0m
+
+[1m[91mF401 [0m[[1m[96m*[0m] [1m`typing.List` imported but unused[0m
+ [1m[94m-->[0m src/mus1/core/logging_bus.py:5:20
+  [1m[94m|[0m
+[1m[94m3 |[0m import os
+[1m[94m4 |[0m from pathlib import Path
+[1m[94m5 |[0m from typing import List, Callable, Protocol, Optional, Dict
+  [1m[94m|[0m                    [1m[91m^^^^[0m
+[1m[94m6 |[0m import weakref
+[1m[94m7 |[0m from logging.handlers import RotatingFileHandler 
+  [1m[94m|[0m
+[1m[96mhelp[0m: [1mRemove unused import[0m
+
+[1m[91mF401 [0m[[1m[96m*[0m] [1m`typing.Callable` imported but unused[0m
+ [1m[94m-->[0m src/mus1/core/logging_bus.py:5:26
+  [1m[94m|[0m
+[1m[94m3 |[0m import os
+[1m[94m4 |[0m from pathlib import Path
+[1m[94m5 |[0m from typing import List, Callable, Protocol, Optional, Dict
+  [1m[94m|[0m                          [1m[91m^^^^^^^^[0m
+[1m[94m6 |[0m import weakref
+[1m[94m7 |[0m from logging.handlers import RotatingFileHandler 
+  [1m[94m|[0m
+[1m[96mhelp[0m: [1mRemove unused import[0m
+
+[1m[91mF401 [0m[[1m[96m*[0m] [1m`typing.Set` imported but unused[0m
+  [1m[94m-->[0m src/mus1/core/metadata.py:15:42
+   [1m[94m|[0m
+[1m[94m13 |[0m from datetime import datetime
+[1m[94m14 |[0m from pathlib import Path
+[1m[94m15 |[0m from typing import Dict, List, Optional, Set, Any, Literal
+   [1m[94m|[0m                                          [1m[91m^^^[0m
+[1m[94m16 |[0m from enum import Enum
+[1m[94m17 |[0m from pydantic import BaseModel, Field, field_validator, model_validator
+   [1m[94m|[0m
+[1m[96mhelp[0m: [1mRemove unused import[0m
+
+[1m[91mF401 [0m[[1m[96m*[0m] [1m`typing.Literal` imported but unused[0m
+  [1m[94m-->[0m src/mus1/core/metadata.py:15:52
+   [1m[94m|[0m
+[1m[94m13 |[0m from datetime import datetime
+[1m[94m14 |[0m from pathlib import Path
+[1m[94m15 |[0m from typing import Dict, List, Optional, Set, Any, Literal
+   [1m[94m|[0m                                                    [1m[91m^^^^^^^[0m
+[1m[94m16 |[0m from enum import Enum
+[1m[94m17 |[0m from pydantic import BaseModel, Field, field_validator, model_validator
+   [1m[94m|[0m
+[1m[96mhelp[0m: [1mRemove unused import[0m
+
+[1m[91mF401 [0m[[1m[96m*[0m] [1m`typing.Tuple` imported but unused[0m
+  [1m[94m-->[0m src/mus1/core/plugin_manager_clean.py:9:52
+   [1m[94m|[0m
+[1m[94m 8 |[0m import logging
+[1m[94m 9 |[0m from typing import Optional, Dict, Any, List, Set, Tuple
+   [1m[94m|[0m                                                    [1m[91m^^^^^[0m
+[1m[94m10 |[0m from importlib import metadata as importlib_metadata
+[1m[94m11 |[0m from datetime import datetime
+   [1m[94m|[0m
+[1m[96mhelp[0m: [1mRemove unused import: `typing.Tuple`[0m
+
+[1m[91mF401 [0m[[1m[96m*[0m] [1m`json` imported but unused[0m
+  [1m[94m-->[0m src/mus1/core/plugin_manager_clean.py:12:8
+   [1m[94m|[0m
+[1m[94m10 |[0m from importlib import metadata as importlib_metadata
+[1m[94m11 |[0m from datetime import datetime
+[1m[94m12 |[0m import json
+   [1m[94m|[0m        [1m[91m^^^^[0m
+[1m[94m13 |[0m
+[1m[94m14 |[0m from ..plugins.base_plugin import BasePlugin
+   [1m[94m|[0m
+[1m[96mhelp[0m: [1mRemove unused import: `json`[0m
+
+[1m[91mF401 [0m[[1m[96m*[0m] [1m`.schema.PluginMetadataModel` imported but unused[0m
+  [1m[94m-->[0m src/mus1/core/plugin_manager_clean.py:18:15
+   [1m[94m|[0m
+[1m[94m16 |[0m from .repository import RepositoryFactory
+[1m[94m17 |[0m from .schema import (
+[1m[94m18 |[0m     Database, PluginMetadataModel, PluginResultModel,
+   [1m[94m|[0m               [1m[91m^^^^^^^^^^^^^^^^^^^[0m
+[1m[94m19 |[0m     plugin_metadata_to_model, model_to_plugin_metadata,
+[1m[94m20 |[0m     plugin_result_to_model, model_to_plugin_result
+   [1m[94m|[0m
+[1m[96mhelp[0m: [1mRemove unused import[0m
+
+[1m[91mF401 [0m[[1m[96m*[0m] [1m`.schema.PluginResultModel` imported but unused[0m
+  [1m[94m-->[0m src/mus1/core/plugin_manager_clean.py:18:36
+   [1m[94m|[0m
+[1m[94m16 |[0m from .repository import RepositoryFactory
+[1m[94m17 |[0m from .schema import (
+[1m[94m18 |[0m     Database, PluginMetadataModel, PluginResultModel,
+   [1m[94m|[0m                                    [1m[91m^^^^^^^^^^^^^^^^^[0m
+[1m[94m19 |[0m     plugin_metadata_to_model, model_to_plugin_metadata,
+[1m[94m20 |[0m     plugin_result_to_model, model_to_plugin_result
+   [1m[94m|[0m
+[1m[96mhelp[0m: [1mRemove unused import[0m
+
+[1m[91mF401 [0m[[1m[96m*[0m] [1m`.schema.model_to_plugin_metadata` imported but unused[0m
+  [1m[94m-->[0m src/mus1/core/plugin_manager_clean.py:19:31
+   [1m[94m|[0m
+[1m[94m17 |[0m from .schema import (
+[1m[94m18 |[0m     Database, PluginMetadataModel, PluginResultModel,
+[1m[94m19 |[0m     plugin_metadata_to_model, model_to_plugin_metadata,
+   [1m[94m|[0m                               [1m[91m^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[1m[94m20 |[0m     plugin_result_to_model, model_to_plugin_result
+[1m[94m21 |[0m )
+   [1m[94m|[0m
+[1m[96mhelp[0m: [1mRemove unused import[0m
+
+[1m[91mF401 [0m[[1m[96m*[0m] [1m`.schema.plugin_result_to_model` imported but unused[0m
+  [1m[94m-->[0m src/mus1/core/plugin_manager_clean.py:20:5
+   [1m[94m|[0m
+[1m[94m18 |[0m     Database, PluginMetadataModel, PluginResultModel,
+[1m[94m19 |[0m     plugin_metadata_to_model, model_to_plugin_metadata,
+[1m[94m20 |[0m     plugin_result_to_model, model_to_plugin_result
+   [1m[94m|[0m     [1m[91m^^^^^^^^^^^^^^^^^^^^^^[0m
+[1m[94m21 |[0m )
+   [1m[94m|[0m
+[1m[96mhelp[0m: [1mRemove unused import[0m
+
+[1m[91mF401 [0m[[1m[96m*[0m] [1m`.schema.model_to_plugin_result` imported but unused[0m
+  [1m[94m-->[0m src/mus1/core/plugin_manager_clean.py:20:29
+   [1m[94m|[0m
+[1m[94m18 |[0m     Database, PluginMetadataModel, PluginResultModel,
+[1m[94m19 |[0m     plugin_metadata_to_model, model_to_plugin_metadata,
+[1m[94m20 |[0m     plugin_result_to_model, model_to_plugin_result
+   [1m[94m|[0m                             [1m[91m^^^^^^^^^^^^^^^^^^^^^^[0m
+[1m[94m21 |[0m )
+   [1m[94m|[0m
+[1m[96mhelp[0m: [1mRemove unused import[0m
+
+[1m[91mF811 [0m[[1m[96m*[0m] [1mRedefinition of unused `plugin_result_to_model` from line 20[0m
+  [1m[94m-->[0m src/mus1/core/plugin_manager_clean.py:54:29
+   [1m[94m|[0m
+[1m[94m52 |[0m         """Save plugin analysis result to database."""
+[1m[94m53 |[0m         from .metadata import PluginResult
+[1m[94m54 |[0m         from .schema import plugin_result_to_model
+   [1m[94m|[0m                             [1m[91m^^^^^^^^^^^^^^^^^^^^^^[0m [1m[91m`plugin_result_to_model` redefined here[0m
+[1m[94m55 |[0m
+[1m[94m56 |[0m         result = PluginResult(
+   [1m[94m|[0m
+  [1m[94m:::[0m src/mus1/core/plugin_manager_clean.py:20:5
+   [1m[94m|[0m
+[1m[94m18 |[0m     Database, PluginMetadataModel, PluginResultModel,
+[1m[94m19 |[0m     plugin_metadata_to_model, model_to_plugin_metadata,
+[1m[94m20 |[0m     plugin_result_to_model, model_to_plugin_result
+   [1m[94m|[0m     [1m[33m----------------------[0m [1m[33mprevious definition of `plugin_result_to_model` here[0m
+[1m[94m21 |[0m )
+   [1m[94m|[0m
+[1m[96mhelp[0m: [1mRemove definition: `plugin_result_to_model`[0m
+
+[1m[91mF811 [0m[[1m[96m*[0m] [1mRedefinition of unused `PluginResultModel` from line 18[0m
+  [1m[94m-->[0m src/mus1/core/plugin_manager_clean.py:76:29
+   [1m[94m|[0m
+[1m[94m74 |[0m                           capability: str) -> Optional[Dict[str, Any]]:
+[1m[94m75 |[0m         """Get analysis result from database."""
+[1m[94m76 |[0m         from .schema import PluginResultModel, model_to_plugin_result
+   [1m[94m|[0m                             [1m[91m^^^^^^^^^^^^^^^^^[0m [1m[91m`PluginResultModel` redefined here[0m
+[1m[94m77 |[0m
+[1m[94m78 |[0m         with self.db.get_session() as session:
+   [1m[94m|[0m
+  [1m[94m:::[0m src/mus1/core/plugin_manager_clean.py:18:36
+   [1m[94m|[0m
+[1m[94m16 |[0m from .repository import RepositoryFactory
+[1m[94m17 |[0m from .schema import (
+[1m[94m18 |[0m     Database, PluginMetadataModel, PluginResultModel,
+   [1m[94m|[0m                                    [1m[33m-----------------[0m [1m[33mprevious definition of `PluginResultModel` here[0m
+[1m[94m19 |[0m     plugin_metadata_to_model, model_to_plugin_metadata,
+[1m[94m20 |[0m     plugin_result_to_model, model_to_plugin_result
+   [1m[94m|[0m
+[1m[96mhelp[0m: [1mRemove definition: `PluginResultModel`[0m
+
+[1m[91mF811 [0m[[1m[96m*[0m] [1mRedefinition of unused `model_to_plugin_result` from line 20[0m
+  [1m[94m-->[0m src/mus1/core/plugin_manager_clean.py:76:48
+   [1m[94m|[0m
+[1m[94m74 |[0m                           capability: str) -> Optional[Dict[str, Any]]:
+[1m[94m75 |[0m         """Get analysis result from database."""
+[1m[94m76 |[0m         from .schema import PluginResultModel, model_to_plugin_result
+   [1m[94m|[0m                                                [1m[91m^^^^^^^^^^^^^^^^^^^^^^[0m [1m[91m`model_to_plugin_result` redefined here[0m
+[1m[94m77 |[0m
+[1m[94m78 |[0m         with self.db.get_session() as session:
+   [1m[94m|[0m
+  [1m[94m:::[0m src/mus1/core/plugin_manager_clean.py:20:29
+   [1m[94m|[0m
+[1m[94m18 |[0m     Database, PluginMetadataModel, PluginResultModel,
+[1m[94m19 |[0m     plugin_metadata_to_model, model_to_plugin_metadata,
+[1m[94m20 |[0m     plugin_result_to_model, model_to_plugin_result
+   [1m[94m|[0m                             [1m[33m----------------------[0m [1m[33mprevious definition of `model_to_plugin_result` here[0m
+[1m[94m21 |[0m )
+   [1m[94m|[0m
+[1m[96mhelp[0m: [1mRemove definition: `model_to_plugin_result`[0m
+
+[1m[91mF401 [0m[[1m[96m*[0m] [1m`.schema.ProjectModel` imported but unused[0m
+  [1m[94m-->[0m src/mus1/core/repository.py:14:35
+   [1m[94m|[0m
+[1m[94m12 |[0m from .schema import (
+[1m[94m13 |[0m     Database, SubjectModel, ExperimentModel, VideoModel,
+[1m[94m14 |[0m     WorkerModel, ScanTargetModel, ProjectModel, ColonyModel,
+   [1m[94m|[0m                                   [1m[91m^^^^^^^^^^^^[0m
+[1m[94m15 |[0m     TrackedObjectModel, BodyPartModel, TreatmentModel, GenotypeModel,
+[1m[94m16 |[0m     subject_to_model, model_to_subject,
+   [1m[94m|[0m
+[1m[96mhelp[0m: [1mRemove unused import: `.schema.ProjectModel`[0m
+
+[1m[91mF821 [0m[1mUndefined name `Colony`[0m
+  [1m[94m-->[0m src/mus1/core/repository.py:34:32
+   [1m[94m|[0m
+[1m[94m32 |[0m     """Repository for colony operations."""
+[1m[94m33 |[0m
+[1m[94m34 |[0m     def save(self, colony) -> 'Colony':
+   [1m[94m|[0m                                [1m[91m^^^^^^[0m
+[1m[94m35 |[0m         """Save a colony."""
+[1m[94m36 |[0m         from .metadata import Colony
+   [1m[94m|[0m
+
+[1m[91mF401 [0m[[1m[96m*[0m] [1m`.metadata.Colony` imported but unused[0m
+  [1m[94m-->[0m src/mus1/core/repository.py:36:31
+   [1m[94m|[0m
+[1m[94m34 |[0m     def save(self, colony) -> 'Colony':
+[1m[94m35 |[0m         """Save a colony."""
+[1m[94m36 |[0m         from .metadata import Colony
+   [1m[94m|[0m                               [1m[91m^^^^^^[0m
+[1m[94m37 |[0m         db_colony = colony_to_model(colony)
+[1m[94m38 |[0m         with self._get_session() as session:
+   [1m[94m|[0m
+[1m[96mhelp[0m: [1mRemove unused import: `.metadata.Colony`[0m
+
+[1m[91mF821 [0m[1mUndefined name `Colony`[0m
+  [1m[94m-->[0m src/mus1/core/repository.py:43:55
+   [1m[94m|[0m
+[1m[94m41 |[0m             return model_to_colony(merged)
+[1m[94m42 |[0m
+[1m[94m43 |[0m     def find_by_id(self, colony_id: str) -> Optional['Colony']:
+   [1m[94m|[0m                                                       [1m[91m^^^^^^[0m
+[1m[94m44 |[0m         """Find colony by ID."""
+[1m[94m45 |[0m         with self._get_session() as session:
+   [1m[94m|[0m
+
+[1m[91mF821 [0m[1mUndefined name `Colony`[0m
+  [1m[94m-->[0m src/mus1/core/repository.py:51:49
+   [1m[94m|[0m
+[1m[94m49 |[0m             return model_to_colony(db_colony) if db_colony else None
+[1m[94m50 |[0m
+[1m[94m51 |[0m     def find_by_lab(self, lab_id: str) -> List['Colony']:
+   [1m[94m|[0m                                                 [1m[91m^^^^^^[0m
+[1m[94m52 |[0m         """Find colonies by lab ID."""
+[1m[94m53 |[0m         with self._get_session() as session:
+   [1m[94m|[0m
+
+[1m[91mF821 [0m[1mUndefined name `Colony`[0m
+  [1m[94m-->[0m src/mus1/core/repository.py:59:33
+   [1m[94m|[0m
+[1m[94m57 |[0m             return [model_to_colony(db_colony) for db_colony in db_colonies]
+[1m[94m58 |[0m
+[1m[94m59 |[0m     def find_all(self) -> List['Colony']:
+   [1m[94m|[0m                                 [1m[91m^^^^^^[0m
+[1m[94m60 |[0m         """Find all colonies."""
+[1m[94m61 |[0m         with self._get_session() as session:
+   [1m[94m|[0m
+
+[1m[91mF821 [0m[1mUndefined name `User`[0m
+   [1m[94m-->[0m src/mus1/core/repository.py:495:30
+    [1m[94m|[0m
+[1m[94m493 |[0m     """Repository for user operations."""
+[1m[94m494 |[0m
+[1m[94m495 |[0m     def save(self, user) -> 'User':
+    [1m[94m|[0m                              [1m[91m^^^^[0m
+[1m[94m496 |[0m         """Save a user."""
+[1m[94m497 |[0m         from .metadata import User
+    [1m[94m|[0m
+
+[1m[91mF401 [0m[[1m[96m*[0m] [1m`.metadata.User` imported but unused[0m
+   [1m[94m-->[0m src/mus1/core/repository.py:497:31
+    [1m[94m|[0m
+[1m[94m495 |[0m     def save(self, user) -> 'User':
+[1m[94m496 |[0m         """Save a user."""
+[1m[94m497 |[0m         from .metadata import User
+    [1m[94m|[0m                               [1m[91m^^^^[0m
+[1m[94m498 |[0m         from .schema import user_to_model, model_to_user
+[1m[94m499 |[0m         db_user = user_to_model(user)
+    [1m[94m|[0m
+[1m[96mhelp[0m: [1mRemove unused import: `.metadata.User`[0m
+
+[1m[91mF821 [0m[1mUndefined name `User`[0m
+   [1m[94m-->[0m src/mus1/core/repository.py:505:53
+    [1m[94m|[0m
+[1m[94m503 |[0m             return model_to_user(merged)
+[1m[94m504 |[0m
+[1m[94m505 |[0m     def find_by_id(self, user_id: str) -> Optional['User']:
+    [1m[94m|[0m                                                     [1m[91m^^^^[0m
+[1m[94m506 |[0m         """Find user by ID."""
+[1m[94m507 |[0m         from .schema import UserModel, model_to_user
+    [1m[94m|[0m
+
+[1m[91mF821 [0m[1mUndefined name `User`[0m
+   [1m[94m-->[0m src/mus1/core/repository.py:514:54
+    [1m[94m|[0m
+[1m[94m512 |[0m             return model_to_user(db_user) if db_user else None
+[1m[94m513 |[0m
+[1m[94m514 |[0m     def find_by_email(self, email: str) -> Optional['User']:
+    [1m[94m|[0m                                                      [1m[91m^^^^[0m
+[1m[94m515 |[0m         """Find user by email."""
+[1m[94m516 |[0m         from .schema import UserModel, model_to_user
+    [1m[94m|[0m
+
+[1m[91mF821 [0m[1mUndefined name `User`[0m
+   [1m[94m-->[0m src/mus1/core/repository.py:523:33
+    [1m[94m|[0m
+[1m[94m521 |[0m             return model_to_user(db_user) if db_user else None
+[1m[94m522 |[0m
+[1m[94m523 |[0m     def find_all(self) -> List['User']:
+    [1m[94m|[0m                                 [1m[91m^^^^[0m
+[1m[94m524 |[0m         """Find all users."""
+[1m[94m525 |[0m         from .schema import UserModel, model_to_user
+    [1m[94m|[0m
+
+[1m[91mF821 [0m[1mUndefined name `Lab`[0m
+   [1m[94m-->[0m src/mus1/core/repository.py:533:29
+    [1m[94m|[0m
+[1m[94m531 |[0m     """Repository for lab operations."""
+[1m[94m532 |[0m
+[1m[94m533 |[0m     def save(self, lab) -> 'Lab':
+    [1m[94m|[0m                             [1m[91m^^^[0m
+[1m[94m534 |[0m         """Save a lab."""
+[1m[94m535 |[0m         from .metadata import Lab
+    [1m[94m|[0m
+
+[1m[91mF401 [0m[[1m[96m*[0m] [1m`.metadata.Lab` imported but unused[0m
+   [1m[94m-->[0m src/mus1/core/repository.py:535:31
+    [1m[94m|[0m
+[1m[94m533 |[0m     def save(self, lab) -> 'Lab':
+[1m[94m534 |[0m         """Save a lab."""
+[1m[94m535 |[0m         from .metadata import Lab
+    [1m[94m|[0m                               [1m[91m^^^[0m
+[1m[94m536 |[0m         from .schema import lab_to_model, model_to_lab
+[1m[94m537 |[0m         db_lab = lab_to_model(lab)
+    [1m[94m|[0m
+[1m[96mhelp[0m: [1mRemove unused import: `.metadata.Lab`[0m
+
+[1m[91mF821 [0m[1mUndefined name `Lab`[0m
+   [1m[94m-->[0m src/mus1/core/repository.py:543:52
+    [1m[94m|[0m
+[1m[94m541 |[0m             return model_to_lab(merged)
+[1m[94m542 |[0m
+[1m[94m543 |[0m     def find_by_id(self, lab_id: str) -> Optional['Lab']:
+    [1m[94m|[0m                                                    [1m[91m^^^[0m
+[1m[94m544 |[0m         """Find lab by ID."""
+[1m[94m545 |[0m         from .schema import LabModel, model_to_lab
+    [1m[94m|[0m
+
+[1m[91mF821 [0m[1mUndefined name `Lab`[0m
+   [1m[94m-->[0m src/mus1/core/repository.py:552:57
+    [1m[94m|[0m
+[1m[94m550 |[0m             return model_to_lab(db_lab) if db_lab else None
+[1m[94m551 |[0m
+[1m[94m552 |[0m     def find_by_creator(self, creator_id: str) -> List['Lab']:
+    [1m[94m|[0m                                                         [1m[91m^^^[0m
+[1m[94m553 |[0m         """Find labs by creator ID."""
+[1m[94m554 |[0m         from .schema import LabModel, model_to_lab
+    [1m[94m|[0m
+
+[1m[91mF821 [0m[1mUndefined name `Lab`[0m
+   [1m[94m-->[0m src/mus1/core/repository.py:561:33
+    [1m[94m|[0m
+[1m[94m559 |[0m             return [model_to_lab(db_lab) for db_lab in db_labs]
+[1m[94m560 |[0m
+[1m[94m561 |[0m     def find_all(self) -> List['Lab']:
+    [1m[94m|[0m                                 [1m[91m^^^[0m
+[1m[94m562 |[0m         """Find all labs."""
+[1m[94m563 |[0m         from .schema import LabModel, model_to_lab
+    [1m[94m|[0m
+
+[1m[91mF821 [0m[1mUndefined name `Lab`[0m
+   [1m[94m-->[0m src/mus1/core/repository.py:637:52
+    [1m[94m|[0m
+[1m[94m635 |[0m             } for r in rows]
+[1m[94m636 |[0m
+[1m[94m637 |[0m     def find_for_user(self, user_id: str) -> List['Lab']:
+    [1m[94m|[0m                                                    [1m[91m^^^[0m
+[1m[94m638 |[0m         """Find labs where the user is a member or creator."""
+[1m[94m639 |[0m         from .schema import LabModel, LabMemberModel
+    [1m[94m|[0m
+
+[1m[91mF841 [0m[1mLocal variable `created_labs` is assigned to but never used[0m
+   [1m[94m-->[0m src/mus1/core/repository.py:643:13
+    [1m[94m|[0m
+[1m[94m641 |[0m         with self._get_session() as session:
+[1m[94m642 |[0m             # Labs where user is creator
+[1m[94m643 |[0m             created_labs = session.query(LabModel).filter(LabModel.creator_id == user_id)
+    [1m[94m|[0m             [1m[91m^^^^^^^^^^^^[0m
+[1m[94m644 |[0m             # Labs where user is a member
+[1m[94m645 |[0m             member_lab_ids = session.query(LabMemberModel.lab_id).filter(LabMemberModel.user_id == user_id)
+    [1m[94m|[0m
+[1m[96mhelp[0m: [1mRemove assignment to unused variable `created_labs`[0m
+
+[1m[91mE741 [0m[1mAmbiguous variable name: `l`[0m
+   [1m[94m-->[0m src/mus1/core/repository.py:649:41
+    [1m[94m|[0m
+[1m[94m647 |[0m                 (LabModel.creator_id == user_id) | (LabModel.id.in_(member_lab_ids))
+[1m[94m648 |[0m             ).all()
+[1m[94m649 |[0m             return [model_to_lab(l) for l in labs]
+    [1m[94m|[0m                                         [1m[91m^[0m
+[1m[94m650 |[0m
+[1m[94m651 |[0m     # ---------- Worker/ScanTarget Associations ----------
+    [1m[94m|[0m
+
+[1m[91mF401 [0m[[1m[96m*[0m] [1m`typing.Optional` imported but unused[0m
+ [1m[94m-->[0m src/mus1/core/scanners/base_scanner.py:4:57
+  [1m[94m|[0m
+[1m[94m2 |[0m import platform
+[1m[94m3 |[0m from pathlib import Path
+[1m[94m4 |[0m from typing import Iterable, Iterator, Tuple, Callable, Optional, Set
+  [1m[94m|[0m                                                         [1m[91m^^^^^^^^[0m
+[1m[94m5 |[0m import os
+[1m[94m6 |[0m from ..utils.file_hash import compute_sample_hash
+  [1m[94m|[0m
+[1m[96mhelp[0m: [1mRemove unused import: `typing.Optional`[0m
+
+[1m[91mF821 [0m[1mUndefined name `StateManager`[0m
+  [1m[94m-->[0m src/mus1/core/scanners/remote.py:61:20
+   [1m[94m|[0m
+[1m[94m60 |[0m def collect_from_target(
+[1m[94m61 |[0m     state_manager: StateManager,
+   [1m[94m|[0m                    [1m[91m^^^^^^^^^^^^[0m
+[1m[94m62 |[0m     data_manager: DataManager,
+[1m[94m63 |[0m     target: ScanTarget,
+   [1m[94m|[0m
+
+[1m[91mF821 [0m[1mUndefined name `DataManager`[0m
+  [1m[94m-->[0m src/mus1/core/scanners/remote.py:62:19
+   [1m[94m|[0m
+[1m[94m60 |[0m def collect_from_target(
+[1m[94m61 |[0m     state_manager: StateManager,
+[1m[94m62 |[0m     data_manager: DataManager,
+   [1m[94m|[0m                   [1m[91m^^^^^^^^^^^[0m
+[1m[94m63 |[0m     target: ScanTarget,
+[1m[94m64 |[0m     *,
+   [1m[94m|[0m
+
+[1m[91mF821 [0m[1mUndefined name `StateManager`[0m
+   [1m[94m-->[0m src/mus1/core/scanners/remote.py:107:20
+    [1m[94m|[0m
+[1m[94m106 |[0m def collect_from_targets(
+[1m[94m107 |[0m     state_manager: StateManager,
+    [1m[94m|[0m                    [1m[91m^^^^^^^^^^^^[0m
+[1m[94m108 |[0m     data_manager: DataManager,
+[1m[94m109 |[0m     targets: Iterable[ScanTarget],
+    [1m[94m|[0m
+
+[1m[91mF821 [0m[1mUndefined name `DataManager`[0m
+   [1m[94m-->[0m src/mus1/core/scanners/remote.py:108:19
+    [1m[94m|[0m
+[1m[94m106 |[0m def collect_from_targets(
+[1m[94m107 |[0m     state_manager: StateManager,
+[1m[94m108 |[0m     data_manager: DataManager,
+    [1m[94m|[0m                   [1m[91m^^^^^^^^^^^[0m
+[1m[94m109 |[0m     targets: Iterable[ScanTarget],
+[1m[94m110 |[0m     *,
+    [1m[94m|[0m
+
+[1m[91mF821 [0m[1mUndefined name `StateManager`[0m
+   [1m[94m-->[0m src/mus1/core/scanners/remote.py:136:20
+    [1m[94m|[0m
+[1m[94m135 |[0m def collect_from_targets_parallel(
+[1m[94m136 |[0m     state_manager: StateManager,
+    [1m[94m|[0m                    [1m[91m^^^^^^^^^^^^[0m
+[1m[94m137 |[0m     data_manager: DataManager,
+[1m[94m138 |[0m     targets: Iterable[ScanTarget],
+    [1m[94m|[0m
+
+[1m[91mF821 [0m[1mUndefined name `DataManager`[0m
+   [1m[94m-->[0m src/mus1/core/scanners/remote.py:137:19
+    [1m[94m|[0m
+[1m[94m135 |[0m def collect_from_targets_parallel(
+[1m[94m136 |[0m     state_manager: StateManager,
+[1m[94m137 |[0m     data_manager: DataManager,
+    [1m[94m|[0m                   [1m[91m^^^^^^^^^^^[0m
+[1m[94m138 |[0m     targets: Iterable[ScanTarget],
+[1m[94m139 |[0m     *,
+    [1m[94m|[0m
+
+[1m[91mF401 [0m[[1m[96m*[0m] [1m`sqlalchemy.Boolean` imported but unused[0m
+  [1m[94m-->[0m src/mus1/core/schema.py:10:81
+   [1m[94m|[0m
+[1m[94m 8 |[0m import json
+[1m[94m 9 |[0m from datetime import datetime
+[1m[94m10 |[0m from sqlalchemy import create_engine, Column, Integer, String, DateTime, Float, Boolean, Text, ForeignKey, Enum as SQLEnum
+   [1m[94m|[0m                                                                                 [1m[91m^^^^^^^[0m
+[1m[94m11 |[0m from sqlalchemy.ext.declarative import declarative_base
+[1m[94m12 |[0m from sqlalchemy.orm import relationship, sessionmaker
+   [1m[94m|[0m
+[1m[96mhelp[0m: [1mRemove unused import: `sqlalchemy.Boolean`[0m
+
+[1m[91mF401 [0m[[1m[96m*[0m] [1m`typing.List` imported but unused[0m
+  [1m[94m-->[0m src/mus1/core/schema.py:13:20
+   [1m[94m|[0m
+[1m[94m11 |[0m from sqlalchemy.ext.declarative import declarative_base
+[1m[94m12 |[0m from sqlalchemy.orm import relationship, sessionmaker
+[1m[94m13 |[0m from typing import List
+   [1m[94m|[0m                    [1m[91m^^^^[0m
+[1m[94m14 |[0m from .metadata import Sex, ProcessingStage, SubjectDesignation, InheritancePattern, WorkerProvider, ScanTargetKind
+   [1m[94m|[0m
+[1m[96mhelp[0m: [1mRemove unused import: `typing.List`[0m
+
+[1m[91mF401 [0m[[1m[96m*[0m] [1m`.metadata.InheritancePattern` imported but unused[0m
+  [1m[94m-->[0m src/mus1/core/schema.py:14:65
+   [1m[94m|[0m
+[1m[94m12 |[0m from sqlalchemy.orm import relationship, sessionmaker
+[1m[94m13 |[0m from typing import List
+[1m[94m14 |[0m from .metadata import Sex, ProcessingStage, SubjectDesignation, InheritancePattern, WorkerProvider, ScanTargetKind
+   [1m[94m|[0m                                                                 [1m[91m^^^^^^^^^^^^^^^^^^[0m
+[1m[94m15 |[0m
+[1m[94m16 |[0m Base = declarative_base()
+   [1m[94m|[0m
+[1m[96mhelp[0m: [1mRemove unused import: `.metadata.InheritancePattern`[0m
+
+[1m[91mF821 [0m[1mUndefined name `Colony`[0m
+   [1m[94m-->[0m src/mus1/core/schema.py:314:32
+    [1m[94m|[0m
+[1m[94m312 |[0m     )
+[1m[94m313 |[0m
+[1m[94m314 |[0m def model_to_colony(model) -> 'Colony':
+    [1m[94m|[0m                                [1m[91m^^^^^^[0m
+[1m[94m315 |[0m     """Convert database model to domain Colony."""
+[1m[94m316 |[0m     from .metadata import Colony
+    [1m[94m|[0m
+
+[1m[91mF821 [0m[1mUndefined name `Subject`[0m
+   [1m[94m-->[0m src/mus1/core/schema.py:343:33
+    [1m[94m|[0m
+[1m[94m341 |[0m     )
+[1m[94m342 |[0m
+[1m[94m343 |[0m def model_to_subject(model) -> 'Subject':
+    [1m[94m|[0m                                 [1m[91m^^^^^^^[0m
+[1m[94m344 |[0m     """Convert database model to domain Subject."""
+[1m[94m345 |[0m     from .metadata import Subject, SubjectDesignation
+    [1m[94m|[0m
+
+[1m[91mF821 [0m[1mUndefined name `Experiment`[0m
+   [1m[94m-->[0m src/mus1/core/schema.py:372:36
+    [1m[94m|[0m
+[1m[94m370 |[0m     )
+[1m[94m371 |[0m
+[1m[94m372 |[0m def model_to_experiment(model) -> 'Experiment':
+    [1m[94m|[0m                                    [1m[91m^^^^^^^^^^[0m
+[1m[94m373 |[0m     """Convert database model to domain Experiment."""
+[1m[94m374 |[0m     from .metadata import Experiment
+    [1m[94m|[0m
+
+[1m[91mF821 [0m[1mUndefined name `PluginMetadata`[0m
+   [1m[94m-->[0m src/mus1/core/schema.py:396:41
+    [1m[94m|[0m
+[1m[94m394 |[0m     )
+[1m[94m395 |[0m
+[1m[94m396 |[0m def model_to_plugin_metadata(model) -> 'PluginMetadata':
+    [1m[94m|[0m                                         [1m[91m^^^^^^^^^^^^^^[0m
+[1m[94m397 |[0m     """Convert database model to domain PluginMetadata."""
+[1m[94m398 |[0m     from .metadata import PluginMetadata
+    [1m[94m|[0m
+
+[1m[91mF821 [0m[1mUndefined name `PluginResult`[0m
+   [1m[94m-->[0m src/mus1/core/schema.py:421:39
+    [1m[94m|[0m
+[1m[94m419 |[0m     )
+[1m[94m420 |[0m
+[1m[94m421 |[0m def model_to_plugin_result(model) -> 'PluginResult':
+    [1m[94m|[0m                                       [1m[91m^^^^^^^^^^^^[0m
+[1m[94m422 |[0m     """Convert database model to domain PluginResult."""
+[1m[94m423 |[0m     from .metadata import PluginResult
+    [1m[94m|[0m
+
+[1m[91mF821 [0m[1mUndefined name `User`[0m
+   [1m[94m-->[0m src/mus1/core/schema.py:453:30
+    [1m[94m|[0m
+[1m[94m451 |[0m     )
+[1m[94m452 |[0m
+[1m[94m453 |[0m def model_to_user(model) -> 'User':
+    [1m[94m|[0m                              [1m[91m^^^^[0m
+[1m[94m454 |[0m     """Convert database model to domain User."""
+[1m[94m455 |[0m     from .metadata import User
+    [1m[94m|[0m
+
+[1m[91mF821 [0m[1mUndefined name `Lab`[0m
+   [1m[94m-->[0m src/mus1/core/schema.py:479:29
+    [1m[94m|[0m
+[1m[94m477 |[0m     )
+[1m[94m478 |[0m
+[1m[94m479 |[0m def model_to_lab(model) -> 'Lab':
+    [1m[94m|[0m                             [1m[91m^^^[0m
+[1m[94m480 |[0m     """Convert database model to domain Lab."""
+[1m[94m481 |[0m     from .metadata import Lab
+    [1m[94m|[0m
+
+[1m[91mF821 [0m[1mUndefined name `Workgroup`[0m
+   [1m[94m-->[0m src/mus1/core/schema.py:500:35
+    [1m[94m|[0m
+[1m[94m498 |[0m     )
+[1m[94m499 |[0m
+[1m[94m500 |[0m def model_to_workgroup(model) -> 'Workgroup':
+    [1m[94m|[0m                                   [1m[91m^^^^^^^^^[0m
+[1m[94m501 |[0m     """Convert database model to domain Workgroup."""
+[1m[94m502 |[0m     from .metadata import Workgroup
+    [1m[94m|[0m
+
+[1m[91mF401 [0m[[1m[96m*[0m] [1m`.metadata.Colony` imported but unused[0m
+  [1m[94m-->[0m src/mus1/core/setup_service.py:17:23
+   [1m[94m|[0m
+[1m[94m15 |[0m from .config_manager import get_config_manager, set_config, get_config
+[1m[94m16 |[0m from .config_manager import set_lab_storage_root as cfg_set_lab_root
+[1m[94m17 |[0m from .metadata import Colony, Subject, Experiment, Worker, ScanTarget, WorkerProvider, ScanTargetKind
+   [1m[94m|[0m                       [1m[91m^^^^^^[0m
+[1m[94m18 |[0m from .schema import model_to_colony
+   [1m[94m|[0m
+[1m[96mhelp[0m: [1mRemove unused import[0m
+
+[1m[91mF401 [0m[[1m[96m*[0m] [1m`.metadata.Subject` imported but unused[0m
+  [1m[94m-->[0m src/mus1/core/setup_service.py:17:31
+   [1m[94m|[0m
+[1m[94m15 |[0m from .config_manager import get_config_manager, set_config, get_config
+[1m[94m16 |[0m from .config_manager import set_lab_storage_root as cfg_set_lab_root
+[1m[94m17 |[0m from .metadata import Colony, Subject, Experiment, Worker, ScanTarget, WorkerProvider, ScanTargetKind
+   [1m[94m|[0m                               [1m[91m^^^^^^^[0m
+[1m[94m18 |[0m from .schema import model_to_colony
+   [1m[94m|[0m
+[1m[96mhelp[0m: [1mRemove unused import[0m
+
+[1m[91mF401 [0m[[1m[96m*[0m] [1m`.metadata.Experiment` imported but unused[0m
+  [1m[94m-->[0m src/mus1/core/setup_service.py:17:40
+   [1m[94m|[0m
+[1m[94m15 |[0m from .config_manager import get_config_manager, set_config, get_config
+[1m[94m16 |[0m from .config_manager import set_lab_storage_root as cfg_set_lab_root
+[1m[94m17 |[0m from .metadata import Colony, Subject, Experiment, Worker, ScanTarget, WorkerProvider, ScanTargetKind
+   [1m[94m|[0m                                        [1m[91m^^^^^^^^^^[0m
+[1m[94m18 |[0m from .schema import model_to_colony
+   [1m[94m|[0m
+[1m[96mhelp[0m: [1mRemove unused import[0m
+
+[1m[91mF401 [0m[[1m[96m*[0m] [1m`.metadata.Worker` imported but unused[0m
+  [1m[94m-->[0m src/mus1/core/setup_service.py:17:52
+   [1m[94m|[0m
+[1m[94m15 |[0m from .config_manager import get_config_manager, set_config, get_config
+[1m[94m16 |[0m from .config_manager import set_lab_storage_root as cfg_set_lab_root
+[1m[94m17 |[0m from .metadata import Colony, Subject, Experiment, Worker, ScanTarget, WorkerProvider, ScanTargetKind
+   [1m[94m|[0m                                                    [1m[91m^^^^^^[0m
+[1m[94m18 |[0m from .schema import model_to_colony
+   [1m[94m|[0m
+[1m[96mhelp[0m: [1mRemove unused import[0m
+
+[1m[91mF401 [0m[[1m[96m*[0m] [1m`.metadata.ScanTarget` imported but unused[0m
+  [1m[94m-->[0m src/mus1/core/setup_service.py:17:60
+   [1m[94m|[0m
+[1m[94m15 |[0m from .config_manager import get_config_manager, set_config, get_config
+[1m[94m16 |[0m from .config_manager import set_lab_storage_root as cfg_set_lab_root
+[1m[94m17 |[0m from .metadata import Colony, Subject, Experiment, Worker, ScanTarget, WorkerProvider, ScanTargetKind
+   [1m[94m|[0m                                                            [1m[91m^^^^^^^^^^[0m
+[1m[94m18 |[0m from .schema import model_to_colony
+   [1m[94m|[0m
+[1m[96mhelp[0m: [1mRemove unused import[0m
+
+[1m[91mF401 [0m[[1m[96m*[0m] [1m`.metadata.WorkerProvider` imported but unused[0m
+  [1m[94m-->[0m src/mus1/core/setup_service.py:17:72
+   [1m[94m|[0m
+[1m[94m15 |[0m from .config_manager import get_config_manager, set_config, get_config
+[1m[94m16 |[0m from .config_manager import set_lab_storage_root as cfg_set_lab_root
+[1m[94m17 |[0m from .metadata import Colony, Subject, Experiment, Worker, ScanTarget, WorkerProvider, ScanTargetKind
+   [1m[94m|[0m                                                                        [1m[91m^^^^^^^^^^^^^^[0m
+[1m[94m18 |[0m from .schema import model_to_colony
+   [1m[94m|[0m
+[1m[96mhelp[0m: [1mRemove unused import[0m
+
+[1m[91mF401 [0m[[1m[96m*[0m] [1m`.metadata.ScanTargetKind` imported but unused[0m
+  [1m[94m-->[0m src/mus1/core/setup_service.py:17:88
+   [1m[94m|[0m
+[1m[94m15 |[0m from .config_manager import get_config_manager, set_config, get_config
+[1m[94m16 |[0m from .config_manager import set_lab_storage_root as cfg_set_lab_root
+[1m[94m17 |[0m from .metadata import Colony, Subject, Experiment, Worker, ScanTarget, WorkerProvider, ScanTargetKind
+   [1m[94m|[0m                                                                                        [1m[91m^^^^^^^^^^^^^^[0m
+[1m[94m18 |[0m from .schema import model_to_colony
+   [1m[94m|[0m
+[1m[96mhelp[0m: [1mRemove unused import[0m
+
+[1m[91mF821 [0m[1mUndefined name `result`[0m
+   [1m[94m-->[0m src/mus1/core/setup_service.py:299:17
+    [1m[94m|[0m
+[1m[94m297 |[0m             # Add warnings to result if any
+[1m[94m298 |[0m             if warning_messages:
+[1m[94m299 |[0m                 result["warnings"] = warning_messages
+    [1m[94m|[0m                 [1m[91m^^^^^^[0m
+[1m[94m300 |[0m
+[1m[94m301 |[0m         except Exception as e:
+    [1m[94m|[0m
+
+[1m[91mF821 [0m[1mUndefined name `result`[0m
+   [1m[94m-->[0m src/mus1/core/setup_service.py:303:13
+    [1m[94m|[0m
+[1m[94m301 |[0m         except Exception as e:
+[1m[94m302 |[0m             # Non-fatal; root pointer is best-effort
+[1m[94m303 |[0m             result["warnings"] = result.get("warnings", []) + [f"Failed to update root pointer: {e}"]
+    [1m[94m|[0m             [1m[91m^^^^^^[0m
+[1m[94m304 |[0m
+[1m[94m305 |[0m         return {
+    [1m[94m|[0m
+
+[1m[91mF821 [0m[1mUndefined name `result`[0m
+   [1m[94m-->[0m src/mus1/core/setup_service.py:303:34
+    [1m[94m|[0m
+[1m[94m301 |[0m         except Exception as e:
+[1m[94m302 |[0m             # Non-fatal; root pointer is best-effort
+[1m[94m303 |[0m             result["warnings"] = result.get("warnings", []) + [f"Failed to update root pointer: {e}"]
+    [1m[94m|[0m                                  [1m[91m^^^^^^[0m
+[1m[94m304 |[0m
+[1m[94m305 |[0m         return {
+    [1m[94m|[0m
+
+[1m[91mF401 [0m[[1m[96m*[0m] [1m`.schema.Database` imported but unused[0m
+   [1m[94m-->[0m src/mus1/core/setup_service.py:720:29
+    [1m[94m|[0m
+[1m[94m718 |[0m         # Create Lab entity in SQL database
+[1m[94m719 |[0m         from .metadata import Lab
+[1m[94m720 |[0m         from .schema import Database
+    [1m[94m|[0m                             [1m[91m^^^^^^^^[0m
+[1m[94m721 |[0m         from .repository import get_repository_factory
+    [1m[94m|[0m
+[1m[96mhelp[0m: [1mRemove unused import: `.schema.Database`[0m
+
+[1m[91mF811 [0m[[1m[96m*[0m] [1mRedefinition of unused `Colony` from line 17[0m
+   [1m[94m-->[0m src/mus1/core/setup_service.py:777:31
+    [1m[94m|[0m
+[1m[94m776 |[0m         # Create Colony entity in SQL database
+[1m[94m777 |[0m         from .metadata import Colony
+    [1m[94m|[0m                               [1m[91m^^^^^^[0m [1m[91m`Colony` redefined here[0m
+[1m[94m778 |[0m         colony_entity = Colony(
+[1m[94m779 |[0m             id=colony_dto.id,
+    [1m[94m|[0m
+   [1m[94m:::[0m src/mus1/core/setup_service.py:17:23
+    [1m[94m|[0m
+[1m[94m 15 |[0m from .config_manager import get_config_manager, set_config, get_config
+[1m[94m 16 |[0m from .config_manager import set_lab_storage_root as cfg_set_lab_root
+[1m[94m 17 |[0m from .metadata import Colony, Subject, Experiment, Worker, ScanTarget, WorkerProvider, ScanTargetKind
+    [1m[94m|[0m                       [1m[33m------[0m [1m[33mprevious definition of `Colony` here[0m
+[1m[94m 18 |[0m from .schema import model_to_colony
+    [1m[94m|[0m
+[1m[96mhelp[0m: [1mRemove definition: `Colony`[0m
+
+[1m[91mF841 [0m[1mLocal variable `repo_factory` is assigned to but never used[0m
+    [1m[94m-->[0m src/mus1/core/setup_service.py:1258:9
+     [1m[94m|[0m
+[1m[94m1257 |[0m         db = self._get_database()
+[1m[94m1258 |[0m         repo_factory = get_repository_factory(db)
+     [1m[94m|[0m         [1m[91m^^^^^^^^^^^^[0m
+[1m[94m1259 |[0m
+[1m[94m1260 |[0m         # Remove project association
+     [1m[94m|[0m
+[1m[96mhelp[0m: [1mRemove assignment to unused variable `repo_factory`[0m
+
+[1m[91mF401 [0m[[1m[96m*[0m] [1m`typing.List` imported but unused[0m
+  [1m[94m-->[0m src/mus1/core/simple_cli.py:9:30
+   [1m[94m|[0m
+[1m[94m 7 |[0m from __future__ import annotations
+[1m[94m 8 |[0m from pathlib import Path
+[1m[94m 9 |[0m from typing import Optional, List
+   [1m[94m|[0m                              [1m[91m^^^^[0m
+[1m[94m10 |[0m import typer
+[1m[94m11 |[0m from rich import print as rich_print
+   [1m[94m|[0m
+[1m[96mhelp[0m: [1mRemove unused import: `typing.List`[0m
+
+[1m[91mF401 [0m[[1m[96m*[0m] [1m`rich.text.Text` imported but unused[0m
+  [1m[94m-->[0m src/mus1/core/simple_cli.py:15:23
+   [1m[94m|[0m
+[1m[94m13 |[0m from rich.table import Table
+[1m[94m14 |[0m from rich.panel import Panel
+[1m[94m15 |[0m from rich.text import Text
+   [1m[94m|[0m                       [1m[91m^^^^[0m
+[1m[94m16 |[0m import json
+[1m[94m17 |[0m import platform
+   [1m[94m|[0m
+[1m[96mhelp[0m: [1mRemove unused import: `rich.text.Text`[0m
+
+[1m[91mF401 [0m[[1m[96m*[0m] [1m`datetime.datetime` imported but unused[0m
+  [1m[94m-->[0m src/mus1/core/simple_cli.py:18:22
+   [1m[94m|[0m
+[1m[94m16 |[0m import json
+[1m[94m17 |[0m import platform
+[1m[94m18 |[0m from datetime import datetime
+   [1m[94m|[0m                      [1m[91m^^^^^^^^[0m
+[1m[94m19 |[0m
+[1m[94m20 |[0m from .metadata import ProjectConfig, SubjectDTO, ExperimentDTO, ColonyDTO, Colony, Worker, ScanTarget, WorkerProvider, ScanTargetKind,[1m[94m…[0m
+   [1m[94m|[0m
+[1m[96mhelp[0m: [1mRemove unused import: `datetime.datetime`[0m
+
+[1m[91mF401 [0m[[1m[96m*[0m] [1m`.metadata.Colony` imported but unused[0m
+  [1m[94m-->[0m src/mus1/core/simple_cli.py:20:76
+   [1m[94m|[0m
+[1m[94m18 |[0m from datetime import datetime
+[1m[94m19 |[0m
+[1m[94m20 |[0m from .metadata import ProjectConfig, SubjectDTO, ExperimentDTO, ColonyDTO, Colony, Worker, ScanTarget, WorkerProvider, ScanTargetKind,[1m[94m…[0m
+   [1m[94m|[0m                                                                            [1m[91m^^^^^^[0m
+[1m[94m21 |[0m from .config_manager import get_config_manager, set_config, get_config
+[1m[94m22 |[0m from .repository import ColonyRepository, SubjectRepository, ExperimentRepository
+   [1m[94m|[0m
+[1m[96mhelp[0m: [1mRemove unused import[0m
+
+[1m[91mF401 [0m[[1m[96m*[0m] [1m`.metadata.Worker` imported but unused[0m
+  [1m[94m-->[0m src/mus1/core/simple_cli.py:20:84
+   [1m[94m|[0m
+[1m[94m18 |[0m from datetime import datetime
+[1m[94m19 |[0m
+[1m[94m20 |[0m from .metadata import ProjectConfig, SubjectDTO, ExperimentDTO, ColonyDTO, Colony, Worker, ScanTarget, WorkerProvider, ScanTargetKind,[1m[94m…[0m
+   [1m[94m|[0m                                                                                    [1m[91m^^^^^^[0m
+[1m[94m21 |[0m from .config_manager import get_config_manager, set_config, get_config
+[1m[94m22 |[0m from .repository import ColonyRepository, SubjectRepository, ExperimentRepository
+   [1m[94m|[0m
+[1m[96mhelp[0m: [1mRemove unused import[0m
+
+[1m[91mF401 [0m[[1m[96m*[0m] [1m`.metadata.ScanTarget` imported but unused[0m
+  [1m[94m-->[0m src/mus1/core/simple_cli.py:20:92
+   [1m[94m|[0m
+[1m[94m18 |[0m from datetime import datetime
+[1m[94m19 |[0m
+[1m[94m20 |[0m from .metadata import ProjectConfig, SubjectDTO, ExperimentDTO, ColonyDTO, Colony, Worker, ScanTarget, WorkerProvider, ScanTargetKind,[1m[94m…[0m
+   [1m[94m|[0m                                                                                            [1m[91m^^^^^^^^^^[0m
+[1m[94m21 |[0m from .config_manager import get_config_manager, set_config, get_config
+[1m[94m22 |[0m from .repository import ColonyRepository, SubjectRepository, ExperimentRepository
+   [1m[94m|[0m
+[1m[96mhelp[0m: [1mRemove unused import[0m
+
+[1m[91mF401 [0m[[1m[96m*[0m] [1m`.metadata.WorkerProvider` imported but unused[0m
+  [1m[94m-->[0m src/mus1/core/simple_cli.py:20:104
+   [1m[94m|[0m
+[1m[94m18 |[0m from datetime import datetime
+[1m[94m19 |[0m
+[1m[94m20 |[0m from .metadata import ProjectConfig, SubjectDTO, ExperimentDTO, ColonyDTO, Colony, Worker, ScanTarget, WorkerProvider, ScanTargetKind,[1m[94m…[0m
+   [1m[94m|[0m                                                                                                        [1m[91m^^^^^^^^^^^^^^[0m
+[1m[94m21 |[0m from .config_manager import get_config_manager, set_config, get_config
+[1m[94m22 |[0m from .repository import ColonyRepository, SubjectRepository, ExperimentRepository
+   [1m[94m|[0m
+[1m[96mhelp[0m: [1mRemove unused import[0m
+
+[1m[91mF401 [0m[[1m[96m*[0m] [1m`.metadata.ScanTargetKind` imported but unused[0m
+  [1m[94m-->[0m src/mus1/core/simple_cli.py:20:120
+   [1m[94m|[0m
+[1m[94m18 |[0m [1m[94m…[0m
+[1m[94m19 |[0m [1m[94m…[0m
+[1m[94m20 |[0m [1m[94m…[0mTO, ColonyDTO, Colony, Worker, ScanTarget, WorkerProvider, ScanTargetKind, LabDTO
+   [1m[94m|[0m                                                             [1m[91m^^^^^^^^^^^^^^[0m
+[1m[94m21 |[0m [1m[94m…[0mget_config
+[1m[94m22 |[0m [1m[94m…[0m ExperimentRepository
+   [1m[94m|[0m
+[1m[96mhelp[0m: [1mRemove unused import[0m
+
+[1m[91mF401 [0m[[1m[96m*[0m] [1m`.config_manager.set_config` imported but unused[0m
+  [1m[94m-->[0m src/mus1/core/simple_cli.py:21:49
+   [1m[94m|[0m
+[1m[94m20 |[0m from .metadata import ProjectConfig, SubjectDTO, ExperimentDTO, ColonyDTO, Colony, Worker, ScanTarget, WorkerProvider, ScanTargetKind,[1m[94m…[0m
+[1m[94m21 |[0m from .config_manager import get_config_manager, set_config, get_config
+   [1m[94m|[0m                                                 [1m[91m^^^^^^^^^^[0m
+[1m[94m22 |[0m from .repository import ColonyRepository, SubjectRepository, ExperimentRepository
+[1m[94m23 |[0m from .schema import Database
+   [1m[94m|[0m
+[1m[96mhelp[0m: [1mRemove unused import: `.config_manager.set_config`[0m
+
+[1m[91mF401 [0m[[1m[96m*[0m] [1m`.repository.ColonyRepository` imported but unused[0m
+  [1m[94m-->[0m src/mus1/core/simple_cli.py:22:25
+   [1m[94m|[0m
+[1m[94m20 |[0m from .metadata import ProjectConfig, SubjectDTO, ExperimentDTO, ColonyDTO, Colony, Worker, ScanTarget, WorkerProvider, ScanTargetKind,[1m[94m…[0m
+[1m[94m21 |[0m from .config_manager import get_config_manager, set_config, get_config
+[1m[94m22 |[0m from .repository import ColonyRepository, SubjectRepository, ExperimentRepository
+   [1m[94m|[0m                         [1m[91m^^^^^^^^^^^^^^^^[0m
+[1m[94m23 |[0m from .schema import Database
+[1m[94m24 |[0m from .setup_service import (
+   [1m[94m|[0m
+[1m[96mhelp[0m: [1mRemove unused import: `.repository.ColonyRepository`[0m
+
+[1m[91mF401 [0m[[1m[96m*[0m] [1m`.setup_service.SetupService` imported but unused[0m
+  [1m[94m-->[0m src/mus1/core/simple_cli.py:25:5
+   [1m[94m|[0m
+[1m[94m23 |[0m from .schema import Database
+[1m[94m24 |[0m from .setup_service import (
+[1m[94m25 |[0m     SetupService, SetupStatusDTO, get_setup_service, MUS1RootLocationDTO,
+   [1m[94m|[0m     [1m[91m^^^^^^^^^^^^[0m
+[1m[94m26 |[0m     UserProfileDTO, SharedStorageDTO
+[1m[94m27 |[0m )
+   [1m[94m|[0m
+[1m[96mhelp[0m: [1mRemove unused import[0m
+
+[1m[91mF401 [0m[[1m[96m*[0m] [1m`.setup_service.SetupStatusDTO` imported but unused[0m
+  [1m[94m-->[0m src/mus1/core/simple_cli.py:25:19
+   [1m[94m|[0m
+[1m[94m23 |[0m from .schema import Database
+[1m[94m24 |[0m from .setup_service import (
+[1m[94m25 |[0m     SetupService, SetupStatusDTO, get_setup_service, MUS1RootLocationDTO,
+   [1m[94m|[0m                   [1m[91m^^^^^^^^^^^^^^[0m
+[1m[94m26 |[0m     UserProfileDTO, SharedStorageDTO
+[1m[94m27 |[0m )
+   [1m[94m|[0m
+[1m[96mhelp[0m: [1mRemove unused import[0m
+
+[1m[91mF401 [0m[[1m[96m*[0m] [1m`sys` imported but unused[0m
+  [1m[94m-->[0m src/mus1/core/simple_cli.py:63:20
+   [1m[94m|[0m
+[1m[94m61 |[0m         # Launch GUI with setup flag if requested
+[1m[94m62 |[0m         if setup:
+[1m[94m63 |[0m             import sys
+   [1m[94m|[0m                    [1m[91m^^^[0m
+[1m[94m64 |[0m             import os
+[1m[94m65 |[0m             # Set environment variable or modify sys.argv to pass setup flag to GUI
+   [1m[94m|[0m
+[1m[96mhelp[0m: [1mRemove unused import: `sys`[0m
+
+[1m[91mF841 [0m[1mLocal variable `config_manager` is assigned to but never used[0m
+  [1m[94m-->[0m src/mus1/core/simple_cli.py:91:5
+   [1m[94m|[0m
+[1m[94m89 |[0m ):
+[1m[94m90 |[0m     """Initialize a new MUS1 project with lab association and shared storage support."""
+[1m[94m91 |[0m     config_manager = get_config_manager()
+   [1m[94m|[0m     [1m[91m^^^^^^^^^^^^^^[0m
+[1m[94m92 |[0m
+[1m[94m93 |[0m     # Determine project path
+   [1m[94m|[0m
+[1m[96mhelp[0m: [1mRemove assignment to unused variable `config_manager`[0m
+
+[1m[91mF841 [0m[1mLocal variable `config_manager` is assigned to but never used[0m
+   [1m[94m-->[0m src/mus1/core/simple_cli.py:183:5
+    [1m[94m|[0m
+[1m[94m181 |[0m def list_projects():
+[1m[94m182 |[0m     """List all MUS1 projects from configured locations."""
+[1m[94m183 |[0m     config_manager = get_config_manager()
+    [1m[94m|[0m     [1m[91m^^^^^^^^^^^^^^[0m
+[1m[94m184 |[0m
+[1m[94m185 |[0m     # Get projects from user configuration
+    [1m[94m|[0m
+[1m[96mhelp[0m: [1mRemove assignment to unused variable `config_manager`[0m
+
+[1m[91mF811 [0m[[1m[96m*[0m] [1mRedefinition of unused `datetime` from line 18[0m
+   [1m[94m-->[0m src/mus1/core/simple_cli.py:381:26
+    [1m[94m|[0m
+[1m[94m379 |[0m ):
+[1m[94m380 |[0m     """Add an experiment to the project."""
+[1m[94m381 |[0m     from datetime import datetime
+    [1m[94m|[0m                          [1m[91m^^^^^^^^[0m [1m[91m`datetime` redefined here[0m
+[1m[94m382 |[0m
+[1m[94m383 |[0m     # Parse date
+    [1m[94m|[0m
+   [1m[94m:::[0m src/mus1/core/simple_cli.py:18:22
+    [1m[94m|[0m
+[1m[94m 16 |[0m import json
+[1m[94m 17 |[0m import platform
+[1m[94m 18 |[0m from datetime import datetime
+    [1m[94m|[0m                      [1m[33m--------[0m [1m[33mprevious definition of `datetime` here[0m
+[1m[94m 19 |[0m
+[1m[94m 20 |[0m from .metadata import ProjectConfig, SubjectDTO, ExperimentDTO, ColonyDTO, Colony, Worker, ScanTarget, WorkerProvider, ScanTargetKind,[1m[94m…[0m
+    [1m[94m|[0m
+[1m[96mhelp[0m: [1mRemove definition: `datetime`[0m
+
+[1m[91mF401 [0m[[1m[96m*[0m] [1m`.metadata.ProcessingStage` imported but unused[0m
+   [1m[94m-->[0m src/mus1/core/simple_cli.py:408:39
+    [1m[94m|[0m
+[1m[94m407 |[0m     # Convert DTO to domain object
+[1m[94m408 |[0m     from .metadata import Experiment, ProcessingStage
+    [1m[94m|[0m                                       [1m[91m^^^^^^^^^^^^^^^[0m
+[1m[94m409 |[0m     experiment_domain = Experiment(
+[1m[94m410 |[0m         id=experiment_dto.id,
+    [1m[94m|[0m
+[1m[96mhelp[0m: [1mRemove unused import: `.metadata.ProcessingStage`[0m
+
+[1m[91mF401 [0m[[1m[96m*[0m] [1m`.metadata.User` imported but unused[0m
+   [1m[94m-->[0m src/mus1/core/simple_cli.py:913:31
+    [1m[94m|[0m
+[1m[94m911 |[0m     if create_lab_now:
+[1m[94m912 |[0m         from .setup_service import LabDTO
+[1m[94m913 |[0m         from .metadata import User
+    [1m[94m|[0m                               [1m[91m^^^^[0m
+[1m[94m914 |[0m
+[1m[94m915 |[0m         lab_id = Prompt.ask("Enter lab identifier (e.g., 'copperlab')", default="mylab")
+    [1m[94m|[0m
+[1m[96mhelp[0m: [1mRemove unused import: `.metadata.User`[0m
+
+Found 86 errors.
+[[36m*[0m] 51 fixable with the `--fix` option (4 hidden fixes can be enabled with the `--unsafe-fixes` option).

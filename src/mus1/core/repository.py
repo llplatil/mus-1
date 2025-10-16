@@ -12,6 +12,7 @@ from .metadata import Subject, Experiment, VideoFile, Worker, ScanTarget
 from .schema import (
     Database, SubjectModel, ExperimentModel, VideoModel,
     WorkerModel, ScanTargetModel, ProjectModel, ColonyModel,
+    TrackedObjectModel, BodyPartModel, TreatmentModel, GenotypeModel,
     subject_to_model, model_to_subject,
     experiment_to_model, model_to_experiment,
     colony_to_model, model_to_colony
@@ -214,6 +215,57 @@ class ExperimentRepository(BaseRepository):
             ).delete()
             session.commit()
             return result > 0
+
+    def add_video_to_experiment(self, experiment_id: str, video_id: int) -> bool:
+        """Add a video to an experiment (many-to-many relationship)."""
+        with self._get_session() as session:
+            # Check if association already exists
+            existing = session.execute(text("""
+                SELECT 1 FROM experiment_videos
+                WHERE experiment_id = :exp_id AND video_id = :vid_id
+            """), {"exp_id": experiment_id, "vid_id": video_id}).first()
+
+            if existing:
+                return True  # Already associated
+
+            # Create association
+            session.execute(text("""
+                INSERT INTO experiment_videos (experiment_id, video_id)
+                VALUES (:exp_id, :vid_id)
+            """), {"exp_id": experiment_id, "vid_id": video_id})
+            session.commit()
+            return True
+
+    def remove_video_from_experiment(self, experiment_id: str, video_id: int) -> bool:
+        """Remove a video from an experiment."""
+        with self._get_session() as session:
+            result = session.execute(text("""
+                DELETE FROM experiment_videos
+                WHERE experiment_id = :exp_id AND video_id = :vid_id
+            """), {"exp_id": experiment_id, "vid_id": video_id})
+            session.commit()
+            return result.rowcount > 0
+
+    def get_videos_for_experiment(self, experiment_id: str) -> List[VideoFile]:
+        """Get all videos associated with an experiment."""
+        with self._get_session() as session:
+            result = session.execute(text("""
+                SELECT v.* FROM videos v
+                JOIN experiment_videos ev ON v.id = ev.video_id
+                WHERE ev.experiment_id = :experiment_id
+            """), {"experiment_id": experiment_id})
+
+            videos = []
+            for row in result:
+                videos.append(VideoFile(
+                    path=Path(row.path),
+                    hash=row.hash,
+                    recorded_time=row.recorded_time,
+                    size_bytes=row.size_bytes,
+                    last_modified=row.last_modified,
+                    date_added=row.date_added
+                ))
+            return videos
 
 
 class VideoRepository(BaseRepository):
@@ -675,6 +727,89 @@ class LabRepository(BaseRepository):
             return targets
 
 # ===========================================
+# METADATA REPOSITORIES
+# ===========================================
+
+class MetadataRepository(BaseRepository):
+    """Base repository for metadata items."""
+
+    def __init__(self, db: Database, model_class):
+        super().__init__(db)
+        self.model_class = model_class
+
+    def get_all(self) -> List[str]:
+        """Get all metadata item names."""
+        with self._get_session() as session:
+            items = session.query(self.model_class).all()
+            return [item.name for item in items]
+
+    def get_by_lab(self, lab_id: str) -> List[str]:
+        """Get metadata items for a specific lab."""
+        with self._get_session() as session:
+            items = session.query(self.model_class).filter(
+                self.model_class.lab_id == lab_id
+            ).all()
+            return [item.name for item in items]
+
+    def add(self, name: str, lab_id: Optional[str] = None) -> bool:
+        """Add a new metadata item."""
+        if not name or not name.strip():
+            return False
+
+        name = name.strip()
+        with self._get_session() as session:
+            # Check if it already exists
+            existing = session.query(self.model_class).filter(
+                self.model_class.name == name
+            ).first()
+            if existing:
+                return True  # Already exists
+
+            # Create new item
+            item = self.model_class(name=name, lab_id=lab_id)
+            session.add(item)
+            session.commit()
+            return True
+
+    def remove(self, name: str) -> bool:
+        """Remove a metadata item."""
+        with self._get_session() as session:
+            result = session.query(self.model_class).filter(
+                self.model_class.name == name
+            ).delete()
+            session.commit()
+            return result > 0
+
+
+class TrackedObjectRepository(MetadataRepository):
+    """Repository for tracked objects."""
+
+    def __init__(self, db: Database):
+        super().__init__(db, TrackedObjectModel)
+
+
+class BodyPartRepository(MetadataRepository):
+    """Repository for body parts."""
+
+    def __init__(self, db: Database):
+        super().__init__(db, BodyPartModel)
+
+
+class TreatmentRepository(MetadataRepository):
+    """Repository for treatments."""
+
+    def __init__(self, db: Database):
+        super().__init__(db, TreatmentModel)
+
+
+class GenotypeRepository(MetadataRepository):
+    """Repository for genotypes."""
+
+    def __init__(self, db: Database):
+        super().__init__(db, GenotypeModel)
+
+
+# ===========================================
 # REPOSITORY FACTORY
 # ===========================================
 
@@ -691,6 +826,11 @@ class RepositoryFactory:
         self._videos: Optional[VideoRepository] = None
         self._workers: Optional[WorkerRepository] = None
         self._scan_targets: Optional[ScanTargetRepository] = None
+        # Metadata repositories
+        self._tracked_objects: Optional[TrackedObjectRepository] = None
+        self._body_parts: Optional[BodyPartRepository] = None
+        self._treatments: Optional[TreatmentRepository] = None
+        self._genotypes: Optional[GenotypeRepository] = None
 
     @property
     def users(self) -> UserRepository:
@@ -739,6 +879,30 @@ class RepositoryFactory:
         if self._scan_targets is None:
             self._scan_targets = ScanTargetRepository(self.db)
         return self._scan_targets
+
+    @property
+    def tracked_objects(self) -> TrackedObjectRepository:
+        if self._tracked_objects is None:
+            self._tracked_objects = TrackedObjectRepository(self.db)
+        return self._tracked_objects
+
+    @property
+    def body_parts(self) -> BodyPartRepository:
+        if self._body_parts is None:
+            self._body_parts = BodyPartRepository(self.db)
+        return self._body_parts
+
+    @property
+    def treatments(self) -> TreatmentRepository:
+        if self._treatments is None:
+            self._treatments = TreatmentRepository(self.db)
+        return self._treatments
+
+    @property
+    def genotypes(self) -> GenotypeRepository:
+        if self._genotypes is None:
+            self._genotypes = GenotypeRepository(self.db)
+        return self._genotypes
 
 # Convenience function expected by callers
 def get_repository_factory(db: Database) -> "RepositoryFactory":
