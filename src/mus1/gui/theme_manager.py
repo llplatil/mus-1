@@ -20,7 +20,7 @@ import re
 from typing import Optional
 from ..core.config_manager import ConfigManager
 
-logger = logging.getLogger("mus1.gui.theme_manager")
+logger = logging.getLogger(__name__)
 
 class ThemeManager:
     def __init__(self, config_manager: Optional[ConfigManager] = None):

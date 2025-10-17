@@ -236,6 +236,29 @@ class ExperimentRepository(BaseRepository):
             session.commit()
             return True
 
+    def add_video_to_experiment_by_path(self, experiment_id: str, video_path: Path) -> bool:
+        """Add a video to an experiment by resolving the video id from its path."""
+        with self._get_session() as session:
+            row = session.execute(text("""
+                SELECT id FROM videos WHERE path = :path
+            """), {"path": str(video_path)}).first()
+            if not row:
+                return False
+            video_id = row[0]
+            # Reuse existing helper for association
+            existing = session.execute(text("""
+                SELECT 1 FROM experiment_videos
+                WHERE experiment_id = :exp_id AND video_id = :vid_id
+            """), {"exp_id": experiment_id, "vid_id": video_id}).first()
+            if existing:
+                return True
+            session.execute(text("""
+                INSERT INTO experiment_videos (experiment_id, video_id)
+                VALUES (:exp_id, :vid_id)
+            """), {"exp_id": experiment_id, "vid_id": video_id})
+            session.commit()
+            return True
+
     def remove_video_from_experiment(self, experiment_id: str, video_id: int) -> bool:
         """Remove a video from an experiment."""
         with self._get_session() as session:
@@ -266,6 +289,18 @@ class ExperimentRepository(BaseRepository):
                     date_added=row.date_added
                 ))
             return videos
+
+    def is_video_associated(self, experiment_id: str, video_path: Path) -> bool:
+        """Check whether a video (by path) is already associated with an experiment."""
+        with self._get_session() as session:
+            row = session.execute(text("""
+                SELECT 1
+                FROM experiment_videos ev
+                JOIN videos v ON v.id = ev.video_id
+                WHERE ev.experiment_id = :exp_id AND v.path = :path
+                LIMIT 1
+            """), {"exp_id": experiment_id, "path": str(video_path)}).first()
+            return row is not None
 
 
 class VideoRepository(BaseRepository):
@@ -690,41 +725,8 @@ class LabRepository(BaseRepository):
                 ))
             return workers
 
-    def attach_scan_target(self, lab_id: str, scan_target_id: int) -> None:
-        from .schema import LabScanTargetModel
-        with self._get_session() as session:
-            record = LabScanTargetModel(lab_id=lab_id, scan_target_id=scan_target_id)
-            session.merge(record)
-            session.commit()
-
-    def detach_scan_target(self, lab_id: str, scan_target_id: int) -> bool:
-        from .schema import LabScanTargetModel
-        with self._get_session() as session:
-            result = session.query(LabScanTargetModel).filter(
-                LabScanTargetModel.lab_id == lab_id,
-                LabScanTargetModel.scan_target_id == scan_target_id
-            ).delete()
-            session.commit()
-            return result > 0
-
-    def get_scan_targets(self, lab_id: str) -> List['ScanTarget']:
-        from .schema import LabScanTargetModel, ScanTargetModel
-        from .metadata import ScanTarget, ScanTargetKind
-        import json
-        from pathlib import Path
-        with self._get_session() as session:
-            rows = session.query(ScanTargetModel).join(
-                LabScanTargetModel, LabScanTargetModel.scan_target_id == ScanTargetModel.id
-            ).filter(LabScanTargetModel.lab_id == lab_id).all()
-            targets = []
-            for t in rows:
-                targets.append(ScanTarget(
-                    name=t.name,
-                    kind=ScanTargetKind(t.kind),
-                    roots=[Path(p) for p in json.loads(t.roots)],
-                    ssh_alias=t.ssh_alias
-                ))
-            return targets
+# Removed: attach_scan_target, detach_scan_target, get_scan_targets
+# These were part of over-complex scan target association features
 
 # ===========================================
 # METADATA REPOSITORIES
@@ -825,7 +827,7 @@ class RepositoryFactory:
         self._experiments: Optional[ExperimentRepository] = None
         self._videos: Optional[VideoRepository] = None
         self._workers: Optional[WorkerRepository] = None
-        self._scan_targets: Optional[ScanTargetRepository] = None
+# Removed: _scan_targets (part of scan target functionality)
         # Metadata repositories
         self._tracked_objects: Optional[TrackedObjectRepository] = None
         self._body_parts: Optional[BodyPartRepository] = None
@@ -875,10 +877,7 @@ class RepositoryFactory:
         return self._workers
 
     @property
-    def scan_targets(self) -> ScanTargetRepository:
-        if self._scan_targets is None:
-            self._scan_targets = ScanTargetRepository(self.db)
-        return self._scan_targets
+# Removed: scan_targets() method (part of scan target functionality)
 
     @property
     def tracked_objects(self) -> TrackedObjectRepository:

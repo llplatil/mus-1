@@ -91,12 +91,12 @@ def init_project(
     # Determine project path
     if not path:
         if use_shared or shared_root:
-            # Use shared storage
-            shared_path = shared_root or Path(get_config("storage.shared_root", "/Volumes"))
-            if not shared_path:
-                rich_print("[red]✗[/red] No shared storage configured. Run 'mus1 setup shared' first or specify --shared-root")
-                raise typer.Exit(1)
-            project_path = shared_path / "Projects" / name
+            # Use provided shared_root explicitly (dev convenience); otherwise fall back to default user projects dir
+            if shared_root:
+                project_path = shared_root / "Projects" / name
+            else:
+                default_dir = get_config("user.default_projects_dir", str(Path.home() / "Documents" / "MUS1" / "Projects"))
+                project_path = Path(default_dir) / name
         else:
             # Use default user projects directory
             default_dir = get_config("user.default_projects_dir", str(Path.home() / "Documents" / "MUS1" / "Projects"))
@@ -138,7 +138,7 @@ def init_project(
     # Create project configuration
     config = ProjectConfig(
         name=name,
-        shared_root=shared_root or (Path(get_config("storage.shared_root")) if use_shared else None),
+        shared_root=shared_root if use_shared else None,
         lab_id=lab_id
     )
 
@@ -196,17 +196,16 @@ def list_projects():
                 "source": "lab_config"
             })
 
-    # Also scan for projects in default locations
+    # Also scan user default projects directory
     default_dirs = [
-        get_config("user.default_projects_dir", str(Path.home() / "Documents" / "MUS1" / "Projects")),
-        get_config("storage.shared_root", None)
+        get_config("user.default_projects_dir", str(Path.home() / "Documents" / "MUS1" / "Projects"))
     ]
 
     for dir_path in default_dirs:
         if dir_path:
             dir_path = Path(dir_path)
             if dir_path.exists():
-                projects_dir = dir_path / "Projects" if "shared_root" in str(dir_path) else dir_path
+                projects_dir = dir_path
                 if projects_dir.exists():
                     for item in projects_dir.iterdir():
                         if item.is_dir() and (item / "mus1.db").exists():
@@ -976,6 +975,39 @@ def setup_wizard():
 
     rich_print("\n[blue]ℹ[/blue] Configuration saved to: ~/Library/Application Support/mus1/config.db")
     rich_print("[blue]ℹ[/blue] You can always reconfigure with 'mus1 setup wizard --force'")
+
+
+@setup_app.command("migrate")
+def setup_migrate():
+    """Migrate legacy configurations to simplified architecture."""
+    setup_service = get_setup_service()
+
+    rich_print("[blue]ℹ[/blue] Checking for legacy configurations to migrate...")
+    results = setup_service.migrate_legacy_configurations()
+
+    if results.get("success"):
+        rich_print("[green]✓[/green] Migration completed successfully!")
+
+        if results.get("migrated"):
+            rich_print("\n[blue]Migrated configurations:[/blue]")
+            for item in results["migrated"]:
+                rich_print(f"  • {item}")
+
+        if results.get("warnings"):
+            rich_print("\n[yellow]⚠ Warnings:[/yellow]")
+            for warning in results["warnings"]:
+                rich_print(f"  • {warning}")
+
+        if results.get("removed_features"):
+            rich_print("\n[orange]Removed features (expected):[/orange]")
+            for feature in results["removed_features"]:
+                rich_print(f"  • {feature}")
+
+    else:
+        rich_print("[red]✗[/red] Migration failed!")
+        for error in results.get("errors", []):
+            rich_print(f"  • {error}")
+        sys.exit(1)
 
 
 # ===========================================

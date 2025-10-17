@@ -1,45 +1,84 @@
-# MUS1 Clean Architecture — Current State (authoritative)
+# MUS1 Simplified Architecture — Current State (authoritative)
 
-This document describes the current MUS1 clean architecture implementation.
+This document describes the current MUS1 simplified architecture implementation with clean lab-based collaboration.
 
 ## Architecture Overview
 
-MUS1 uses clean architecture principles with clear separation of concerns and layered design.
+MUS1 uses a simplified architecture focused on two primary user workflows:
+1. **Local Projects**: Individual researchers working with projects on their local machine
+2. **Lab Collaboration**: Teams collaborating through shared lab storage and member management
+
+The architecture eliminates complex precedence chains, peer-hosted modes, and workgroup concepts in favor of simple, predictable behavior.
   
 ## 🎯 HOW IT WORKS
 
-### Clean Architecture Data Flow
+### Simplified Architecture Data Flow
 ```
 User Input → Presentation Layer → Service Layer → Domain Layer → Repository Layer → Infrastructure Layer → Output
 
-Presentation: main_window.py, simple_cli.py
+Presentation: main_window.py, simple_cli.py, setup_wizard.py (3-page simplified)
 Service: project_discovery_service.py, setup_service.py, project_manager_clean.py
 Domain: metadata.py entities + repository.py patterns
 Infrastructure: schema.py models + config_manager.py settings
 ```
 
-### Example: Complete Project Discovery Workflow
+### Core Design Principles
+
+1. **Two User Paths**: Local-only or Lab collaboration (no complex hybrid modes)
+2. **Simple Storage**: Lab storage root or local user directory (no precedence chains)
+3. **Clean Sharing**: Enable/disable lab sharing with online status checks
+4. **Plugin-Based Extension**: Cross-lab project movement via importer plugins
+
+### Definitions (Authoritative)
+
+- **Lab**: Named collaborative scope that owns projects and a single optional Lab Shared Root. Represented by `LabDTO`.
+- **Local mode**: No lab selected; projects live under the user’s `user.default_projects_dir`.
+- **Project**: A directory containing `mus1.db`. A project is either lab-registered or local; there is no storage precedence computation.
+- **Lab Shared Root**: One folder per lab for collaborative storage. No global precedence with user directories.
+- **Worker**: Compute agent (SSH/WSL) registered under a lab and used only within that lab.
+- **Project discovery**: Lab-registered projects (authoritative) + filesystem scan of the user default projects directory for local projects.
+- **Configuration**: Single SQLite-backed `ConfigManager`; use `get_config("user.default_projects_dir")` and `get_lab_storage_root(lab_id)`.
+
+### Standardized Code-Use Patterns
+
+- **Discovery**: Use `ProjectDiscoveryService.discover_existing_projects()` and `find_project_path(name)`. Do not scan global/shared roots or compute precedence.
+- **DTOs/validation**: Use Pydantic DTOs from `metadata.py` across services/GUI; avoid duplicate dataclass DTOs.
+- **Configuration access**: Read local dir via `get_config("user.default_projects_dir")`; read/set lab storage via `get_lab_storage_root`/`set_lab_storage_root`. New code should not rely on a global `storage.shared_root`.
+- **Project validity**: A project is valid if it contains `mus1.db`.
+- **GUI layering**: GUI calls services (e.g., `SetupService`, `ProjectDiscoveryService`) instead of reading/writing config directly when a service exists.
+
+### Example: Simplified Project Discovery Workflow
 ```python
 # 1. User requests project list in GUI
 # main_window.py (Presentation Layer)
 def show_project_selection_dialog(self):
     discovery_service = get_project_discovery_service()
-    project_root = discovery_service.get_project_root_for_dialog()
+    # Simple: lab projects + local projects
+    projects = discovery_service.discover_existing_projects()
 
-# 2. Service finds projects from configured locations
+# 2. Service finds projects from two locations only
 # project_discovery_service.py (Service Layer)
 def discover_existing_projects(self) -> List[Path]:
     projects = []
-    for base_path in self._get_search_paths():
-        # Search logic with proper validation
+
+    # Lab-registered projects (if user has labs)
+    for lab_config in self._get_user_labs():
+        lab_projects = lab_config.get("projects", [])
+        projects.extend(lab_projects)
+
+    # Local user projects (always available)
+    user_dir = get_config("user.default_projects_dir")
+    if user_dir:
+        projects.extend(self._discover_in_directory(user_dir))
+
     return projects
 
-# 3. Repository pattern for data access
+# 3. Clean lab-based data access
 # repository.py (Domain Layer)
-class ColonyRepository:
-    def find_by_lab(self, lab_id: str) -> List[Colony]:
-        # Clean SQLAlchemy queries
-        return self.db.query(ColonyModel).filter_by(lab_id=lab_id).all()
+class LabRepository:
+    def find_user_labs(self, user_id: str) -> List[Lab]:
+        # Simple query for user's labs
+        return self.db.query(LabModel).filter_by(creator_id=user_id).all()
 ```
 
 ### Example: Adding Subjects with Optional Colony Relationships
@@ -182,6 +221,13 @@ if dialog.exec() == QDialog.DialogCode.Accepted:
 - **Linux**: `~/.config/mus1/` or `$XDG_CONFIG_HOME/mus1/`, xcb Qt platform
 - **Windows**: `%APPDATA%/mus1/`, Windows-specific Qt setup
 - All GUI Qt imports must go through the `mus1/gui/qt.py` facade. Direct `PyQt6`/`PySide6` imports are forbidden and enforced via import-linter.
+
+### Simplified Lab Storage
+- **Lab Storage Root**: Each lab can optionally configure one shared storage directory
+- **Simple Sharing**: Boolean enable/disable with online status checks
+- **No Precedence**: Projects are either under lab storage OR local user directory
+- **Discovery**: Lab-registered projects + local user projects (no complex scanning)
+ - **Global shared storage (`storage.shared_root`)**: Deprecated; prefer per-lab storage roots. Existing keys may be read only for migration warnings.
 
 ### **Environment Variables**
 ```bash
@@ -379,6 +425,11 @@ subject_id = self.subjects_grid.get_current_item_id()
 - After startup root selection (when needed), the ConfigManager binds to `<root>/config/config.db`. The wizard does not move or configure the app root.
 - Current limitation: The wizard is creation-focused and does not provide pickers for existing users/labs. Use the User/Lab Selection dialog after startup to select existing entities.
 
+#### Wizard Modes (New)
+- Start Fresh vs Edit Existing: the wizard now offers a mode selector.
+- Start Fresh can optionally wipe existing MUS1 configuration (config.db, root pointer, logs) before re-initializing.
+- Edit Existing allows choosing an existing root (`config/config.db`) and editing settings in place.
+
 ## Current Status
 
 ### Actually Working Components
@@ -394,20 +445,20 @@ subject_id = self.subjects_grid.get_current_item_id()
 - **Repository Pattern**: Data access layer implemented with proper update/merge handling
 - **Project Discovery**: Can find projects in configured locations
 - **Configuration System**: Hierarchical config with JSON serialization and Path object handling
-- **Service Factory Architecture**: GUIServiceFactory provides clean service layer separation for most operations
+- **Standardized Service Patterns**: Consistent instantiation patterns (singletons, factories, direct) across the application
 - **Functional Tests**: All 62 functional tests pass, including 14 relationship validation tests (9 core + 5 gap documentation tests)
 
 ### Known Issues & Remaining Components
 - **GUI State Manager References**: Some legacy references remain (commented out) but don't break functionality
 - **Plugin System GUI Integration**: ✅ **RESOLVED** - GUIPluginService now properly integrated through GUIServiceFactory
 - **Clean Architecture Migration**: Most GUI views properly use service layer, no direct database access found
-- **Service Factory Architecture Violations**: LabService bypasses ProjectManagerClean, violating clean architecture data flow
-- **Repository Layer Gaps**: Missing experiment-video repository methods prevent PluginService from accessing video relationships
+- **Service Pattern Standardization**: Some services still use inconsistent patterns (tracked in migration plan)
+- **Repository Layer Gaps**: Missing experiment-video repository methods prevent PluginService from accessing video relationships — ✅ Implemented: repository APIs for experiment↔video associations are available and used via `ProjectManagerClean`.
 - **Workgroup Features**: Models exist but no functional UI implementation
 - **Modal Popups**: Still used in development builds instead of navigation log as per guidelines
 - **User Profile Persistence**: CLI and GUI store user data in conflicting ways
 - **Setup Workflow**: Async execution implemented but error handling incomplete
-- **Lab-Project Association**: Database schema exists but GUI integration broken
+- **Lab-Project Association**: Database schema exists and GUI integration completed (registration from Project Settings/ProjectView).
  - **GUISubjectService repos usage**: Runtime error "GUISubjectService object has no attribute 'repos'" indicates an inconsistent repository access path; services must route via `ProjectManagerClean`.
  - **Shared folder designation for workers/compute**: No explicit configuration to designate/validate a lab-shared folder for lab workers or lab compute; needs path selection, validation, and exposure to worker configs.
 
@@ -453,82 +504,195 @@ Many of the claimed fixes are not actually working due to critical bugs:
 ### ✅ **WORKING: Plugin Discovery surfaced in GUI**
 - Intended: GUI should list discovered plugins via the clean plugin manager.
 - Current: GUIPluginService properly integrated through GUIServiceFactory provides plugin discovery and selection.
-- Implementation: Experiment View plugin lists populate correctly through service factory pattern.
+- Implementation: Experiment View plugin lists populate correctly through GUIServiceFactory.
 - Status: **Fully Working**. Plugin discovery, registration, selection, and execution all work through clean GUI service interfaces.
 
 ### Reinforced Design Principles
 - Deterministic root resolution is the baseline; GUI no longer selects the app root. A startup prompt handles relocating to an existing config when needed.
-- Project discovery priority: lab-registered projects → user default projects dir → shared storage root (entire root, not just `Projects/`) → lab-specific storage roots (when configured).
-- Views act through services and the `ProjectManagerClean` held by `MainWindow` to avoid split state.
+- **Simple Discovery**: Lab-registered projects + local user projects (no complex priority chains)
+- **Simple Storage Model**: Projects are stored in either lab shared storage OR local user directory
+- **No Complex Precedence**: Clear separation between lab projects and local projects
 
 ### Data Storage Roots
-- Global shared storage root (`storage.shared_root`) can be configured for collaborative data locations.
-- Optional per-lab storage roots can be set; discovery scans these alongside the global/shared locations.
-- Runtime storage precedence: project `shared_root` → lab storage root → global shared storage. ProjectView pre-fills the shared root using this order.
+- **Lab Projects**: Stored under `lab.storage_root` (when lab sharing is enabled)
+- **Local Projects**: Stored under `user.default_projects_dir` (always available)
+- **Online Checks**: Lab storage accessibility is checked and displayed in UI
 
-#### Lab-shared library intent (current gap)
-- Intended: A lab-level shared library holds recordings and a complete list of subjects (colony) for a mouse model; lab members can pull into individual or shared projects.
-- Current state: Discovery respects global and per-lab storage roots, but services/UI do not yet expose a consolidated, lab-scoped library view (recordings, subjects) as a first-class feature.
-- Missing pieces:
-  - A clear, lab-scoped API to enumerate shared recordings and lab-wide subjects independent of any single project.
-  - A way to mark and validate a folder as the lab’s “shared library” (permissions, existence checks, writable by lab workers).
-  - UI affordances to pull/link items from the lab library into projects while preserving provenance.
+### Cross-Lab Project Movement
+- **Importer Plugin**: `project_importer` plugin enables moving projects between labs
+- **Clean Separation**: Projects maintain their original lab association until explicitly imported
+- **Flexible Migration**: Users can import project data, subjects, or experiments as needed
 
 ### GUI Identity
 - The main window title surfaces the active user (name and email) derived from the SQL profile.
 
-## Service Factory Pattern Implementation
+## Service Instantiation Patterns
 
-### **Architecture Overview**
-MUS1 implements a **GUIServiceFactory** pattern for clean separation between GUI presentation and business logic:
+### **Standardized Service Patterns**
 
+MUS1 uses consistent service instantiation patterns to ensure clean architecture, testability, and maintainability.
+
+#### **1. Singletons (Global Services)**
+**When to Use**: Truly global, stateless services accessed application-wide.
+
+**Pattern**:
 ```python
-# Service Factory Creation
-self.gui_services = GUIServiceFactory(self.project_manager)
+class LoggingEventBus:
+    _instance = None
 
-# Lifecycle Injection to Views
-view.on_services_ready(self.gui_services)  # Injects service factory
+    @classmethod
+    def get_instance(cls):
+        if cls._instance is None:
+            cls._instance = LoggingEventBus()
+        return cls._instance
 
-# Views Create Specific Services
-self.subject_service = services.create_subject_service()
-self.experiment_service = services.create_experiment_service()
-self.plugin_service = services.create_plugin_service()
+# Usage
+log_bus = LoggingEventBus.get_instance()
 ```
 
-### **Working Service Implementations ✅**
-- **GUISubjectService**: Uses ProjectManagerClean, provides SubjectDisplayDTOs
-- **GUIExperimentService**: Uses ProjectManagerClean, handles experiment operations
-- **GUIProjectService**: Uses ProjectManagerClean, provides project information
-- **GUIPluginService**: Uses PluginManagerClean, provides plugin discovery/execution
+**MUS1 Singletons**:
+- `LoggingEventBus` - Application-wide logging coordination
+- `ConfigManager` - Global configuration state (when singleton)
 
-### **Architectural Violations ❌**
-- **LabService**: Bypasses ProjectManagerClean, uses SetupService directly
-- **Repository Gaps**: Missing experiment-video repository methods
-- **Inconsistent Data Flow**: Some services respect domain boundaries, others don't
+#### **2. Factories (Scoped Services)**
+**When to Use**: Services with dependencies, lifecycle management, or scoped context.
 
-### **Impact**
-- Service factory provides excellent separation for most operations
-- Architectural violations create inconsistent data access patterns
-- Plugin system now properly integrated through service factory ✅
+**Pattern**:
+```python
+class GUIServiceFactory:
+    def __init__(self, project_manager):
+        self.project_manager = project_manager
+
+    def create_subject_service(self) -> GUISubjectService:
+        return GUISubjectService(self.project_manager)
+
+# Usage
+factory = GUIServiceFactory(project_manager)
+subject_service = factory.create_subject_service()
+```
+
+**MUS1 Factories**:
+- `GUIServiceFactory` - Creates GUI services for a project context
+- `RepositoryFactory` - Creates repository instances for database access
+- `ProjectServiceFactory` - Creates project-scoped core services (planned)
+
+#### **3. Direct Instantiation (Stateless Services)**
+**When to Use**: Pure utility services with no dependencies or state.
+
+**Pattern**:
+```python
+# Simple instantiation for stateless services
+data_transformer = DataTransformer()
+```
+
+**MUS1 Direct Instantiation**:
+- Pure data transformation services
+- Value objects and DTOs
+
+#### **4. Service Locator (Limited Use)**
+**When to Use**: Only for services requiring dynamic resolution at runtime.
+
+**Pattern**:
+```python
+def get_setup_service() -> SetupService:
+    return SetupService()
+
+# Usage (limited to necessary cases)
+setup_service = get_setup_service()
+```
+
+**MUS1 Service Locators**:
+- `get_setup_service()` - For setup operations (being phased out)
+
+### **Current MUS1 Service Classification**
+
+| Service | Pattern | Status | Notes |
+|---------|---------|--------|-------|
+| `LoggingEventBus` | Singleton | ✅ Implemented | Global logging coordination |
+| `GUIServiceFactory` | Factory | ✅ Implemented | GUI service creation |
+| `RepositoryFactory` | Factory | ✅ Implemented | Database access layer |
+| `ProjectManagerClean` | Direct | 🔄 To Standardize | Should use ProjectServiceFactory |
+| `PluginManagerClean` | Direct | 🔄 To Standardize | Should use ProjectServiceFactory |
+| `SetupService` | Service Locator | 🔄 To Standardize | Should be singleton or direct |
+| `LabService` | Factory | ✅ Implemented | Via GUIServiceFactory |
+
+### **Current Factory Implementations**
+
+#### **GUIServiceFactory (Current)**
+```python
+# Factory Creation (in MainWindow)
+self.gui_services = GUIServiceFactory(self.project_manager)
+self.gui_services.set_plugin_manager(self.plugin_manager)
+
+# Service Creation (in Views)
+subject_service = services.create_subject_service()      # GUISubjectService
+experiment_service = services.create_experiment_service() # GUIExperimentService
+project_service = services.create_project_service()      # GUIProjectService
+lab_service = services.create_lab_service()              # LabService
+plugin_service = services.create_plugin_service()        # GUIPluginService
+```
+
+#### **RepositoryFactory (Current)**
+```python
+# Factory Creation (in ProjectManagerClean)
+self.repos = RepositoryFactory(self.db)
+
+# Lazy Service Creation
+subjects_repo = repos.subjects    # SubjectRepository
+experiments_repo = repos.experiments  # ExperimentRepository
+```
+
+#### **ProjectServiceFactory (Planned)**
+```python
+# Central factory for project-scoped services
+class ProjectServiceFactory:
+    def __init__(self, project_path: Path):
+        self.project_path = project_path
+        self._project_manager = None
+        self._plugin_manager = None
+
+    @property
+    def project_manager(self):
+        if self._project_manager is None:
+            self._project_manager = ProjectManagerClean(self.project_path)
+        return self._project_manager
+
+    @property
+    def plugin_manager(self):
+        if self._plugin_manager is None:
+            self._plugin_manager = PluginManagerClean(self.project_manager.db)
+        return self._plugin_manager
+
+    @property
+    def gui_services(self):
+        return GUIServiceFactory(self.project_manager, self.plugin_manager)
+```
+
+### **Migration Plan**
+
+1. **Phase 1**: Implement `ProjectServiceFactory` to standardize core service creation
+2. **Phase 2**: Convert `SetupService` to singleton pattern
+3. **Phase 3**: Update `MainWindow` to use `ProjectServiceFactory`
+4. **Phase 4**: Remove service locator anti-patterns where possible
 
 ## Key Features
 
 - **Deterministic Configuration**: Clean priority chain for MUS1 root resolution
 - **Single Source of Truth**: All configuration in one SQLite database
-- **Clean Architecture**: Proper layer separation with repository pattern - **MOSTLY IMPLEMENTED** (service factory violations remain)
+- **Clean Architecture**: Proper layer separation with repository pattern and standardized service instantiation
 - **Lab-Colony-Subject Hierarchy**: Flexible subject management with optional colony relationships
-- **Service Factory Pattern**: GUIServiceFactory provides clean service layer separation (with some architectural violations)
+- **Standardized Service Patterns**: Singletons, factories, and direct instantiation based on service scope and requirements
 - **Plugin System**: Full automatic discovery, selection, and execution through GUIPluginService
 - **Test Coverage**: 62 functional tests all passing, validating business logic integrity
 - **Metadata Management**: Project-scoped objects, bodyparts, treatments, genotypes (stored in project config JSON)
 
 
-## 🔎 Duplication Hotspots and Consistent Approach (New)
+## 🔎 Duplication Hotspots and Consistent Approach (Updated)
 
-- **Duplicate DTOs**: `LabDTO` and `ColonyDTO` exist in both `metadata.py` (Pydantic) and `setup_service.py` (dataclasses) with overlapping fields and validation.
-  - Similar field blocks cause drift risk and repeated validation (length checks on IDs/names).
-- **Scattered Validators**: ID/name/date rules are duplicated across Pydantic validators, dataclass `__post_init__`, and standalone functions in `metadata.py`.
-- **ProjectConfig vs ProjectModel**: `ProjectConfig` dataclass mirrors `ProjectModel` table fields; validation exists outside repository/DB path too.
+- **Resolved DTO duplication (Lab/Colony)**: `LabDTO` and `ColonyDTO` are defined in `metadata.py` as Pydantic models and imported by services; duplicated dataclass variants have been removed from `setup_service.py`.
+- **Remaining form DTOs**: `UserProfileDTO` and related setup-wizard dataclasses still perform validation in `__post_init__`. Consider converting them to Pydantic or clearly marking them as view-only form models.
+- **Scattered Validators**: Prefer Pydantic validators for ID/name/date rules; avoid repeating equivalent checks in services.
+- **ProjectConfig vs ProjectModel**: Treat `ProjectConfig` as a thin read/view model; keep persistence validation and transformations in repositories.
 
 ### Recommended Consistent Approach
 
@@ -540,9 +704,8 @@ self.plugin_service = services.create_plugin_service()
 ### Concrete Fix Steps
 
 1) **Consolidate DTOs**
-   - Delete `LabDTO` and `ColonyDTO` dataclasses in `src/mus1/core/setup_service.py`.
-   - Update `SetupService` signatures to accept/import `metadata.LabDTO` and `metadata.ColonyDTO`.
-   - Convert `Path`-typed fields at boundaries to strings where necessary (Pydantic can validate/serialize consistently).
+   - Keep `LabDTO` and `ColonyDTO` only in `metadata.py`; ensure services import these exclusively.
+   - Migrate remaining setup-wizard dataclass DTOs to Pydantic (or document them as view-only form models).
 
 2) **Unify Validators**
    - Keep ID/name checks in Pydantic validators (`metadata.py`).
@@ -558,6 +721,13 @@ self.plugin_service = services.create_plugin_service()
 
 5) **Tests & CI**
    - Run functional tests and add CI checks for import-linter and ruff to prevent regressions.
+
+### Ambiguities and Unnecessary Separation to Address
+
+- **Global shared storage surfaces**: CLI flags (`--use-shared`, `--shared-root`), Settings UI group, and `ProjectModel.shared_root` field remain. These should be removed in favor of per-lab roots.
+- **Project selection dialog root helper**: `ProjectDiscoveryService.get_project_root_for_dialog(...)` has an incomplete `default_dir` branch; ensure it returns the user default dir when no lab root is present and that it’s a proper method on the service.
+- **GUI vs Service layering**: Some GUI code still reads/writes config directly for storage roots; route these through `SetupService` to keep the presentation layer thin.
+- **Worker registration visibility**: Worker registration/management is not clearly surfaced in lab settings; align UI and services to treat workers as lab-scoped resources.
 
 ## GUI Architecture Addendum (2025-10)
 

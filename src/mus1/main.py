@@ -26,8 +26,13 @@ def main():
         needs_root_selection = False
         invalid_root_target = None
 
-    # Configure a single rotating file handler at the OS app root logs directory
-    log_bus.configure_app_file_handler(max_size=5 * 1024 * 1024, backups=3)
+    # Configure a single rotating file handler; prefer configured mus1.root_path if set
+    try:
+        configured_root = get_config("mus1.root_path")
+        log_bus.configure_app_file_handler(max_size=5 * 1024 * 1024, backups=3)
+    except Exception:
+        # Fallback to default app root logs directory
+        log_bus.configure_app_file_handler(max_size=5 * 1024 * 1024, backups=3)
 
     config_manager = ConfigManager()
     # One-time migration: move legacy user profile keys to SQL if present

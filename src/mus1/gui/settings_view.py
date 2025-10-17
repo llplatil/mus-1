@@ -14,6 +14,7 @@ This view provides centralized management for:
 
 from pathlib import Path
 from .base_view import BaseView
+from ..core.logging_bus import LoggingEventBus
 from typing import Dict, Any
 from ..core.setup_service import SharedStorageDTO
 
@@ -23,6 +24,9 @@ class SettingsView(BaseView):
 
     def __init__(self, parent=None):
         super().__init__(parent, view_name="settings")
+
+        # Initialize logging
+        self.log_bus = LoggingEventBus.get_instance()
         self.setup_navigation(["User Settings", "Workers", "General Settings"])
         self.setup_user_settings_page()
         self.setup_workers_page()
@@ -99,7 +103,7 @@ class SettingsView(BaseView):
         storage_row.addWidget(self.shared_storage_edit, 1)
         storage_row.addWidget(self.shared_storage_btn)
 
-        storage_help = QLabel("Global shared storage root used for collaborative projects. Projects under this path will be discoverable by all users.")
+        storage_help = QLabel("Optional shared storage root used during development. Lab projects are registered per-lab; discovery lists lab-registered or local projects only.")
         storage_help.setWordWrap(True)
         storage_help.setStyleSheet("color: gray; font-size: 11px;")
         storage_layout.addWidget(storage_help)
@@ -117,44 +121,33 @@ class SettingsView(BaseView):
         lab_path_label = self.create_form_label("Lab Library Root:")
         self.lab_library_edit = QLineEdit()
         self.lab_library_edit.setProperty("class", "mus1-text-input")
-        lab_browse_btn = QPushButton("Browse...")
+        lab_browse_btn = QPushButton("Browse…")
         lab_browse_btn.setProperty("class", "mus1-secondary-button")
         lab_browse_btn.clicked.connect(self._browse_lab_library)
         lab_path_row.addWidget(lab_path_label)
         lab_path_row.addWidget(self.lab_library_edit, 1)
         lab_path_row.addWidget(lab_browse_btn)
 
-        lab_help = QLabel("Designate a lab-specific shared library root. Lab members and workers use this location for shared recordings and subjects.")
+        lab_help = QLabel("Designate a lab-specific shared library root. Lab members and lab workers will use this location for shared recordings and subjects.")
         lab_help.setWordWrap(True)
         lab_help.setStyleSheet("color: gray; font-size: 11px;")
         lab_layout.addWidget(lab_help)
 
+        # Status (advisory reachability only)
+        mode_row = self.create_form_row(lab_layout)
+        mode_row.addWidget(self.create_form_label("Status:"))
+        self.lab_status_label = QLabel("unknown")
+        mode_row.addWidget(self.lab_status_label)
+
         # Save lab library button
-        lab_btn_row = self.create_button_row(lab_layout)
+        lab_button_row = self.create_button_row(lab_layout)
         save_lab_btn = QPushButton("Save Lab Library")
         save_lab_btn.setProperty("class", "mus1-primary-button")
         save_lab_btn.clicked.connect(self.handle_save_lab_library)
-        lab_btn_row.addWidget(save_lab_btn)
-
-        # Sharing mode and status
-        mode_row = self.create_form_row(lab_layout)
-        mode_row.addWidget(self.create_form_label("Sharing Mode:"))
-        self.lab_sharing_mode_combo = QComboBox()
-        self.lab_sharing_mode_combo.setProperty("class", "mus1-combo-box")
-        self.lab_sharing_mode_combo.addItems(["always_on", "peer_hosted"])  # required, not optional
-        mode_row.addWidget(self.lab_sharing_mode_combo)
-        set_mode_btn = QPushButton("Set Mode")
-        set_mode_btn.setProperty("class", "mus1-secondary-button")
-        set_mode_btn.clicked.connect(self.handle_set_lab_sharing_mode)
-        mode_row.addWidget(set_mode_btn)
-
-        status_row = self.create_form_row(lab_layout)
-        status_row.addWidget(self.create_form_label("Library Status:"))
-        self.lab_library_status_label = QLabel("unknown")
-        status_row.addWidget(self.lab_library_status_label)
+        lab_button_row.addWidget(save_lab_btn)
 
         # Designate as Shared Library (validates and persists)
-        designate_row = self.create_form_row(storage_layout)
+        designate_row = self.create_form_row(lab_layout)
         designate_btn = QPushButton("Designate as Shared Library")
         designate_btn.setProperty("class", "mus1-primary-button")
         designate_btn.clicked.connect(self.handle_designate_shared_library)
@@ -257,7 +250,7 @@ class SettingsView(BaseView):
             if shared_storage_path:
                 self.shared_storage_edit.setText(str(shared_storage_path))
         except Exception as e:
-            self.navigation_pane.add_log_message(f"Error loading user settings: {e}", "error")
+            self.log_bus.log(f"Error loading user settings: {e}", "error", "SettingsView")
 
 
     def _browse_projects_dir(self):
@@ -297,11 +290,11 @@ class SettingsView(BaseView):
                 default_shared_dir=Path(self.shared_dir_edit.text().strip()) if self.shared_dir_edit.text().strip() else None,
             )
             if result.get("success"):
-                self.navigation_pane.add_log_message("User settings saved successfully", "success")
+                self.log_bus.log("User settings saved successfully", "success", "SettingsView")
             else:
-                self.navigation_pane.add_log_message(result.get("message", "Failed to save user settings"), "error")
+                self.log_bus.log(result.get("message", "Failed to save user settings", "SettingsView"), "error")
         except Exception as e:
-            self.navigation_pane.add_log_message(f"Error saving user settings: {e}", "error")
+            self.log_bus.log(f"Error saving user settings: {e}", "error", "SettingsView")
 
     def handle_save_storage_settings(self):
         """Save shared storage settings."""
@@ -315,14 +308,14 @@ class SettingsView(BaseView):
                 # Clear shared storage setting
                 from ..core.config_manager import set_config
                 set_config("storage.shared_root", None, scope="user")
-                self.navigation_pane.add_log_message("Shared storage cleared", "success")
+                self.log_bus.log("Shared storage cleared", "success", "SettingsView")
                 return
 
             storage_path = Path(storage_path_str)
 
             # Validate the path exists and is a directory
             if not storage_path.exists() or not storage_path.is_dir():
-                self.navigation_pane.add_log_message(f"Invalid shared storage path: {storage_path}", "error")
+                self.log_bus.log(f"Invalid shared storage path: {storage_path}", "error", "SettingsView")
                 return
 
             # Configure shared storage
@@ -335,12 +328,12 @@ class SettingsView(BaseView):
             )
 
             if result.get("success"):
-                self.navigation_pane.add_log_message("Shared storage settings saved successfully", "success")
+                self.log_bus.log("Shared storage settings saved successfully", "success", "SettingsView")
             else:
-                self.navigation_pane.add_log_message(result.get("message", "Failed to save shared storage settings"), "error")
+                self.log_bus.log(result.get("message", "Failed to save shared storage settings", "SettingsView"), "error")
 
         except Exception as e:
-            self.navigation_pane.add_log_message(f"Error saving shared storage settings: {e}", "error")
+            self.log_bus.log(f"Error saving shared storage settings: {e}", "error", "SettingsView")
 
     def handle_designate_shared_library(self):
         """Validate and set the shared library root using SetupService helper."""
@@ -351,47 +344,47 @@ class SettingsView(BaseView):
 
             storage_path_str = self.shared_storage_edit.text().strip()
             if not storage_path_str:
-                self.navigation_pane.add_log_message("Please enter a path to designate as shared library.", "warning")
+                self.log_bus.log("Please enter a path to designate as shared library.", "warning", "SettingsView")
                 return
             storage_path = Path(storage_path_str)
             result = svc.designate_shared_folder(storage_path, ensure_exists=True, verify_permissions=True)
             if result.get("success"):
-                self.navigation_pane.add_log_message("Shared library designated successfully.", "success")
+                self.log_bus.log("Shared library designated successfully.", "success", "SettingsView")
             else:
-                self.navigation_pane.add_log_message(result.get("message", "Failed to designate shared library"), "error")
+                self.log_bus.log(result.get("message", "Failed to designate shared library", "SettingsView"), "error")
         except Exception as e:
-            self.navigation_pane.add_log_message(f"Designate shared library failed: {e}", "error")
+            self.log_bus.log(f"Designate shared library failed: {e}", "error", "SettingsView")
 
     def handle_save_lab_library(self):
         """Save per-lab shared library root (lab storage root)."""
         try:
-            # Determine current lab
-            lab_id = getattr(self.window(), 'selected_lab_id', None)
-            if not lab_id:
-                self.navigation_pane.add_log_message("No lab selected. Select a lab first (User/Lab dialog).", "warning")
-                return
-
-            path_str = self.lab_library_edit.text().strip()
-            if not path_str:
-                self.navigation_pane.add_log_message("Please enter a lab library path.", "warning")
-                return
-
-            from pathlib import Path as _P
-            path = _P(path_str)
-            if not path.exists() or not path.is_dir():
-                self.navigation_pane.add_log_message(f"Invalid lab library path: {path}", "error")
-                return
-
-            # Persist via SetupService → ConfigManager
+            from pathlib import Path
             from ..core.setup_service import get_setup_service
             svc = get_setup_service()
+            # current lab
+            from ..core.config_manager import get_config
+            lab_id = get_config("app.selected_lab_id", scope="user")
+            if not lab_id:
+                self.log_bus.log("No lab selected.", "warning", "SettingsView")
+                return
+            path_str = self.lab_library_edit.text().strip()
+            if not path_str:
+                self.log_bus.log("Please enter a lab library path.", "warning", "SettingsView")
+                return
+            path = Path(path_str)
+            if not path.exists() or not path.is_dir():
+                self.log_bus.log(f"Invalid lab library path: {path}", "error", "SettingsView")
+                return
+            # Persist lab root
             result = svc.set_lab_storage_root(lab_id, path)
             if result.get("success"):
-                self.navigation_pane.add_log_message("Lab library saved successfully.", "success")
+                # Update status
+                self._update_lab_status_badge(lab_id)
+                self.log_bus.log("Lab library saved successfully.", "success", "SettingsView")
             else:
-                self.navigation_pane.add_log_message(result.get("message", "Failed to save lab library"), "error")
+                self.log_bus.log(result.get("message", "Failed to save lab library", "SettingsView"), "error")
         except Exception as e:
-            self.navigation_pane.add_log_message(f"Error saving lab library: {e}", "error")
+            self.log_bus.log(f"Error saving lab library: {e}", "error", "SettingsView")
 
 
     def refresh_workers_list(self):
@@ -413,31 +406,32 @@ class SettingsView(BaseView):
                     workers = pm.config.settings.get('workers', [])
             else:
                 workers = []
-        except Exception:
+        except Exception as e:
+            self.log_bus.log(f"Error loading workers list: {e}", "error", "SettingsView")
             workers = []
         for w in workers:
             item = QListWidgetItem(f"{w.get('name', '')}  alias={w.get('ssh_alias', '')}  role={w.get('role', '') or ''}  provider={w.get('provider', '')}")
             item.setData(Qt.ItemDataRole.UserRole, w.get('name', ''))
             self.workers_list.addItem(item)
 
-    def handle_set_lab_sharing_mode(self):
-        """Persist lab sharing mode and refresh status."""
+    def handle_toggle_lab_sharing(self, enabled: bool):
+        """Handle toggling lab sharing on/off."""
         try:
             lab_id = getattr(self.window(), 'selected_lab_id', None)
             if not lab_id:
-                self.navigation_pane.add_log_message("No lab selected. Select a lab first (User/Lab dialog).", "warning")
+                self.log_bus.log("No lab selected. Select a lab first (User/Lab dialog).", "warning", "SettingsView")
                 return
-            mode = self.lab_sharing_mode_combo.currentText()
-            from ..core.setup_service import get_setup_service
-            svc = get_setup_service()
-            res = svc.set_lab_sharing_preferences(lab_id, mode)
-            if res.get("success"):
-                self.navigation_pane.add_log_message(f"Lab sharing mode set to {mode}", "success")
-                self._refresh_lab_library_status()
+
+            # Update lab storage root configuration
+            # Note: The actual enable/disable is handled by presence of storage root
+            if enabled:
+                self.log_bus.log("Lab sharing enabled", "success", "SettingsView")
             else:
-                self.navigation_pane.add_log_message(res.get("message", "Failed to set sharing mode"), "error")
+                self.log_bus.log("Lab sharing disabled", "info", "SettingsView")
+
+            self._refresh_lab_library_status()
         except Exception as e:
-            self.navigation_pane.add_log_message(f"Error setting lab sharing mode: {e}", "error")
+            self.log_bus.log(f"Error updating lab sharing: {e}", "error", "SettingsView")
 
     def handle_add_worker(self):
         """Add a new worker."""
@@ -447,12 +441,12 @@ class SettingsView(BaseView):
             role = self.worker_role_edit.text().strip() or None
             provider = self.worker_provider_combo.currentText().strip()
             if not name or not alias:
-                QMessageBox.warning(self, "Workers", "Name and SSH alias are required.")
+                self.log_bus.log("Worker name and SSH alias are required", "warning", "SettingsView")
                 return
 
             pm = self.window().project_manager
             if not pm:
-                QMessageBox.warning(self, "Workers", "No project loaded.")
+                self.log_bus.log("No project loaded", "warning", "SettingsView")
                 return
 
             # Determine scope
@@ -466,7 +460,7 @@ class SettingsView(BaseView):
             else:
                 workers = pm.config.settings.get('workers', [])
             if any(w.get('name') == name for w in workers):
-                QMessageBox.warning(self, "Workers", f"Worker '{name}' already exists.")
+                self.log_bus.log(f"Worker '{name}' already exists", "warning", "SettingsView")
                 return
             worker_dict = {
                 'name': name,
@@ -483,26 +477,26 @@ class SettingsView(BaseView):
                 pm.config.settings['workers'] = workers
             pm.save_project()
             self.refresh_workers_list()
-            self.navigation_pane.add_log_message(f"Added worker {name}", "success")
+            self.log_bus.log(f"Added worker {name}", "success", "SettingsView")
             # Clear form
             self.worker_name_edit.clear()
             self.worker_ssh_alias_edit.clear()
             self.worker_role_edit.clear()
         except Exception as e:
-            self.navigation_pane.add_log_message(f"Add worker failed: {e}", "error")
+            self.log_bus.log(f"Add worker failed: {e}", "error", "SettingsView")
 
     def handle_remove_worker(self):
         """Remove selected worker."""
         try:
             item = self.workers_list.currentItem()
             if not item:
-                QMessageBox.information(self, "Workers", "Select a worker to remove.")
+                self.log_bus.log("Select a worker to remove", "info", "SettingsView")
                 return
             name = item.data(Qt.ItemDataRole.UserRole)
 
             pm = self.window().project_manager
             if not pm:
-                QMessageBox.warning(self, "Workers", "No project loaded.")
+                self.log_bus.log("No project loaded", "warning", "SettingsView")
                 return
 
             # Determine scope
@@ -524,13 +518,13 @@ class SettingsView(BaseView):
             else:
                 pm.config.settings['workers'] = workers
             if len(workers) == before:
-                QMessageBox.information(self, "Workers", f"No worker named '{name}' found.")
+                self.log_bus.log(f"No worker named '{name}' found", "info", "SettingsView")
                 return
             pm.save_project()
             self.refresh_workers_list()
-            self.navigation_pane.add_log_message(f"Removed worker {name}", "success")
+            self.log_bus.log(f"Removed worker {name}", "success", "SettingsView")
         except Exception as e:
-            self.navigation_pane.add_log_message(f"Remove worker failed: {e}", "error")
+            self.log_bus.log(f"Remove worker failed: {e}", "error", "SettingsView")
 
     def setup_general_settings_page(self):
         """Setup the General Settings page with application-wide settings."""
@@ -647,7 +641,7 @@ class SettingsView(BaseView):
             # Call through MainWindow to propagate theme changes across the application
             self.window().change_theme(theme_choice)
 
-        self.navigation_pane.add_log_message("Applied general settings to current project.", "success")
+        self.log_bus.log("Applied general settings to current project.", "success", "SettingsView")
 
     def handle_apply_frame_rate(self):
         """Handle the 'Apply Frame Rate' button click."""
@@ -666,7 +660,7 @@ class SettingsView(BaseView):
             # Save project to persist changes
             self.window().project_manager.save_project()
 
-        self.navigation_pane.add_log_message(f"Applied frame rate settings: {'Enabled' if frame_rate_enabled else 'Disabled'}, {frame_rate} fps", "success")
+        self.log_bus.log(f"Applied frame rate settings: {'Enabled' if frame_rate_enabled else 'Disabled'}, {frame_rate} fps", "success", "SettingsView")
 
     def on_sort_mode_changed(self, new_sort_mode: str):
         """Update the project config's global_sort_mode and refresh data."""
@@ -705,7 +699,7 @@ class SettingsView(BaseView):
             self.enable_frame_rate_checkbox.setChecked(frame_rate_enabled)
             self.enable_frame_rate_checkbox.blockSignals(False)
 
-        self.navigation_pane.add_log_message("Frame rate management not yet implemented in clean architecture.", "info")
+        self.log_bus.log("Frame rate management not yet implemented in clean architecture.", "info", "SettingsView")
         if hasattr(self, 'frame_rate_value_label'):
              self.frame_rate_value_label.setText(str(display_rate))
 
@@ -726,7 +720,7 @@ class SettingsView(BaseView):
             # Default to first item if no project loaded
             self.sort_mode_dropdown.setCurrentIndex(0)
 
-        self.navigation_pane.add_log_message("Sort mode loaded from project settings.", "info")
+        self.log_bus.log("Sort mode loaded from project settings.", "info", "SettingsView")
 
     def update_theme_dropdown_from_state(self):
         """Update theme dropdown based on current theme setting"""
@@ -743,11 +737,11 @@ class SettingsView(BaseView):
             index = self.theme_dropdown.findText(current_theme)
             if index >= 0:
                 self.theme_dropdown.setCurrentIndex(index)
-                self.navigation_pane.add_log_message(f"Theme dropdown set to: {current_theme}", "info")
+                self.log_bus.log(f"Theme dropdown set to: {current_theme}", "info", "SettingsView")
             else:
-                self.navigation_pane.add_log_message(f"Theme '{current_theme}' not found in dropdown options", "warning")
+                self.log_bus.log(f"Theme '{current_theme}' not found in dropdown options", "warning", "SettingsView")
         except Exception as e:
-            self.navigation_pane.add_log_message(f"Error loading theme setting: {e}", "error")
+            self.log_bus.log(f"Error loading theme setting: {e}", "error", "SettingsView")
 
     def refresh_lists(self):
         """Refresh all lists in the settings view."""
@@ -765,29 +759,20 @@ class SettingsView(BaseView):
             shared_storage_path = svc.get_shared_storage_path()
             if shared_storage_path and hasattr(self, 'shared_storage_edit'):
                 self.shared_storage_edit.setText(str(shared_storage_path))
-        except Exception:
-            pass
+        except Exception as e:
+            self.log_bus.log(f"Error loading shared storage path: {e}", "error", "SettingsView")
 
-        # Refresh current lab and lab library path
+        # Refresh current lab and lab library path + mode + status
         try:
-            lab_id = getattr(self.window(), 'selected_lab_id', None)
-            if hasattr(self, 'current_lab_label'):
-                self.current_lab_label.setText(f"Current Lab: {lab_id or '(none)'}")
+            from ..core.config_manager import get_config, get_lab_storage_root
+            lab_id = get_config("app.selected_lab_id", scope="user")
             if lab_id and hasattr(self, 'lab_library_edit'):
-                from ..core.config_manager import get_lab_storage_root
                 lab_root = get_lab_storage_root(lab_id)
                 if lab_root:
                     self.lab_library_edit.setText(str(lab_root))
-            # Update sharing mode and status
-            if lab_id and hasattr(self, 'lab_sharing_mode_combo'):
-                from ..core.config_manager import get_lab_sharing_mode
-                mode = get_lab_sharing_mode(lab_id) or "always_on"
-                idx = self.lab_sharing_mode_combo.findText(mode)
-                if idx >= 0:
-                    self.lab_sharing_mode_combo.setCurrentIndex(idx)
-                self._refresh_lab_library_status()
-        except Exception:
-            pass
+                self._update_lab_status_badge(lab_id)
+        except Exception as e:
+            self.log_bus.log(f"Error loading lab library path: {e}", "error", "SettingsView")
 
     def _refresh_lab_library_status(self):
         """Refresh label showing online/offline status for current lab library."""
@@ -802,8 +787,7 @@ class SettingsView(BaseView):
                 online = st.get("online")
                 path = st.get("path")
                 reason = st.get("reason")
-                mode = st.get("mode") or "always_on"
-                txt = f"{ 'online' if online else 'offline' } ({mode})"
+                txt = f"{ 'online' if online else 'offline' }"
                 if path:
                     txt += f" — {path}"
                 if not online and reason:
@@ -811,5 +795,20 @@ class SettingsView(BaseView):
                 self.lab_library_status_label.setText(txt)
             else:
                 self.lab_library_status_label.setText("unknown")
-        except Exception:
-            pass
+        except Exception as e:
+            self.log_bus.log(f"Error refreshing lab library status: {e}", "error", "SettingsView")
+
+    def _update_lab_status_badge(self, lab_id: str):
+        try:
+            from ..core.config_manager import is_lab_storage_online
+            status = is_lab_storage_online(lab_id)
+            if hasattr(self, 'lab_status_label'):
+                if status.get("online"):
+                    self.lab_status_label.setText("online")
+                    self.lab_status_label.setStyleSheet("color: #2e7d32;")
+                else:
+                    reason = status.get("reason") or "offline"
+                    self.lab_status_label.setText(f"offline: {reason}")
+                    self.lab_status_label.setStyleSheet("color: #c62828;")
+        except Exception as e:
+            self.log_bus.log(f"Error updating lab status badge: {e}", "error", "SettingsView")

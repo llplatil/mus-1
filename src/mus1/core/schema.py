@@ -239,37 +239,8 @@ class LabWorkerModel(Base):
     permissions = Column(String, nullable=True)
     tags = Column(Text, default="[]")  # JSON-encoded list of tags
 
-class LabScanTargetModel(Base):
-    """Association between labs and scan targets (many-to-many)."""
-    __tablename__ = 'lab_scan_targets'
-
-    lab_id = Column(String, ForeignKey('labs.id'), primary_key=True)
-    scan_target_id = Column(Integer, ForeignKey('scan_targets.id'), primary_key=True)
-
-class WorkgroupModel(Base):
-    """Database model for workgroups."""
-    __tablename__ = 'workgroups'
-
-    id = Column(String, primary_key=True)
-    name = Column(String, nullable=False)
-    share_key_hash = Column(String, nullable=False)  # Salted hash of shareable key
-    created_at = Column(DateTime, nullable=False)
-
-    # Relationships
-    members = relationship("WorkgroupMemberModel", back_populates="workgroup")
-
-class WorkgroupMemberModel(Base):
-    """Database model for workgroup membership."""
-    __tablename__ = 'workgroup_members'
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    workgroup_id = Column(String, ForeignKey('workgroups.id'), nullable=False)
-    member_email = Column(String, nullable=False)
-    role = Column(String, default="member")  # 'admin', 'member', etc.
-    added_at = Column(DateTime, nullable=False)
-
-    # Relationships
-    workgroup = relationship("WorkgroupModel", back_populates="members")
+# Removed: LabScanTargetModel, WorkgroupModel, WorkgroupMemberModel
+# These were part of over-complex sharing and workgroup features
 
 # ===========================================
 # DATABASE UTILITIES
@@ -488,21 +459,4 @@ def model_to_lab(model) -> 'Lab':
         created_at=model.created_at
     )
 
-def workgroup_to_model(workgroup) -> WorkgroupModel:
-    """Convert domain Workgroup to database model."""
-    return WorkgroupModel(
-        id=workgroup.id,
-        name=workgroup.name,
-        share_key_hash=workgroup.share_key_hash,
-        created_at=workgroup.created_at
-    )
-
-def model_to_workgroup(model) -> 'Workgroup':
-    """Convert database model to domain Workgroup."""
-    from .metadata import Workgroup
-    return Workgroup(
-        id=model.id,
-        name=model.name,
-        share_key_hash=model.share_key_hash,
-        created_at=model.created_at
-    )
+# Removed: workgroup_to_model / model_to_workgroup (unused)

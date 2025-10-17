@@ -5,7 +5,9 @@ from .qt import (
 from .qt import Signal
 from pathlib import Path
 from .base_view import BaseView
+from ..core.logging_bus import LoggingEventBus
 from typing import Dict, Any
+from ..core.plugin_manager_clean import PluginManagerClean
 from ..core.scanners.remote import collect_from_targets
 from .gui_services import GUIProjectService
 
@@ -76,6 +78,10 @@ class ProjectView(BaseView):
 
     def __init__(self, parent=None):
         super().__init__(parent, view_name="project")
+
+        # Initialize logging
+        self.log_bus = LoggingEventBus.get_instance()
+
         # Initialize GUI services
         self.gui_services = None  # Will be set when project is loaded
         self.project_service = None  # Will be set when project is loaded
@@ -96,6 +102,15 @@ class ProjectView(BaseView):
         # services is the GUIServiceFactory, create the project service we need
         self.gui_services = services
         self.project_service = services.create_project_service()
+        try:
+            main_window = self.window()
+            pm = getattr(main_window, 'project_manager', None)
+            if pm and getattr(pm, 'db', None):
+                self.plugin_manager = PluginManagerClean(pm.db)
+                self.plugin_manager.discover_entry_points()
+                self.populate_importer_plugins()
+        except Exception as e:
+            self.log_bus.log(f"Plugin manager init failed: {e}", "warning", "ProjectView")
 
     def format_item(self, item):
         """Utility to return the proper display string for an item."""
@@ -109,12 +124,20 @@ class ProjectView(BaseView):
         # 1. Importer Plugin Selection Group
         importer_group, importer_layout = self.create_form_section("Select Importer", layout)
         importer_row = self.create_form_row(importer_layout)
-        importer_label = self.create_form_label("Importer Type:")
+        importer_label = self.create_form_label("Importer:")
         self.importer_plugin_combo = QComboBox()
         self.importer_plugin_combo.setProperty("class", "mus1-combo-box")
         self.importer_plugin_combo.currentIndexChanged.connect(self.on_importer_plugin_selected)
         importer_row.addWidget(importer_label)
         importer_row.addWidget(self.importer_plugin_combo, 1)
+
+        # Action selector for project-level actions
+        action_row = self.create_form_row(importer_layout)
+        action_label = self.create_form_label("Action:")
+        self.importer_action_combo = QComboBox()
+        self.importer_action_combo.setProperty("class", "mus1-combo-box")
+        action_row.addWidget(action_label)
+        action_row.addWidget(self.importer_action_combo, 1)
 
         # 2. Dynamic Parameter Fields Group
         # Use a group box to visually contain the dynamic fields
@@ -127,7 +150,7 @@ class ProjectView(BaseView):
 
         # 3. Action Button
         button_row = self.create_button_row(layout)
-        self.import_project_button = QPushButton("Import Project Settings")
+        self.import_project_button = QPushButton("Run Import Action")
         self.import_project_button.setProperty("class", "mus1-primary-button")
         self.import_project_button.clicked.connect(self.handle_import_project)
         self.import_project_button.setEnabled(False) # Disable until a plugin is selected
@@ -145,9 +168,17 @@ class ProjectView(BaseView):
         self.importer_plugin_combo.clear()
         self.importer_plugin_combo.addItem("Select an importer...", None)
 
-        # For now, add a placeholder since plugin system integration is pending
-        self.importer_plugin_combo.addItem("Plugin system integration pending", None)
-        self.navigation_pane.add_log_message("Importer plugin integration pending in clean architecture.", "info")
+        try:
+            if not self.plugin_manager:
+                raise RuntimeError("Plugin manager not initialized")
+            importer_plugins = self.plugin_manager.get_importer_plugins()
+            if not importer_plugins:
+                importer_plugins = self.plugin_manager.get_plugins_with_project_actions()
+            for p in importer_plugins:
+                name = p.plugin_self_metadata().name
+                self.importer_plugin_combo.addItem(name, name)
+        except Exception as e:
+            self.log_bus.log(f"No importer plugins available: {e}", "info", "ProjectView")
 
         self.importer_plugin_combo.blockSignals(False)
         self.on_importer_plugin_selected(self.importer_plugin_combo.currentIndex())
@@ -161,12 +192,41 @@ class ProjectView(BaseView):
         self.import_project_button.setEnabled(False)
 
         plugin_name = self.importer_plugin_combo.itemData(index)
-        if not plugin_name or plugin_name == "Plugin system integration pending":
-            return # Placeholder selected
+        if not plugin_name:
+            return
 
-        # Plugin system integration is pending, so we can't get plugin metadata yet
-        self.navigation_pane.add_log_message(f"Plugin system integration pending for '{plugin_name}'.", "info")
-        return
+        # Get plugin instance
+        plugin = None
+        try:
+            plugin = self.plugin_manager.get_plugin_by_name(plugin_name) if self.plugin_manager else None
+        except Exception:
+            plugin = None
+        if not plugin:
+            self.log_bus.log(f"Importer plugin '{plugin_name}' not found.", "warning", "ProjectView")
+            return
+
+        # Populate actions
+        self.importer_action_combo.clear()
+        try:
+            actions = self.plugin_manager.get_project_actions_for_plugin(plugin_name)
+            for action in actions:
+                self.importer_action_combo.addItem(action, action)
+        except Exception:
+            pass
+
+        # Build parameter UI
+        self.importer_params_group.setVisible(True)
+        self.importer_params_group.setTitle(f"{plugin_name} Parameters") # Update title
+
+        # Get fields from the selected plugin
+        try:
+            required_fields = plugin.required_fields() or []
+            field_types = plugin.get_field_types() or {}
+            field_descriptions = plugin.get_field_descriptions() or {}
+        except Exception:
+            required_fields = []
+            field_types = {}
+            field_descriptions = {}
 
         # TODO: Re-enable when plugin system is integrated
         # self.importer_params_group.setVisible(True) # Show the parameter group
@@ -253,20 +313,19 @@ class ProjectView(BaseView):
         plugin_name = self.importer_plugin_combo.itemData(selected_index)
 
         if not plugin_name:
-            QMessageBox.warning(self, "Import Error", "Please select an importer type.")
+            QMessageBox.warning(self, "Import Error", "Please select an importer.")
             return
 
-        plugin = self.plugin_manager.get_plugin_by_name(plugin_name)
+        plugin = self.plugin_manager.get_plugin_by_name(plugin_name) if self.plugin_manager else None
         if not plugin:
-             QMessageBox.critical(self, "Import Error", f"Could not find plugin: {plugin_name}")
-             return
+            self.log_bus.log(f"Could not find plugin: {plugin_name}", "error", "ProjectView")
+            return
 
-        # Assume the first capability is the one we want for importers, or use a specific one
-        capabilities = plugin.analysis_capabilities()
-        if not capabilities:
-             QMessageBox.critical(self, "Import Error", f"Plugin '{plugin_name}' has no defined capabilities.")
-             return
-        capability_name = capabilities[0] # e.g., 'import_dlc_project_settings'
+        # Selected action
+        action = self.importer_action_combo.currentData() or self.importer_action_combo.currentText()
+        if not action:
+            QMessageBox.warning(self, "Import Error", "Please select an action.")
+            return
 
         # Collect parameters from dynamically created widgets
         parameters: Dict[str, Any] = {}
@@ -292,40 +351,34 @@ class ProjectView(BaseView):
              QMessageBox.critical(self, "Parameter Error", f"Error collecting parameters: {e}")
              return
 
-        # Run the project-level action via ProjectManager
-        self.navigation_pane.add_log_message(f"Starting import using {plugin_name}...", "info")
+        # Run the project-level action through the plugin instance
+        self.log_bus.log(f"Starting import using {plugin_name}:{action}...", "info", "ProjectView")
         try:
-            result = self.window().project_manager.run_project_level_plugin_action(
-                plugin_name=plugin_name,
-                capability_name=capability_name,
-                parameters=parameters
-            )
-
-            if result.get("status") == "success":
-                 msg = result.get("message", "Import completed successfully.")
-                 imported = result.get("imported_bodyparts") # Example specific data
-                 if imported:
-                      msg += f" Imported: {', '.join(imported)}"
-                 QMessageBox.information(self, "Import Successful", msg)
-                 self.navigation_pane.add_log_message(msg, "success")
-                 # Optionally refresh other parts of the UI if needed (e.g., body part lists)
-                 # self.window().refresh_all_views() # Maybe too broad?
+            main_window = self.window()
+            pm = getattr(main_window, 'project_manager', None)
+            if not pm:
+                QMessageBox.warning(self, "Import Error", "No project loaded.")
+                return
+            result = plugin.run_action(action, parameters, pm)
+            status = result.get("status", "unknown")
+            message = result.get("message") or result.get("error") or str(result)
+            if status == "success":
+                QMessageBox.information(self, "Import Successful", message)
+                self.log_bus.log(message, "success", "ProjectView")
             else:
-                 error_msg = result.get("error", "Unknown error during import.")
-                 QMessageBox.critical(self, "Import Failed", error_msg)
-                 self.navigation_pane.add_log_message(f"Import failed: {error_msg}", "error")
-
+                QMessageBox.warning(self, "Import Failed", message)
+                self.log_bus.log(f"Import failed: {message}", "error", "ProjectView")
         except Exception as e:
-            error_msg = f"An unexpected error occurred during import: {e}"
+            error_msg = f"Import action error: {e}"
             QMessageBox.critical(self, "Import Error", error_msg)
-            self.navigation_pane.add_log_message(error_msg, "error")
+            self.log_bus.log(error_msg, "error", "ProjectView")
 
     def set_initial_project(self, project_name: str):
         """
         Updates UI elements specific to ProjectView when a project is loaded or switched.
         Called by MainWindow after successful project load.
         """
-        self.navigation_pane.add_log_message(f"Updating ProjectView for project: {project_name}", "info")
+        self.log_bus.log(f"Updating ProjectView for project: {project_name}", "info", "ProjectView")
         # Update the label showing the current project
         if hasattr(self, 'current_project_label'):
             self.current_project_label.setText("Current Project: " + project_name)
@@ -337,12 +390,12 @@ class ProjectView(BaseView):
         if hasattr(self, 'project_notes_box') and self.window() and self.window().project_manager:
             pm = self.window().project_manager
             notes = pm.config.settings.get("project_notes", "")
-            self.navigation_pane.add_log_message(f"Loading project notes ({len(notes)} characters) for project: {project_name}", "info")
+            self.log_bus.log(f"Loading project notes ({len(notes, "ProjectView")} characters) for project: {project_name}", "info")
             self.project_notes_box.set_text(notes)
         else:
             has_window = bool(self.window())
             has_pm = has_window and bool(self.window().project_manager)
-            self.navigation_pane.add_log_message(f"Cannot load project notes - project_notes_box exists: {hasattr(self, 'project_notes_box')}, window exists: {has_window}, project_manager exists: {has_pm}", "warning")
+            self.log_bus.log(f"Cannot load project notes - project_notes_box exists: {hasattr(self, 'project_notes_box', "ProjectView")}, window exists: {has_window}, project_manager exists: {has_pm}", "warning")
 
         # Update UI settings from the loaded project state
         # Note: General settings are now handled by SettingsView
@@ -401,7 +454,7 @@ class ProjectView(BaseView):
         Filters by `switch_location_combo` (Local/Shared).
         """
         if not hasattr(self, 'switch_project_combo'):
-            self.navigation_pane.add_log_message("Switch project combo box not found.", "warning")
+            self.log_bus.log("Switch project combo box not found.", "warning", "ProjectView")
             return
 
         try:
@@ -506,12 +559,12 @@ class ProjectView(BaseView):
         except Exception as e:
             self.switch_project_combo.clear()
             self.switch_project_combo.addItem("Error loading projects", None)
-            self.navigation_pane.add_log_message(f"Project list load error: {e}", "error")
+            self.log_bus.log(f"Project list load error: {e}", "error", "ProjectView")
 
     def on_creation_location_changed(self, index):
         """Handle location type change for project creation."""
         is_shared = self.creation_location_combo.currentText().lower() == "shared"
-        self.navigation_pane.add_log_message(f"Location changed to '{self.creation_location_combo.currentText()}', is_shared={is_shared}", "info")
+        self.log_bus.log(f"Location changed to '{self.creation_location_combo.currentText()}', is_shared={is_shared}", "info", "ProjectView")
         self._set_lab_selection_visible(is_shared)
         if is_shared:
             self.populate_lab_combo()
@@ -535,17 +588,17 @@ class ProjectView(BaseView):
             from ..core.setup_service import get_setup_service
             setup_service = get_setup_service()
             labs = setup_service.get_labs()
-            self.navigation_pane.add_log_message(f"Found {len(labs)} labs for user", "info")
+            self.log_bus.log(f"Found {len(labs, "ProjectView")} labs for user", "info")
             if labs:
                 for lab_id, lab_data in labs.items():
                     display_name = f"{lab_data.get('name', 'Unknown Lab')} ({lab_data.get('institution', 'Unknown Institution')})"
                     self.creation_lab_combo.addItem(display_name, lab_id)
-                    self.navigation_pane.add_log_message(f"Added lab: {display_name}", "info")
+                    self.log_bus.log(f"Added lab: {display_name}", "info", "ProjectView")
             else:
                 self.creation_lab_combo.addItem("No labs available", None)
-                self.navigation_pane.add_log_message("No labs available for user", "warning")
+                self.log_bus.log("No labs available for user", "warning", "ProjectView")
         except Exception as e:
-            self.navigation_pane.add_log_message(f"Error loading labs: {e}", "error")
+            self.log_bus.log(f"Error loading labs: {e}", "error", "ProjectView")
             self.creation_lab_combo.addItem("Error loading labs", None)
 
     def handle_create_project(self):
@@ -615,7 +668,7 @@ class ProjectView(BaseView):
                     if sr:
                         project_manager.set_shared_root(Path(sr))
                 except Exception as e:
-                    self.navigation_pane.add_log_message(f"Failed to persist shared root on project: {e}", "warning")
+                    self.log_bus.log(f"Failed to persist shared root on project: {e}", "warning", "ProjectView")
 
             # Associate with lab if specified or requested for local
             if lab_id or (location_type == "local" and getattr(self, 'register_with_lab_check', None) and self.register_with_lab_check.isChecked()):
@@ -633,7 +686,7 @@ class ProjectView(BaseView):
                     project_path=str(project_path)
                 )
                 if not success:
-                    self.navigation_pane.add_log_message(f"Warning: Failed to associate project with lab '{lab_id}'", "warning")
+                    self.log_bus.log(f"Warning: Failed to associate project with lab '{lab_id}'", "warning", "ProjectView")
 
             # Switch to the newly created project
             self.window().load_project_path(project_path)
@@ -642,7 +695,7 @@ class ProjectView(BaseView):
                     self.switch_location_combo.setCurrentIndex(1 if location_type == 'shared' else 0)
             except Exception:
                 pass
-            self.navigation_pane.add_log_message(f"Project '{project_name}' created successfully", "success")
+            self.log_bus.log(f"Project '{project_name}' created successfully", "success", "ProjectView")
 
             # Clear the form
             self.new_project_name_edit.clear()
@@ -661,7 +714,7 @@ class ProjectView(BaseView):
                 pass
 
         except Exception as e:
-            self.navigation_pane.add_log_message(f"Error creating project: {e}", "error")
+            self.log_bus.log(f"Error creating project: {e}", "error", "ProjectView")
             QMessageBox.critical(self, "Project Creation Error", f"Failed to create project: {e}")
 
     def handle_switch_project(self):
@@ -670,10 +723,10 @@ class ProjectView(BaseView):
         if selected_project:
             current_project = self.window().selected_project_name
             if selected_project == current_project:
-                self.navigation_pane.add_log_message(f"Already in project: {selected_project}", 'info')
+                self.log_bus.log(f"Already in project: {selected_project}", 'info', "ProjectView")
                 return
 
-            self.navigation_pane.add_log_message(f"Requesting switch to project: {selected_project}", 'info')
+            self.log_bus.log(f"Requesting switch to project: {selected_project}", 'info', "ProjectView")
             # Try to use stored full path if present
             try:
                 path_str = self.switch_project_combo.currentData()
@@ -689,7 +742,7 @@ class ProjectView(BaseView):
         else:
             msg = "No project selected in the dropdown to switch to."
             # print(msg) # Keep commented
-            self.navigation_pane.add_log_message(msg, 'warning')
+            self.log_bus.log(msg, 'warning', "ProjectView")
 
     def handle_rename_project(self):
         """Handles the 'Rename' button click."""
@@ -699,31 +752,31 @@ class ProjectView(BaseView):
         if not new_name:
             msg = "New project name cannot be empty."
             # print(msg) # Keep commented
-            self.navigation_pane.add_log_message(msg, 'warning')
+            self.log_bus.log(msg, 'warning', "ProjectView")
             return
 
         if new_name == current_name:
              msg = "New name is the same as the current project name."
-             self.navigation_pane.add_log_message(msg, 'info')
+             self.log_bus.log(msg, 'info', "ProjectView")
              return
 
         if current_name is None:
              msg = "Cannot rename, no project is currently loaded."
-             self.navigation_pane.add_log_message(msg, 'error')
+             self.log_bus.log(msg, 'error', "ProjectView")
              return
 
         try:
-            self.navigation_pane.add_log_message(f"Attempting to rename project '{current_name}' to: {new_name}", 'info')
+            self.log_bus.log(f"Attempting to rename project '{current_name}' to: {new_name}", 'info', "ProjectView")
             # Perform rename using project_manager
             # Ensure project_manager exists
             if not self.window().project_manager:
-                 self.navigation_pane.add_log_message("ProjectManager not available for rename.", "error")
+                 self.log_bus.log("ProjectManager not available for rename.", "error", "ProjectView")
                  return
 
             self.window().project_manager.rename_project(new_name)
 
             # --- Rename Successful ---
-            self.navigation_pane.add_log_message(f"Project successfully renamed to: {new_name}", 'success')
+            self.log_bus.log(f"Project successfully renamed to: {new_name}", 'success', "ProjectView")
 
             # Emit signal to notify MainWindow to update title etc.
             self.project_renamed.emit(new_name)
@@ -746,7 +799,7 @@ class ProjectView(BaseView):
         except Exception as e:
             error_msg = f"Error renaming project '{current_name}' to '{new_name}': {e}"
             # print(error_msg) # Keep commented
-            self.navigation_pane.add_log_message(error_msg, 'error')
+            self.log_bus.log(error_msg, 'error', "ProjectView")
             # Restore rename line edit to current name on failure?
             if hasattr(self, 'rename_line_edit'):
                  self.rename_line_edit.setText(current_name)
@@ -962,20 +1015,20 @@ class ProjectView(BaseView):
     def handle_save_project_notes(self):
         """Save the project notes to the current project state."""
         if not hasattr(self, 'window') or not self.window():
-            self.navigation_pane.add_log_message("Cannot save notes: window reference not available.", 'error')
+            self.log_bus.log("Cannot save notes: window reference not available.", 'error', "ProjectView")
             return
 
         if not hasattr(self, 'project_notes_box'):
-            self.navigation_pane.add_log_message("Cannot save notes: project_notes_box not initialized.", 'error')
+            self.log_bus.log("Cannot save notes: project_notes_box not initialized.", 'error', "ProjectView")
             return
 
         notes = self.project_notes_box.get_text()
-        self.navigation_pane.add_log_message(f"Saving project notes ({len(notes)} characters)...", 'info')
+        self.log_bus.log(f"Saving project notes ({len(notes, "ProjectView")} characters)...", 'info')
 
         try:
             # Ensure project_manager is available
             if not self.window().project_manager:
-                 self.navigation_pane.add_log_message("Cannot save notes: Project manager not available.", 'error')
+                 self.log_bus.log("Cannot save notes: Project manager not available.", 'error', "ProjectView")
                  return
 
             # Update notes in project config settings
@@ -985,11 +1038,11 @@ class ProjectView(BaseView):
             # Save the project to persist changes
             pm.save_project()
 
-            self.navigation_pane.add_log_message("Project notes saved successfully.", 'success')
+            self.log_bus.log("Project notes saved successfully.", 'success', "ProjectView")
         except Exception as e:
             error_msg = f"Error saving project notes: {e}"
             # print(error_msg) # Keep commented
-            self.navigation_pane.add_log_message(error_msg, 'error')
+            self.log_bus.log(error_msg, 'error', "ProjectView")
 
     def _browse_shared_root(self):
         try:
@@ -997,7 +1050,7 @@ class ProjectView(BaseView):
             if directory:
                 self.shared_root_line.setText(directory)
         except Exception as e:
-            self.navigation_pane.add_log_message(f"Error selecting shared root: {e}", "error")
+            self.log_bus.log(f"Error selecting shared root: {e}", "error", "ProjectView")
 
     def handle_set_shared_root(self):
         try:
@@ -1025,30 +1078,30 @@ class ProjectView(BaseView):
                 self.window().project_manager.set_shared_root(sr)
                 self.window().project_manager.save_project()
 
-            self.navigation_pane.add_log_message(f"Shared root set to {sr}", "success")
+            self.log_bus.log(f"Shared root set to {sr}", "success", "ProjectView")
         except Exception as e:
-            self.navigation_pane.add_log_message(f"Failed to set shared root: {e}", "error")
+            self.log_bus.log(f"Failed to set shared root: {e}", "error", "ProjectView")
 
     def handle_move_project_to_shared(self):
         try:
             pm = self.window().project_manager
             sr = pm.config.shared_root
             if not sr:
-                self.navigation_pane.add_log_message("Set a shared root first.", "warning")
+                self.log_bus.log("Set a shared root first.", "warning", "ProjectView")
                 return
             new_path = pm.move_project_to_directory(Path(sr))
-            self.navigation_pane.add_log_message(f"Project moved to {new_path}", "success")
+            self.log_bus.log(f"Project moved to {new_path}", "success", "ProjectView")
         except Exception as e:
-            self.navigation_pane.add_log_message(f"Failed to move project: {e}", "error")
+            self.log_bus.log(f"Failed to move project: {e}", "error", "ProjectView")
 
     def update_theme(self, theme):
         """Update theme for this view and propagate any view-specific changes."""
         super().update_theme(theme)
-        self.navigation_pane.add_log_message(f"Theme updated to {theme}.", "info")
+        self.log_bus.log(f"Theme updated to {theme}.", "info", "ProjectView")
 
     def refresh_lists(self):
         """Refreshes lists managed by this view."""
-        self.navigation_pane.add_log_message("Refreshing ProjectView lists...", "info")
+        self.log_bus.log("Refreshing ProjectView lists...", "info", "ProjectView")
         self.populate_project_list()
         self.populate_lab_combo()  # Refresh lab combo too
         self.populate_importer_plugins() # Also refresh importer list
@@ -1146,7 +1199,7 @@ class ProjectView(BaseView):
             # Check if project manager is available
             if not self.window().project_manager:
                 QMessageBox.warning(self, "Scan", "No project is currently loaded. Please load a project first.")
-                self.navigation_pane.add_log_message("Cannot scan targets: no project loaded.", "error")
+                self.log_bus.log("Cannot scan targets: no project loaded.", "error", "ProjectView")
                 return
 
             sr = self.window().project_manager.config.shared_root
@@ -1204,30 +1257,30 @@ class ProjectView(BaseView):
             off_shared = len(self._off_shared)
             self.scan_summary_label.setText(f"Scanned files: {total} | Unique: {unique} | Off-shared: {off_shared}")
         except Exception as e:
-            self.navigation_pane.add_log_message(f"Scan failed: {e}", "error")
+            self.log_bus.log(f"Scan failed: {e}", "error", "ProjectView")
 
     def handle_add_under_shared(self):
         try:
             # Check if project manager is available
             if not self.window().project_manager:
                 QMessageBox.warning(self, "Add", "No project is currently loaded. Please load a project first.")
-                self.navigation_pane.add_log_message("Cannot add videos: no project loaded.", "error")
+                self.log_bus.log("Cannot add videos: no project loaded.", "error", "ProjectView")
                 return
 
             if not self._in_shared:
-                QMessageBox.information(self, "Add", "No items under shared root to add.")
+                self.log_bus.log("No items under shared root to add", "info", "ProjectView")
                 return
             added = self.window().project_manager.register_unlinked_videos(iter(self._in_shared))
-            QMessageBox.information(self, "Add", f"Added {added} videos under shared root.")
+            self.log_bus.log(f"Added {added} videos under shared root", "success", "ProjectView")
         except Exception as e:
-            self.navigation_pane.add_log_message(f"Add under shared failed: {e}", "error")
+            self.log_bus.log(f"Add under shared failed: {e}", "error", "ProjectView")
 
     def handle_stage_off_shared(self):
         try:
             # Check if project manager is available
             if not self.window().project_manager:
                 QMessageBox.warning(self, "Stage", "No project is currently loaded. Please load a project first.")
-                self.navigation_pane.add_log_message("Cannot stage files: no project loaded.", "error")
+                self.log_bus.log("Cannot stage files: no project loaded.", "error", "ProjectView")
                 return
 
             if not self._off_shared:
@@ -1239,7 +1292,7 @@ class ProjectView(BaseView):
                 return
             subdir = self.stage_subdir_line.text().strip()
             if not subdir:
-                self.navigation_pane.add_log_message("Enter a destination subdirectory under shared root.", "warning")
+                self.log_bus.log("Enter a destination subdirectory under shared root.", "warning", "ProjectView")
                 return
             dest_base = Path(sr) / subdir
 
@@ -1263,7 +1316,7 @@ class ProjectView(BaseView):
             added = self.window().project_manager.register_unlinked_videos(staged_iter)
             QMessageBox.information(self, "Stage", f"Staged and added {added} videos.")
         except Exception as e:
-            self.navigation_pane.add_log_message(f"Stage failed: {e}", "error")
+            self.log_bus.log(f"Stage failed: {e}", "error", "ProjectView")
 
     def setup_targets_page(self):
         """Setup Targets management page (typed scan targets CRUD)."""
@@ -1334,7 +1387,7 @@ class ProjectView(BaseView):
             # Check if project manager is available
             if not self.window().project_manager:
                 QMessageBox.warning(self, "Targets", "No project is currently loaded. Please load a project first.")
-                self.navigation_pane.add_log_message("Cannot add target: no project loaded.", "error")
+                self.log_bus.log("Cannot add target: no project loaded.", "error", "ProjectView")
                 return
 
             name = self.target_name_edit.text().strip()
@@ -1371,21 +1424,21 @@ class ProjectView(BaseView):
             self.window().project_manager.save_project()
             self.refresh_targets_admin_list()
             self.refresh_targets_list()
-            self.navigation_pane.add_log_message(f"Added target {name}", "success")
+            self.log_bus.log(f"Added target {name}", "success", "ProjectView")
         except Exception as e:
-            self.navigation_pane.add_log_message(f"Add target failed: {e}", "error")
+            self.log_bus.log(f"Add target failed: {e}", "error", "ProjectView")
 
     def handle_remove_target(self):
         try:
             # Check if project manager is available
             if not self.window().project_manager:
                 QMessageBox.warning(self, "Targets", "No project is currently loaded. Please load a project first.")
-                self.navigation_pane.add_log_message("Cannot remove target: no project loaded.", "error")
+                self.log_bus.log("Cannot remove target: no project loaded.", "error", "ProjectView")
                 return
 
             item = self.targets_admin_list.currentItem()
             if not item:
-                QMessageBox.information(self, "Targets", "Select a target to remove.")
+                self.log_bus.log("Select a target to remove", "info", "ProjectView")
                 return
             name = item.data(Qt.ItemDataRole.UserRole)
             targets = self.window().project_manager.config.settings.get('scan_targets', [])
@@ -1393,14 +1446,14 @@ class ProjectView(BaseView):
             targets = [t for t in targets if t.get('name') != name]
             self.window().project_manager.config.settings['scan_targets'] = targets
             if len(targets) == before:
-                QMessageBox.information(self, "Targets", f"No target named '{name}' found.")
+                self.log_bus.log(f"No target named '{name}' found", "info", "ProjectView")
                 return
             self.window().project_manager.save_project()
             self.refresh_targets_admin_list()
             self.refresh_targets_list()
-            self.navigation_pane.add_log_message(f"Removed target {name}", "success")
+            self.log_bus.log(f"Removed target {name}", "success", "ProjectView")
         except Exception as e:
-            self.navigation_pane.add_log_message(f"Remove target failed: {e}", "error")
+            self.log_bus.log(f"Remove target failed: {e}", "error", "ProjectView")
 
     def handle_browse_lab_library(self):
         try:

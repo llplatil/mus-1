@@ -28,6 +28,9 @@ dependencies = [
 mus1 = "mus1.core.simple_cli:app"
 mus1-gui = "mus1.main:main"
 
+[project.entry-points."mus1.plugins"]
+project_importer = "mus1.plugins.project_importer:ProjectImporterPlugin"
+
 [build-system]
 requires = ["setuptools>=61", "wheel"]
 build-backend = "setuptools.build_meta"

@@ -1,13 +1,11 @@
 from pathlib import Path
 import os
 
-from PySide6.QtWidgets import (
+from .qt import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QPushButton, QLineEdit, QMessageBox,
     QGridLayout, QFrame, QListWidget, QListWidgetItem, QFileDialog, QCheckBox, QWidget,
-    QApplication
+    QApplication, Qt, QSize, QPixmap, QPalette, QBrush, QColor, QPainter, QImage, QIcon
 )
-from PySide6.QtCore import Qt, QSize, Signal
-from PySide6.QtGui import QPixmap, QPalette, QBrush, QColor, QPainter, QImage, QIcon
 from ..core.project_manager_clean import ProjectManagerClean
 from ..core.config_manager import get_config, set_config
 from ..core.setup_service import get_setup_service
@@ -50,7 +48,7 @@ class ProjectSelectionDialog(QDialog):
         new_project_title = QLabel("Create New Project", left_frame)
         new_project_title.setObjectName("newProjectTitle")
         new_project_title.setProperty("class", "mus1-title")
-        new_project_title.setAlignment(Qt.AlignHCenter)
+        new_project_title.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         left_layout.addWidget(new_project_title)
         
         # Input group for project name and optional location
@@ -60,11 +58,11 @@ class ProjectSelectionDialog(QDialog):
         input_group_layout.setContentsMargins(5, 5, 5, 5)
         input_group_layout.setSpacing(5)
 
-        # Location type (Local/Shared)
+        # Location type (Local/Lab)
         self.location_type_combo = QComboBox(input_group)
         self.location_type_combo.setObjectName("locationTypeCombo")
         self.location_type_combo.setProperty("class", "mus1-combo-box")
-        self.location_type_combo.addItems(["Local", "Shared"])  # Default to Local
+        self.location_type_combo.addItems(["Local", "Lab"])  # Default to Local
         self.location_type_combo.currentIndexChanged.connect(lambda _: self.refresh_projects_list())
         input_group_layout.addWidget(self.location_type_combo)
 
@@ -125,11 +123,11 @@ class ProjectSelectionDialog(QDialog):
         self.existing_location_combo = QComboBox(right_frame)
         self.existing_location_combo.setObjectName("existingLocationCombo")
         self.existing_location_combo.setProperty("class", "mus1-combo-box")
-        self.existing_location_combo.addItems(["Local", "Shared"])  # Mirrors creation side
+        self.existing_location_combo.addItems(["Local", "Lab"])  # Mirrors creation side
         self.existing_location_combo.currentIndexChanged.connect(self.on_existing_location_changed)
         right_layout.addWidget(self.existing_location_combo)
 
-        # Lab selector for shared projects
+        # Lab selector for lab projects
         self.existing_lab_combo = QComboBox(right_frame)
         self.existing_lab_combo.setObjectName("existingLabCombo")
         self.existing_lab_combo.setProperty("class", "mus1-combo-box")
@@ -170,13 +168,23 @@ class ProjectSelectionDialog(QDialog):
         
     def browse_location(self):
         """Open a file dialog to select a directory."""
-        # Start from shared root if in shared mode, otherwise home directory
+        # Start from lab shared root if in lab mode, otherwise home directory
         location_choice = self.location_type_combo.currentText().lower()
         start_dir = os.path.expanduser("~")
-        if location_choice == "shared":
-            shared_root = get_config("storage.shared_root")
-            if shared_root:
-                start_dir = shared_root
+        if location_choice == "lab":
+            # Prefer selected lab's storage root if available
+            setup_service = get_setup_service()
+            labs = setup_service.get_labs()
+            selected_lab_id = None
+            if hasattr(self, "create_lab_combo"):
+                selected_lab_id = self.create_lab_combo.currentData()
+            if not selected_lab_id and labs and len(labs) == 1:
+                selected_lab_id = next(iter(labs.keys()))
+            if selected_lab_id:
+                from ..core.config_manager import get_lab_storage_root
+                lab_root = get_lab_storage_root(selected_lab_id)
+                if lab_root:
+                    start_dir = str(lab_root)
 
         directory = QFileDialog.getExistingDirectory(
             self,
@@ -193,7 +201,7 @@ class ProjectSelectionDialog(QDialog):
 
         try:
             mode = self.existing_location_combo.currentText().lower()
-            if mode == "shared":
+            if mode == "lab":
                 # Lab-aware: list projects registered under the selected lab
                 if not self._labs_cache:
                     self.load_labs()
@@ -211,7 +219,7 @@ class ProjectSelectionDialog(QDialog):
                 else:
                     # No lab selection or no labs; show hint
                     hint = QListWidgetItem("Select a lab to view shared projects")
-                    hint.setFlags(hint.flags() & ~Qt.ItemIsSelectable)
+                    hint.setFlags(hint.flags() & ~Qt.ItemFlag.ItemIsSelectable)
                     hint.setForeground(QColor("gray"))
                     self.projects_list.addItem(hint)
             else:
@@ -219,6 +227,12 @@ class ProjectSelectionDialog(QDialog):
                 from ..core.project_discovery_service import get_project_discovery_service
                 discovery_service = get_project_discovery_service()
                 project_paths = discovery_service.discover_existing_projects()
+                # Filter to local user default directory only
+                from ..core.config_manager import get_config
+                default_dir = get_config("user.default_projects_dir")
+                if default_dir:
+                    default_dir = Path(default_dir)
+                    project_paths = [p for p in project_paths if str(p).startswith(str(default_dir))]
                 for project_path in project_paths:
                     project_name = project_path.name
                     item = QListWidgetItem(project_name)
@@ -231,7 +245,7 @@ class ProjectSelectionDialog(QDialog):
         # Show helpful message if no projects found
         if self.projects_list.count() == 0:
             empty_item = QListWidgetItem("No projects found. Create your first project!")
-            empty_item.setFlags(empty_item.flags() & ~Qt.ItemIsSelectable)
+            empty_item.setFlags(empty_item.flags() & ~Qt.ItemFlag.ItemIsSelectable)
             empty_item.setForeground(QColor("gray"))
             self.projects_list.addItem(empty_item)
     
@@ -295,7 +309,7 @@ class ProjectSelectionDialog(QDialog):
             labs = setup_service.get_labs()  # SQL-backed
             chosen_lab_id = None
             # If creating in Shared mode, use selected lab if available
-            if self.location_type_combo.currentText().lower() == "shared" and hasattr(self, "create_lab_combo"):
+            if self.location_type_combo.currentText().lower() == "lab" and hasattr(self, "create_lab_combo"):
                 chosen_lab_id = self.create_lab_combo.currentData()
             # Fallback: if exactly one lab exists
             if not chosen_lab_id and labs and len(labs) == 1:

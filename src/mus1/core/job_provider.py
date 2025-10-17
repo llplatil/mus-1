@@ -10,7 +10,7 @@ import time
 
 from pathlib import Path
 
-from .metadata import WorkerEntry
+from .metadata import Worker
 from .logging_bus import LoggingEventBus
 
 
@@ -334,7 +334,7 @@ class SshWslJobProvider:
 
 
 def run_on_worker(
-    worker: WorkerEntry,
+    worker: Worker,
     command: List[str],
     cwd: Optional[Path] = None,
     env: Optional[Dict[str, str]] = None,

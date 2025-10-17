@@ -20,7 +20,7 @@ from .schema import (
     plugin_result_to_model, model_to_plugin_result
 )
 
-logger = logging.getLogger("mus1.core.plugin_manager_clean")
+logger = logging.getLogger(__name__)
 
 
 class PluginService:

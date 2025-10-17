@@ -356,7 +356,7 @@ class SubjectView(BaseView):
         # For example, refresh the view based on new theme settings
         # Log the theme update if navigation pane is available
         if hasattr(self, 'navigation_pane'):
-            self.navigation_pane.add_log_message(f"Updated to {theme} theme", 'info')
+            self.log_bus.log(f"Updated to {theme} theme", 'info', "SubjectView")
 
     def change_page(self, index):
         """
@@ -468,7 +468,7 @@ class SubjectView(BaseView):
         """Handle editing of a selected subject."""
         subject_id = self._get_selected_subject_id()
         if not subject_id:
-            self.navigation_pane.add_log_message("No subject selected for editing.", "warning")
+            self.log_bus.log("No subject selected for editing.", "warning", "SubjectView")
             return
         self.handle_edit_subject_by_id(subject_id)
 
@@ -477,7 +477,7 @@ class SubjectView(BaseView):
         # Get the subject using GUI services
         subject_dto = self.subject_service.get_subject_by_id(subject_id)
         if not subject_dto:
-            self.navigation_pane.add_log_message(f"Subject {subject_id} not found.", "error")
+            self.log_bus.log(f"Subject {subject_id} not found.", "error", "SubjectView")
             return
         
         # Populate the form with subject data for editing
@@ -573,18 +573,18 @@ class SubjectView(BaseView):
         """Display the notes for the selected subject in a popup dialog."""
         subject_id = self._get_selected_subject_id()
         if not subject_id:
-            self.navigation_pane.add_log_message("No subject selected for viewing notes.", "warning")
+            self.log_bus.log("No subject selected for viewing notes.", "warning", "SubjectView")
             return
         
         # Get the subject using GUI services
         subject_dto = self.subject_service.get_subject_by_id(subject_id)
         if not subject_dto:
-            self.navigation_pane.add_log_message(f"Subject {subject_id} not found.", "error")
+            self.log_bus.log(f"Subject {subject_id} not found.", "error", "SubjectView")
             return
 
         # Notes are not implemented in the current Subject model/DTO
         # Show a message indicating this feature is not available yet
-        self.navigation_pane.add_log_message(f"Notes feature not yet implemented for subject {subject_id}.", "info")
+        self.log_bus.log(f"Notes feature not yet implemented for subject {subject_id}.", "info", "SubjectView")
 
     # New methods for Treatments and Genotypes management (naming now consistent with core modules)
     def _add_metadata_item(self, name: str, line_edit, add_method, refresh_method, item_type: str):
@@ -648,7 +648,7 @@ class SubjectView(BaseView):
         """Promote selected colony treatments to project master level."""
         selected_items = self.current_treatments_list.selectedItems()
         if not selected_items:
-            self.navigation_pane.add_log_message("No treatments selected to promote.", "warning")
+            self.log_bus.log("No treatments selected to promote.", "warning", "SubjectView")
             return
 
         selected_names = [item.text() for item in selected_items]
@@ -667,14 +667,14 @@ class SubjectView(BaseView):
 
             if added_count > 0:
                 self.subject_service.update_master_treatments(updated_master)
-                self.navigation_pane.add_log_message(f"Promoted {added_count} treatment(s) to project master.", "success")
+                self.log_bus.log(f"Promoted {added_count} treatment(s) to project master.", "success", "SubjectView")
                 self.refresh_treatments_lists()
             else:
-                self.navigation_pane.add_log_message("All selected treatments already exist in project master.", "info")
+                self.log_bus.log("All selected treatments already exist in project master.", "info", "SubjectView")
 
         except Exception as e:
             self.log_bus.log(f"Error promoting treatments: {e}", "error", "SubjectView")
-            self.navigation_pane.add_log_message(f"Error promoting treatments: {str(e)}", "error")
+            self.log_bus.log(f"Error promoting treatments: {str(e)}", "error", "SubjectView")
 
     def handle_add_to_active_genotypes(self):
         """Adds selected genotypes from the available list to active genotypes."""
@@ -702,7 +702,7 @@ class SubjectView(BaseView):
         """Promote selected colony genotypes to project master level."""
         selected_items = self.current_genotypes_list.selectedItems()
         if not selected_items:
-            self.navigation_pane.add_log_message("No genotypes selected to promote.", "warning")
+            self.log_bus.log("No genotypes selected to promote.", "warning", "SubjectView")
             return
 
         selected_names = [item.text() for item in selected_items]
@@ -721,14 +721,14 @@ class SubjectView(BaseView):
 
             if added_count > 0:
                 self.subject_service.update_master_genotypes(updated_master)
-                self.navigation_pane.add_log_message(f"Promoted {added_count} genotype(s) to project master.", "success")
+                self.log_bus.log(f"Promoted {added_count} genotype(s) to project master.", "success", "SubjectView")
                 self.refresh_genotypes_lists()
             else:
-                self.navigation_pane.add_log_message("All selected genotypes already exist in project master.", "info")
+                self.log_bus.log("All selected genotypes already exist in project master.", "info", "SubjectView")
 
         except Exception as e:
             self.log_bus.log(f"Error promoting genotypes: {e}", "error", "SubjectView")
-            self.navigation_pane.add_log_message(f"Error promoting genotypes: {str(e)}", "error")
+            self.log_bus.log(f"Error promoting genotypes: {str(e)}", "error", "SubjectView")
 
     def refresh_colony_combo(self):
         """Populate the colony dropdown with available colonies for the current lab."""
@@ -763,19 +763,19 @@ class SubjectView(BaseView):
     def handle_add_subject_to_colony(self):
         """Add the selected subject to the selected colony."""
         if not self.subject_service or not self.service_factory:
-            self.navigation_pane.add_log_message("Services not available", "error")
+            self.log_bus.log("Services not available", "error", "SubjectView")
             return
 
         # Get selected subject
         subject_id = self._get_selected_subject_id()
         if not subject_id:
-            self.navigation_pane.add_log_message("Please select a subject first", "warning")
+            self.log_bus.log("Please select a subject first", "warning", "SubjectView")
             return
 
         # Get selected colony
         colony_id = self.colony_combo.currentData()
         if not colony_id:
-            self.navigation_pane.add_log_message("Please select a colony", "warning")
+            self.log_bus.log("Please select a colony", "warning", "SubjectView")
             return
 
         # Add subject to colony using project manager
@@ -783,52 +783,52 @@ class SubjectView(BaseView):
             # Get the subject and check if it's already in this colony
             subject = self.subject_service.get_subject_by_id(subject_id)
             if not subject:
-                self.navigation_pane.add_log_message(f"Subject '{subject_id}' not found", "error")
+                self.log_bus.log(f"Subject '{subject_id}' not found", "error", "SubjectView")
                 return
 
             # Check if subject is already in the selected colony
             if subject.colony_id == colony_id:
-                self.navigation_pane.add_log_message(
+                self.log_bus.log(
                     f"Subject '{subject_id}' is already assigned to this colony.", "info"
-                )
+                , "SubjectView")
                 return
 
             # Update the subject's colony_id through the GUI service
             success = self.subject_service.update_subject_colony(subject_id, colony_id)
 
             if success:
-                self.navigation_pane.add_log_message(
+                self.log_bus.log(
                     f"Subject '{subject_id}' successfully added to colony", "success"
-                )
+                , "SubjectView")
                 # Refresh the subject list to show updated colony membership
                 self.refresh_subject_list_display()
                 # Refresh metadata display to show colony info
                 if hasattr(self, 'refresh_overview'):
                     self.refresh_overview()
             else:
-                self.navigation_pane.add_log_message(
+                self.log_bus.log(
                     f"Failed to add subject '{subject_id}' to colony", "error"
-                )
+                , "SubjectView")
         except Exception as e:
-            self.navigation_pane.add_log_message(
-                f"Failed to add subject to colony: {str(e)}", "error"
+            self.log_bus.log(
+                f"Failed to add subject to colony: {str(e, "SubjectView")}", "error"
             )
 
     def handle_remove_subject_from_colony(self):
         """Remove the selected subject from its current colony."""
         if not self.subject_service or not self.service_factory:
-            self.navigation_pane.add_log_message("Services not available", "error")
+            self.log_bus.log("Services not available", "error", "SubjectView")
             return
 
         # Get selected subject
         subject_id = self._get_selected_subject_id()
         if not subject_id:
-            self.navigation_pane.add_log_message("Please select a subject first", "warning")
+            self.log_bus.log("Please select a subject first", "warning", "SubjectView")
             return
         # In dev builds, proceed without modal confirmation; log intent
-        self.navigation_pane.add_log_message(
+        self.log_bus.log(
             f"Removing subject '{subject_id}' from its current colony...", "info"
-        )
+        , "SubjectView")
 
         # Remove subject from colony using project manager
         try:
@@ -836,21 +836,21 @@ class SubjectView(BaseView):
             success = self.subject_service.update_subject_colony(subject_id, None)
 
             if success:
-                self.navigation_pane.add_log_message(
+                self.log_bus.log(
                     f"Subject '{subject_id}' successfully removed from colony", "success"
-                )
+                , "SubjectView")
                 # Refresh the subject list to show updated colony membership
                 self.refresh_subject_list_display()
                 # Refresh metadata display to show colony info
                 if hasattr(self, 'refresh_overview'):
                     self.refresh_overview()
             else:
-                self.navigation_pane.add_log_message(
+                self.log_bus.log(
                     f"Failed to remove subject '{subject_id}' from colony", "error"
-                )
+                , "SubjectView")
         except Exception as e:
-            self.navigation_pane.add_log_message(
-                f"Failed to remove subject from colony: {str(e)}", "error"
+            self.log_bus.log(
+                f"Failed to remove subject from colony: {str(e, "SubjectView")}", "error"
             )
 
     def _get_selected_subject_id(self) -> str | None:
@@ -937,7 +937,7 @@ class SubjectView(BaseView):
                 else:
                     self.current_body_parts_list.addItem("No active body parts")
 
-                self.navigation_pane.add_log_message("Body parts lists refreshed.", "info")
+                self.log_bus.log("Body parts lists refreshed.", "info", "SubjectView")
             except Exception as e:
                 self.log_bus.log(f"Error refreshing body parts: {e}", "error", "SubjectView")
                 self.all_bodyparts_list.addItem("Error loading body parts")
@@ -1172,12 +1172,12 @@ class SubjectView(BaseView):
     def handle_remove_from_master(self):
         """Delete selected body parts from the master list."""
         if not self.subject_service:
-            self.navigation_pane.add_log_message("Subject service not available.", "error")
+            self.log_bus.log("Subject service not available.", "error", "SubjectView")
             return
 
         selected_items = self.all_bodyparts_list.selectedItems()
         if not selected_items:
-            self.navigation_pane.add_log_message("No body parts selected for deletion from master list.", "warning")
+            self.log_bus.log("No body parts selected for deletion from master list.", "warning", "SubjectView")
             return
 
         selected = [item.text() for item in selected_items]
@@ -1194,32 +1194,32 @@ class SubjectView(BaseView):
         self.subject_service.update_master_body_parts(new_master)
         self.subject_service.update_active_body_parts(new_active)
 
-        self.navigation_pane.add_log_message(f"Deleted {len(selected)} body parts from project.", "success")
+        self.log_bus.log(f"Deleted {len(selected)} body parts from project.", "success", "SubjectView")
         self.refresh_body_parts_page()
 
     def handle_add_selected_bodyparts_to_active(self):
         """Add selected body parts from the master list into the active list."""
         selected_items = self.all_bodyparts_list.selectedItems()
         if not selected_items:
-            self.navigation_pane.add_log_message("No body parts selected for active list.", "warning")
+            self.log_bus.log("No body parts selected for active list.", "warning", "SubjectView")
             return
         selected = [item.text() for item in selected_items]
         current = [self.current_body_parts_list.item(i).text() for i in range(self.current_body_parts_list.count())]
         updated = current + [bp for bp in selected if bp not in current]
         if self.subject_service:
             self.subject_service.update_active_body_parts(updated)
-        self.navigation_pane.add_log_message(f"Added {len(selected)} body parts to active list.", "success")
+        self.log_bus.log(f"Added {len(selected)} body parts to active list.", "success", "SubjectView")
         self.refresh_body_parts_page()
 
     def handle_remove_active_bodyparts(self):
         """Move selected body parts from the active list back to the master list."""
         selected_items = self.current_body_parts_list.selectedItems()
         if not selected_items:
-            self.navigation_pane.add_log_message("No body parts selected from active list.", "warning")
+            self.log_bus.log("No body parts selected from active list.", "warning", "SubjectView")
             return
 
         if not self.subject_service:
-            self.navigation_pane.add_log_message("Subject service not available.", "error")
+            self.log_bus.log("Subject service not available.", "error", "SubjectView")
             return
 
         current_active = [self.current_body_parts_list.item(i).text() for i in range(self.current_body_parts_list.count())]
@@ -1239,38 +1239,38 @@ class SubjectView(BaseView):
         if new_master != current_master:
             self.subject_service.update_master_body_parts(new_master)
 
-        self.navigation_pane.add_log_message(f"Moved {len(items_to_move)} body parts from active to master list.", "success")
+        self.log_bus.log(f"Moved {len(items_to_move)} body parts from active to master list.", "success", "SubjectView")
         self.refresh_body_parts_page()
 
     def handle_add_bodypart(self):
         """Add a new body part to the project master list."""
         new_bp = self.new_bodypart_line_edit.text().strip()
         if not new_bp:
-            self.navigation_pane.add_log_message("Body part name cannot be empty.", "warning")
+            self.log_bus.log("Body part name cannot be empty.", "warning", "SubjectView")
             return
 
         try:
             # Add to master body parts
             current_master = self.subject_service.get_master_body_parts()
             if new_bp in current_master:
-                self.navigation_pane.add_log_message(f"Body part '{new_bp}' already exists in master list.", "warning")
+                self.log_bus.log(f"Body part '{new_bp}' already exists in master list.", "warning", "SubjectView")
                 return
 
             updated_master = current_master + [new_bp]
             self.subject_service.update_master_body_parts(updated_master)
 
             self.new_bodypart_line_edit.clear()
-            self.navigation_pane.add_log_message(f"Added body part '{new_bp}' to project master.", "success")
+            self.log_bus.log(f"Added body part '{new_bp}' to project master.", "success", "SubjectView")
             self.refresh_body_parts_page()
         except Exception as e:
             self.log_bus.log(f"Error adding body part: {e}", "error", "SubjectView")
-            self.navigation_pane.add_log_message(f"Error adding body part: {str(e)}", "error")
+            self.log_bus.log(f"Error adding body part: {str(e)}", "error", "SubjectView")
 
     def handle_promote_bodyparts_to_master(self):
         """Promote selected colony body parts to project master level."""
         selected_items = self.current_body_parts_list.selectedItems()
         if not selected_items:
-            self.navigation_pane.add_log_message("No body parts selected to promote.", "warning")
+            self.log_bus.log("No body parts selected to promote.", "warning", "SubjectView")
             return
 
         selected_names = [item.text() for item in selected_items]
@@ -1289,14 +1289,14 @@ class SubjectView(BaseView):
 
             if added_count > 0:
                 self.subject_service.update_master_body_parts(updated_master)
-                self.navigation_pane.add_log_message(f"Promoted {added_count} body part(s) to project master.", "success")
+                self.log_bus.log(f"Promoted {added_count} body part(s) to project master.", "success", "SubjectView")
                 self.refresh_body_parts_page()
             else:
-                self.navigation_pane.add_log_message("All selected body parts already exist in project master.", "info")
+                self.log_bus.log("All selected body parts already exist in project master.", "info", "SubjectView")
 
         except Exception as e:
             self.log_bus.log(f"Error promoting body parts: {e}", "error", "SubjectView")
-            self.navigation_pane.add_log_message(f"Error promoting body parts: {str(e)}", "error")
+            self.log_bus.log(f"Error promoting body parts: {str(e)}", "error", "SubjectView")
 
     def setup_objects_page(self):
         """Setup the Objects page with project master ↔ colony active management."""
@@ -1373,31 +1373,31 @@ class SubjectView(BaseView):
         """Add a new object to the project master list."""
         new_obj = self.new_object_line_edit.text().strip()
         if not new_obj:
-            self.navigation_pane.add_log_message("Object name cannot be empty.", "warning")
+            self.log_bus.log("Object name cannot be empty.", "warning", "SubjectView")
             return
 
         try:
             # Add to master tracked objects
             current_master = self.subject_service.get_master_tracked_objects()
             if new_obj in current_master:
-                self.navigation_pane.add_log_message(f"Object '{new_obj}' already exists in master list.", "warning")
+                self.log_bus.log(f"Object '{new_obj}' already exists in master list.", "warning", "SubjectView")
                 return
 
             updated_master = current_master + [new_obj]
             self.subject_service.update_master_tracked_objects(updated_master)
 
             self.new_object_line_edit.clear()
-            self.navigation_pane.add_log_message(f"Added object '{new_obj}' to project master.", "success")
+            self.log_bus.log(f"Added object '{new_obj}' to project master.", "success", "SubjectView")
             self.refresh_objects_ui()
         except Exception as e:
             self.log_bus.log(f"Error adding object: {e}", "error", "SubjectView")
-            self.navigation_pane.add_log_message(f"Error adding object: {str(e)}", "error")
+            self.log_bus.log(f"Error adding object: {str(e)}", "error", "SubjectView")
 
     def handle_promote_objects_to_master(self):
         """Promote selected colony objects to project master level."""
         selected_items = self.current_objects_list.selectedItems()
         if not selected_items:
-            self.navigation_pane.add_log_message("No objects selected to promote.", "warning")
+            self.log_bus.log("No objects selected to promote.", "warning", "SubjectView")
             return
 
         selected_names = [item.text() for item in selected_items]
@@ -1416,20 +1416,20 @@ class SubjectView(BaseView):
 
             if added_count > 0:
                 self.subject_service.update_master_tracked_objects(updated_master)
-                self.navigation_pane.add_log_message(f"Promoted {added_count} object(s) to project master.", "success")
+                self.log_bus.log(f"Promoted {added_count} object(s) to project master.", "success", "SubjectView")
                 self.refresh_objects_ui()
             else:
-                self.navigation_pane.add_log_message("All selected objects already exist in project master.", "info")
+                self.log_bus.log("All selected objects already exist in project master.", "info", "SubjectView")
 
         except Exception as e:
             self.log_bus.log(f"Error promoting objects: {e}", "error", "SubjectView")
-            self.navigation_pane.add_log_message(f"Error promoting objects: {str(e)}", "error")
+            self.log_bus.log(f"Error promoting objects: {str(e)}", "error", "SubjectView")
 
     def move_objects_master_to_active(self):
         """Move selected objects from project master to colony active."""
         selected_items = self.all_objects_list.selectedItems()
         if not selected_items:
-            self.navigation_pane.add_log_message("No objects selected to move to colony.", 'warning')
+            self.log_bus.log("No objects selected to move to colony.", 'warning', "SubjectView")
             return
 
         selected_names = [item.text() for item in selected_items]
@@ -1451,20 +1451,20 @@ class SubjectView(BaseView):
                 # In the future, this should update colony-specific lists
                 if self.subject_service:
                     self.subject_service.update_tracked_objects(updated_active, list_type="active")
-                self.navigation_pane.add_log_message(f"Added {added_count} object(s) to colony active.", 'success')
+                self.log_bus.log(f"Added {added_count} object(s) to colony active.", 'success', "SubjectView")
                 self.refresh_objects_ui()
             else:
-                self.navigation_pane.add_log_message("All selected objects already active in colony.", 'info')
+                self.log_bus.log("All selected objects already active in colony.", 'info', "SubjectView")
 
         except Exception as e:
             self.log_bus.log(f"Error moving objects to active: {e}", "error", "SubjectView")
-            self.navigation_pane.add_log_message(f"Error moving objects: {str(e)}", "error")
+            self.log_bus.log(f"Error moving objects: {str(e)}", "error", "SubjectView")
 
     def move_objects_active_to_master(self):
         """Move selected objects from colony active back to available status."""
         selected_items = self.current_objects_list.selectedItems()
         if not selected_items:
-            self.navigation_pane.add_log_message("No objects selected to remove from colony.", 'warning')
+            self.log_bus.log("No objects selected to remove from colony.", 'warning', "SubjectView")
             return
 
         selected_names = [item.text() for item in selected_items]
@@ -1479,18 +1479,18 @@ class SubjectView(BaseView):
             if self.subject_service:
                 self.subject_service.update_tracked_objects(updated_active, list_type="active")
 
-            self.navigation_pane.add_log_message(f"Removed {len(selected_names)} object(s) from colony active.", 'success')
+            self.log_bus.log(f"Removed {len(selected_names)} object(s) from colony active.", 'success', "SubjectView")
             self.refresh_objects_ui()
 
         except Exception as e:
             self.log_bus.log(f"Error moving objects from active: {e}", "error", "SubjectView")
-            self.navigation_pane.add_log_message(f"Error moving objects: {str(e)}", "error")
+            self.log_bus.log(f"Error moving objects: {str(e)}", "error", "SubjectView")
 
     def delete_object_from_master(self):
         """Delete selected objects from project master list."""
         selected_items = self.all_objects_list.selectedItems()
         if not selected_items:
-            self.navigation_pane.add_log_message("No objects selected for deletion from master.", 'warning')
+            self.log_bus.log("No objects selected for deletion from master.", 'warning', "SubjectView")
             return
 
         selected_names = [item.text() for item in selected_items]
@@ -1508,12 +1508,12 @@ class SubjectView(BaseView):
             if self.subject_service:
                 self.subject_service.update_tracked_objects(updated_active, list_type="active")
 
-            self.navigation_pane.add_log_message(f"Deleted {len(selected_names)} object(s) from project master.", 'success')
+            self.log_bus.log(f"Deleted {len(selected_names)} object(s) from project master.", 'success', "SubjectView")
             self.refresh_objects_ui()
 
         except Exception as e:
             self.log_bus.log(f"Error deleting objects: {e}", "error", "SubjectView")
-            self.navigation_pane.add_log_message(f"Error deleting objects: {str(e)}", "error")
+            self.log_bus.log(f"Error deleting objects: {str(e)}", "error", "SubjectView")
 
     def refresh_objects_ui(self):
         # Clear list widgets if they exist

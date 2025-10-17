@@ -27,7 +27,7 @@ from datetime import datetime
 from contextlib import contextmanager
 import hashlib
 
-logger = logging.getLogger("mus1.core.config_manager")
+logger = logging.getLogger(__name__)
 
 
 # ===========================================
@@ -744,29 +744,8 @@ def set_lab_storage_root(lab_id: str, path: Path) -> None:
 
 
 # ===========================================
-# Lab sharing mode and status helpers
+# Simplified lab sharing helpers
 # ===========================================
-
-def get_lab_sharing_mode(lab_id: str) -> Optional[str]:
-    """Return lab sharing mode for a lab: 'always_on' | 'peer_hosted' | None."""
-    if not lab_id:
-        return None
-    key = f"lab.sharing_mode.{lab_id}"
-    mode = get_config_manager().get(key, None, scope="lab")
-    if mode in ("always_on", "peer_hosted"):
-        return mode
-    return None
-
-
-def set_lab_sharing_mode(lab_id: str, mode: str) -> None:
-    """Set lab sharing mode: 'always_on' or 'peer_hosted'."""
-    if not lab_id:
-        raise ValueError("lab_id is required")
-    if mode not in ("always_on", "peer_hosted"):
-        raise ValueError("mode must be 'always_on' or 'peer_hosted'")
-    key = f"lab.sharing_mode.{lab_id}"
-    get_config_manager().set(key, mode, scope="lab", persist=True)
-
 
 def _is_dir_writable(path: Path) -> bool:
     """Best-effort check that directory is writable by attempting to create and delete a temp file."""
@@ -780,8 +759,8 @@ def _is_dir_writable(path: Path) -> bool:
         return False
 
 
-def get_lab_library_status(lab_id: str) -> Dict[str, Any]:
-    """Compute online/offline status for a lab's shared library.
+def is_lab_storage_online(lab_id: str) -> Dict[str, Any]:
+    """Check if a lab's storage root is online and accessible.
 
     Returns dict: { 'online': bool, 'path': str|None, 'reason': str|None }
     """
@@ -798,3 +777,6 @@ def get_lab_library_status(lab_id: str) -> Dict[str, Any]:
         return {"online": True, "path": str(root), "reason": None}
     except Exception as e:
         return {"online": False, "path": None, "reason": str(e)}
+
+# Removed: get_lab_sharing_mode, set_lab_sharing_mode, get_lab_library_status
+# Replaced with simplified boolean sharing toggle and online status check

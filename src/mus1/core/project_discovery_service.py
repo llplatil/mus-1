@@ -8,7 +8,7 @@ a clear priority chain and single source of truth.
 from pathlib import Path
 from typing import Optional, List
 from .config_manager import get_config
-from .config_manager import get_lab_storage_root, get_lab_sharing_mode, get_lab_library_status
+from .config_manager import get_lab_storage_root
 
 
 class ProjectDiscoveryService:
@@ -19,9 +19,8 @@ class ProjectDiscoveryService:
         Find the full path for a project by name.
 
         Search order:
-        1. Check lab configurations (single source of truth)
+        1. Check lab-registered projects (authoritative)
         2. Check user-configured default projects directory
-        3. Check shared storage directory
 
         Args:
             project_name: Name of the project to find
@@ -53,19 +52,6 @@ class ProjectDiscoveryService:
             if project_path.exists() and (project_path / "mus1.db").exists():
                 return project_path
 
-        # Priority 3: Shared storage root (scan entire root, not just Projects/)
-        shared_root = get_config("storage.shared_root")
-        if shared_root:
-            shared_path = Path(shared_root)
-            # First check if it's directly in shared root
-            project_path = shared_path / project_name
-            if project_path.exists() and (project_path / "mus1.db").exists():
-                return project_path
-            # Then check Projects subdirectory for backward compatibility
-            project_path = shared_path / "Projects" / project_name
-            if project_path.exists() and (project_path / "mus1.db").exists():
-                return project_path
-
         return None
 
     def get_project_root_for_dialog(self, lab_id: Optional[str] = None) -> Path:
@@ -81,7 +67,7 @@ class ProjectDiscoveryService:
         Returns:
             Path to use as the root for project dialogs
         """
-        # Priority: lab-specific root, user default, shared storage root, then local projects
+        # Priority: lab-specific root (if configured), else user default; no global shared scan
         if lab_id:
             lab_root = get_lab_storage_root(lab_id)
             if lab_root and lab_root.exists():
@@ -89,10 +75,6 @@ class ProjectDiscoveryService:
         default_dir = get_config("user.default_projects_dir")
         if default_dir:
             return Path(default_dir)
-
-        shared_root = get_config("storage.shared_root")
-        if shared_root:
-            return Path(shared_root)  # Return shared root directly, not Projects subdirectory
 
         # Fallback to current directory
         return Path.cwd() / "projects"
@@ -102,10 +84,8 @@ class ProjectDiscoveryService:
         Discover all existing projects from configured locations.
 
         Priority:
-        1. Lab-registered projects (most authoritative)
+        1. Lab-registered projects (authoritative)
         2. Filesystem scan of user default directory
-        3. Filesystem scan of shared storage root (not Projects subdirectory)
-        4. Filesystem scan of lab-specific roots (if configured)
 
         Returns:
             List of project directory paths
@@ -129,37 +109,6 @@ class ProjectDiscoveryService:
         default_dir = get_config("user.default_projects_dir")
         if default_dir:
             self._discover_projects_in_directory(Path(default_dir), projects)
-
-        # Priority 3: Shared storage root (scan entire shared root, not just Projects/)
-        shared_root = get_config("storage.shared_root")
-        if shared_root:
-            self._discover_projects_in_directory(Path(shared_root), projects)
-
-        # Priority 4: Lab-specific roots (only include if online for peer_hosted)
-        try:
-            from .setup_service import get_setup_service
-            labs = get_setup_service().get_labs()
-            for lab_id in labs.keys():
-                lab_root = get_lab_storage_root(lab_id)
-                if lab_root:
-                    mode = get_lab_sharing_mode(lab_id) or "always_on"
-                    if mode == "peer_hosted":
-                        status = get_lab_library_status(lab_id)
-                        if not status.get("online"):
-                            # Skip offline peer-hosted roots
-                            continue
-                    self._discover_projects_in_directory(lab_root, projects)
-        except Exception:
-            pass
-
-        # Priority 5: Local projects directory (fallback for unregistered projects)
-        try:
-            from .config_manager import resolve_mus1_root
-            mus1_root = resolve_mus1_root()
-            local_projects_dir = mus1_root / "projects"
-            self._discover_projects_in_directory(local_projects_dir, projects)
-        except Exception:
-            pass
 
         return projects
 

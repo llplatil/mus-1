@@ -1,6 +1,0 @@
-# OPTIONAL: Private developer plugins for MUS1 (entry-point discovery)
-# These plugins are under development and not required for basic MUS1 functionality
-# Install with:  pip install -r requirements-plugins.private.txt
-
-# Private Copperlab assembly plugin from local repo path (editable for dev)
-# -e .plugins/mus1-assembly-plugin-copperlab

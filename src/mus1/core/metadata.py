@@ -17,7 +17,7 @@ from enum import Enum
 from pydantic import BaseModel, Field, field_validator, model_validator
 import logging
 
-logger = logging.getLogger("mus1.core.metadata")
+logger = logging.getLogger(__name__)
 
 class HasDateAdded(Protocol):
     date_added: datetime
@@ -95,21 +95,8 @@ class Lab:
     pi_name: Optional[str] = None
     created_at: datetime = field(default_factory=datetime.now)
 
-@dataclass
-class Workgroup:
-    """Core workgroup entity for collaborative research."""
-    id: str
-    name: str
-    share_key_hash: str  # Salted hash of shareable key
-    created_at: datetime = field(default_factory=datetime.now)
-
-@dataclass
-class WorkgroupMember:
-    """Workgroup membership entity."""
-    workgroup_id: str
-    member_email: str
-    role: str = "member"  # 'admin', 'member', etc.
-    added_at: datetime = field(default_factory=datetime.now)
+# Removed: Workgroup and WorkgroupMember dataclasses
+# These were part of over-complex workgroup collaboration features
 
 @dataclass
 class PluginMetadata:
@@ -119,6 +106,7 @@ class PluginMetadata:
     version: str
     description: str
     author: str
+    plugin_type: Optional[str] = None  # e.g., "importer", "exporter", "analysis"
     supported_experiment_types: Optional[List[str]] = None
     readable_data_formats: List[str] = field(default_factory=list)
     analysis_capabilities: List[str] = field(default_factory=list)
@@ -254,13 +242,6 @@ class LabDTO(BaseModel):
     creator_id: str
     institution: Optional[str] = None
     pi_name: Optional[str] = None
-    created_at: datetime = Field(default_factory=datetime.now)
-
-class WorkgroupDTO(BaseModel):
-    """Data transfer object for workgroup data."""
-    id: str
-    name: str
-    share_key_hash: str
     created_at: datetime = Field(default_factory=datetime.now)
 
 class ColonyDTO(BaseModel):

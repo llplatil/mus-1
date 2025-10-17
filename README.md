@@ -77,10 +77,12 @@ mus1 --setup               # CLI mode with setup wizard
 - Project registration and association with labs
 - Enhanced user/lab selection dialog with optional project pre-selection
 
-### 🔄 **Setup Wizard (Partial)**
-- Can be launched via `--setup` flag
-- Basic user profile setup works
-- Advanced configuration options missing
+### 🔄 **Setup Wizard**
+- Can be launched via `--setup` flag (GUI/CLI) and rerun anytime
+- Start Fresh vs Edit Existing modes
+  - Start Fresh: optionally wipe old configs (config.db, root pointer, logs)
+  - Edit Existing: select an existing root containing `config/config.db`
+- User profile, shared storage, and first lab creation supported
 
 ### 🎬 **Video Analysis System (Working)**
 - Video linking to experiments with proper database associations
@@ -97,10 +99,13 @@ mus1 --setup               # CLI mode with setup wizard
 - Basic tab structure exists with some functionality working
 - Some remaining bugs and signal handling issues in other components
 
-### 🔧 **Configuration System (Partial)**
-- Basic hierarchical config exists
-- JSON serialization works but has Path object corruption bugs
-- Project discovery works for finding existing projects
+### 🔧 **Configuration System**
+- Hierarchical config with JSON serialization and Path handling
+- Deterministic MUS1 root resolution with root pointer
+- Project discovery:
+  - Lab mode: list lab-registered projects
+  - Local mode: list user default projects directory
+  - Advisory NFS checks only; no multi-root precedence
 
 ## Usage Examples (CLI Only - GUI Broken)
 
@@ -154,9 +159,8 @@ mus1 setup status
 
 ### Override Configuration Location
 ### Known Behavior / Limitations
-- Setup Wizard is creation-focused and does not offer picking existing users/labs. Use the User/Lab Selection dialog at startup for existing selections.
-- Storage precedence at runtime is: project `shared_root` → lab storage root → global shared storage. The wizard configures only the global shared storage. Set per-project in Project Settings.
-- Project dropdown is filtered by Local/Shared; ensure the filter matches where the project resides.
+- Setup Wizard focuses on creation; pick existing users/labs via the User/Lab Selection dialog after startup.
+- Project selection separates Lab (registered) vs Local; advisory NFS reachability only.
 ```bash
 export MUS1_ROOT="/custom/path"
 mus1-gui

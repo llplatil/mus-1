@@ -1,35 +1,47 @@
-# MUS1 Roadmap
+# MUS1 Simplified Architecture Roadmap
 
-This roadmap shows current status and planned development priorities. Items are prioritized by impact and risk.
+This roadmap shows current status and planned development priorities for the simplified MUS1 architecture.
 
+## ✅ COMPLETED: Major Architecture Simplification (2025-01)
 
-## Known Issues
-- Legacy GUI components need migration to clean architecture
+### **Simplified User Workflows**
+- **✅ 3-Page Setup Wizard**: User Profile → Lab Choice → Lab Config
+- **✅ Dual-Mode Support**: Local projects OR lab collaboration (no hybrid complexity)
+- **✅ Simple Storage**: Lab storage root OR local user directory (no precedence chains)
+- **✅ Clean Sharing**: Boolean enable/disable with online status checks
+- **✅ Project Importer Plugin**: Cross-lab project movement via plugins
+
+### **Removed Complexity**
+- **✅ Workgroups & Complex Collaboration**: Eliminated separate workgroup concept
+- **✅ Peer-Hosted Sharing Modes**: Removed always_on/peer_hosted complexity
+- **✅ Storage Precedence Chains**: No more project→lab→global precedence logic
+- **✅ Multi-Root Scanning**: Simple lab + local discovery only
+- **✅ Dead Code Cleanup**: Removed unused DTOs, functions, database tables
+
+## Known Issues (Updated)
 - Windows/Linux video scanners lack OS-specific optimizations
-- Some plugins need migration to new service pattern
-- User profile fields duplicated between ConfigManager and SQL `users` table (via legacy CLI); risk of drift
-- Wizard lacks explicit default projects directory chooser and app preferences page
+- Service instantiation patterns need standardization (singletons, factories, direct instantiation)
 - Modal popups used during setup; prefer in-app log/status per development guidelines
- - Lab-shared library intent not fully realized in services/UI (no consolidated lab view of recordings/subjects)
- - No explicit designation/validation of a lab-shared folder for workers/compute access
 
-## Development Priorities
+## Development Priorities (Updated)
 
 ### High Priority
-1. **Plugin GUI Integration**: Connect PluginManagerClean to ExperimentView.set_plugin_manager()
-2. **Metadata Database Persistence**: Move objects/bodyparts/treatments/genotypes from JSON config to database tables
-3. **Experiment-Video Repository Methods**: Add missing repository methods for experiment-video associations
-4. **Wizard Existing Entity Pickers**: Add existing user and lab selection to Setup Wizard; skip DTO creation when selected.
-5. **Storage Precedence Enforcement**: Ensure UI/services consistently respect project `shared_root` → lab storage root → global shared storage.
-6. **Lab-shared library (services/UI)**: Add lab-scoped APIs and GUI to browse shared recordings and lab-wide subjects; enable pulling/linking into projects with provenance.
-7. **Shared folder designation for lab workers**: Add setting to designate/validate a lab-shared folder (permissions, existence), surface to worker configurations and CLI.
-8. **GUISubjectService repository access**: Remove `self.repos` usage; route through `ProjectManagerClean` or a consistent repository boundary.
+1. **Service Pattern Standardization**: Implement ProjectServiceFactory and standardize all service instantiation ✅ **IN PROGRESS**
+2. **Plugin GUI Integration**: Connect PluginManagerClean to ExperimentView.set_plugin_manager() ✅ **DONE**
+3. **Metadata Database Persistence**: Move objects/bodyparts/treatments/genotypes from JSON config to database tables ✅ **DONE**
+4. **Modal Popup Replacement**: Replace QMessageBox with navigation log/status messages ✅ **DONE**
+5. **Data Migration**: Implement migration path for existing users to simplified model
 
-4. **✅ COMPLETED: Clean Architecture Migration**
+### Medium Priority
+1. **Windows/Linux Video Scanners**: OS-specific optimizations for video discovery
+2. **Advanced Lab Features**: Lab member permissions, worker management UI
+
+4. **✅ COMPLETED: Clean Architecture Foundation**
    - **✅ GUI Views**: All views use service layer, no direct database access found
    - **✅ Repository Pattern**: Fully implemented with proper separation of concerns
    - **✅ Service Layer**: Bridges domain models to GUI with clean DTOs
    - **✅ Test Coverage**: 62 functional tests validate all relationships
+   - **🔄 Service Patterns**: Standardizing instantiation patterns (singletons, factories, direct)
 
 5. **🔄 PARTIAL: Setup & Project Flow**
    - **✅ MUS1 root selection and ConfigManager re-initialization**: JSON serialization works correctly with Path object handling
@@ -40,8 +52,8 @@ This roadmap shows current status and planned development priorities. Items are 
    - **✅ ProjectView registration option**: Local project creation can optionally register with selected lab.
    - **✅ Qt facade enforcement**: Import-linter contract forbids direct `PyQt6`/`PySide6` imports in GUI.
 
-6. **❌ NOT IMPLEMENTED: Workgroup Model**
-   - **✅ Database schema exists**: Models created but no functional UI or CLI implementation
+6. **❌ NOT IMPLEMENTED: Workgroup Model (unused)**
+   - **✅ Database schema exists**: Tables present but unused; slated for removal or feature-flag
    - **❌ No key generation/verification**: Utilities not implemented
 
 7. **✅ IMPLEMENTED: Lab Management**
@@ -62,10 +74,10 @@ This roadmap shows current status and planned development priorities. Items are 
 10. **✅ WORKING: Config Root Usage Consistency**
     - **✅ ConfigManager rebinding**: Works correctly with JSON serialization and Path handling
     - **✅ Startup resolution**: Functions properly with corrupted project detection
-    - In `src/mus1/main.py`, prefer configured `get_config("mus1.root_path")` for logs when present; fall back to `resolve_mus1_root()` only if unset — 🔄 pending
-    - Implement optional "Copy existing configuration to new location" when creating a new root — 🔄 pending (wizard collects flag; service does not copy)
+    - **✅ main.py logging**: Prefer configured `mus1.root_path` for logs when present
+    - Implement optional "Copy existing configuration to new location" when creating a new root — 🔄 pending (wizard collects flag; service best-effort copy for DB already present)
 11. **Lab-Centric Sharing (Planned)**
-   - Normalize shared resources under the lab and expose retrieval by lab membership
+   - Normalize shared resources under the lab and expose retrieval by lab membership with a single per-lab Shared Root
    - Schema additions:
      - `lab_members(lab_id, user_id, role, joined_at, PRIMARY KEY(lab_id,user_id))`
      - `lab_workers(lab_id, worker_id, permissions, tags, PRIMARY KEY(lab_id,worker_id))`
@@ -76,7 +88,7 @@ This roadmap shows current status and planned development priorities. Items are 
      - Membership CRUD: `add_member`, `remove_member`, `list_members`
      - Association CRUD: `attach_worker`, `detach_worker`, `attach_scan_target`, `detach_scan_target`
    - GUI/CLI:
-     - Project selection: separate Shared (by labs) vs Local sections
+     - Project selection: separate Lab (registered projects) vs Local sections
      - Settings → Lab Settings: members/workers/scan targets management
      - CLI parity: `mus1 lab members|workers|targets ...`
    - Migration:
@@ -86,22 +98,34 @@ This roadmap shows current status and planned development priorities. Items are 
   - In `src/mus1/main.py`, when configuring logs, prefer configured `get_config("mus1.root_path")` when present; fall back to `resolve_mus1_root()` only if unset — 🔄 pending
   - Audit imports using `resolve_mus1_root()` and switch to configuration value post-setup where appropriate — 🔄 pending
 
-### High Priority (New): Duplicate DTOs/Validators Consolidation and DB Alignment
+### High Priority (New): Storage Model Cleanup, Discovery Fixes, and DTO Consolidation
 
-- **Problem**: Duplicate DTOs (`LabDTO`, `ColonyDTO`) exist as Pydantic models in `metadata.py` and as dataclasses in `setup_service.py`. Validation rules (ID/name length, date checks) are duplicated across models and service `__post_init__`, creating drift and maintenance overhead.
+- **Problem A (Storage Model)**: Global `storage.shared_root` and related UI/CLI surfaces persist, conflicting with the per-lab storage model.
+- **Problem B (Discovery/Dialog)**: `ProjectDiscoveryService.get_project_root_for_dialog(...)` has an incomplete default-dir branch; GUI still references global shared storage.
+- **Problem C (DTOs/Validators)**: Duplicate DTOs/validators across layers cause drift and maintenance overhead.
 
-- **Decision/Approach**: Adopt a single DTO source using Pydantic models in `metadata.py`. Service layer should import and use these DTOs exclusively. Centralize validation in Pydantic validators. Use repositories for all entity ↔ SQL transformations. Treat `ProjectConfig` as a thin read model only.
+- **Decision/Approach**:
+  - Storage: Deprecate global `storage.shared_root`; use `get_lab_storage_root(lab_id)` for lab projects and `get_config("user.default_projects_dir")` for local projects. Remove CLI flags `--use-shared`/`--shared-root` and Settings UI "Shared Storage" group.
+  - Discovery/Dialog: Ensure dialog root helper returns lab root when present, otherwise user default dir. Remove any global shared root references.
+  - DTOs/Validators: Single DTO source in `metadata.py` (Pydantic); centralize validation; repositories own persistence transformations. Treat `ProjectConfig` as read/view model only.
 
 - **Tasks**:
-  1. Remove `LabDTO` and `ColonyDTO` dataclasses from `src/mus1/core/setup_service.py`.
-  2. Update `SetupService` methods to accept `metadata.LabDTO` and `metadata.ColonyDTO`.
-  3. Migrate any `__post_init__` validations to Pydantic validators if not already present; delete duplicates in services.
-  4. Ensure repository save/find methods perform transformations between domain dataclasses and SQLAlchemy models; remove field duplication in services.
-  5. Treat `ProjectConfig` as a read/view model: enforce validation either in DTOs or within repository save paths; avoid duplicating the same checks in multiple layers.
-  6. Run `.audit` checks (pylint duplicates, vulture, ruff) and delete unused/duplicate code.
-  7. Add import-linter contract to prevent service-layer DTO definitions that duplicate `metadata.py` DTOs.
+  1. Remove global shared storage surfaces
+     - Delete Settings UI "Shared Storage" group; surface only per-lab root
+     - Remove `--use-shared`/`--shared-root` flags from `simple_cli.py` and related config writes
+     - Drop `ProjectModel.shared_root` if unused; migrate data or mark ignored
+  2. Fix discovery/dialog helper
+     - Implement complete default-dir branch in `ProjectDiscoveryService.get_project_root_for_dialog(...)`
+     - Ensure GUI uses discovery service and lab roots only
+  3. Consolidate DTOs/validators
+     - Ensure services import `LabDTO`/`ColonyDTO` from `metadata.py` exclusively
+     - Convert setup-wizard dataclass DTOs to Pydantic or document as view-only
+     - Remove duplicated `__post_init__` validations where Pydantic covers rules
+  4. CI & audits
+     - Add lints for banned `storage.shared_root` usage in new code
+     - Run `.audit` checks and remove dead code
 
-- **Expected Outcome**: Single source of truth for DTOs and validation; reduced duplication and drift risk; clearer layering with repositories owning persistence transformations.
+- **Expected Outcome**: Per-lab storage as the only shared model; discovery strictly lab+local; single DTO source; fewer user-facing ambiguities and cleaner layering.
 
 ### Medium Priority
 1. **Scanner Improvements**: OS-specific video scanners for Windows/Linux
@@ -148,7 +172,7 @@ This roadmap shows current status and planned development priorities. Items are 
  - If a workgroup is active, associate project/lab with `workgroup_id`
 
 6) Project Discovery Priority
-- Labs config → `user.default_projects_dir` → `<storage.shared_root>/Projects`
+- Labs (registered projects) → `user.default_projects_dir`
 
 7) View Wiring
 - `MainWindow` owns `ProjectManagerClean`
@@ -178,6 +202,7 @@ This roadmap shows current status and planned development priorities. Items are 
 - `src/mus1/gui/setup_wizard.py`: **✅ COMPLETED** - Workflow with ConfigManager re-initialization
 
 ### 🔄 **PENDING - High Priority**
+- `src/mus1/core/`: Implement ProjectServiceFactory for standardized service instantiation — **ARCHITECTURAL**
 - `src/mus1/gui/main_window.py`: Connect PluginManagerClean to ExperimentView.set_plugin_manager() — **CRITICAL**
 - `src/mus1/core/repository.py`: Add experiment-video relationship repository methods — **MISSING**
 - `src/mus1/core/schema.py`: Add metadata tables (objects, bodyparts, treatments, genotypes) for database persistence — **DESIGN DECISION**
@@ -229,6 +254,7 @@ This roadmap shows current status and planned development priorities. Items are 
 - **Test Quality**: **COMPREHENSIVE** - 62 tests covering all relationships
 - **GUI State**: **CLEAN** - No direct database access, proper service usage
 - **Configuration**: **ROBUST** - JSON serialization with Path handling works correctly
+- **Service Patterns**: **STANDARDIZING** - Clear patterns defined, implementation in progress
 
 
 ## Future Features

@@ -15,15 +15,18 @@ from ..core.metadata import ProcessingStage, VideoFile
 import os
 import json
 from pathlib import Path
-import logging # Add logging import if not already present
-logger = logging.getLogger(__name__) # Setup logger for the module
-from typing import List, TYPE_CHECKING # Ensure List is imported
+from ..core.logging_bus import LoggingEventBus
+from typing import List
+from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from ..plugins.base_plugin import BasePlugin
 
 class ExperimentView(BaseView):
     def __init__(self, parent=None):
         super().__init__(parent, view_name="experiments")
+
+        # Initialize logging
+        self.log_bus = LoggingEventBus.get_instance()
 
         # Initialize GUI services
         self.gui_services = None  # Will be set when project is loaded
@@ -49,15 +52,20 @@ class ExperimentView(BaseView):
         # services is the GUIServiceFactory, create the services we need
         self.gui_services = services
         self.experiment_service = services.create_experiment_service()
-        self.subject_service = services.create_subject_service()
         self.plugin_service = services.create_plugin_service()
+        self.subject_service = services.create_subject_service()
         try:
             # Ensure UI controls like combos are populated once
             # then show default page
             self.change_page(0)
             self.refresh_data()
-        except Exception:
-            pass
+        except Exception as e:
+            self.log_bus.log(f"Error in ExperimentView.on_services_ready: {e}", "error", "ExperimentView")
+
+    def set_plugin_manager(self, plugin_manager):
+        """Set the plugin manager for this view."""
+        self.plugin_manager = plugin_manager
+        self.log_bus.log("Plugin manager set on ExperimentView", "info", "ExperimentView")
 
     def on_activated(self):
         self.refresh_data()
@@ -329,9 +337,14 @@ class ExperimentView(BaseView):
         # Experiment Selection Section
         experiment_selection_group, experiment_selection_layout = self.create_form_section("Select Experiments", batch_layout)
 
-        # Use MetadataGridDisplay for experiment selection
+        # Use MetadataGridDisplay for experiment selection with selectable rows
         self.batch_experiment_grid = MetadataGridDisplay(self)
         experiment_selection_layout.addWidget(self.batch_experiment_grid)
+        # Double-click opens the experiment editor by ID
+        try:
+            self.batch_experiment_grid.row_activated.connect(self._handle_open_experiment_by_id)
+        except Exception:
+            pass
         
         # Batch Creation Button
         create_batch_row = self.create_button_row(batch_layout)
@@ -369,9 +382,9 @@ class ExperimentView(BaseView):
         if hasattr(self, 'navigation_button_texts') and 0 <= current_index < len(self.navigation_button_texts):
              page_title = self.navigation_button_texts[current_index]
         else:
-             logger.warning(f"Could not determine page title for index {current_index}.")
+             self.log_bus.log(f"Could not determine page title for index {current_index}.", "warning", "ExperimentView")
 
-        logger.debug(f"Refreshing data for page: {page_title} (Index: {current_index})")
+        self.log_bus.log(f"Refreshing data for page: {page_title} (Index: {current_index})", "info", "ExperimentView")
 
         if page_title == "Add Experiment":
              # Populate subject combo using subject service
@@ -402,6 +415,60 @@ class ExperimentView(BaseView):
              self.refresh_experiment_list_display()
         elif page_title == "Create Batch":
              self.setup_batch_creation() # Re-initialize batch creation UI/data
+             # Populate the grid with selectable experiments
+             try:
+                 experiments = self.experiment_service.get_experiments_for_display() if self.experiment_service else []
+                 columns = ["Select", "ID", "Type", "Subject", "Date", "Stage", "Recordings"]
+                 grid_data = []
+                 for exp in experiments:
+                     recordings = 0
+                     try:
+                         if hasattr(self.window(), 'project_manager') and self.window().project_manager:
+                             recordings = len(self.window().project_manager.get_videos_for_experiment(exp.id))
+                     except Exception as e:
+                         self.log_bus.log(f"Error counting recordings for experiment {exp.id}: {e}", "warning", "ExperimentView")
+                         recordings = 0
+                     grid_data.append({
+                         "Select": False,
+                         "ID": exp.id,
+                         "Type": exp.experiment_type,
+                         "Subject": exp.subject_id,
+                         "Date": exp.date_recorded,
+                         "raw_date": exp.date_recorded,
+                         "Stage": exp.processing_stage,
+                         "raw_stage": exp.processing_stage,
+                         "Recordings": recordings,
+                     })
+                 if hasattr(self, 'batch_experiment_grid'):
+                     self.batch_experiment_grid.set_columns(columns)
+                     self.batch_experiment_grid.populate_data(grid_data, columns, selectable=True, checkbox_column="Select")
+             except Exception as e:
+                 self.log_bus.log(f"Error loading batch experiments: {e}", "error", "ExperimentView")
+                 if hasattr(self, 'batch_experiment_grid'):
+                     self.batch_experiment_grid.set_columns(["Status"])
+                     self.batch_experiment_grid.populate_data([{"Status": "Error loading experiments"}], ["Status"])
+
+    def _handle_open_experiment_by_id(self, experiment_id: str):
+        """Open/focus the experiment editor and preselect subject for a given experiment ID."""
+        try:
+            if not experiment_id:
+                return
+            # Switch to Add Experiment page
+            if hasattr(self, 'navigation_button_texts'):
+                try:
+                    target_index = self.navigation_button_texts.index("Add Experiment")
+                    self.change_page(target_index)
+                except ValueError:
+                    pass
+            # Prefill subject combo
+            if self.experiment_service and hasattr(self, 'subject_id_combo'):
+                exp = self.experiment_service.get_experiment_by_id(experiment_id)
+                if exp:
+                    idx = self.subject_id_combo.findText(getattr(exp, 'subject_id', ''))
+                    if idx >= 0:
+                        self.subject_id_combo.setCurrentIndex(idx)
+        except Exception:
+            pass
 
     def _on_experiment_type_changed(self):
         """Handle changes to experiment type: refresh subtypes and plugins."""
@@ -413,7 +480,7 @@ class ExperimentView(BaseView):
     def clear_plugin_selection(self):
         """Removes all dynamically generated plugin checkboxes and info labels."""
         # This method is likely obsolete as plugins are now shown in ListWidgets
-        logger.warning("clear_plugin_selection may be obsolete with ListWidget approach.")
+        self.log_bus.log("clear_plugin_selection may be obsolete with ListWidget approach.", "warning", "ExperimentView")
         if hasattr(self, 'plugin_checkboxes'):
             for checkbox in self.plugin_checkboxes.values():
                 checkbox.deleteLater()
@@ -433,7 +500,7 @@ class ExperimentView(BaseView):
 
     def handle_add_experiment(self):
         """Handles the 'Add Experiment' button click."""
-        logger.info("Attempting to add experiment...")
+        self.log_bus.log("Attempting to add experiment...", "info", "ExperimentView")
 
         # --- Validation (Basic - more done by button state check) ---
         experiment_id = self.experiment_id_input.text().strip()
@@ -470,7 +537,7 @@ class ExperimentView(BaseView):
                 plugin_params_data[plugin_name] = {}
                 current_plugin_fields = self.plugin_field_widgets.get(plugin_name, {})
                 if not current_plugin_fields and (plugin.required_fields() or plugin.optional_fields()):
-                     logger.warning(f"No widgets found for plugin '{plugin_name}' even though it has fields.")
+                     self.log_bus.log(f"No widgets found for plugin '{plugin_name}' even though it has fields.", "warning", "ExperimentView")
                      # Decide if this is an error or just continue
                      # continue
 
@@ -485,7 +552,7 @@ class ExperimentView(BaseView):
                         # We might choose to skip it or log a more significant warning.
                         # For now, we'll skip non-rendered optional fields.
                         if field_name not in plugin.required_fields():
-                            logger.debug(f"Optional field '{field_name}' for plugin '{plugin_name}' has no widget, skipping.")
+                            self.log_bus.log(f"Optional field '{field_name}' for plugin '{plugin_name}' has no widget, skipping.", "info", "ExperimentView")
                             continue
                         else:
                             # This case should ideally be caught by the button state check, but raise error defensively.
@@ -515,7 +582,7 @@ class ExperimentView(BaseView):
              self.show_error_message("Parameter Error", str(e))
              return
         except Exception as e: # Catch potential errors during value extraction
-            logger.error(f"Error collecting parameters: {e}", exc_info=True)
+            self.log_bus.log(f"Error collecting parameters: {e}", "error", "ExperimentView", "ExperimentView")
             self.show_error_message("Parameter Error", f"Error processing parameters:\n{e}")
             return
 
@@ -536,11 +603,11 @@ class ExperimentView(BaseView):
 
         # --- Call GUI Service ---
         try:
-            logger.info(f"Adding experiment '{experiment_id}'")
+            self.log_bus.log(f"Adding experiment '{experiment_id}'", "info", "ExperimentView")
 
             # Ensure GUI services are available
             if not self.gui_services:
-                 logger.error("GUI services not available. Cannot add experiment.")
+                 self.log_bus.log("GUI services not available. Cannot add experiment.", "error", "ExperimentView")
                  self.show_error_message("Internal Error", "GUI services not initialized.")
                  return
 
@@ -569,26 +636,31 @@ class ExperimentView(BaseView):
                 video_path = Path(video_path_text)
                 try:
                     if video_path.exists():
-                        logger.debug(f"Linking video {video_path} to {experiment_id}")
+                        self.log_bus.log(f"Linking video {video_path} to {experiment_id}", "info", "ExperimentView")
                         self.window().project_manager.link_video_to_experiment(
                             experiment_id=experiment_id,
                             video_path=video_path,
                             notes="Linked via Add-Experiment form",
                         )
-                        logger.debug("Video linked successfully")
+                        self.log_bus.log("Video linked successfully", "info", "ExperimentView")
                         # Auto-set stage to recorded if not already
                         if processing_stage == "planned":
-                            # Update the experiment's processing stage to recorded
-                            experiment.processing_stage = ProcessingStage.RECORDED
-                            self.window().project_manager.repos.experiments.save(experiment)
+                            # Update the experiment's processing stage to recorded via ProjectManagerClean API
+                            try:
+                                updated = self.window().project_manager.get_experiment(experiment_id)
+                                if updated:
+                                    updated.processing_stage = ProcessingStage.RECORDED
+                                    self.window().project_manager.add_experiment(updated)
+                            except Exception:
+                                pass
                 except FileNotFoundError as fnf:
-                    logger.error(f"Video file not found: {fnf}")
+                    self.log_bus.log(f"Video file not found: {fnf}", "error", "ExperimentView")
                     self.show_error_message("File Error", str(fnf))
                 except ValueError as ve:
-                    logger.error(f"Linking failed: {ve}")
+                    self.log_bus.log(f"Linking failed: {ve}", "error", "ExperimentView")
                     self.show_error_message("Linking Error", str(ve))
                 except Exception as e:
-                    logger.error(f"Unexpected error linking video: {e}", exc_info=True)
+                    self.log_bus.log(f"Unexpected error linking video: {e}", "error", "ExperimentView", "ExperimentView")
                     self.show_error_message("Unexpected Error", str(e))
                     raise  # Re-raise unexpected errors
 
@@ -610,22 +682,22 @@ class ExperimentView(BaseView):
                 pass
             # Button will be disabled by _update_add_button_state triggered by combo/list changes
 
-            logger.info(f"Experiment '{experiment_id}' added successfully.")
+            self.log_bus.log(f"Experiment '{experiment_id}' added successfully.", "info", "ExperimentView")
             if hasattr(self, 'navigation_pane'):
-                self.navigation_pane.add_log_message(f"Experiment '{experiment_id}' added.", "success")
+                self.log_bus.log(f"Experiment '{experiment_id}' added.", "success", "ExperimentView")
 
         except ValueError as e:
-            logger.error(f"Error adding experiment: {e}", exc_info=True)
+            self.log_bus.log(f"Error adding experiment: {e}", "error", "ExperimentView", "ExperimentView")
             if hasattr(self, 'navigation_pane'):
-                self.navigation_pane.add_log_message(f"Failed to add experiment: {e}", "error")
+                self.log_bus.log(f"Failed to add experiment: {e}", "error", "ExperimentView")
         except Exception as e:
-            logger.error(f"Unexpected error adding experiment: {e}", exc_info=True)
+            self.log_bus.log(f"Unexpected error adding experiment: {e}", "error", "ExperimentView", "ExperimentView")
             if hasattr(self, 'navigation_pane'):
-                self.navigation_pane.add_log_message(f"Unexpected error adding experiment: {e}", "error")
+                self.log_bus.log(f"Unexpected error adding experiment: {e}", "error", "ExperimentView")
 
     def refresh_experiment_list_display(self):
         if not self.gui_services:
-             logger.warning("GUI services not available, cannot refresh experiment list.")
+             self.log_bus.log("GUI services not available, cannot refresh experiment list.", "warning", "ExperimentView")
              self.experimentListWidget.clear()
              self.experimentListWidget.addItem("Error: GUI services unavailable.")
              return
@@ -679,7 +751,7 @@ class ExperimentView(BaseView):
     def update_experiment_grid(self):
         """Update the grid display with experiments for batch creation."""
         if not self.gui_services:
-            logger.warning("GUI services not available for experiment grid update.")
+            self.log_bus.log("GUI services not available for experiment grid update.", "warning", "ExperimentView")
             if hasattr(self, 'batch_experiment_grid'):
                 self.batch_experiment_grid.set_columns(["Status"])
                 self.batch_experiment_grid.populate_data([{"Status": "GUI services unavailable"}], ["Status"])
@@ -713,14 +785,14 @@ class ExperimentView(BaseView):
                 if hasattr(self, 'batch_experiment_grid'):
                     self.batch_experiment_grid.set_columns(columns)
                     self.batch_experiment_grid.populate_data(grid_data, columns)
-                    logger.info(f"Populated experiment grid with {len(grid_data)} experiments")
+                    self.log_bus.log(f"Populated experiment grid with {len(grid_data, "info", "ExperimentView")} experiments")
             else:
                 if hasattr(self, 'batch_experiment_grid'):
                     self.batch_experiment_grid.set_columns(["Status"])
                     self.batch_experiment_grid.populate_data([{"Status": "No experiments found in project"}], ["Status"])
 
         except Exception as e:
-            logger.error(f"Error updating experiment grid: {e}", exc_info=True)
+            self.log_bus.log(f"Error updating experiment grid: {e}", "error", "ExperimentView", "ExperimentView")
             if hasattr(self, 'batch_experiment_grid'):
                 self.batch_experiment_grid.set_columns(["Status"])
                 self.batch_experiment_grid.populate_data([{"Status": f"Error loading experiments: {str(e)}"}], ["Status"])
@@ -737,12 +809,12 @@ class ExperimentView(BaseView):
         # Update notification label with count
         self.batch_notification_label.setText(f"{count} experiment(s) selected")
         # Optional: Log the change for debugging
-        # logger.debug(f"Batch grid selection changed. Triggered by ID: {exp_id}, Selected: {is_selected}. Total selected: {count}")
+        # self.log_bus.log(f"Batch grid selection changed. Triggered by ID: {exp_id}, Selected: {is_selected}. Total selected: {count}", "info", "ExperimentView")
 
     def handle_create_batch(self):
         """Create a new batch with the selected experiments."""
         if not self.window().project_manager:
-            logger.error("ProjectManager not available for creating batch.")
+            self.log_bus.log("ProjectManager not available for creating batch.", "error", "ExperimentView")
             QMessageBox.critical(self, "Error", "Core managers not available. Cannot create batch.")
             return
 
@@ -765,7 +837,7 @@ class ExperimentView(BaseView):
 
         # Create the batch via ProjectManager
         try:
-            logger.info(f"Attempting to create batch '{batch_id}' with {len(selected_experiment_ids)} experiments.")
+            self.log_bus.log(f"Attempting to create batch '{batch_id}' with {len(selected_experiment_ids, "info", "ExperimentView")} experiments.")
             # Basic selection criteria (can be expanded later if needed)
             selection_criteria = {"manual_selection": True}
             if batch_name:
@@ -783,7 +855,7 @@ class ExperimentView(BaseView):
             )
 
             # --- Success ---
-            logger.info(f"Batch '{batch_id}' created successfully.")
+            self.log_bus.log(f"Batch '{batch_id}' created successfully.", "info", "ExperimentView")
             # Show success message via notification label, clear after delay
             self.batch_notification_label.setText(f"Batch '{batch_id}' created successfully!")
             QTimer.singleShot(3000, lambda: self.batch_notification_label.setText(""))
@@ -798,11 +870,11 @@ class ExperimentView(BaseView):
             self.update_experiment_grid() # This re-populates and inherently clears checkboxes
 
         except ValueError as ve: # Catch specific errors like duplicate batch ID
-             logger.error(f"Failed to create batch '{batch_id}': {ve}", exc_info=False) # Log concisely
+             self.log_bus.log(f"Failed to create batch '{batch_id}': {ve}", "error", "ExperimentView") # Log concisely
              QMessageBox.critical(self, "Batch Creation Error", f"Failed to create batch:\n{ve}")
              self.batch_notification_label.setText("Batch creation failed.")
         except Exception as e: # Catch unexpected errors
-            logger.error(f"Unexpected error creating batch '{batch_id}': {e}", exc_info=True)
+            self.log_bus.log(f"Unexpected error creating batch '{batch_id}': {e}", "error", "ExperimentView", "ExperimentView")
             QMessageBox.critical(self, "Error", f"An unexpected error occurred during batch creation:\n{str(e)}")
             self.batch_notification_label.setText("Batch creation failed.")
 
@@ -827,7 +899,7 @@ class ExperimentView(BaseView):
                 self.update_plugin_fields()
             except Exception as e:
                 if hasattr(self, 'navigation_pane'):
-                    self.navigation_pane.add_log_message(f"Error updating plugin fields: {str(e)}", "warning")
+                    self.log_bus.log(f"Error updating plugin fields: {str(e, "ExperimentView")}", "warning")
         
     def _discover_plugins(self):
         """
@@ -837,12 +909,11 @@ class ExperimentView(BaseView):
         Finds analysis plugins by listing those with capabilities beyond loading data
         and matching the selected experiment type.
         """
-        # logger.debug("Discovering plugins...") # Commented out
+        # self.log_bus.log("Discovering plugins...", "info", "ExperimentView") # Commented out
         # Ensure plugin_manager is available
         if not self.plugin_manager:
-            logger.warning("Plugin manager not available for discovery.")
-            # Plugin system integration pending in clean architecture
-            # For now, clear lists and show placeholder
+            self.log_bus.log("Plugin manager not available for discovery.", "warning", "ExperimentView")
+            # Plugin system now integrated - clear lists if no plugins
             try:
                 if hasattr(self, 'importer_plugin_list') and self.importer_plugin_list:
                     self.importer_plugin_list.clear()
@@ -882,13 +953,13 @@ class ExperimentView(BaseView):
         # Get the selected experiment type
         selected_type = self.experiment_type_combo.currentData()
         if not selected_type:
-            # logger.debug("No experiment type selected, skipping plugin discovery.") # Commented out
+            # self.log_bus.log("No experiment type selected, skipping plugin discovery.", "info", "ExperimentView") # Commented out
             return # No type selected, nothing to discover
 
-        # logger.debug(f"Discovering plugins for experiment type: {selected_type}") # Commented out
+        # self.log_bus.log(f"Discovering plugins for experiment type: {selected_type}", "info", "ExperimentView") # Commented out
 
         # Update subtype list based on selected type
-        # Plugin system integration pending in clean architecture
+        # Plugin system now integrated
         # For now, disable subtypes
         self.experiment_subtype_combo.clear()
         self.experiment_subtype_combo.setEnabled(False)
@@ -899,7 +970,7 @@ class ExperimentView(BaseView):
         analysis_plugins = self.plugin_service.get_analysis_plugins_for_type(selected_type)
         exporter_plugins = self.plugin_service.get_exporter_plugins() if hasattr(self, 'exporter_plugin_list') else []
 
-        # Populate Data Handler/Importer List
+        # Populate Data Handler/Importer List (Plugin system now integrated)
         try:
             if hasattr(self, 'importer_plugin_list') and self.importer_plugin_list:
                 for plugin in importer_plugins:
@@ -1021,7 +1092,7 @@ class ExperimentView(BaseView):
                 for req_field in required_fields:
                     widget = field_widgets.get(req_field)
                     if not widget:
-                        logger.warning(f"Required field '{req_field}' for plugin '{plugin_name}' has no corresponding widget.")
+                        self.log_bus.log(f"Required field '{req_field}' for plugin '{plugin_name}' has no corresponding widget.", "warning", "ExperimentView")
                         required_params_filled = False
                         break # No point checking further for this plugin
 
@@ -1046,7 +1117,7 @@ class ExperimentView(BaseView):
 
                     if is_empty:
                         required_params_filled = False
-                        # logger.debug(f"Required field '{req_field}' for plugin '{plugin_name}' is empty.") # Commented out
+                        # self.log_bus.log(f"Required field '{req_field}' for plugin '{plugin_name}' is empty.", "info", "ExperimentView") # Commented out
                         break # Stop checking this plugin's fields
                 if not required_params_filled:
                     break # Stop checking other plugins
@@ -1108,10 +1179,10 @@ class ExperimentView(BaseView):
         selected_plugins = self._get_selected_plugins()
 
         if not selected_plugins:
-            # logger.debug("No plugins selected, skipping field generation.") # Commented out
+            # self.log_bus.log("No plugins selected, skipping field generation.", "info", "ExperimentView") # Commented out
             return # No plugins selected, nothing to show
 
-        # logger.debug(f"Updating fields for selected plugins: {[p.plugin_self_metadata().name for p in selected_plugins]}") # Commented out
+        # self.log_bus.log(f"Updating fields for selected plugins: {[p.plugin_self_metadata(, "info", "ExperimentView").name for p in selected_plugins]}") # Commented out
 
         # Store widgets keyed by plugin name and field name for later retrieval
         self.plugin_field_widgets = {}
@@ -1129,7 +1200,7 @@ class ExperimentView(BaseView):
              all_fields = sorted(required + optional) # Sort for consistent order
 
              if not all_fields:
-                 logger.debug(f"Plugin '{plugin_name}' has no configurable parameters.")
+                 self.log_bus.log(f"Plugin '{plugin_name}' has no configurable parameters.", "info", "ExperimentView")
                  continue # Plugin has no configurable parameters
 
              any_fields_added = True # Mark that we are adding fields
@@ -1186,7 +1257,7 @@ class ExperimentView(BaseView):
 
     def _create_field_widget(self, plugin, field_name, field_type='string'):
         """Creates the appropriate input widget based on the field type."""
-        # logger.debug(f"Creating widget for field '{field_name}' with type '{field_type}'") # Commented out
+        # self.log_bus.log(f"Creating widget for field '{field_name}' with type '{field_type}'", "info", "ExperimentView") # Commented out
         widget = None
 
         if field_type == 'int':
@@ -1236,7 +1307,7 @@ class ExperimentView(BaseView):
             widget = QLineEdit()
             widget.setProperty("class", "mus1-text-input")
             if field_type != 'string': # Log if using fallback
-                 logger.warning(f"Unknown field type '{field_type}' for '{field_name}'. Defaulting to QLineEdit.")
+                 self.log_bus.log(f"Unknown field type '{field_type}' for '{field_name}'. Defaulting to QLineEdit.", "warning", "ExperimentView")
 
         return widget
 
@@ -1318,7 +1389,7 @@ class ExperimentView(BaseView):
             else:
                 QMessageBox.warning(self, "Warning", f"Video was added to project but could not be linked to experiment '{exp_id}'.")
         except Exception as e:
-            logger.error(f"Failed to link video to experiment {exp_id}: {e}", exc_info=True)
+            self.log_bus.log(f"Failed to link video to experiment {exp_id}: {e}", "error", "ExperimentView", "ExperimentView")
             QMessageBox.critical(self, "Error", f"Failed to link video:\n{e}")
 
         # Refresh info
@@ -1356,7 +1427,7 @@ class ExperimentView(BaseView):
             # Use project manager to get properly associated videos
             return self.window().project_manager.get_videos_for_experiment(exp_id)
         except Exception as e:
-            logger.debug(f"Error finding associated videos for experiment {exp_id}: {e}")
+            self.log_bus.log(f"Error finding associated videos for experiment {exp_id}: {e}", "info", "ExperimentView")
             return []
 
     def _update_recording_info(self, exp_id: str):
@@ -1415,7 +1486,7 @@ class ExperimentView(BaseView):
                 self.rec_hash_label.setText("Sample-hash: —")
 
         except Exception as e:
-            logger.error(f"Error updating recording info for experiment {exp_id}: {e}", exc_info=True)
+            self.log_bus.log(f"Error updating recording info for experiment {exp_id}: {e}", "error", "ExperimentView", "ExperimentView")
             self.rec_status_label.setText(f"Status: Error loading info - {str(e)}")
 
     def _suggest_experiment_id(self, video_path_text):
@@ -1426,7 +1497,7 @@ class ExperimentView(BaseView):
         if not self.experiment_id_input.text().strip() and video_path_text:
             suggested_id = Path(video_path_text).stem
             self.experiment_id_input.setText(suggested_id)
-            logger.debug(f"Suggested experiment ID: {suggested_id} from video path: {video_path_text}") 
+            self.log_bus.log(f"Suggested experiment ID: {suggested_id} from video path: {video_path_text}", "info", "ExperimentView") 
 
     def _on_video_path_changed(self, path_text: str):
         """
@@ -1451,9 +1522,9 @@ class ExperimentView(BaseView):
             # Auto-populate the Date Recorded field with the file's mtime
             mtime = int(video_path.stat().st_mtime)
             self.date_recorded_edit.setDateTime(QDateTime.fromSecsSinceEpoch(mtime))
-            logger.debug(f"Auto-set recording date from video mtime: {self.date_recorded_edit.dateTime().toString('yyyy-MM-dd')}")
+            self.log_bus.log(f"Auto-set recording date from video mtime: {self.date_recorded_edit.dateTime().toString('yyyy-MM-dd')}", "info", "ExperimentView")
         except Exception as e:
-            logger.error(f"Error computing sample hash for {video_path}: {e}", exc_info=True)
+            self.log_bus.log(f"Error computing sample hash for {video_path}: {e}", "error", "ExperimentView")
             self.sample_hash_value.setText("—") 
 
     # ------------- Multiple experiment helpers -------------
@@ -1518,7 +1589,7 @@ class ExperimentView(BaseView):
     def handle_create_batch(self):
         """Create a new batch with the selected experiments."""
         if not self.window().project_manager:
-            logger.error("ProjectManager not available for creating batch.")
+            self.log_bus.log("ProjectManager not available for creating batch.", "error", "ExperimentView")
             QMessageBox.critical(self, "Error", "Core managers not available. Cannot create batch.")
             return
 
@@ -1541,7 +1612,7 @@ class ExperimentView(BaseView):
 
         # Create the batch via ProjectManager
         try:
-            logger.info(f"Attempting to create batch '{batch_id}' with {len(selected_experiment_ids)} experiments.")
+            self.log_bus.log(f"Attempting to create batch '{batch_id}' with {len(selected_experiment_ids, "info", "ExperimentView")} experiments.")
             # Basic selection criteria (can be expanded later if needed)
             selection_criteria = {"manual_selection": True}
             if batch_name:
@@ -1559,7 +1630,7 @@ class ExperimentView(BaseView):
             )
 
             # --- Success ---
-            logger.info(f"Batch '{batch_id}' created successfully.")
+            self.log_bus.log(f"Batch '{batch_id}' created successfully.", "info", "ExperimentView")
             # Show success message via notification label, clear after delay
             self.batch_notification_label.setText(f"Batch '{batch_id}' created successfully!")
             QTimer.singleShot(3000, lambda: self.batch_notification_label.setText(""))
@@ -1574,11 +1645,11 @@ class ExperimentView(BaseView):
             self.update_experiment_grid() # This re-populates and inherently clears checkboxes
 
         except ValueError as ve: # Catch specific errors like duplicate batch ID
-             logger.error(f"Failed to create batch '{batch_id}': {ve}", exc_info=False) # Log concisely
+             self.log_bus.log(f"Failed to create batch '{batch_id}': {ve}", "error", "ExperimentView") # Log concisely
              QMessageBox.critical(self, "Batch Creation Error", f"Failed to create batch:\n{ve}")
              self.batch_notification_label.setText("Batch creation failed.")
         except Exception as e: # Catch unexpected errors
-            logger.error(f"Unexpected error creating batch '{batch_id}': {e}", exc_info=True)
+            self.log_bus.log(f"Unexpected error creating batch '{batch_id}': {e}", "error", "ExperimentView", "ExperimentView")
             QMessageBox.critical(self, "Error", f"An unexpected error occurred during batch creation:\n{str(e)}")
             self.batch_notification_label.setText("Batch creation failed.")
 
@@ -1625,11 +1696,11 @@ class ExperimentView(BaseView):
 
         # Discover plugins using plugin service
         if not self.plugin_service:
-            logger.warning("Plugin service not available for discovery.")
+            self.log_bus.log("Plugin service not available for discovery.", "warning", "ExperimentView")
             return
 
         # Update subtype list based on selected type
-        # Plugin system integration pending in clean architecture
+        # Plugin system now integrated
         # For now, disable subtypes
         self.experiment_subtype_combo.clear()
         self.experiment_subtype_combo.setEnabled(False)

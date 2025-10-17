@@ -776,12 +776,13 @@ class ProjectManagerClean:
             raise ValueError("Treatment name cannot be empty")
 
         name = name.strip()
-        treatments = self.config.settings.get('available_treatments', [])
-        if name not in treatments:
-            treatments.append(name)
-            self.config.settings['available_treatments'] = treatments
-            self._save_config(self.config)
+        # Use database instead of JSON settings
+        lab_id = self.config.lab_id  # Associate with lab if project has one
+        success = self.repos.treatments().add(name, lab_id)
+        if success:
             logger.info(f"Added treatment '{name}' to project {self.config.name}")
+        else:
+            logger.warning(f"Failed to add treatment '{name}' to project {self.config.name}")
 
     def add_genotype(self, name: str) -> None:
         """Add a genotype to the project's available genotypes."""
@@ -789,85 +790,135 @@ class ProjectManagerClean:
             raise ValueError("Genotype name cannot be empty")
 
         name = name.strip()
-        genotypes = self.config.settings.get('available_genotypes', [])
-        if name not in genotypes:
-            genotypes.append(name)
-            self.config.settings['available_genotypes'] = genotypes
-            self._save_config(self.config)
+        # Use database instead of JSON settings
+        lab_id = self.config.lab_id  # Associate with lab if project has one
+        success = self.repos.genotypes().add(name, lab_id)
+        if success:
             logger.info(f"Added genotype '{name}' to project {self.config.name}")
+        else:
+            logger.warning(f"Failed to add genotype '{name}' to project {self.config.name}")
 
     def get_available_treatments(self) -> List[str]:
         """Get all available treatments for this project."""
-        return self.config.settings.get('available_treatments', [])
+        lab_id = self.config.lab_id
+        if lab_id:
+            # Return lab-specific treatments
+            return self.repos.treatments().get_by_lab(lab_id)
+        else:
+            # Return all treatments (for local projects)
+            return self.repos.treatments().get_all()
 
     def get_available_genotypes(self) -> List[str]:
         """Get all available genotypes for this project."""
-        return self.config.settings.get('available_genotypes', [])
+        lab_id = self.config.lab_id
+        if lab_id:
+            # Return lab-specific genotypes
+            return self.repos.genotypes().get_by_lab(lab_id)
+        else:
+            # Return all genotypes (for local projects)
+            return self.repos.genotypes().get_all()
 
     def update_available_genotypes(self, genotypes: List[str]) -> None:
         """Update the list of available genotypes for this project."""
-        self.config.settings['available_genotypes'] = genotypes
-        self._save_config(self.config)
+        lab_id = self.config.lab_id
+        # Sync database with provided list
+        existing = self.get_available_genotypes()
+        to_remove = set(existing) - set(genotypes)
+        to_add = set(genotypes) - set(existing)
+
+        for name in to_remove:
+            self.repos.genotypes().remove(name)
+        for name in to_add:
+            self.repos.genotypes().add(name, lab_id)
+
         logger.info(f"Updated available genotypes for project {self.config.name}: {genotypes}")
 
     def update_available_treatments(self, treatments: List[str]) -> None:
         """Update the list of available treatments for this project."""
-        self.config.settings['available_treatments'] = treatments
-        self._save_config(self.config)
+        lab_id = self.config.lab_id
+        # Sync database with provided list
+        existing = self.get_available_treatments()
+        to_remove = set(existing) - set(treatments)
+        to_add = set(treatments) - set(existing)
+
+        for name in to_remove:
+            self.repos.treatments().remove(name)
+        for name in to_add:
+            self.repos.treatments().add(name, lab_id)
+
         logger.info(f"Updated available treatments for project {self.config.name}: {treatments}")
 
     def remove_treatment(self, name: str) -> bool:
         """Remove a treatment from available treatments."""
-        treatments = self.config.settings.get('available_treatments', [])
-        if name in treatments:
-            treatments.remove(name)
-            self.config.settings['available_treatments'] = treatments
-            self._save_config(self.config)
+        success = self.repos.treatments().remove(name)
+        if success:
             logger.info(f"Removed treatment '{name}' from project {self.config.name}")
-            return True
-        return False
+        return success
 
     def remove_genotype(self, name: str) -> bool:
         """Remove a genotype from available genotypes."""
-        genotypes = self.config.settings.get('available_genotypes', [])
-        if name in genotypes:
-            genotypes.remove(name)
-            self.config.settings['available_genotypes'] = genotypes
-            self._save_config(self.config)
+        success = self.repos.genotypes().remove(name)
+        if success:
             logger.info(f"Removed genotype '{name}' from project {self.config.name}")
-            return True
-        return False
+        return success
 
     # --- Body Parts and Objects Management (placeholders) ---
 
     def update_active_body_parts(self, active_list: List[str]) -> None:
         """Update active body parts in the project."""
-        # For now, store in config until full migration to database
-        self.config.settings['active_body_parts'] = active_list
-        self._save_config(self.config)
+        lab_id = self.config.lab_id
+        # Sync database with provided list
+        existing = self.get_active_body_parts()
+        to_remove = set(existing) - set(active_list)
+        to_add = set(active_list) - set(existing)
+
+        for name in to_remove:
+            self.repos.body_parts().remove(name)
+        for name in to_add:
+            self.repos.body_parts().add(name, lab_id)
+
         logger.info(f"Updated active body parts: {active_list}")
 
     def update_master_body_parts(self, master_list: List[str]) -> None:
         """Update master body parts in the project."""
-        # TODO: Migrate to database storage
+        # For now, master body parts are stored in config (may be project-specific)
         self.config.settings['master_body_parts'] = master_list
         self._save_config(self.config)
         logger.info(f"Updated master body parts: {master_list}")
 
     def get_active_body_parts(self) -> List[str]:
         """Get active body parts for this project."""
-        # TODO: Migrate to database storage
-        return self.config.settings.get('active_body_parts', [])
+        lab_id = self.config.lab_id
+        if lab_id:
+            # Return lab-specific body parts
+            return self.repos.body_parts().get_by_lab(lab_id)
+        else:
+            # Return all body parts (for local projects)
+            return self.repos.body_parts().get_all()
 
     def get_master_body_parts(self) -> List[str]:
         """Get master body parts for this project."""
-        # TODO: Migrate to database storage
+        # Master body parts are project-specific
         return self.config.settings.get('master_body_parts', [])
 
     def update_tracked_objects(self, items: List[str], list_type: str) -> None:
         """Update tracked objects in the project."""
-        self.config.settings[f'{list_type}_tracked_objects'] = items
-        self._save_config(self.config)
+        if list_type == "active":
+            lab_id = self.config.lab_id
+            # Sync database with provided list for active objects
+            existing = self.get_tracked_objects("active")
+            to_remove = set(existing) - set(items)
+            to_add = set(items) - set(existing)
+
+            for name in to_remove:
+                self.repos.tracked_objects().remove(name)
+            for name in to_add:
+                self.repos.tracked_objects().add(name, lab_id)
+        else:
+            # Master tracked objects are project-specific
+            self.config.settings[f'{list_type}_tracked_objects'] = items
+            self._save_config(self.config)
+
         logger.info(f"Updated {list_type} tracked objects: {items}")
 
     def get_tracked_objects(self, list_type: str = "active") -> List[str]:
@@ -879,8 +930,18 @@ class ProjectManagerClean:
         Returns:
             List of tracked object names
         """
-        key = f"{list_type}_tracked_objects"
-        return self.config.settings.get(key, [])
+        if list_type == "active":
+            lab_id = self.config.lab_id
+            if lab_id:
+                # Return lab-specific tracked objects
+                return self.repos.tracked_objects().get_by_lab(lab_id)
+            else:
+                # Return all tracked objects (for local projects)
+                return self.repos.tracked_objects().get_all()
+        else:
+            # Master tracked objects are project-specific
+            key = f"{list_type}_tracked_objects"
+            return self.config.settings.get(key, [])
 
     def get_master_tracked_objects(self) -> List[str]:
         """Get master tracked objects for this project."""
@@ -896,9 +957,10 @@ class ProjectManagerClean:
             raise ValueError("Tracked object name cannot be empty")
 
         name = name.strip()
-        objects = self.config.settings.get('tracked_objects', [])
-        if name not in objects:
-            objects.append(name)
-            self.config.settings['tracked_objects'] = objects
-            self._save_config(self.config)
+        # Add to active tracked objects in database
+        lab_id = self.config.lab_id
+        success = self.repos.tracked_objects().add(name, lab_id)
+        if success:
             logger.info(f"Added tracked object '{name}' to project {self.config.name}")
+        else:
+            logger.warning(f"Failed to add tracked object '{name}' to project {self.config.name}")

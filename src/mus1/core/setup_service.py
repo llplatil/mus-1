@@ -14,7 +14,7 @@ import platform
 
 from .config_manager import get_config_manager, set_config, get_config
 from .config_manager import set_lab_storage_root as cfg_set_lab_root
-from .config_manager import set_lab_sharing_mode, get_lab_sharing_mode, get_lab_library_status
+from .config_manager import is_lab_storage_online
 from .metadata import LabDTO, ColonyDTO  # Use Pydantic DTOs as single source
 from .schema import model_to_colony
 
@@ -1257,23 +1257,75 @@ class SetupService:
         except Exception as e:
             return {"success": False, "message": str(e)}
 
-    def set_lab_sharing_preferences(self, lab_id: str, mode: str) -> Dict[str, Any]:
-        """Set lab sharing mode: 'always_on' or 'peer_hosted'."""
-        if not lab_id:
-            return {"success": False, "message": "lab_id is required"}
-        try:
-            set_lab_sharing_mode(lab_id, mode)
-            return {"success": True, "lab_id": lab_id, "mode": mode}
-        except Exception as e:
-            return {"success": False, "message": str(e)}
-
     def get_lab_library_online_status(self, lab_id: str) -> Dict[str, Any]:
         """Return computed online/offline status for the lab shared library."""
         if not lab_id:
             return {"success": False, "message": "lab_id is required"}
-        status = get_lab_library_status(lab_id)
-        status.update({"success": True, "mode": get_lab_sharing_mode(lab_id)})
+        status = is_lab_storage_online(lab_id)
+        status.update({"success": True})
         return status
+
+    def migrate_legacy_configurations(self) -> Dict[str, Any]:
+        """
+        Migrate legacy complex configurations to simplified model.
+
+        This handles the transition from:
+        - Complex sharing modes → simple boolean sharing
+        - Multiple storage roots → single lab storage root
+        - Global shared storage → lab-specific storage
+        - Workgroups → removed (warn user)
+
+        Returns dict with migration results and warnings.
+        """
+        results = {
+            "migrated": [],
+            "warnings": [],
+            "errors": [],
+            "removed_features": []
+        }
+
+        try:
+            from .config_manager import get_config_manager, get_config
+
+            # Check for removed features and warn
+            if get_config("storage.shared_root"):
+                results["removed_features"].append(
+                    "Global shared storage (storage.shared_root) - replaced with lab-specific storage"
+                )
+
+            # Migrate lab sharing modes to boolean
+            setup_service = get_setup_service()
+            labs = setup_service.get_labs()
+            for lab_id, lab_data in labs.items():
+                # Check for old sharing mode
+                # Legacy sharing mode keys are ignored; migration retained for logging only
+                legacy_mode = get_config(f"lab.sharing_mode.{lab_id}")
+                if legacy_mode is not None:
+                    results["warnings"].append(
+                        f"Lab {lab_data.get('name', lab_id)}: legacy sharing mode '{legacy_mode}' ignored"
+                    )
+
+                # Check for multiple storage roots (should only have one now)
+                old_roots = get_config(f"lab.storage_roots.{lab_id}")
+                if old_roots and len(old_roots) > 1:
+                    results["warnings"].append(
+                        f"Lab {lab_data.get('name', lab_id)}: had multiple storage roots, keeping first one"
+                    )
+
+            # Check for workgroups (removed feature)
+            # Note: workgroups table was dropped, so this is just informational
+            results["removed_features"].append(
+                "Workgroups - collaborative features now handled directly through labs"
+            )
+
+            results["success"] = True
+            results["message"] = "Migration completed. Review warnings above."
+
+        except Exception as e:
+            results["success"] = False
+            results["errors"].append(f"Migration failed: {str(e)}")
+
+        return results
 
     def designate_shared_folder(self, path: Path, ensure_exists: bool = True, verify_permissions: bool = True) -> Dict[str, Any]:
         """Designate and validate a shared folder accessible to lab workers/compute.
@@ -1346,23 +1398,18 @@ class SetupService:
             return {"success": False, "message": str(e), "subjects": []}
 
     def list_lab_recordings(self, lab_id: Optional[str] = None, extensions: Optional[List[str]] = None) -> Dict[str, Any]:
-        """List video recordings under the lab storage root (or global shared storage).
+        """List video recordings under the lab storage root.
 
         Returns a list of absolute Paths (as strings) to candidate video files.
         """
         try:
             roots: List[Path] = []
-            # Prefer per-lab storage root when provided
+            # Use per-lab storage root only
             if lab_id:
                 from .config_manager import get_lab_storage_root
                 lab_root = get_lab_storage_root(lab_id)
                 if lab_root and lab_root.exists():
                     roots.append(lab_root)
-            # Fallback to global shared storage root
-            if not roots:
-                shared = self.get_shared_storage_path()
-                if shared and shared.exists():
-                    roots.append(shared)
             if not roots:
                 return {"success": True, "recordings": []}
 

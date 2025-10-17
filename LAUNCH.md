@@ -36,7 +36,7 @@ mus1 project list           # CLI commands (always works)
 - **GUI may not work** on macOS due to Qt platform plugin issues
 - **CLI always works** regardless of Qt/GUI status
 - **Platform detection** automatically handles Qt backend selection
-- **Wizard limitations**: The Setup Wizard focuses on creating configuration. To use an existing user/lab, complete or cancel the wizard and select via the User/Lab Selection dialog at startup.
+ - **Wizard modes**: Start Fresh (optional wipe) vs Edit Existing. To use an existing user/lab, complete or cancel the wizard and select via the User/Lab Selection dialog at startup.
 - **Qt facade required**: All GUI code must import Qt via `mus1/gui/qt.py`. Direct `PyQt6`/`PySide6` imports can cause platform crashes.
 
 ---
@@ -72,6 +72,8 @@ mus1-gui
 #### **Phase 3: User Environment**
 1. **Setup Detection**: MUS1 detects it's the first launch or setup was requested via `--setup` flag
 2. **Setup Wizard**: Guided configuration wizard appears (can be rerun anytime)
+   - Mode selection: Start Fresh vs Edit Existing
+   - Start Fresh can optionally wipe previous config artifacts
    - User profile (name, email, organization)
    - Shared storage configuration (optional)
    - First lab creation (optional)
@@ -90,7 +92,7 @@ mus1-gui
   - Locate an existing configuration (browse to the root that contains `config/config.db`)
   - Create a new configuration (optionally copy later)
 - This pattern avoids dev-only helpers and ensures production launches remain consistent.
-- **Storage precedence**: At runtime, storage resolves as project `shared_root` → lab storage root → global shared storage. The wizard configures only the global shared storage. Set per-project in Project Settings.
+- Project discovery separates Lab (registered projects) vs Local (user default dir). Advisory NFS checks only; no multi-root storage precedence or peer-hosted modes.
 
 ### **Subsequent Launches**
 ```bash

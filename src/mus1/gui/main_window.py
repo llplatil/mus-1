@@ -19,12 +19,13 @@ from .user_lab_selection_dialog import UserLabSelectionDialog
 from .gui_services import GUIServiceFactory
 from ..core.logging_bus import LoggingEventBus
 from ..core.project_manager_clean import ProjectManagerClean
+from ..core.service_factory import ProjectServiceFactory
 from .theme_manager import ThemeManager
 from ..core.setup_service import get_setup_service
 import logging
 from pathlib import Path
 
-logger = logging.getLogger("mus1.gui.main_window")
+logger = logging.getLogger(__name__)
 
 class MainWindow(QMainWindow):
     """
@@ -340,6 +341,8 @@ class MainWindow(QMainWindow):
                 self.subject_view.on_services_ready(self.gui_services)  # SubjectView creates subject/experiment services internally
             if hasattr(self.experiment_view, 'on_services_ready'):
                 self.experiment_view.on_services_ready(self.gui_services)  # ExperimentView creates experiment service internally
+            if hasattr(self.experiment_view, 'set_plugin_manager'):
+                self.experiment_view.set_plugin_manager(self.plugin_manager)  # Set plugin manager on ExperimentView
             if hasattr(self.settings_view, 'on_services_ready'):
                 self.settings_view.on_services_ready(self.gui_services)  # SettingsView doesn't use services
 
@@ -399,6 +402,8 @@ class MainWindow(QMainWindow):
                 self.subject_view.on_services_ready(self.gui_services)  # SubjectView creates subject/experiment services internally
             if hasattr(self.experiment_view, 'on_services_ready'):
                 self.experiment_view.on_services_ready(self.gui_services)  # ExperimentView creates experiment service internally
+            if hasattr(self.experiment_view, 'set_plugin_manager'):
+                self.experiment_view.set_plugin_manager(self.plugin_manager)  # Set plugin manager on ExperimentView
             if hasattr(self.settings_view, 'on_services_ready'):
                 self.settings_view.on_services_ready(self.gui_services)  # SettingsView doesn't use services
 
