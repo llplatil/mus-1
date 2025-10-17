@@ -93,7 +93,7 @@ def main():
             logger.info("First-time setup required - showing setup wizard")
 
         from .gui.setup_wizard import show_setup_wizard
-        setup_wizard = show_setup_wizard()
+        setup_wizard = show_setup_wizard(theme_manager=theme_manager)
 
         if setup_wizard is None:
             logger.info("Setup cancelled by user")
@@ -104,7 +104,7 @@ def main():
                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
                 )
                 if reply == QMessageBox.StandardButton.Yes:
-                    setup_wizard = show_setup_wizard()
+                    setup_wizard = show_setup_wizard(theme_manager=theme_manager)
                     if setup_wizard is None:
                         sys.exit(0)  # User cancelled again - exit cleanly
                 else:

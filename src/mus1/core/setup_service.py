@@ -113,12 +113,28 @@ class SetupService:
 
     This can be used by both CLI and GUI to ensure consistent behavior
     and avoid code duplication.
+
+    Implemented as a singleton for consistent global state and configuration management.
     """
+    # The singleton instance
+    _instance = None
+
+    @classmethod
+    def get_instance(cls):
+        """Get or create the singleton instance."""
+        if cls._instance is None:
+            cls._instance = SetupService()
+        return cls._instance
 
     def __init__(self):
+        """Initialize the setup service."""
+        # Only allow initialization if no instance exists
+        if SetupService._instance is not None:
+            raise RuntimeError("SetupService is a singleton! Use SetupService.get_instance() instead.")
+
         # Don't cache config_manager - fetch fresh instance for each operation
         # This allows proper re-initialization after MUS1 root changes
-        pass
+        SetupService._instance = self
 
     def _get_database(self):
         """Get the config database with ensured schema.
@@ -1285,7 +1301,7 @@ class SetupService:
         }
 
         try:
-            from .config_manager import get_config_manager, get_config
+            from .config_manager import get_config
 
             # Check for removed features and warn
             if get_config("storage.shared_root"):
@@ -1562,5 +1578,5 @@ class SetupService:
 # ===========================================
 
 def get_setup_service() -> SetupService:
-    """Get the global setup service instance."""
-    return SetupService()
+    """Get the global setup service instance (singleton)."""
+    return SetupService.get_instance()

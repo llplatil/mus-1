@@ -1,6 +1,5 @@
 # Qt imports - unified PyQt6 facade
 from .qt import (
-    QApplication,
     QMainWindow,
     QTabWidget,
     QDialog,
@@ -8,7 +7,6 @@ from .qt import (
     QMenuBar,
     QAction,
     QIcon,
-    QPixmap,
 )
 from .project_view import ProjectView
 from .subject_view import SubjectView
@@ -16,14 +14,40 @@ from .experiment_view import ExperimentView
 from .lab_view import LabView
 from .settings_view import SettingsView
 from .user_lab_selection_dialog import UserLabSelectionDialog
-from .gui_services import GUIServiceFactory
 from ..core.logging_bus import LoggingEventBus
-from ..core.project_manager_clean import ProjectManagerClean
 from ..core.service_factory import ProjectServiceFactory
 from .theme_manager import ThemeManager
 from ..core.setup_service import get_setup_service
 import logging
 from pathlib import Path
+
+
+class GlobalServices:
+    """Container for global services that don't depend on projects."""
+
+    def __init__(self):
+        self._lab_service = None
+
+    @property
+    def lab_service(self):
+        """Get or create the global lab service."""
+        if self._lab_service is None:
+            from .gui_services import LabService
+            self._lab_service = LabService()
+            self._lab_service.set_services(get_setup_service())
+        return self._lab_service
+
+    @property
+    def project_manager(self):
+        """Get the current project manager, if any."""
+        if self.service_factory and hasattr(self.service_factory, 'project_manager'):
+            return self.service_factory.project_manager
+        return None
+
+    @property  
+    def service_factory_safe(self):
+        """Get service_factory with safety check."""
+        return self.service_factory
 
 logger = logging.getLogger(__name__)
 
@@ -50,10 +74,12 @@ class MainWindow(QMainWindow):
 
         # Initialize project manager and services
         self.project_path = Path(project_path) if project_path else None
-        self.project_manager = None
-        self.gui_services = None
+        self.service_factory = None
         self.selected_project_name = selected_project
         self.setup_completed = setup_completed
+
+        # Initialize global services (available even without project)
+        self._global_services = GlobalServices()
 
         # Initialize user and lab selection (will be set later)
         self.selected_user_id = None
@@ -102,6 +128,22 @@ class MainWindow(QMainWindow):
         window_icon.addFile(str(icon_path / "m1logo no background.png"))  # For Linux/general
         
         self.setWindowIcon(window_icon)
+
+    @property
+    def project_manager(self):
+        """Provide project manager for views that query window().project_manager."""
+        try:
+            return self.service_factory.project_manager if self.service_factory else None
+        except Exception:
+            return None
+
+    @property
+    def plugin_manager(self):
+        """Provide plugin manager for views that query window().plugin_manager."""
+        try:
+            return self.service_factory.plugin_manager if self.service_factory else None
+        except Exception:
+            return None
 
     def update_window_title(self):
         """Sets the window title based on the current project."""
@@ -180,6 +222,13 @@ class MainWindow(QMainWindow):
         self.experiment_view = ExperimentView(self)
         self.settings_view = SettingsView(self)
 
+        # Immediately provide global services to LabView
+        if hasattr(self.lab_view, 'on_services_ready'):
+            self.log_bus.log("MainWindow providing global services to LabView", "info", "MainWindow")
+            self.lab_view.on_services_ready(self._global_services)
+        else:
+            self.log_bus.log("LabView does not have on_services_ready method", "warning", "MainWindow")
+
         # Connect the rename signal from ProjectView
         if hasattr(self.project_view, 'project_renamed'):
              self.project_view.project_renamed.connect(self.handle_project_rename)
@@ -196,10 +245,15 @@ class MainWindow(QMainWindow):
         # Register navigation panes with log_bus for message display
         self.register_log_observers()
 
-        # Set initial active tab
+        # Defer tab activation to ensure all setup is complete
+        from .qt import QTimer
+        QTimer.singleShot(0, lambda: self._activate_initial_tab())
+    
+    def _activate_initial_tab(self):
+        """Activate the initial tab after all setup is complete."""
         self.tab_widget.setCurrentIndex(0)
         self.on_tab_changed(0)
-    
+
     def register_log_observers(self):
         """Register all navigation panes as log observers."""
         # Each view has a navigation pane that can display logs
@@ -314,16 +368,8 @@ class MainWindow(QMainWindow):
             return False
 
         try:
-            # Initialize project manager
-            self.project_manager = ProjectManagerClean(project_path)
-            self.gui_services = GUIServiceFactory(self.project_manager)
-            # ThemeManager is provided by main; do not create a new instance here
-
-            # Initialize plugin manager for the project
-            from ..core.plugin_manager_clean import PluginManagerClean
-            self.plugin_manager = PluginManagerClean(self.project_manager.db)
-            # Set plugin manager on GUI services so all views can access it
-            self.gui_services.set_plugin_manager(self.plugin_manager)
+            # Initialize project service factory (standardized pattern)
+            self.service_factory = ProjectServiceFactory(project_path)
 
             # Update UI state
             self.selected_project_name = project_name
@@ -334,17 +380,17 @@ class MainWindow(QMainWindow):
 
             # Set services on views via lifecycle hook - pass factory to all views for consistency
             if hasattr(self.lab_view, 'on_services_ready'):
-                self.lab_view.on_services_ready(self.gui_services)  # LabView creates lab service internally
+                self.lab_view.on_services_ready(self.service_factory.gui_services)  # LabView creates lab service internally
             if hasattr(self.project_view, 'on_services_ready'):
-                self.project_view.on_services_ready(self.gui_services)  # ProjectView creates project service internally
+                self.project_view.on_services_ready(self.service_factory.gui_services)  # ProjectView creates project service internally
             if hasattr(self.subject_view, 'on_services_ready'):
-                self.subject_view.on_services_ready(self.gui_services)  # SubjectView creates subject/experiment services internally
+                self.subject_view.on_services_ready(self.service_factory.gui_services)  # SubjectView creates subject/experiment services internally
             if hasattr(self.experiment_view, 'on_services_ready'):
-                self.experiment_view.on_services_ready(self.gui_services)  # ExperimentView creates experiment service internally
-            if hasattr(self.experiment_view, 'set_plugin_manager'):
-                self.experiment_view.set_plugin_manager(self.plugin_manager)  # Set plugin manager on ExperimentView
+                self.experiment_view.on_services_ready(self.service_factory.gui_services)  # ExperimentView creates experiment service internally
+            if hasattr(self.experiment_view, 'set_plugin_manager') and hasattr(self.service_factory, 'plugin_manager'):
+                self.experiment_view.set_plugin_manager(self.service_factory.plugin_manager)  # Set plugin manager on ExperimentView
             if hasattr(self.settings_view, 'on_services_ready'):
-                self.settings_view.on_services_ready(self.gui_services)  # SettingsView doesn't use services
+                self.settings_view.on_services_ready(self.service_factory.gui_services)  # SettingsView doesn't use services
 
             # Refresh and apply theme
             self.refresh_all_views()
@@ -352,7 +398,6 @@ class MainWindow(QMainWindow):
 
             self.log_bus.log(f"Project '{project_name}' loaded successfully", "success", "MainWindow")
             return True
-
         except Exception as e:
             self.log_bus.log(f"Error loading project '{project_name}': {e}", "error", "MainWindow")
             self._reset_project_state()
@@ -361,8 +406,7 @@ class MainWindow(QMainWindow):
     def _reset_project_state(self):
         """Reset project-related state variables."""
         self.selected_project_name = None
-        self.project_manager = None
-        self.gui_services = None
+        self.service_factory = None
         self.update_window_title()
 
     def load_project_path(self, project_path: Path):
@@ -375,16 +419,8 @@ class MainWindow(QMainWindow):
         try:
             project_name = project_path.name
 
-            # Initialize project components
-            self.project_manager = ProjectManagerClean(project_path)
-            self.gui_services = GUIServiceFactory(self.project_manager)
-            # ThemeManager is provided by main; do not create a new instance here
-
-            # Initialize plugin manager for the project
-            from ..core.plugin_manager_clean import PluginManagerClean
-            self.plugin_manager = PluginManagerClean(self.project_manager.db)
-            # Set plugin manager on GUI services so all views can access it
-            self.gui_services.set_plugin_manager(self.plugin_manager)
+            # Initialize project service factory (standardized pattern)
+            self.service_factory = ProjectServiceFactory(project_path)
 
             # Update UI state
             self.selected_project_name = project_name
@@ -395,17 +431,17 @@ class MainWindow(QMainWindow):
 
             # Set services on views via lifecycle hook - pass factory to all views for consistency
             if hasattr(self.lab_view, 'on_services_ready'):
-                self.lab_view.on_services_ready(self.gui_services)  # LabView creates lab service internally
+                self.lab_view.on_services_ready(self.service_factory.gui_services)  # LabView creates lab service internally
             if hasattr(self.project_view, 'on_services_ready'):
-                self.project_view.on_services_ready(self.gui_services)  # ProjectView creates project service internally
+                self.project_view.on_services_ready(self.service_factory.gui_services)  # ProjectView creates project service internally
             if hasattr(self.subject_view, 'on_services_ready'):
-                self.subject_view.on_services_ready(self.gui_services)  # SubjectView creates subject/experiment services internally
+                self.subject_view.on_services_ready(self.service_factory.gui_services)  # SubjectView creates subject/experiment services internally
             if hasattr(self.experiment_view, 'on_services_ready'):
-                self.experiment_view.on_services_ready(self.gui_services)  # ExperimentView creates experiment service internally
-            if hasattr(self.experiment_view, 'set_plugin_manager'):
-                self.experiment_view.set_plugin_manager(self.plugin_manager)  # Set plugin manager on ExperimentView
+                self.experiment_view.on_services_ready(self.service_factory.gui_services)  # ExperimentView creates experiment service internally
+            if hasattr(self.experiment_view, 'set_plugin_manager') and hasattr(self.service_factory, 'plugin_manager'):
+                self.experiment_view.set_plugin_manager(self.service_factory.plugin_manager)  # Set plugin manager on ExperimentView
             if hasattr(self.settings_view, 'on_services_ready'):
-                self.settings_view.on_services_ready(self.gui_services)  # SettingsView doesn't use services
+                self.settings_view.on_services_ready(self.service_factory.gui_services)  # SettingsView doesn't use services
 
             # Refresh and apply theme
             self.refresh_all_views()
@@ -443,7 +479,6 @@ class MainWindow(QMainWindow):
     def show_welcome_dialog(self):
         """Show welcome dialog after setup completion."""
         from .qt import QDialog, QVBoxLayout, QLabel, QPushButton, QHBoxLayout, Qt
-        from pathlib import Path
 
         # Check if there are existing projects
         existing_projects = self.discover_existing_projects()

@@ -11,7 +11,6 @@ from typing import Optional
 
 from .project_manager_clean import ProjectManagerClean
 from .plugin_manager_clean import PluginManagerClean
-from ..gui.gui_services import GUIServiceFactory
 
 
 class ProjectServiceFactory:
@@ -49,9 +48,10 @@ class ProjectServiceFactory:
         return self._plugin_manager
 
     @property
-    def gui_services(self) -> GUIServiceFactory:
+    def gui_services(self):
         """Get or create the GUI services factory."""
         if self._gui_services is None:
+            from ..gui.gui_services import GUIServiceFactory
             self._gui_services = GUIServiceFactory(self.project_manager)
             self._gui_services.set_plugin_manager(self.plugin_manager)
         return self._gui_services

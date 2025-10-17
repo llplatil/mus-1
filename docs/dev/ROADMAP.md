@@ -9,7 +9,7 @@ This roadmap shows current status and planned development priorities for the sim
 - **✅ Dual-Mode Support**: Local projects OR lab collaboration (no hybrid complexity)
 - **✅ Simple Storage**: Lab storage root OR local user directory (no precedence chains)
 - **✅ Clean Sharing**: Boolean enable/disable with online status checks
-- **✅ Project Importer Plugin**: Cross-lab project movement via plugins
+- **✅ Default Project Importer Plugin**: Core MUS1 plugin for importing existing MUS1 projects to labs they were not previously associated with, enabling cross-lab project movement
 
 ### **Removed Complexity**
 - **✅ Workgroups & Complex Collaboration**: Eliminated separate workgroup concept

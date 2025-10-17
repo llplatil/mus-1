@@ -12,7 +12,26 @@ from .config_manager import get_lab_storage_root
 
 
 class ProjectDiscoveryService:
-    """Simplified service for discovering and resolving project paths."""
+    """Simplified service for discovering and resolving project paths.
+
+    Implemented as a singleton for consistent global project discovery.
+    """
+    # The singleton instance
+    _instance = None
+
+    @classmethod
+    def get_instance(cls):
+        """Get or create the singleton instance."""
+        if cls._instance is None:
+            cls._instance = ProjectDiscoveryService()
+        return cls._instance
+
+    def __init__(self):
+        """Initialize the project discovery service."""
+        # Only allow initialization if no instance exists
+        if ProjectDiscoveryService._instance is not None:
+            raise RuntimeError("ProjectDiscoveryService is a singleton! Use ProjectDiscoveryService.get_instance() instead.")
+        ProjectDiscoveryService._instance = self
 
     def find_project_path(self, project_name: str) -> Optional[Path]:
         """
@@ -128,8 +147,8 @@ class ProjectDiscoveryService:
 _project_discovery_service = None
 
 def get_project_discovery_service() -> ProjectDiscoveryService:
-    """Get the global project discovery service instance."""
-    global _project_discovery_service
-    if _project_discovery_service is None:
-        _project_discovery_service = ProjectDiscoveryService()
-    return _project_discovery_service
+    """Get the global project discovery service instance (singleton)."""
+    return ProjectDiscoveryService.get_instance()
+
+# Keep for backward compatibility but mark as deprecated
+_project_discovery_service = None

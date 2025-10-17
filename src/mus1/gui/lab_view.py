@@ -40,22 +40,42 @@ class LabView(BaseView):
     # --- Lifecycle hooks ---
     def on_services_ready(self, services):
         super().on_services_ready(services)
-        # Services is the factory, create our lab service
-        self.lab_service = services.create_lab_service()
-        self.log_bus.log("LabView services ready", "info", "LabView")
+        self.log_bus.log(f"LabView on_services_ready called with services: {type(services)}", "info", "LabView")
+
+        # Try to get lab service from global services first, then from GUI factory
+        if hasattr(services, 'lab_service'):
+            # This is GlobalServices
+            self.lab_service = services.lab_service
+            self.log_bus.log("LabView using global services", "info", "LabView")
+        elif hasattr(services, 'create_lab_service'):
+            # This is GUI services factory
+            self.lab_service = services.create_lab_service()
+            self.log_bus.log("LabView using GUI services factory", "info", "LabView")
+        else:
+            self.log_bus.log(f"LabView: No lab service available from services object: {services}", "warning", "LabView")
 
     def on_activated(self):
-        # Refresh data when lab tab becomes active
-        self.refresh_lab_data()
+        # Check if services are available, if not, try to get them from global services
+        if not self.lab_service:
+            main_window = self.window()
+            if main_window and hasattr(main_window, '_global_services'):
+                self.lab_service = main_window._global_services.lab_service
+                self.log_bus.log("LabView got lab service from global services on activation", "info", "LabView")
 
-        # Auto-select the lab that was chosen in user/lab selection dialog
-        main_window = self.window()
-        if main_window and hasattr(main_window, 'selected_lab_id') and main_window.selected_lab_id:
-            self.log_bus.log(f"Auto-selecting lab: {main_window.selected_lab_id}", "info", "LabView")
-            # Try immediate selection first
-            self._delayed_auto_select(main_window.selected_lab_id)
+        # Only refresh data if services are available
+        if self.lab_service:
+            self.refresh_lab_data()
+
+            # Auto-select the lab that was chosen in user/lab selection dialog
+            main_window = self.window()
+            if main_window and hasattr(main_window, 'selected_lab_id') and main_window.selected_lab_id:
+                self.log_bus.log(f"Auto-selecting lab: {main_window.selected_lab_id}", "info", "LabView")
+                # Try immediate selection first
+                self._delayed_auto_select(main_window.selected_lab_id)
+            else:
+                self.log_bus.log("No lab selected from user/lab dialog", "warning", "LabView")
         else:
-            self.log_bus.log("No lab selected from user/lab dialog", "warning", "LabView")
+            self.log_bus.log("Services not ready, deferring lab data refresh", "info", "LabView")
 
     def _delayed_auto_select(self, lab_id: str):
         """Delayed auto-selection after labs are loaded."""
@@ -147,8 +167,7 @@ class LabView(BaseView):
         # Connect colony selection
         self.colonies_list.itemSelectionChanged.connect(self.on_colony_selected)
 
-        # Load colonies
-        self.load_colonies()
+        # Note: Data loading happens in on_activated(), not during setup
 
     def setup_shared_projects_page(self):
         """Setup the Shared Projects page for managing lab-shared projects."""
@@ -194,8 +213,7 @@ class LabView(BaseView):
         layout.addStretch(1)
         self.add_page(self.shared_projects_page, "Shared Projects")
 
-        # Load shared projects
-        self.load_shared_projects()
+        # Note: Data loading happens in on_activated(), not during setup
 
     def setup_lab_library_page(self):
         """Setup the Lab Library page to browse shared recordings and lab subjects."""
@@ -273,8 +291,7 @@ class LabView(BaseView):
         layout.addStretch(1)
         self.add_page(self.lab_members_page, "Lab Members")
 
-        # Load lab members
-        self.load_lab_members()
+        # Note: Data loading happens in on_activated(), not during setup
 
     def setup_lab_settings_page(self):
         """Setup the Lab Settings page (moved from Settings view)."""
@@ -325,8 +342,7 @@ class LabView(BaseView):
         # Connect lab selection
         self.labs_list.itemSelectionChanged.connect(self.on_lab_selected)
 
-        # Load labs
-        self.load_labs()
+        # Note: Data loading happens in on_activated(), not during setup
 
     # ---- Colonies Methods ----
     def load_colonies(self):
@@ -914,5 +930,5 @@ class LabView(BaseView):
         """Refresh all lab-related data."""
         self.log_bus.log("Refreshing lab data...", "info", "LabView")
         self.load_labs()
-        self.log_bus.log(f"Labs list now has {self.labs_list.count() if hasattr(self, 'labs_list', "LabView") else 0} items", "info")
+        self.log_bus.log(f"Labs list now has {self.labs_list.count() if hasattr(self, 'labs_list') else 0} items", "info")
         # Lab-specific data will be loaded when a lab is selected

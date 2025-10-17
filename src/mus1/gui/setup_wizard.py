@@ -13,25 +13,19 @@ Integration points:
 
 from __future__ import annotations
 from typing import Optional, Dict, Any
-from pathlib import Path
-import platform
 
 from .qt import (
-    QWizard, QWizardPage, QLabel, QLineEdit, QVBoxLayout,
+    QWidget, QLabel, QLineEdit, QVBoxLayout,
     QHBoxLayout, QFormLayout, QCheckBox, QPushButton,
     QTextEdit, QMessageBox, QGroupBox, QRadioButton,
-    QComboBox, QListWidget, QListWidgetItem,
-    Qt, Signal, QThread, QObject, QFileDialog
+    QComboBox, Signal, QObject, QFileDialog
 )
 
-from ..core.setup_service import (
-    UserProfileDTO, SharedStorageDTO,
-    SetupWorkflowDTO, SetupStatusDTO, get_setup_service, MUS1RootLocationDTO
-)
-from ..core.metadata import LabDTO
-from ..core.config_manager import resolve_mus1_root
+from ..core.setup_service import SetupWorkflowDTO, UserProfileDTO
 from ..core.config_manager import init_config_manager
-from ..core.utils.ssh_config import list_ssh_aliases
+from ..core.setup_service import get_setup_service
+from .base_view import BaseView
+from .gui_services import GlobalGUIServiceFactory
 
 
 # ===========================================
@@ -46,10 +40,10 @@ class SetupWorker(QObject):
     error = Signal(str)      # Emits error message
     warning = Signal(str)    # Emits warning message
 
-    def __init__(self, workflow_dto: SetupWorkflowDTO):
+    def __init__(self, workflow_dto: SetupWorkflowDTO, setup_service=None):
         super().__init__()
         self.workflow_dto = workflow_dto
-        self.setup_service = get_setup_service()
+        self.setup_service = setup_service
 
     def run(self):
         """Run the setup workflow in background thread with proper state management."""
@@ -110,15 +104,23 @@ class SetupWorker(QObject):
 # SETUP WIZARD PAGES
 # ===========================================
 
-class SimplifiedWelcomePage(QWizardPage):
-    """Simplified welcome page for the setup wizard."""
+class WelcomePage(QWidget):
+    """Welcome page for the setup wizard."""
 
-    def __init__(self):
-        super().__init__()
-        self.setTitle("Welcome to MUS1 Setup")
-        self.setSubTitle("Get started with your research workflow")
+    def __init__(self, parent=None):
+        super().__init__(parent)
 
-        layout = QVBoxLayout()
+        layout = QVBoxLayout(self)
+
+        # Title
+        title_label = QLabel("Welcome to MUS1 Setup")
+        title_label.setStyleSheet("font-size: 18px; font-weight: bold; margin-bottom: 10px;")
+        layout.addWidget(title_label)
+
+        # Subtitle
+        subtitle_label = QLabel("Get started with your research workflow")
+        subtitle_label.setStyleSheet("font-size: 14px; color: #666; margin-bottom: 20px;")
+        layout.addWidget(subtitle_label)
 
         # Welcome message
         welcome_label = QLabel(
@@ -129,30 +131,135 @@ class SimplifiedWelcomePage(QWizardPage):
             "You can change this later in settings."
         )
         welcome_label.setWordWrap(True)
+        welcome_label.setStyleSheet("font-size: 13px; line-height: 1.4;")
         layout.addWidget(welcome_label)
 
         # Check existing configuration
-        self.setup_service = get_setup_service()
-        if self.setup_service.is_user_configured():
-            existing_profile = self.setup_service.get_user_profile()
+        setup_service = get_setup_service()
+        if setup_service.is_user_configured():
+            existing_profile = setup_service.get_user_profile()
             info_label = QLabel(
                 f"ℹ️  Updating configuration for: {existing_profile.name}"
             )
             info_label.setStyleSheet("color: blue; font-weight: bold;")
             layout.addWidget(info_label)
 
-        self.setLayout(layout)
+        layout.addStretch()
 
 
-class LabChoicePage(QWizardPage):
+class UserProfilePage(QWidget):
+    """Page for collecting user profile information."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+        layout = QVBoxLayout(self)
+
+        # Title
+        title_label = QLabel("User Profile")
+        title_label.setStyleSheet("font-size: 16px; font-weight: bold; margin-bottom: 10px;")
+        layout.addWidget(title_label)
+
+        # Subtitle
+        subtitle_label = QLabel("Please provide your information")
+        subtitle_label.setStyleSheet("font-size: 14px; color: #666; margin-bottom: 20px;")
+        layout.addWidget(subtitle_label)
+
+        # Form layout for user input
+        form_layout = QFormLayout()
+        form_layout.setSpacing(10)
+
+        # Name field
+        self.name_edit = QLineEdit()
+        self.name_edit.setPlaceholderText("e.g., John Smith")
+        form_layout.addRow("Full Name:", self.name_edit)
+
+        # Email field
+        self.email_edit = QLineEdit()
+        self.email_edit.setPlaceholderText("e.g., john.smith@university.edu")
+        form_layout.addRow("Email Address:", self.email_edit)
+
+        # Organization field
+        self.organization_edit = QLineEdit()
+        self.organization_edit.setPlaceholderText("e.g., University of Example")
+        form_layout.addRow("Organization:", self.organization_edit)
+
+        # Projects directory field
+        self.projects_dir_edit = QLineEdit()
+        self.projects_dir_edit.setPlaceholderText("Leave empty for default")
+        self.projects_dir_edit.setToolTip("Directory where your local projects will be stored")
+        form_layout.addRow("Projects Directory:", self.projects_dir_edit)
+
+        # Browse button for projects directory
+        browse_projects_layout = QHBoxLayout()
+        browse_projects_layout.addWidget(self.projects_dir_edit)
+        browse_projects_btn = QPushButton("Browse...")
+        browse_projects_btn.clicked.connect(self.browse_projects_dir)
+        browse_projects_layout.addWidget(browse_projects_btn)
+        form_layout.addRow("", browse_projects_layout)
+
+        layout.addLayout(form_layout)
+        layout.addStretch()
+
+    def browse_projects_dir(self):
+        """Browse for projects directory."""
+        path = QFileDialog.getExistingDirectory(self, "Select Projects Directory")
+        if path:
+            self.projects_dir_edit.setText(path)
+
+    def validate_page(self) -> bool:
+        """Validate the user profile input."""
+        name = self.name_edit.text().strip()
+        email = self.email_edit.text().strip()
+        organization = self.organization_edit.text().strip()
+
+        if not name:
+            QMessageBox.warning(self, "Validation Error", "Name is required.")
+            return False
+
+        if not email or "@" not in email:
+            QMessageBox.warning(self, "Validation Error", "Valid email address is required.")
+            return False
+
+        if not organization:
+            QMessageBox.warning(self, "Validation Error", "Organization is required.")
+            return False
+
+        return True
+
+    def get_user_profile_dto(self) -> UserProfileDTO:
+        """Get the user profile DTO from the form data."""
+        from pathlib import Path
+
+        projects_dir = None
+        if self.projects_dir_edit.text().strip():
+            projects_dir = Path(self.projects_dir_edit.text().strip())
+
+        return UserProfileDTO(
+            name=self.name_edit.text().strip(),
+            email=self.email_edit.text().strip(),
+            organization=self.organization_edit.text().strip(),
+            default_projects_dir=projects_dir
+        )
+
+
+class LabChoicePage(QWidget):
     """Choose between local-only or lab collaboration."""
 
-    def __init__(self):
-        super().__init__()
-        self.setTitle("Research Organization")
-        self.setSubTitle("How would you like to organize your research?")
+    def __init__(self, parent=None):
+        super().__init__(parent)
 
-        layout = QVBoxLayout()
+        layout = QVBoxLayout(self)
+
+        # Title
+        title_label = QLabel("Research Organization")
+        title_label.setStyleSheet("font-size: 16px; font-weight: bold; margin-bottom: 10px;")
+        layout.addWidget(title_label)
+
+        # Subtitle
+        subtitle_label = QLabel("How would you like to organize your research?")
+        subtitle_label.setStyleSheet("font-size: 14px; color: #666; margin-bottom: 20px;")
+        layout.addWidget(subtitle_label)
 
         # Choice description
         desc_label = QLabel(
@@ -193,25 +300,25 @@ class LabChoicePage(QWizardPage):
             layout.addWidget(labs_info)
 
         layout.addStretch()
-        self.setLayout(layout)
-
-    def nextId(self):
-        """Determine next page based on choice."""
-        if self.lab_radio.isChecked():
-            return 2  # Lab config page
-        else:
-            return 3  # Skip to conclusion (local-only)
 
 
-class LabConfigPage(QWizardPage):
+class LabConfigPage(QWidget):
     """Configure lab settings if creating/joining a lab."""
 
-    def __init__(self):
-        super().__init__()
-        self.setTitle("Lab Configuration")
-        self.setSubTitle("Set up your research lab")
+    def __init__(self, parent=None):
+        super().__init__(parent)
 
-        layout = QVBoxLayout()
+        layout = QVBoxLayout(self)
+
+        # Title
+        title_label = QLabel("Lab Configuration")
+        title_label.setStyleSheet("font-size: 16px; font-weight: bold; margin-bottom: 10px;")
+        layout.addWidget(title_label)
+
+        # Subtitle
+        subtitle_label = QLabel("Set up your research lab")
+        subtitle_label.setStyleSheet("font-size: 14px; color: #666; margin-bottom: 20px;")
+        layout.addWidget(subtitle_label)
 
         # Lab choice: create new or join existing
         choice_group = QGroupBox("Lab Setup")
@@ -275,16 +382,11 @@ class LabConfigPage(QWizardPage):
         self.join_radio.toggled.connect(self.on_lab_choice_changed)
         self.enable_sharing_check.toggled.connect(self.storage_path_edit.setEnabled)
 
-        self.setLayout(layout)
-
-        # Initialize
-        self.populate_existing_labs()
+        # Initialize (labs will be populated via populate_existing_labs)
         self.on_lab_choice_changed()
 
-    def populate_existing_labs(self):
-        """Populate dropdown with existing labs."""
-        self.setup_service = get_setup_service()
-        labs = self.setup_service.get_labs()
+    def populate_existing_labs(self, labs):
+        """Populate the existing labs dropdown."""
         self.existing_labs_combo.clear()
         for lab_id, lab_data in labs.items():
             display_name = f"{lab_data.get('name', 'Unknown')} ({lab_data.get('institution', 'No institution')})"
@@ -315,15 +417,23 @@ class LabConfigPage(QWizardPage):
         return True
 
 
-class SimplifiedConclusionPage(QWizardPage):
+class ConclusionPage(QWidget):
     """Final page showing setup summary."""
 
-    def __init__(self):
-        super().__init__()
-        self.setTitle("Setup Complete")
-        self.setSubTitle("MUS1 is ready to use!")
+    def __init__(self, parent=None):
+        super().__init__(parent)
 
-        layout = QVBoxLayout()
+        layout = QVBoxLayout(self)
+
+        # Title
+        title_label = QLabel("Setup Complete")
+        title_label.setStyleSheet("font-size: 16px; font-weight: bold; margin-bottom: 10px;")
+        layout.addWidget(title_label)
+
+        # Subtitle
+        subtitle_label = QLabel("MUS1 is ready to use!")
+        subtitle_label.setStyleSheet("font-size: 14px; color: #666; margin-bottom: 20px;")
+        layout.addWidget(subtitle_label)
 
         self.summary_label = QLabel("Setup completed successfully!")
         self.summary_label.setStyleSheet("font-size: 14px; font-weight: bold; color: green;")
@@ -335,41 +445,353 @@ class SimplifiedConclusionPage(QWizardPage):
         layout.addWidget(self.details_text)
 
         layout.addStretch()
-        self.setLayout(layout)
 
-    def initializePage(self):
+    def initialize_page(self):
         """Initialize the conclusion page with setup summary."""
-        wizard = self.wizard()
-        if hasattr(wizard, 'user_dto') and wizard.user_dto:
-            summary = f"Welcome, {wizard.user_dto.name}!\n\n"
-            if wizard.lab_choice == "lab":
-                if wizard.lab_dto:
-                    summary += f"Created lab: {wizard.lab_dto.name}\n"
-                    if getattr(wizard, '_lab_sharing_enabled', False):
-                        summary += "Lab sharing enabled\n"
-                else:
-                    summary += "Joined existing lab\n"
-                summary += "\nYou can now create local projects or collaborate with lab members."
-            else:
-                summary += "Local-only setup\n\nYou can create local projects and manage your research data."
+        # Get the wizard view from parent hierarchy
+        wizard_view = self.parent()
+        while wizard_view and not hasattr(wizard_view, 'user_dto'):
+            wizard_view = wizard_view.parent()
+
+        summary = "Setup Summary:\n\n"
+
+        if wizard_view and hasattr(wizard_view, 'user_dto') and wizard_view.user_dto:
+            user_profile = wizard_view.user_dto
+            summary += f"User Profile:\n"
+            summary += f"  Name: {user_profile.name}\n"
+            summary += f"  Email: {user_profile.email}\n"
+            summary += f"  Organization: {user_profile.organization}\n"
+            if user_profile.default_projects_dir:
+                summary += f"  Projects Directory: {user_profile.default_projects_dir}\n"
+            summary += "\n"
         else:
-            summary = "Setup completed successfully!"
+            summary += "User profile: Not configured\n\n"
+
+        if wizard_view and hasattr(wizard_view, 'lab_choice'):
+            if wizard_view.lab_choice == "lab":
+                summary += "Lab Setup: Enabled\n"
+                if wizard_view.lab_dto:
+                    summary += f"  Lab Name: {wizard_view.lab_dto.name}\n"
+                    summary += f"  Institution: {wizard_view.lab_dto.institution}\n"
+                    summary += f"  PI: {wizard_view.lab_dto.pi_name}\n"
+                    if getattr(wizard_view, '_lab_sharing_enabled', False):
+                        summary += "  Lab sharing: Enabled\n"
+                else:
+                    summary += "  Joined existing lab\n"
+                summary += "\nYou can now create shared projects and collaborate with lab members."
+            else:
+                summary += "Lab Setup: Local projects only\n\nYou can create local projects and manage your research data."
+        else:
+            summary += "Lab Setup: Not configured"
 
         self.details_text.setPlainText(summary)
+
+
+class SetupWizardView(BaseView):
+    """Setup wizard view that follows the BaseView pattern with wizard navigation."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent, view_name="setup_wizard")
+
+        # Initialize wizard data
+        self.user_dto = None
+        self.lab_choice = "local"  # Default to local
+        self.lab_dto = None
+        self._lab_sharing_enabled = False
+
+        # Initialize services (will be set via on_services_ready)
+        self.setup_service = None
+
+        # Set up wizard pages
+        self.setup_wizard_pages()
+
+        # Set up navigation for wizard flow
+        self.setup_wizard_navigation()
+
+        # Start with welcome page
+        self.change_page(0)
+
+    def on_services_ready(self, services):
+        """Called when services are ready to be injected."""
+        if hasattr(services, 'create_setup_service'):
+            # Global services factory
+            self.setup_service = services.create_setup_service()
+        else:
+            # Fallback for backward compatibility
+            global_factory = GlobalGUIServiceFactory()
+            self.setup_service = global_factory.create_setup_service()
+
+        # Populate existing labs if service is available
+        if self.setup_service:
+            self.populate_existing_labs()
+
+    def update_theme(self, theme):
+        """Update theme for the setup wizard."""
+        self.setProperty("theme", theme)
+        self.style().unpolish(self)
+        self.style().polish(self)
+
+    def populate_existing_labs(self):
+        """Populate existing labs in all relevant pages."""
+        if not self.setup_service:
+            return
+
+        labs = self.setup_service.get_labs()
+        # Update any pages that need lab data
+        if hasattr(self, 'lab_config_page') and hasattr(self.lab_config_page, 'populate_existing_labs'):
+            self.lab_config_page.populate_existing_labs(labs)
+
+    def setup_wizard_pages(self):
+        """Set up the wizard pages in the content area."""
+        # Create page widgets
+        self.welcome_page = self.create_welcome_page()
+        self.user_profile_page = self.create_user_profile_page()
+        self.lab_choice_page = self.create_lab_choice_page()
+        self.lab_config_page = self.create_lab_config_page()
+        self.conclusion_page = self.create_conclusion_page()
+
+        # Add pages to stacked widget (inherited from BaseView)
+        self.content_area.addWidget(self.welcome_page)
+        self.content_area.addWidget(self.user_profile_page)
+        self.content_area.addWidget(self.lab_choice_page)
+        self.content_area.addWidget(self.lab_config_page)
+        self.content_area.addWidget(self.conclusion_page)
+
+    def setup_wizard_navigation(self):
+        """Set up wizard-style navigation."""
+        # Clear existing navigation
+        self.navigation_pane.clear_buttons()
+
+        # Add wizard navigation buttons
+        self.add_navigation_button("Welcome", page_index=0)
+        self.add_navigation_button("Profile", page_index=1)
+        self.add_navigation_button("Organization", page_index=2)
+        self.add_navigation_button("Lab Setup", page_index=3)
+        self.add_navigation_button("Complete", page_index=4)
+
+        # Add action buttons at bottom
+        self.setup_wizard_actions()
+
+    def setup_wizard_actions(self):
+        """Set up wizard action buttons (Back/Next/Finish)."""
+        # Create action buttons layout
+        actions_layout = QVBoxLayout()
+        actions_layout.setContentsMargins(10, 10, 10, 10)
+
+        # Back button
+        self.back_button = QPushButton("Back")
+        self.back_button.clicked.connect(self.go_back)
+        self.back_button.setEnabled(False)  # Disabled on first page
+        actions_layout.addWidget(self.back_button)
+
+        # Next button
+        self.next_button = QPushButton("Next")
+        self.next_button.clicked.connect(self.go_next)
+        actions_layout.addWidget(self.next_button)
+
+        # Finish button (hidden initially)
+        self.finish_button = QPushButton("Finish Setup")
+        self.finish_button.clicked.connect(self.finish_setup)
+        self.finish_button.setVisible(False)
+        actions_layout.addWidget(self.finish_button)
+
+        actions_layout.addStretch()
+
+        # Add to navigation pane
+        actions_widget = QWidget()
+        actions_widget.setLayout(actions_layout)
+        self.navigation_pane.add_widget(actions_widget)
+
+    def go_back(self):
+        """Go to previous page."""
+        current_index = self.content_area.currentIndex()
+        if current_index > 0:
+            self.change_page(current_index - 1)
+            self.update_navigation_buttons()
+
+    def go_next(self):
+        """Go to next page."""
+        current_index = self.content_area.currentIndex()
+        if current_index < self.content_area.count() - 1:
+            # Validate current page before proceeding
+            if self.validate_current_page():
+                self.change_page(current_index + 1)
+                self.update_navigation_buttons()
+
+    def finish_setup(self):
+        """Complete the setup process."""
+        if self.validate_current_page():
+            success = self._run_setup()
+            if success:
+                # Signal completion to parent dialog
+                parent = self.parent()
+                if parent and hasattr(parent, 'accept'):
+                    parent.accept()
+            # If setup failed, don't accept the dialog so user can try again
+
+    def update_navigation_buttons(self):
+        """Update navigation button states based on current page."""
+        current_index = self.content_area.currentIndex()
+        total_pages = self.content_area.count()
+
+        # Update back button
+        self.back_button.setEnabled(current_index > 0)
+
+        # Update next/finish buttons
+        if current_index == total_pages - 1:  # Last page
+            self.next_button.setVisible(False)
+            self.finish_button.setVisible(True)
+        else:
+            self.next_button.setVisible(True)
+            self.finish_button.setVisible(False)
+
+    def validate_current_page(self) -> bool:
+        """Validate the current page before proceeding."""
+        current_index = self.content_area.currentIndex()
+
+        if current_index == 1:  # User profile page
+            return self.validate_user_profile_page()
+        elif current_index == 3:  # Lab config page
+            return self.validate_lab_config_page()
+        elif current_index == 4:  # Conclusion page
+            return True
+
+        return True
+
+    def validate_user_profile_page(self) -> bool:
+        """Validate user profile page."""
+        if hasattr(self, 'user_profile_page') and hasattr(self.user_profile_page, 'validate_page'):
+            return self.user_profile_page.validate_page()
+        return True
+
+    def validate_lab_config_page(self) -> bool:
+        """Validate lab configuration page."""
+        # Add validation logic here
+        return True
+
+    def create_welcome_page(self):
+        """Create the welcome page."""
+        page = WelcomePage()
+        return page
+
+    def create_user_profile_page(self):
+        """Create the user profile page."""
+        page = UserProfilePage()
+        return page
+
+    def create_lab_choice_page(self):
+        """Create the lab choice page."""
+        page = LabChoicePage()
+        # Connect to update wizard data
+        if hasattr(page, 'lab_choice_changed'):
+            page.lab_choice_changed.connect(self.on_lab_choice_changed)
+        return page
+
+    def create_lab_config_page(self):
+        """Create the lab config page."""
+        page = LabConfigPage()
+        return page
+
+    def create_conclusion_page(self):
+        """Create the conclusion page."""
+        page = ConclusionPage()
+        # Initialize the page when created (it will be shown)
+        if hasattr(page, 'initialize_page'):
+            page.initialize_page()
+        return page
+
+    def on_lab_choice_changed(self, choice):
+        """Handle lab choice changes."""
+        self.lab_choice = choice
+
+    def _run_setup(self) -> bool:
+        """Run the setup process based on user selections."""
+        try:
+            if not self.setup_service:
+                QMessageBox.critical(self, "Setup Error", "Setup service not available")
+                return False
+
+            # Collect user profile data from the user profile page
+            if hasattr(self, 'user_profile_page') and hasattr(self.user_profile_page, 'get_user_profile_dto'):
+                try:
+                    self.user_dto = self.user_profile_page.get_user_profile_dto()
+                except Exception as e:
+                    QMessageBox.critical(self, "Setup Error", f"Invalid user profile data: {e}")
+                    return False
+
+            # Collect lab data if lab setup was chosen
+            if self.lab_choice == "lab" and hasattr(self, 'lab_config_page'):
+                # Collect lab data from lab config page
+                # For now, we'll use default lab creation logic
+                pass
+
+            # Create workflow DTO based on wizard data
+            workflow_dto = SetupWorkflowDTO(
+                user_profile=self.user_dto,
+                lab=self.lab_dto if self.lab_choice == "lab" else None
+            )
+
+            # Run setup workflow
+            result = self.setup_service.run_setup_workflow(workflow_dto)
+
+            if not result["success"]:
+                errors = result.get("errors", ["Unknown error"])
+                QMessageBox.warning(
+                    self, "Setup Warning",
+                    f"Setup completed with warnings:\n\n{chr(10).join(errors)}"
+                )
+                return True  # Setup completed with warnings, still consider it successful
+
+            return True
+
+        except Exception as e:
+            QMessageBox.critical(
+                self, "Setup Error",
+                f"Setup failed:\n\n{str(e)}"
+            )
+            return False
 
 
 # ===========================================
 # UTILITY FUNCTIONS
 # ===========================================
 
-def show_setup_wizard(parent=None) -> Optional[SimplifiedSetupWizard]:
-    """Show the simplified MUS1 setup wizard dialog."""
+def show_setup_wizard(parent=None, theme_manager=None) -> Optional[SetupWizardView]:
+    """Show the MUS1 setup wizard dialog."""
     try:
-        wizard = SimplifiedSetupWizard(parent)
-        result = wizard.exec()
+        from .qt import QDialog, QVBoxLayout
 
-        if result == QWizard.DialogCode.Accepted:
-            return wizard
+        # Create modal dialog
+        dialog = QDialog(parent)
+        dialog.setWindowTitle("MUS1 Setup")
+        dialog.setModal(True)
+        dialog.resize(800, 600)
+
+        # Create wizard view
+        wizard_view = SetupWizardView(dialog)
+
+        # Inject global services
+        global_services = GlobalGUIServiceFactory()
+        wizard_view.on_services_ready(global_services)
+
+        # Apply theme if theme manager is available
+        if theme_manager:
+            effective_theme = getattr(theme_manager, "get_effective_theme", lambda: "dark")()
+            wizard_view.update_theme(effective_theme)
+        else:
+            # Default to dark theme
+            wizard_view.update_theme("dark")
+
+        # Set up dialog layout
+        layout = QVBoxLayout(dialog)
+        layout.addWidget(wizard_view)
+        dialog.setLayout(layout)
+
+        # Show dialog
+        result = dialog.exec()
+
+        if result == QDialog.DialogCode.Accepted:
+            return wizard_view
         return None
     except Exception as e:
         QMessageBox.critical(

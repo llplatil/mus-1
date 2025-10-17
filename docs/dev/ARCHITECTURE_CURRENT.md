@@ -16,7 +16,7 @@ The architecture eliminates complex precedence chains, peer-hosted modes, and wo
 ```
 User Input → Presentation Layer → Service Layer → Domain Layer → Repository Layer → Infrastructure Layer → Output
 
-Presentation: main_window.py, simple_cli.py, setup_wizard.py (3-page simplified)
+Presentation: main_window.py, simple_cli.py, setup_wizard.py (3-page setup wizard)
 Service: project_discovery_service.py, setup_service.py, project_manager_clean.py
 Domain: metadata.py entities + repository.py patterns
 Infrastructure: schema.py models + config_manager.py settings
@@ -519,7 +519,7 @@ Many of the claimed fixes are not actually working due to critical bugs:
 - **Online Checks**: Lab storage accessibility is checked and displayed in UI
 
 ### Cross-Lab Project Movement
-- **Importer Plugin**: `project_importer` plugin enables moving projects between labs
+- **Default Importer Plugin**: `project_importer` is the default MUS1 plugin for importing existing MUS1 projects to labs they were not previously associated with, enabling cross-lab project movement
 - **Clean Separation**: Projects maintain their original lab association until explicitly imported
 - **Flexible Migration**: Users can import project data, subjects, or experiments as needed
 
@@ -594,15 +594,25 @@ data_transformer = DataTransformer()
 
 **Pattern**:
 ```python
+class SetupService:
+    _instance = None
+
+    @classmethod
+    def get_instance(cls):
+        if cls._instance is None:
+            cls._instance = SetupService()
+        return cls._instance
+
 def get_setup_service() -> SetupService:
-    return SetupService()
+    return SetupService.get_instance()
 
 # Usage (limited to necessary cases)
 setup_service = get_setup_service()
 ```
 
 **MUS1 Service Locators**:
-- `get_setup_service()` - For setup operations (being phased out)
+- `get_setup_service()` - For setup operations (converted to singleton)
+- `get_project_discovery_service()` - For project discovery (converted to singleton)
 
 ### **Current MUS1 Service Classification**
 
@@ -611,9 +621,9 @@ setup_service = get_setup_service()
 | `LoggingEventBus` | Singleton | ✅ Implemented | Global logging coordination |
 | `GUIServiceFactory` | Factory | ✅ Implemented | GUI service creation |
 | `RepositoryFactory` | Factory | ✅ Implemented | Database access layer |
-| `ProjectManagerClean` | Direct | 🔄 To Standardize | Should use ProjectServiceFactory |
-| `PluginManagerClean` | Direct | 🔄 To Standardize | Should use ProjectServiceFactory |
-| `SetupService` | Service Locator | 🔄 To Standardize | Should be singleton or direct |
+| `ProjectManagerClean` | Factory | ✅ Implemented | Via ProjectServiceFactory |
+| `PluginManagerClean` | Factory | ✅ Implemented | Via ProjectServiceFactory |
+| `SetupService` | Singleton | ✅ Implemented | Global setup coordination |
 | `LabService` | Factory | ✅ Implemented | Via GUIServiceFactory |
 
 ### **Current Factory Implementations**
@@ -670,10 +680,10 @@ class ProjectServiceFactory:
 
 ### **Migration Plan**
 
-1. **Phase 1**: Implement `ProjectServiceFactory` to standardize core service creation
-2. **Phase 2**: Convert `SetupService` to singleton pattern
-3. **Phase 3**: Update `MainWindow` to use `ProjectServiceFactory`
-4. **Phase 4**: Remove service locator anti-patterns where possible
+1. **Phase 1**: ✅ Implement `ProjectServiceFactory` to standardize core service creation
+2. **Phase 2**: ✅ Convert `SetupService` to singleton pattern
+3. **Phase 3**: ✅ Update `MainWindow` to use `ProjectServiceFactory` (remove backward compatibility)
+4. **Phase 4**: ✅ Convert remaining service locators to singletons where appropriate
 
 ## Key Features
 

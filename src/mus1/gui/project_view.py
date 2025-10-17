@@ -85,6 +85,7 @@ class ProjectView(BaseView):
         # Initialize GUI services
         self.gui_services = None  # Will be set when project is loaded
         self.project_service = None  # Will be set when project is loaded
+        self.plugin_manager = None  # Will be set when project is loaded
         self.importer_param_widgets: Dict[str, QWidget] = {} # Initialize the dictionary here
         self.setup_navigation(["Import Project", "Project Settings"])
         self.setup_import_project_page()
@@ -104,11 +105,12 @@ class ProjectView(BaseView):
         self.project_service = services.create_project_service()
         try:
             main_window = self.window()
-            pm = getattr(main_window, 'project_manager', None)
-            if pm and getattr(pm, 'db', None):
-                self.plugin_manager = PluginManagerClean(pm.db)
+            if hasattr(main_window, 'service_factory') and main_window.service_factory and hasattr(main_window.service_factory, 'plugin_manager'):
+                self.plugin_manager = main_window.service_factory.plugin_manager
                 self.plugin_manager.discover_entry_points()
                 self.populate_importer_plugins()
+            else:
+                self.log_bus.log("No project loaded - plugin manager not available", "info", "ProjectView")
         except Exception as e:
             self.log_bus.log(f"Plugin manager init failed: {e}", "warning", "ProjectView")
 
@@ -390,12 +392,12 @@ class ProjectView(BaseView):
         if hasattr(self, 'project_notes_box') and self.window() and self.window().project_manager:
             pm = self.window().project_manager
             notes = pm.config.settings.get("project_notes", "")
-            self.log_bus.log(f"Loading project notes ({len(notes, "ProjectView")} characters) for project: {project_name}", "info")
+            self.log_bus.log(f"Loading project notes ({len(notes)} characters) for project: {project_name}", "info")
             self.project_notes_box.set_text(notes)
         else:
             has_window = bool(self.window())
             has_pm = has_window and bool(self.window().project_manager)
-            self.log_bus.log(f"Cannot load project notes - project_notes_box exists: {hasattr(self, 'project_notes_box', "ProjectView")}, window exists: {has_window}, project_manager exists: {has_pm}", "warning")
+            self.log_bus.log(f"Cannot load project notes - project_notes_box exists: {hasattr(self, 'project_notes_box')}, window exists: {has_window}, project_manager exists: {has_pm}", "warning")
 
         # Update UI settings from the loaded project state
         # Note: General settings are now handled by SettingsView
@@ -588,7 +590,7 @@ class ProjectView(BaseView):
             from ..core.setup_service import get_setup_service
             setup_service = get_setup_service()
             labs = setup_service.get_labs()
-            self.log_bus.log(f"Found {len(labs, "ProjectView")} labs for user", "info")
+            self.log_bus.log(f"Found {len(labs)} labs for user", "info")
             if labs:
                 for lab_id, lab_data in labs.items():
                     display_name = f"{lab_data.get('name', 'Unknown Lab')} ({lab_data.get('institution', 'Unknown Institution')})"
@@ -1023,7 +1025,7 @@ class ProjectView(BaseView):
             return
 
         notes = self.project_notes_box.get_text()
-        self.log_bus.log(f"Saving project notes ({len(notes, "ProjectView")} characters)...", 'info')
+        self.log_bus.log(f"Saving project notes ({len(notes)} characters)...", 'info')
 
         try:
             # Ensure project_manager is available

@@ -920,6 +920,48 @@ class LabService(BaseGUIService):
         return self.safe_execute("associating project with lab", _associate_project, False)
 
 
+class GUISetupService(BaseGUIService):
+    """Service for GUI setup operations."""
+
+    def __init__(self):
+        super().__init__("GUISetupService")
+        self.setup_service = None
+
+    def set_services(self, setup_service):
+        """Set the setup service."""
+        self.setup_service = setup_service
+
+    def is_user_configured(self) -> bool:
+        """Check if user is configured."""
+        if not self.setup_service:
+            return False
+        return self.safe_execute("checking user configuration", lambda: self.setup_service.is_user_configured(), False)
+
+    def get_user_profile(self) -> Optional[Dict[str, Any]]:
+        """Get user profile for display."""
+        if not self.setup_service:
+            return None
+        return self.safe_execute("getting user profile", lambda: self.setup_service.get_user_profile(), None)
+
+    def run_setup_workflow(self, workflow_dto) -> Dict[str, Any]:
+        """Run setup workflow."""
+        if not self.setup_service:
+            return {"success": False, "errors": ["Setup service not available"]}
+        return self.safe_execute("running setup workflow", lambda: self.setup_service.run_setup_workflow(workflow_dto), {"success": False, "errors": ["Unknown error"]})
+
+    def get_all_users(self) -> List[Dict[str, Any]]:
+        """Get all users for display."""
+        if not self.setup_service:
+            return []
+        return self.safe_execute("getting all users", lambda: list(self.setup_service.get_all_users().values()), [])
+
+    def get_labs(self) -> List[Dict[str, Any]]:
+        """Get all labs for display."""
+        if not self.setup_service:
+            return []
+        return self.safe_execute("getting labs", lambda: list(self.setup_service.get_labs().values()), [])
+
+
 class GUIPluginService(BaseGUIService):
     """Service for GUI plugin operations."""
 
@@ -1002,6 +1044,17 @@ class GUIPluginService(BaseGUIService):
             return result
 
         return self.safe_execute(f"executing plugin {plugin.plugin_self_metadata().name}", _execute_plugin, {"success": False, "error": "Unknown error"})
+
+
+class GlobalGUIServiceFactory:
+    """Factory for creating global GUI services that don't depend on projects."""
+
+    def create_setup_service(self) -> GUISetupService:
+        """Create setup service."""
+        from ..core.setup_service import get_setup_service
+        setup_service = GUISetupService()
+        setup_service.set_services(get_setup_service())
+        return setup_service
 
 
 class GUIServiceFactory:

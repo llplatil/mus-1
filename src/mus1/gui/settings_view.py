@@ -394,7 +394,11 @@ class SettingsView(BaseView):
         self.workers_list.clear()
         try:
             # Get workers from project manager config
-            pm = self.window().project_manager
+            main_window = self.window()
+            if not main_window or not hasattr(main_window, 'service_factory') or not main_window.service_factory or not hasattr(main_window.service_factory, 'project_manager'):
+                self.log_bus.log("No project loaded - cannot load workers", "warning", "SettingsView")
+                return
+            pm = main_window.service_factory.project_manager
             if pm:
                 # Determine scope
                 use_lab_scope = getattr(self, 'scope_workers_to_lab_check', None) and self.scope_workers_to_lab_check.isChecked()
@@ -444,9 +448,13 @@ class SettingsView(BaseView):
                 self.log_bus.log("Worker name and SSH alias are required", "warning", "SettingsView")
                 return
 
-            pm = self.window().project_manager
-            if not pm:
+            main_window = self.window()
+            if not main_window or not hasattr(main_window, 'service_factory') or not main_window.service_factory or not hasattr(main_window.service_factory, 'project_manager'):
                 self.log_bus.log("No project loaded", "warning", "SettingsView")
+                return
+            pm = main_window.service_factory.project_manager
+            if not pm:
+                self.log_bus.log("No project manager available", "warning", "SettingsView")
                 return
 
             # Determine scope
@@ -494,9 +502,13 @@ class SettingsView(BaseView):
                 return
             name = item.data(Qt.ItemDataRole.UserRole)
 
-            pm = self.window().project_manager
-            if not pm:
+            main_window = self.window()
+            if not main_window or not hasattr(main_window, 'service_factory') or not main_window.service_factory or not hasattr(main_window.service_factory, 'project_manager'):
                 self.log_bus.log("No project loaded", "warning", "SettingsView")
+                return
+            pm = main_window.service_factory.project_manager
+            if not pm:
+                self.log_bus.log("No project manager available", "warning", "SettingsView")
                 return
 
             # Determine scope
@@ -633,13 +645,14 @@ class SettingsView(BaseView):
         }
 
         # Update settings using project config
-        if self.window().project_manager:
-            self.window().project_manager.config.settings.update(settings)
+        main_window = self.window()
+        if main_window and hasattr(main_window, 'service_factory') and main_window.service_factory and hasattr(main_window.service_factory, 'project_manager') and main_window.service_factory.project_manager:
+            main_window.service_factory.project_manager.config.settings.update(settings)
             # Save the project to persist these settings
-            self.window().project_manager.save_project()
+            main_window.service_factory.project_manager.save_project()
 
             # Call through MainWindow to propagate theme changes across the application
-            self.window().change_theme(theme_choice)
+            main_window.change_theme(theme_choice)
 
         self.log_bus.log("Applied general settings to current project.", "success", "SettingsView")
 
@@ -655,20 +668,22 @@ class SettingsView(BaseView):
         }
 
         # Update settings using project config
-        if self.window().project_manager:
-            self.window().project_manager.config.settings.update(settings)
+        main_window = self.window()
+        if main_window and hasattr(main_window, 'service_factory') and main_window.service_factory and hasattr(main_window.service_factory, 'project_manager') and main_window.service_factory.project_manager:
+            main_window.service_factory.project_manager.config.settings.update(settings)
             # Save project to persist changes
-            self.window().project_manager.save_project()
+            main_window.service_factory.project_manager.save_project()
 
         self.log_bus.log(f"Applied frame rate settings: {'Enabled' if frame_rate_enabled else 'Disabled'}, {frame_rate} fps", "success", "SettingsView")
 
     def on_sort_mode_changed(self, new_sort_mode: str):
         """Update the project config's global_sort_mode and refresh data."""
-        if self.window().project_manager:
+        main_window = self.window()
+        if main_window and hasattr(main_window, 'service_factory') and main_window.service_factory and hasattr(main_window.service_factory, 'project_manager') and main_window.service_factory.project_manager:
             # Update sort mode using project config
-            self.window().project_manager.config.settings["global_sort_mode"] = new_sort_mode
+            main_window.service_factory.project_manager.config.settings["global_sort_mode"] = new_sort_mode
             # Save project to persist changes
-            self.window().project_manager.save_project()
+            main_window.service_factory.project_manager.save_project()
 
             # Refresh lists to show new sorting (repositories will use the updated sort mode)
             self.refresh_lists()
@@ -710,7 +725,10 @@ class SettingsView(BaseView):
             return
 
         # Get current sort mode from project config, default to "Newest First"
-        pm = self.window().project_manager if self.window() else None
+        main_window = self.window()
+        pm = None
+        if main_window and hasattr(main_window, 'service_factory') and main_window.service_factory and hasattr(main_window.service_factory, 'project_manager'):
+            pm = main_window.service_factory.project_manager
         if pm:
             current_sort_mode = pm.config.settings.get("global_sort_mode", "Newest First")
             index = self.sort_mode_dropdown.findText(current_sort_mode)

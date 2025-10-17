@@ -8,11 +8,11 @@ from ..core.metadata import Experiment, ProjectConfig, PluginMetadata
 
 
 class ProjectImporterPlugin(BasePlugin):
-    """Minimal project importer plugin skeleton.
+    """Default MUS1 plugin for importing existing MUS1 projects to labs they were not previously associated with.
 
-    Provides project-level actions to import/link data from another MUS1 project
-    into the active project's lab scope. This skeleton focuses on registration
-    and UI discoverability; real import logic can be implemented incrementally.
+    This is a core MUS1 plugin that provides project-level actions to import/link
+    data from another MUS1 project into the active project's lab scope. Focuses on
+    enabling cross-lab project movement while maintaining data integrity.
     """
 
     def plugin_self_metadata(self) -> PluginMetadata:
@@ -20,7 +20,7 @@ class ProjectImporterPlugin(BasePlugin):
             name="project_importer",
             date_created=datetime.now(),
             version="0.1.0",
-            description="Import/link projects or unique data across labs",
+            description="Default MUS1 plugin for importing existing MUS1 projects to labs they were not previously associated with",
             author="MUS1",
             plugin_type="importer",
             supported_experiment_types=[],
