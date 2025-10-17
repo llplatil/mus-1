@@ -8,7 +8,7 @@ a clear priority chain and single source of truth.
 from pathlib import Path
 from typing import Optional, List
 from .config_manager import get_config
-from .config_manager import get_lab_storage_root
+from .config_manager import get_lab_storage_root, get_lab_sharing_mode, get_lab_library_status
 
 
 class ProjectDiscoveryService:
@@ -135,13 +135,19 @@ class ProjectDiscoveryService:
         if shared_root:
             self._discover_projects_in_directory(Path(shared_root), projects)
 
-        # Priority 4: Lab-specific roots
+        # Priority 4: Lab-specific roots (only include if online for peer_hosted)
         try:
             from .setup_service import get_setup_service
             labs = get_setup_service().get_labs()
             for lab_id in labs.keys():
                 lab_root = get_lab_storage_root(lab_id)
                 if lab_root:
+                    mode = get_lab_sharing_mode(lab_id) or "always_on"
+                    if mode == "peer_hosted":
+                        status = get_lab_library_status(lab_id)
+                        if not status.get("online"):
+                            # Skip offline peer-hosted roots
+                            continue
                     self._discover_projects_in_directory(lab_root, projects)
         except Exception:
             pass

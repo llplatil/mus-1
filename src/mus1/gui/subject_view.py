@@ -17,14 +17,13 @@ from .qt import (
     QDateTime,
     QTimer,
     QAbstractItemView,
-    QMessageBox,
 )
 
 from ..core.metadata import Sex
 from .navigation_pane import NavigationPane  
 from .base_view import BaseView
 from ..core.logging_bus import LoggingEventBus
-from .metadata_display import MetadataTreeView  # Import for overview display
+from .metadata_display import MetadataTreeView, MetadataGridDisplay  # Reusable displays
 from pathlib import Path
 from .gui_services import GUISubjectService
 # TODO: Update to use new clean architecture models
@@ -167,12 +166,12 @@ class SubjectView(BaseView):
         self.subject_notification_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         add_layout.addWidget(self.subject_notification_label)
         
-        # Create a list widget for displaying all subjects
+        # Create a grid for displaying all subjects
         subjects_group, subjects_layout = self.create_form_section("All Subjects", add_layout)
-        self.subjects_list = QListWidget()
-        self.subjects_list.setProperty("class", "mus1-list-widget")
-        self.subjects_list.setSelectionMode(QListWidget.SelectionMode.SingleSelection)
-        subjects_layout.addWidget(self.subjects_list)
+        self.subjects_grid = MetadataGridDisplay()
+        subjects_layout.addWidget(self.subjects_grid)
+        # Enable quick edit via double-click activation
+        self.subjects_grid.row_activated.connect(self.handle_edit_subject_by_id)
         
         # Add buttons for subject operations
         buttons_row = self.create_button_row(subjects_layout)
@@ -291,12 +290,13 @@ class SubjectView(BaseView):
         if not self.subject_service:
             return
 
-        # Ensure the list widget exists before proceeding
-        if not hasattr(self, 'subjects_list'):
+        # Ensure the grid exists before proceeding
+        if not hasattr(self, 'subjects_grid'):
             return
 
-        # Update the UI by clearing and repopulating the subjects list regardless of the current page
-        self.subjects_list.clear()
+        # Build rows for the grid
+        items = []
+        columns = ["ID", "Sex", "Genotype", "birth_date", "Colony"]
 
         # Get subjects using GUI services
         subjects_display_dto = self.subject_service.get_subjects_for_display()
@@ -305,20 +305,27 @@ class SubjectView(BaseView):
         self.log_bus.log(f"Refreshing subject list: {len(subjects_display_dto)} subjects found", "info", "SubjectView")
 
         for subj_dto in subjects_display_dto:
-            birth_str = subj_dto.birth_date.strftime('%Y-%m-%d %H:%M:%S') if subj_dto.birth_date else 'N/A'
+            # Normalize fields
+            sex_display = getattr(subj_dto, 'sex_display', None)
+            if not sex_display:
+                sex_value = getattr(subj_dto, 'sex', None)
+                sex_display = sex_value.value if hasattr(sex_value, 'value') else str(sex_value)
 
-            # Create the basic details string
-            colony_info = f" | Colony: {subj_dto.colony_name or 'None'}" if hasattr(subj_dto, 'colony_name') else ""
-            details = (f"ID: {subj_dto.id} | Sex: {subj_dto.sex_display} | Genotype: {subj_dto.genotype or 'N/A'} "
-                      f"| Age: {subj_dto.age_display}{colony_info}")
+            birth_dt = getattr(subj_dto, 'birth_date', None)
+            birth_str = birth_dt.strftime('%Y-%m-%d') if birth_dt else 'N/A'
+            colony_name = getattr(subj_dto, 'colony_name', None) or 'None'
 
-            # Add notes snippet if available (though Subject model may not have notes yet)
-            # details += f" | Notes: {subj_dto.notes or 'None'}"
+            items.append({
+                "ID": subj_dto.id,
+                "Sex": sex_display,
+                "Genotype": getattr(subj_dto, 'genotype', None) or 'N/A',
+                "birth_date": birth_str,
+                "raw_birth_date": birth_dt,
+                "Colony": colony_name,
+            })
 
-            # Create list item and store subject ID as data for easy retrieval
-            item = QListWidgetItem(details)
-            item.setData(Qt.ItemDataRole.UserRole, subj_dto.id)
-            self.subjects_list.addItem(item)
+        # Populate the grid (sortable by birth_date via raw_birth_date)
+        self.subjects_grid.populate_data(items, columns)
 
     def refresh_experiment_list_by_subject_display(self):
         """Refresh the list widget displaying experiments by subject."""
@@ -381,14 +388,8 @@ class SubjectView(BaseView):
 
     def handle_remove_selected_subject(self):
         """Handle removal of the selected subject from the list."""
-        selected_item = self.subjects_list.currentItem()
-        if not selected_item:
-            return
-
-        # Get subject ID from stored data
-        subject_id = selected_item.data(Qt.ItemDataRole.UserRole)
+        subject_id = self._get_selected_subject_id()
         if not subject_id:
-            self.navigation_pane.add_log_message("Could not retrieve subject ID.", "error")
             return
 
         if self.subject_service:
@@ -465,17 +466,14 @@ class SubjectView(BaseView):
 
     def handle_edit_subject(self):
         """Handle editing of a selected subject."""
-        selected_item = self.subjects_list.currentItem()
-        if not selected_item:
+        subject_id = self._get_selected_subject_id()
+        if not subject_id:
             self.navigation_pane.add_log_message("No subject selected for editing.", "warning")
             return
+        self.handle_edit_subject_by_id(subject_id)
 
-        # Get subject ID from stored data
-        subject_id = selected_item.data(Qt.ItemDataRole.UserRole)
-        if not subject_id:
-            self.navigation_pane.add_log_message("Could not retrieve subject ID.", "error")
-            return
-        
+    def handle_edit_subject_by_id(self, subject_id: str):
+        """Populate the form with subject data for editing given an ID."""
         # Get the subject using GUI services
         subject_dto = self.subject_service.get_subject_by_id(subject_id)
         if not subject_dto:
@@ -573,15 +571,9 @@ class SubjectView(BaseView):
 
     def handle_view_subject_notes(self):
         """Display the notes for the selected subject in a popup dialog."""
-        selected_item = self.subjects_list.currentItem()
-        if not selected_item:
-            self.navigation_pane.add_log_message("No subject selected for viewing notes.", "warning")
-            return
-
-        # Get subject ID from stored data
-        subject_id = selected_item.data(Qt.ItemDataRole.UserRole)
+        subject_id = self._get_selected_subject_id()
         if not subject_id:
-            self.navigation_pane.add_log_message("Could not retrieve subject ID.", "error")
+            self.navigation_pane.add_log_message("No subject selected for viewing notes.", "warning")
             return
         
         # Get the subject using GUI services
@@ -771,25 +763,19 @@ class SubjectView(BaseView):
     def handle_add_subject_to_colony(self):
         """Add the selected subject to the selected colony."""
         if not self.subject_service or not self.service_factory:
-            QMessageBox.warning(self, "Error", "Services not available")
+            self.navigation_pane.add_log_message("Services not available", "error")
             return
 
         # Get selected subject
-        selected_item = self.subjects_list.currentItem()
-        if not selected_item:
-            QMessageBox.warning(self, "No Selection", "Please select a subject first")
-            return
-
-        # Get subject ID from stored data
-        subject_id = selected_item.data(Qt.ItemDataRole.UserRole)
+        subject_id = self._get_selected_subject_id()
         if not subject_id:
-            QMessageBox.warning(self, "Error", "Could not retrieve subject ID")
+            self.navigation_pane.add_log_message("Please select a subject first", "warning")
             return
 
         # Get selected colony
         colony_id = self.colony_combo.currentData()
         if not colony_id:
-            QMessageBox.warning(self, "No Selection", "Please select a colony")
+            self.navigation_pane.add_log_message("Please select a colony", "warning")
             return
 
         # Add subject to colony using project manager
@@ -797,57 +783,52 @@ class SubjectView(BaseView):
             # Get the subject and check if it's already in this colony
             subject = self.subject_service.get_subject_by_id(subject_id)
             if not subject:
-                QMessageBox.warning(self, "Error", f"Subject '{subject_id}' not found")
+                self.navigation_pane.add_log_message(f"Subject '{subject_id}' not found", "error")
                 return
 
             # Check if subject is already in the selected colony
             if subject.colony_id == colony_id:
-                QMessageBox.information(self, "Already Assigned",
-                    f"Subject '{subject_id}' is already assigned to this colony.")
+                self.navigation_pane.add_log_message(
+                    f"Subject '{subject_id}' is already assigned to this colony.", "info"
+                )
                 return
 
             # Update the subject's colony_id through the GUI service
             success = self.subject_service.update_subject_colony(subject_id, colony_id)
 
             if success:
-                QMessageBox.information(self, "Success", f"Subject '{subject_id}' successfully added to colony")
+                self.navigation_pane.add_log_message(
+                    f"Subject '{subject_id}' successfully added to colony", "success"
+                )
                 # Refresh the subject list to show updated colony membership
                 self.refresh_subject_list_display()
                 # Refresh metadata display to show colony info
                 if hasattr(self, 'refresh_overview'):
                     self.refresh_overview()
             else:
-                QMessageBox.warning(self, "Error", f"Failed to add subject '{subject_id}' to colony")
+                self.navigation_pane.add_log_message(
+                    f"Failed to add subject '{subject_id}' to colony", "error"
+                )
         except Exception as e:
-            QMessageBox.warning(self, "Error", f"Failed to add subject to colony: {str(e)}")
+            self.navigation_pane.add_log_message(
+                f"Failed to add subject to colony: {str(e)}", "error"
+            )
 
     def handle_remove_subject_from_colony(self):
         """Remove the selected subject from its current colony."""
         if not self.subject_service or not self.service_factory:
-            QMessageBox.warning(self, "Error", "Services not available")
+            self.navigation_pane.add_log_message("Services not available", "error")
             return
 
         # Get selected subject
-        selected_item = self.subjects_list.currentItem()
-        if not selected_item:
-            QMessageBox.warning(self, "No Selection", "Please select a subject first")
-            return
-
-        # Get subject ID from stored data
-        subject_id = selected_item.data(Qt.ItemDataRole.UserRole)
+        subject_id = self._get_selected_subject_id()
         if not subject_id:
-            QMessageBox.warning(self, "Error", "Could not retrieve subject ID")
+            self.navigation_pane.add_log_message("Please select a subject first", "warning")
             return
-
-        # Confirm removal
-        reply = QMessageBox.question(
-            self, "Confirm Removal",
-            f"Are you sure you want to remove subject '{subject_id}' from its current colony?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        # In dev builds, proceed without modal confirmation; log intent
+        self.navigation_pane.add_log_message(
+            f"Removing subject '{subject_id}' from its current colony...", "info"
         )
-
-        if reply != QMessageBox.StandardButton.Yes:
-            return
 
         # Remove subject from colony using project manager
         try:
@@ -855,16 +836,31 @@ class SubjectView(BaseView):
             success = self.subject_service.update_subject_colony(subject_id, None)
 
             if success:
-                QMessageBox.information(self, "Success", f"Subject '{subject_id}' successfully removed from colony")
+                self.navigation_pane.add_log_message(
+                    f"Subject '{subject_id}' successfully removed from colony", "success"
+                )
                 # Refresh the subject list to show updated colony membership
                 self.refresh_subject_list_display()
                 # Refresh metadata display to show colony info
                 if hasattr(self, 'refresh_overview'):
                     self.refresh_overview()
             else:
-                QMessageBox.warning(self, "Error", f"Failed to remove subject '{subject_id}' from colony")
+                self.navigation_pane.add_log_message(
+                    f"Failed to remove subject '{subject_id}' from colony", "error"
+                )
         except Exception as e:
-            QMessageBox.warning(self, "Error", f"Failed to remove subject from colony: {str(e)}")
+            self.navigation_pane.add_log_message(
+                f"Failed to remove subject from colony: {str(e)}", "error"
+            )
+
+    def _get_selected_subject_id(self) -> str | None:
+        """Helper to read current selection from the grid."""
+        try:
+            if hasattr(self, 'subjects_grid'):
+                return self.subjects_grid.get_current_item_id()
+        except Exception:
+            pass
+        return None
 
     def refresh_treatments_lists(self):
         """Refresh the available and active treatments list widgets."""

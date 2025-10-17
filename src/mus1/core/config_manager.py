@@ -741,3 +741,60 @@ def set_lab_storage_root(lab_id: str, path: Path) -> None:
     # Persist as string path in lab scope
     key = f"lab.storage_roots.{lab_id}"
     get_config_manager().set(key, str(path), scope="lab", persist=True)
+
+
+# ===========================================
+# Lab sharing mode and status helpers
+# ===========================================
+
+def get_lab_sharing_mode(lab_id: str) -> Optional[str]:
+    """Return lab sharing mode for a lab: 'always_on' | 'peer_hosted' | None."""
+    if not lab_id:
+        return None
+    key = f"lab.sharing_mode.{lab_id}"
+    mode = get_config_manager().get(key, None, scope="lab")
+    if mode in ("always_on", "peer_hosted"):
+        return mode
+    return None
+
+
+def set_lab_sharing_mode(lab_id: str, mode: str) -> None:
+    """Set lab sharing mode: 'always_on' or 'peer_hosted'."""
+    if not lab_id:
+        raise ValueError("lab_id is required")
+    if mode not in ("always_on", "peer_hosted"):
+        raise ValueError("mode must be 'always_on' or 'peer_hosted'")
+    key = f"lab.sharing_mode.{lab_id}"
+    get_config_manager().set(key, mode, scope="lab", persist=True)
+
+
+def _is_dir_writable(path: Path) -> bool:
+    """Best-effort check that directory is writable by attempting to create and delete a temp file."""
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+        probe = path / ".mus1_write_probe"
+        probe.write_text("ok")
+        probe.unlink(missing_ok=True)
+        return True
+    except Exception:
+        return False
+
+
+def get_lab_library_status(lab_id: str) -> Dict[str, Any]:
+    """Compute online/offline status for a lab's shared library.
+
+    Returns dict: { 'online': bool, 'path': str|None, 'reason': str|None }
+    """
+    try:
+        root = get_lab_storage_root(lab_id)
+        if not root:
+            return {"online": False, "path": None, "reason": "no lab storage root configured"}
+        if not root.exists():
+            return {"online": False, "path": str(root), "reason": "path does not exist"}
+        if not root.is_dir():
+            return {"online": False, "path": str(root), "reason": "path is not a directory"}
+        if not _is_dir_writable(root):
+            return {"online": False, "path": str(root), "reason": "no write permission"}
+        return {"online": True, "path": str(root), "reason": None}
+    except Exception as e:
+        return {"online": False, "path": None, "reason": str(e)}

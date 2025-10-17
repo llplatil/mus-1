@@ -10,6 +10,8 @@ This roadmap shows current status and planned development priorities. Items are 
 - User profile fields duplicated between ConfigManager and SQL `users` table (via legacy CLI); risk of drift
 - Wizard lacks explicit default projects directory chooser and app preferences page
 - Modal popups used during setup; prefer in-app log/status per development guidelines
+ - Lab-shared library intent not fully realized in services/UI (no consolidated lab view of recordings/subjects)
+ - No explicit designation/validation of a lab-shared folder for workers/compute access
 
 ## Development Priorities
 
@@ -17,6 +19,11 @@ This roadmap shows current status and planned development priorities. Items are 
 1. **Plugin GUI Integration**: Connect PluginManagerClean to ExperimentView.set_plugin_manager()
 2. **Metadata Database Persistence**: Move objects/bodyparts/treatments/genotypes from JSON config to database tables
 3. **Experiment-Video Repository Methods**: Add missing repository methods for experiment-video associations
+4. **Wizard Existing Entity Pickers**: Add existing user and lab selection to Setup Wizard; skip DTO creation when selected.
+5. **Storage Precedence Enforcement**: Ensure UI/services consistently respect project `shared_root` → lab storage root → global shared storage.
+6. **Lab-shared library (services/UI)**: Add lab-scoped APIs and GUI to browse shared recordings and lab-wide subjects; enable pulling/linking into projects with provenance.
+7. **Shared folder designation for lab workers**: Add setting to designate/validate a lab-shared folder (permissions, existence), surface to worker configurations and CLI.
+8. **GUISubjectService repository access**: Remove `self.repos` usage; route through `ProjectManagerClean` or a consistent repository boundary.
 
 4. **✅ COMPLETED: Clean Architecture Migration**
    - **✅ GUI Views**: All views use service layer, no direct database access found
@@ -30,6 +37,8 @@ This roadmap shows current status and planned development priorities. Items are 
    - **✅ ProjectView wiring**: Subject View and experiment management now use clean architecture
    - **✅ Lab-project registration**: Complete GUI integration with project discovery and registration
    - **❌ Modal popup replacement**: Still uses QMessageBox in development builds
+   - **✅ ProjectView registration option**: Local project creation can optionally register with selected lab.
+   - **✅ Qt facade enforcement**: Import-linter contract forbids direct `PyQt6`/`PySide6` imports in GUI.
 
 6. **❌ NOT IMPLEMENTED: Workgroup Model**
    - **✅ Database schema exists**: Models created but no functional UI or CLI implementation
@@ -98,6 +107,7 @@ This roadmap shows current status and planned development priorities. Items are 
 1. **Scanner Improvements**: OS-specific video scanners for Windows/Linux
 2. **Remote Processing**: SSH-based worker execution and scanning
 3. **Advanced Features**: Distributed processing and job orchestration
+4. **Lab-scoped Workers**: Model and manage workers under labs; bind SSH aliases and permissions to lab storage.
 
 
 ## 10. **Persistent User Profile — Single Source of Truth**

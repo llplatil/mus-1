@@ -14,6 +14,7 @@ import platform
 
 from .config_manager import get_config_manager, set_config, get_config
 from .config_manager import set_lab_storage_root as cfg_set_lab_root
+from .config_manager import set_lab_sharing_mode, get_lab_sharing_mode, get_lab_library_status
 from .metadata import LabDTO, ColonyDTO  # Use Pydantic DTOs as single source
 from .schema import model_to_colony
 
@@ -515,7 +516,7 @@ class SetupService:
         # Set platform-specific defaults
         if platform.system() == "Darwin":  # macOS
             if not user_dto.default_projects_dir:
-                user_dto.default_projects_dir = Path.home() / "Documents" / "MUS1" / "Projects"
+                user_dto.default_projects_dir = Path.home() / "Desktop" / "MUS1" / "Projects"
         else:
             if not user_dto.default_projects_dir:
                 user_dto.default_projects_dir = Path.home() / "mus1-projects"
@@ -1253,6 +1254,161 @@ class SetupService:
         try:
             cfg_set_lab_root(lab_id, path)
             return {"success": True, "lab_id": lab_id, "path": str(path)}
+        except Exception as e:
+            return {"success": False, "message": str(e)}
+
+    def set_lab_sharing_preferences(self, lab_id: str, mode: str) -> Dict[str, Any]:
+        """Set lab sharing mode: 'always_on' or 'peer_hosted'."""
+        if not lab_id:
+            return {"success": False, "message": "lab_id is required"}
+        try:
+            set_lab_sharing_mode(lab_id, mode)
+            return {"success": True, "lab_id": lab_id, "mode": mode}
+        except Exception as e:
+            return {"success": False, "message": str(e)}
+
+    def get_lab_library_online_status(self, lab_id: str) -> Dict[str, Any]:
+        """Return computed online/offline status for the lab shared library."""
+        if not lab_id:
+            return {"success": False, "message": "lab_id is required"}
+        status = get_lab_library_status(lab_id)
+        status.update({"success": True, "mode": get_lab_sharing_mode(lab_id)})
+        return status
+
+    def designate_shared_folder(self, path: Path, ensure_exists: bool = True, verify_permissions: bool = True) -> Dict[str, Any]:
+        """Designate and validate a shared folder accessible to lab workers/compute.
+
+        This sets the global shared storage root (storage.shared_root) and performs
+        optional creation and write-permission checks.
+        """
+        try:
+            if ensure_exists and not path.exists():
+                path.mkdir(parents=True, exist_ok=True)
+            if not path.is_dir():
+                return {"success": False, "message": f"Path is not a directory: {path}"}
+            if verify_permissions:
+                probe = path / ".mus1_write_test"
+                probe.write_text("ok")
+                probe.unlink(missing_ok=True)
+            set_config("storage.shared_root", str(path), scope="user")
+            set_config("storage.shared_setup_date", datetime.now().isoformat(), scope="user")
+            return {"success": True, "path": str(path)}
+        except Exception as e:
+            return {"success": False, "message": str(e)}
+
+    def wipe_existing_configuration(self) -> Dict[str, Any]:
+        """Dangerous: remove current MUS1 configuration directory contents.
+
+        Deletes config.db and related files under the resolved MUS1 root. Caller must
+        present a confirmation UI. Best-effort; returns details of what was removed.
+        """
+        try:
+            from .config_manager import resolve_mus1_root
+            root = resolve_mus1_root()
+            removed: List[str] = []
+            for rel in ["config/config.db", "config/root_pointer.json", "logs/mus1.log"]:
+                p = root / rel
+                if p.exists():
+                    try:
+                        p.unlink()
+                        removed.append(str(p))
+                    except Exception:
+                        pass
+            return {"success": True, "removed": removed}
+        except Exception as e:
+            return {"success": False, "message": str(e)}
+
+    # ===========================================
+    # LAB LIBRARY BROWSING (Recordings/Subjects)
+    # ===========================================
+
+    def get_lab_subjects(self, lab_id: str) -> Dict[str, Any]:
+        """Return all subjects for a lab by aggregating subjects from its colonies."""
+        try:
+            from .repository import get_repository_factory
+            db = self._get_database()
+            repos = get_repository_factory(db)
+            colonies = repos.colonies.find_by_lab(lab_id)
+            subjects: List[Dict[str, Any]] = []
+            for c in colonies:
+                subs = repos.subjects.find_by_colony(c.id)
+                for s in subs:
+                    subjects.append({
+                        "id": s.id,
+                        "colony_id": s.colony_id,
+                        "sex": getattr(s.sex, "value", str(s.sex)) if getattr(s, "sex", None) else None,
+                        "genotype": getattr(s, "genotype", None),
+                        "birth_date": getattr(s, "birth_date", None),
+                        "date_added": getattr(s, "date_added", None),
+                    })
+            return {"success": True, "subjects": subjects}
+        except Exception as e:
+            return {"success": False, "message": str(e), "subjects": []}
+
+    def list_lab_recordings(self, lab_id: Optional[str] = None, extensions: Optional[List[str]] = None) -> Dict[str, Any]:
+        """List video recordings under the lab storage root (or global shared storage).
+
+        Returns a list of absolute Paths (as strings) to candidate video files.
+        """
+        try:
+            roots: List[Path] = []
+            # Prefer per-lab storage root when provided
+            if lab_id:
+                from .config_manager import get_lab_storage_root
+                lab_root = get_lab_storage_root(lab_id)
+                if lab_root and lab_root.exists():
+                    roots.append(lab_root)
+            # Fallback to global shared storage root
+            if not roots:
+                shared = self.get_shared_storage_path()
+                if shared and shared.exists():
+                    roots.append(shared)
+            if not roots:
+                return {"success": True, "recordings": []}
+
+            # Use BaseScanner to discover videos
+            from .scanners.video_discovery import get_scanner
+            scanner = get_scanner()
+            exts = list(extensions) if extensions else None
+            paths: List[str] = []
+            for root in roots:
+                for p, _h in scanner.iter_videos([root], extensions=exts, recursive=True, excludes=None, progress_cb=None):
+                    paths.append(str(p))
+            # De-duplicate while preserving order
+            seen = set()
+            ordered = []
+            for p in paths:
+                if p not in seen:
+                    ordered.append(p)
+                    seen.add(p)
+            return {"success": True, "recordings": ordered}
+        except Exception as e:
+            return {"success": False, "message": str(e), "recordings": []}
+
+    # ===========================================
+    # WORKERS MANAGEMENT (Wizard helper)
+    # ===========================================
+
+    def add_worker(self, name: str, ssh_alias: str, role: Optional[str] = None, provider: str = "ssh") -> Dict[str, Any]:
+        """Persist a worker into the SQL workers table.
+
+        Provider supports: ssh, wsl, local, ssh-wsl.
+        """
+        from .repository import get_repository_factory
+        from .metadata import Worker, WorkerProvider
+
+        db = self._get_database()
+        repos = get_repository_factory(db)
+        try:
+            worker = Worker(
+                name=name,
+                ssh_alias=ssh_alias,
+                role=role,
+                provider=WorkerProvider(provider),
+                os_type=None,
+            )
+            saved = repos.workers.save(worker)
+            return {"success": True, "worker": saved}
         except Exception as e:
             return {"success": False, "message": str(e)}
 

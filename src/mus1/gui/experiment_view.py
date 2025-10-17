@@ -10,6 +10,7 @@ from .navigation_pane import NavigationPane
 from .base_view import BaseView
 from .metadata_display import MetadataGridDisplay
 from .gui_services import GUIExperimentService
+from ..core.utils.file_hash import compute_sample_hash
 from ..core.metadata import ProcessingStage, VideoFile
 import os
 import json
@@ -394,8 +395,8 @@ class ExperimentView(BaseView):
              for exp_type in basic_types:
                  self.experiment_type_combo.addItem(exp_type, exp_type)
 
-             # TODO: Trigger plugin discovery when plugins are integrated
-             # self._discover_plugins()
+             # Trigger plugin discovery now that plugin service is integrated
+             self._discover_plugins()
 
         elif page_title == "View Experiments":
              self.refresh_experiment_list_display()
@@ -1442,13 +1443,10 @@ class ExperimentView(BaseView):
             return
 
         try:
-            # TODO: Implement video hashing with new architecture
-            # Use DataManager's fast hashing utility directly
-            # if self.data_manager:
-            #     sample_hash = self.data_manager.compute_sample_hash(video_path)
-            #     self.sample_hash_value.setText(sample_hash)
-            # else:
-            self.sample_hash_value.setText("—")
+            # Compute and display sample hash using core utility
+            sample_hash = compute_sample_hash(video_path)
+            short_hash = sample_hash[:8] if len(sample_hash) > 8 else sample_hash
+            self.sample_hash_value.setText(f"{short_hash}...")
 
             # Auto-populate the Date Recorded field with the file's mtime
             mtime = int(video_path.stat().st_mtime)

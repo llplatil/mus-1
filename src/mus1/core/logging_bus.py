@@ -40,6 +40,8 @@ class LoggingEventBus:
         # are destroyed. Map observer id() to weakref for O(1) de-dup and cleanup.
         self._observers: Dict[int, weakref.ReferenceType] = {}
         self.logger = logging.getLogger("mus1")
+        # Ensure the application logger emits INFO and above (default is WARNING)
+        self.logger.setLevel(logging.INFO)
         # Ensure we have at least a console handler for quick dev output
         if not self.logger.handlers:
             ch = logging.StreamHandler()

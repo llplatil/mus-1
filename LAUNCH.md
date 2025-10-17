@@ -36,6 +36,8 @@ mus1 project list           # CLI commands (always works)
 - **GUI may not work** on macOS due to Qt platform plugin issues
 - **CLI always works** regardless of Qt/GUI status
 - **Platform detection** automatically handles Qt backend selection
+- **Wizard limitations**: The Setup Wizard focuses on creating configuration. To use an existing user/lab, complete or cancel the wizard and select via the User/Lab Selection dialog at startup.
+- **Qt facade required**: All GUI code must import Qt via `mus1/gui/qt.py`. Direct `PyQt6`/`PySide6` imports can cause platform crashes.
 
 ---
 
@@ -88,6 +90,7 @@ mus1-gui
   - Locate an existing configuration (browse to the root that contains `config/config.db`)
   - Create a new configuration (optionally copy later)
 - This pattern avoids dev-only helpers and ensures production launches remain consistent.
+- **Storage precedence**: At runtime, storage resolves as project `shared_root` → lab storage root → global shared storage. The wizard configures only the global shared storage. Set per-project in Project Settings.
 
 ### **Subsequent Launches**
 ```bash
@@ -105,6 +108,7 @@ mus1 project list          # Production
 2. **Project Discovery**: Projects found from configured locations
 3. **State Restoration**: Last used project reopened
 4. **Seamless Experience**: No manual configuration needed
+5. **List Filters**: Project dropdown is filtered by Local/Shared; ensure it matches where the project resides.
 
 ---
 

@@ -1,15 +1,12 @@
 from __future__ import annotations
 
 import json
-import subprocess
 from pathlib import Path
 from typing import Iterable, Iterator, List, Tuple, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-# TODO: Update to use new clean architecture
-# from ..data_manager import DataManager
-# from ..state_manager import StateManager
 from ..metadata import ScanTarget
+from ..job_provider import SshJobProvider, SshWslJobProvider
 
 
 def _iter_json_lines(text: str) -> Iterator[dict]:
@@ -23,43 +20,26 @@ def _iter_json_lines(text: str) -> Iterator[dict]:
             continue
 
 
-def _build_scan_cmd_for_target(target: ScanTarget, *, extensions: Optional[List[str]] = None, exclude_dirs: Optional[List[str]] = None, non_recursive: bool = False) -> List[str]:
-    """Build a remote command that produces JSONL path/hash records using mus1 scan videos.
-
-    For kind == local we do not build a command; local scanning is handled via DataManager.
-    """
-    if target.kind not in ("ssh", "wsl"):
-        raise ValueError("Remote command requested for non-remote target")
-    if not target.ssh_alias:
-        raise ValueError("ssh_alias is required for remote targets")
-
-    remote_prog: List[str]
-    if target.kind == "ssh":
-        remote_prog = ["ssh", "-o", "BatchMode=yes", target.ssh_alias, "mus1", "scan", "videos"]
-    else:  # wsl
-        # Run WSL mus1 via wsl.exe on the remote Windows host
-        remote_prog = ["ssh", "-o", "BatchMode=yes", target.ssh_alias, "wsl.exe", "-e", "mus1", "scan", "videos"]
-
-    # Add roots
+def _build_remote_scan_command(target: ScanTarget, *, extensions: Optional[List[str]] = None, exclude_dirs: Optional[List[str]] = None, non_recursive: bool = False) -> List[str]:
+    """Build a remote mus1 scan command (without ssh wrapper)."""
+    cmd: List[str] = ["mus1", "scan", "videos"]
     for r in target.roots:
-        remote_prog.append(str(r))
-    # Add options
+        cmd.append(str(r))
     if extensions:
         for ext in extensions:
-            remote_prog.extend(["--ext", ext])
+            cmd.extend(["--ext", ext])
     if exclude_dirs:
         for ex in exclude_dirs:
-            remote_prog.extend(["--exclude-dirs", ex])
+            cmd.extend(["--exclude-dirs", ex])
     if non_recursive:
-        remote_prog.append("--non-recursive")
-    # Disable progress for clean stdout
-    remote_prog.extend(["--progress", "false"])
-    return remote_prog
+        cmd.append("--non-recursive")
+    cmd.extend(["--progress", "false"])  # clean JSONL
+    return cmd
 
 
 def collect_from_target(
-    state_manager: StateManager,
-    data_manager: DataManager,
+    state_manager,  # deprecated in this module; kept for signature compatibility
+    data_manager,   # deprecated in this module; kept for signature compatibility
     target: ScanTarget,
     *,
     extensions: Optional[List[str]] = None,
@@ -81,19 +61,30 @@ def collect_from_target(
             )
         )
 
-    # Remote: run mus1 over SSH/WSL and parse stdout JSONL
-    cmd = _build_scan_cmd_for_target(
+    # Remote: run mus1 over SSH/WSL via job providers and parse stdout JSONL
+    if not target.ssh_alias:
+        raise ValueError("ssh_alias is required for remote targets")
+
+    cmd = _build_remote_scan_command(
         target,
         extensions=extensions,
         exclude_dirs=exclude_dirs,
         non_recursive=non_recursive,
     )
-    proc = subprocess.run(cmd, capture_output=True, text=True)
-    if proc.returncode != 0:
-        err = (proc.stderr or "").strip()
+    if target.kind == "ssh":
+        provider = SshJobProvider()
+        result = provider.run(target.ssh_alias, cmd, stream_output=False, log_prefix=f"scan:{target.name}")
+    elif target.kind == "wsl":
+        provider = SshWslJobProvider()
+        result = provider.run(target.ssh_alias, cmd, stream_output=False, log_prefix=f"scan:{target.name}")
+    else:
+        raise ValueError("Remote command requested for non-remote target")
+
+    if result.return_code != 0:
+        err = (result.stderr or "").strip()
         raise RuntimeError(f"Remote scan failed for {target.name} ({target.ssh_alias}): {err}")
     items: List[Tuple[Path, str]] = []
-    for rec in _iter_json_lines(proc.stdout or ""):
+    for rec in _iter_json_lines(result.stdout or ""):
         try:
             p = Path(rec["path"])  # path as seen on remote; may not be directly accessible locally
             h = str(rec["hash"]) 

@@ -135,7 +135,8 @@ class MetadataTreeView(QTreeWidget):
                     exp_subject_id = getattr(exp, 'subject_id', None)
                 if exp_subject_id == subject_id:
                     subject_experiments.append(exp)
-            item.setText(3, str(len(subject_experiments)))
+            # Column 4 is "Experiments"
+            item.setText(4, str(len(subject_experiments)))
 
             # Recording count per subject - count videos for all experiments of this subject
             rec_count = 0
@@ -295,6 +296,8 @@ class MetadataGridDisplay(QWidget):
     
     # Signal emitted when an item is selected/deselected
     selection_changed = Signal(str, bool)  # experiment_id, is_selected
+    # Emitted when a row is activated (e.g., double-click). Carries the row's unique ID
+    row_activated = Signal(str)
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -330,9 +333,24 @@ class MetadataGridDisplay(QWidget):
         self.checkboxes = {}
         self.selectable = False
         self.checkbox_column = None
+        # Track mapping from table row index to unique item ID for activation
+        self._row_to_item_id = {}
         
         # Configure sizing
         self.setMinimumHeight(200)
+        
+        # Connect row activation (double-click) to emit row_activated with the item's ID
+        self.table.itemDoubleClicked.connect(self._handle_item_double_clicked)
+
+    def _handle_item_double_clicked(self, item: QTableWidgetItem):
+        try:
+            row_index = item.row()
+            item_id = self._row_to_item_id.get(row_index)
+            if item_id:
+                self.row_activated.emit(item_id)
+        except Exception:
+            # Best-effort; avoid raising from UI signal handlers
+            pass
         
     def set_columns(self, columns):
         """
@@ -373,6 +391,8 @@ class MetadataGridDisplay(QWidget):
         self.table.setSortingEnabled(False) # Disable sorting during population
         self.table.setRowCount(0)
         self.table.setRowCount(len(items))
+        # Rebuild row→ID mapping
+        self._row_to_item_id = {}
         
         for row, item_data in enumerate(items):
             # Assuming 'ID' key exists and is unique for checkbox mapping
@@ -380,6 +400,8 @@ class MetadataGridDisplay(QWidget):
             if not item_id:
                  # Fallback or log warning if ID is missing
                  item_id = f"row_{row}"
+            # Store mapping for activation
+            self._row_to_item_id[row] = item_id
 
             for col, key in enumerate(columns):
                 display_value = str(item_data.get(key, ''))
@@ -444,9 +466,7 @@ class MetadataGridDisplay(QWidget):
         """
         Populate the grid with subject data. Needs update if sorting is desired.
         """
-        # TODO: Update this method if enhanced sorting is needed for subjects
-        # Currently uses standard populate_data which relies on text sorting
-        # Might need to pass raw dates etc. similarly to experiments
+        # Uses SortableTableWidgetItem for date sorting via raw_birth_date
         columns = ["id", "sex", "genotype", "birth_date", "treatment"]
         items = []
         
@@ -456,6 +476,10 @@ class MetadataGridDisplay(QWidget):
             birth_date_str = "N/A"
             if birth_date_obj and isinstance(birth_date_obj, datetime):
                 birth_date_str = birth_date_obj.strftime("%Y-%m-%d")
+            # Prefer individual_treatment if present; otherwise None
+            treatment_value = getattr(subject, 'individual_treatment', None)
+            if treatment_value is None:
+                treatment_value = getattr(subject, 'treatment', None)
             
             item = {
                 "id": subject.id,
@@ -463,11 +487,21 @@ class MetadataGridDisplay(QWidget):
                 "genotype": subject.genotype or "N/A",
                 "birth_date": birth_date_str, # Display string
                 "raw_birth_date": birth_date_obj, # Pass raw date for sorting
-                "treatment": subject.treatment or "N/A"
+                "treatment": treatment_value or "N/A"
             }
             items.append(item)
             
-        self.populate_data(items, columns) # Standard text sorting for now
+        self.populate_data(items, columns) # Uses sortable items for dates
+
+    def get_current_item_id(self) -> str | None:
+        """Return the unique ID for the currently selected row, if any."""
+        try:
+            current_row = self.table.currentRow()
+            if current_row is None or current_row < 0:
+                return None
+            return self._row_to_item_id.get(current_row)
+        except Exception:
+            return None
         
     def populate_experiments(self, experiments_dict, selectable=False):
         """

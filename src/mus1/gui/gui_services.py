@@ -13,7 +13,6 @@ from functools import wraps
 
 from ..core.metadata import Subject, Experiment, VideoFile, Sex, ProcessingStage, SubjectDesignation
 from ..core.project_manager_clean import ProjectManagerClean
-from ..core.repository import RepositoryFactory
 from ..core.logging_bus import LoggingEventBus
 
 T = TypeVar('T')
@@ -444,37 +443,20 @@ class GUISubjectService(BaseGUIService):
     def get_colonies_for_display(self, lab_id: Optional[str] = None) -> List[Dict[str, str]]:
         """Get colonies formatted for GUI display. If lab_id provided, filter by that lab."""
         def _get_colonies():
+            # Get colonies via project manager boundary
+            colonies = self.project_manager.list_colonies()
+            # Optionally filter by lab_id if provided and attribute available
             if lab_id:
-                # Get colonies for specific lab
                 try:
-                    # Prefer using project manager repositories cleanly
-                    colonies = self.project_manager.repos.colonies.find_by_lab(lab_id)
+                    colonies = [c for c in colonies if getattr(c, 'lab_id', None) == lab_id]
                 except Exception:
-                    # Fallback to listing project colonies if repo access fails
-                    colonies = self.project_manager.list_colonies()
-            else:
-                # Get colonies from the project manager (uses project's lab_id if set)
-                colonies = self.project_manager.list_colonies()
+                    colonies = []
             result = [{
                 "id": c.id,
                 "name": c.name,
                 "genotype_of_interest": c.genotype_of_interest,
                 "background_strain": c.background_strain
             } for c in colonies]
-
-            # If no colonies found for the project's lab, try to get all colonies
-            # This allows showing colonies even when project has no lab_id set
-            if not result and not lab_id:
-                try:
-                    all_colonies = self.project_manager.repos.colonies.find_all()
-                    result = [{
-                        "id": c.id,
-                        "name": c.name,
-                        "genotype_of_interest": c.genotype_of_interest,
-                        "background_strain": c.background_strain
-                    } for c in all_colonies]
-                except Exception:
-                    pass
 
             return result
 
@@ -532,32 +514,20 @@ class GUIExperimentService(BaseGUIService):
     def get_colonies_for_display(self, lab_id: Optional[str] = None) -> List[Dict[str, str]]:
         """Get colonies formatted for GUI display. If lab_id provided, filter by that lab."""
         def _get_colonies():
+            # Get colonies via project manager boundary
+            colonies = self.project_manager.list_colonies()
+            # Optionally filter by lab_id if provided and attribute available
             if lab_id:
-                # Get colonies for specific lab
-                colonies = self.repos.colonies.find_by_lab(lab_id)
-            else:
-                # Get colonies from the project manager (uses project's lab_id if set)
-                colonies = self.project_manager.list_colonies()
+                try:
+                    colonies = [c for c in colonies if getattr(c, 'lab_id', None) == lab_id]
+                except Exception:
+                    colonies = []
             result = [{
                 "id": c.id,
                 "name": c.name,
                 "genotype_of_interest": c.genotype_of_interest,
                 "background_strain": c.background_strain
             } for c in colonies]
-
-            # If no colonies found for the project's lab, try to get all colonies
-            # This allows showing colonies even when project has no lab_id set
-            if not result and not lab_id:
-                try:
-                    all_colonies = self.project_manager.repos.colonies.find_all()
-                    result = [{
-                        "id": c.id,
-                        "name": c.name,
-                        "genotype_of_interest": c.genotype_of_interest,
-                        "background_strain": c.background_strain
-                    } for c in all_colonies]
-                except Exception:
-                    pass
 
             return result
 

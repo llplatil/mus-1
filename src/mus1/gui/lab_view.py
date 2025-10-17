@@ -24,8 +24,9 @@ class LabView(BaseView):
     def __init__(self, parent=None):
         super().__init__(parent, view_name="lab")
         self.lab_service = None
-        self.setup_navigation(["Colonies", "Shared Projects", "Lab Members", "Lab Settings"])
+        self.setup_navigation(["Colonies", "Lab Library", "Shared Projects", "Lab Members", "Lab Settings"])
         self.setup_colonies_page()
+        self.setup_lab_library_page()
         self.setup_shared_projects_page()
         self.setup_lab_members_page()
         self.setup_lab_settings_page()
@@ -190,6 +191,41 @@ class LabView(BaseView):
 
         # Load shared projects
         self.load_shared_projects()
+
+    def setup_lab_library_page(self):
+        """Setup the Lab Library page to browse shared recordings and lab subjects."""
+        self.lab_library_page = QWidget()
+        layout = self.setup_page_layout(self.lab_library_page)
+
+        # Recordings list
+        self.recordings_list = QListWidget()
+        self.recordings_list.setProperty("class", "mus1-list-widget")
+        self.create_form_with_list("Recordings in Lab Library", self.recordings_list, layout)
+
+        # Subjects list
+        self.lab_subjects_list = QListWidget()
+        self.lab_subjects_list.setProperty("class", "mus1-list-widget")
+        self.create_form_with_list("Subjects in Lab (aggregated)", self.lab_subjects_list, layout)
+
+        # Actions
+        button_row = self.create_button_row(layout)
+        refresh_btn = QPushButton("Refresh Lab Library")
+        refresh_btn.setProperty("class", "mus1-secondary-button")
+        refresh_btn.clicked.connect(self.load_lab_library)
+        button_row.addWidget(refresh_btn)
+
+        add_to_project_btn = QPushButton("Add Selected Recordings to Current Project")
+        add_to_project_btn.setProperty("class", "mus1-primary-button")
+        add_to_project_btn.clicked.connect(self.add_selected_recordings_to_project)
+        button_row.addWidget(add_to_project_btn)
+
+        # Link/copy toggle (link-only for now; copy not implemented)
+        mode_row = self.create_form_row(layout)
+        self.link_only_check = QCheckBox("Link only (do not copy files)")
+        self.link_only_check.setChecked(True)
+        mode_row.addWidget(self.link_only_check)
+        layout.addStretch(1)
+        self.add_page(self.lab_library_page, "Lab Library")
 
     def setup_lab_members_page(self):
         """Setup the Lab Members page for managing lab membership."""
@@ -523,6 +559,86 @@ class LabView(BaseView):
         if success:
             # Refresh projects list
             self.load_shared_projects()
+
+    # ---- Lab Library Methods ----
+    def load_lab_library(self):
+        """Load recordings and subjects for the selected lab using SetupService APIs."""
+        if not self.lab_service:
+            if hasattr(self, 'recordings_list'):
+                self.recordings_list.clear()
+            if hasattr(self, 'lab_subjects_list'):
+                self.lab_subjects_list.clear()
+            self.navigation_pane.add_log_message("Lab service not available", "error")
+            return
+
+        # Determine selected lab id
+        current_lab_item = getattr(self, 'labs_list', None).currentItem() if hasattr(self, 'labs_list') else None
+        if not current_lab_item:
+            if hasattr(self, 'recordings_list'):
+                self.recordings_list.clear()
+            if hasattr(self, 'lab_subjects_list'):
+                self.lab_subjects_list.clear()
+            self.navigation_pane.add_log_message("No lab selected - cannot load lab library", "warning")
+            return
+
+        lab_id = current_lab_item.data(Qt.ItemDataRole.UserRole)
+
+        # Recordings
+        try:
+            from ..core.setup_service import get_setup_service
+            svc = get_setup_service()
+            rec = svc.list_lab_recordings(lab_id=lab_id)
+            self.recordings_list.clear()
+            for p in rec.get("recordings", []):
+                self.recordings_list.addItem(p)
+            self.navigation_pane.add_log_message(f"Loaded {self.recordings_list.count()} recordings from lab library", "info")
+        except Exception as e:
+            self.navigation_pane.add_log_message(f"Error loading lab recordings: {e}", "error")
+            self.recordings_list.clear()
+
+        # Subjects
+        try:
+            from ..core.setup_service import get_setup_service
+            svc = get_setup_service()
+            subj = svc.get_lab_subjects(lab_id)
+            self.lab_subjects_list.clear()
+            for s in subj.get("subjects", []):
+                disp = f"{s.get('id')} (geno={s.get('genotype') or 'N/A'})"
+                self.lab_subjects_list.addItem(disp)
+            self.navigation_pane.add_log_message(f"Loaded {self.lab_subjects_list.count()} lab subjects", "info")
+        except Exception as e:
+            self.navigation_pane.add_log_message(f"Error loading lab subjects: {e}", "error")
+            self.lab_subjects_list.clear()
+
+    def add_selected_recordings_to_project(self):
+        """Add selected lab recordings into the current project as videos (path references)."""
+        main_window = self.window()
+        if not main_window or not hasattr(main_window, 'project_manager') or not main_window.project_manager:
+            QMessageBox.warning(self, "No Project", "Load a project first to add recordings.")
+            return
+        pm = main_window.project_manager
+        selected = self.recordings_list.selectedItems() if hasattr(self, 'recordings_list') else []
+        if not selected:
+            QMessageBox.information(self, "Lab Library", "Select one or more recordings to add to the project.")
+            return
+        from ..core.metadata import VideoFile
+        link_only = getattr(self, 'link_only_check', None)
+        link_only_enabled = bool(link_only and link_only.isChecked())
+        added = 0
+        for it in selected:
+            try:
+                p = Path(it.text())
+                if link_only_enabled:
+                    vf = VideoFile(path=p, hash="")
+                    pm.add_or_update_video_from_file(vf) if hasattr(pm, 'add_or_update_video_from_file') else pm.add_video(vf)
+                else:
+                    # Copy mode not implemented: fall back to linking
+                    vf = VideoFile(path=p, hash="")
+                    pm.add_or_update_video_from_file(vf) if hasattr(pm, 'add_or_update_video_from_file') else pm.add_video(vf)
+                added += 1
+            except Exception:
+                continue
+        self.navigation_pane.add_log_message(f"Added {added} recording(s) to current project", "success")
 
             # Clear form
             self.shared_project_name_edit.clear()

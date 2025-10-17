@@ -181,6 +181,7 @@ if dialog.exec() == QDialog.DialogCode.Accepted:
 - **macOS**: `~/Library/Application Support/mus1/`, native Qt plugins
 - **Linux**: `~/.config/mus1/` or `$XDG_CONFIG_HOME/mus1/`, xcb Qt platform
 - **Windows**: `%APPDATA%/mus1/`, Windows-specific Qt setup
+- All GUI Qt imports must go through the `mus1/gui/qt.py` facade. Direct `PyQt6`/`PySide6` imports are forbidden and enforced via import-linter.
 
 ### **Environment Variables**
 ```bash
@@ -284,7 +285,7 @@ CREATE TABLE colonies (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     lab_id TEXT NOT NULL,
-    genotype_of_interest TEXT,
+    genotype of interest TEXT,
     background_strain TEXT,
     common_traits TEXT DEFAULT '{}',
     date_added DATETIME NOT NULL
@@ -334,6 +335,35 @@ CREATE TABLE experiments (
 - **Colony Membership Display**: Subject overview shows which colony each subject belongs to
 - **Manual Colony Assignment**: Direct UI for assigning subjects to colonies without complex workflows
 - **Improved Metadata Tree**: Enhanced tree view with colony information and better sorting
+- **Reusable Metadata Grid**: New `MetadataGridDisplay` replaces ad-hoc lists/dropdowns for subjects and experiments. It provides sortable columns, optional checkbox selection, and double-click activation via `row_activated(id)`. we still use normal dropdowns where apropriate though. this method is for use cases where a dropdown would be a UI pain point
+
+Usage snippet (from `SubjectView`):
+
+```335:370:src/mus1/gui/subject_view.py
+# Grid creation and hookup
+from .metadata_display import MetadataGridDisplay
+self.subjects_grid = MetadataGridDisplay()
+subjects_layout.addWidget(self.subjects_grid)
+self.subjects_grid.row_activated.connect(self.handle_edit_subject_by_id)
+
+# Populate grid
+items = []
+columns = ["ID", "Sex", "Genotype", "birth_date", "Colony"]
+for subj_dto in subjects_display_dto:
+    birth_dt = getattr(subj_dto, 'birth_date', None)
+    items.append({
+        "ID": subj_dto.id,
+        "Sex": subj_dto.sex_display,
+        "Genotype": getattr(subj_dto, 'genotype', None) or 'N/A',
+        "birth_date": birth_dt.strftime('%Y-%m-%d') if birth_dt else 'N/A',
+        "raw_birth_date": birth_dt,
+        "Colony": getattr(subj_dto, 'colony_name', None) or 'None',
+    })
+self.subjects_grid.populate_data(items, columns)
+
+# Read selected
+subject_id = self.subjects_grid.get_current_item_id()
+```
 - **Validation & Error Handling**: Proper error messages and confirmation dialogs
 
 #### **✅ Service Layer Extensions**
@@ -347,6 +377,7 @@ CREATE TABLE experiments (
 - The setup wizard no longer exposes MUS1 application root selection in the default flow; it focuses on user profile, global shared storage, and lab creation (with optional per-lab storage root).
 - If a previously configured root pointer is invalid or unavailable at startup, the application (outside the wizard) prompts to locate an existing configuration and updates the root pointer accordingly.
 - After startup root selection (when needed), the ConfigManager binds to `<root>/config/config.db`. The wizard does not move or configure the app root.
+- Current limitation: The wizard is creation-focused and does not provide pickers for existing users/labs. Use the User/Lab Selection dialog after startup to select existing entities.
 
 ## Current Status
 
@@ -377,6 +408,8 @@ CREATE TABLE experiments (
 - **User Profile Persistence**: CLI and GUI store user data in conflicting ways
 - **Setup Workflow**: Async execution implemented but error handling incomplete
 - **Lab-Project Association**: Database schema exists but GUI integration broken
+ - **GUISubjectService repos usage**: Runtime error "GUISubjectService object has no attribute 'repos'" indicates an inconsistent repository access path; services must route via `ProjectManagerClean`.
+ - **Shared folder designation for workers/compute**: No explicit configuration to designate/validate a lab-shared folder for lab workers or lab compute; needs path selection, validation, and exposure to worker configs.
 
 ## Findings from Initial Setup and Project Creation Audit (2025-09)
 
@@ -431,6 +464,15 @@ Many of the claimed fixes are not actually working due to critical bugs:
 ### Data Storage Roots
 - Global shared storage root (`storage.shared_root`) can be configured for collaborative data locations.
 - Optional per-lab storage roots can be set; discovery scans these alongside the global/shared locations.
+- Runtime storage precedence: project `shared_root` → lab storage root → global shared storage. ProjectView pre-fills the shared root using this order.
+
+#### Lab-shared library intent (current gap)
+- Intended: A lab-level shared library holds recordings and a complete list of subjects (colony) for a mouse model; lab members can pull into individual or shared projects.
+- Current state: Discovery respects global and per-lab storage roots, but services/UI do not yet expose a consolidated, lab-scoped library view (recordings, subjects) as a first-class feature.
+- Missing pieces:
+  - A clear, lab-scoped API to enumerate shared recordings and lab-wide subjects independent of any single project.
+  - A way to mark and validate a folder as the lab’s “shared library” (permissions, existence checks, writable by lab workers).
+  - UI affordances to pull/link items from the lab library into projects while preserving provenance.
 
 ### GUI Identity
 - The main window title surfaces the active user (name and email) derived from the SQL profile.
@@ -498,7 +540,7 @@ self.plugin_service = services.create_plugin_service()
 ### Concrete Fix Steps
 
 1) **Consolidate DTOs**
-   - Delete `LabDTO` and `ColonyDTO` dataclasses in `setup_service.py`.
+   - Delete `LabDTO` and `ColonyDTO` dataclasses in `src/mus1/core/setup_service.py`.
    - Update `SetupService` signatures to accept/import `metadata.LabDTO` and `metadata.ColonyDTO`.
    - Convert `Path`-typed fields at boundaries to strings where necessary (Pydantic can validate/serialize consistently).
 

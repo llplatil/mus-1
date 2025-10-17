@@ -135,7 +135,7 @@ mus1 lab list
 
 - Python 3.10+
 - macOS, Linux, or Windows
-- PySide6 (installed automatically)
+- Qt usage must go through the GUI Qt facade (`src/mus1/gui/qt.py`). Do not import `PyQt6` or `PySide6` directly in GUI views.
 
 ## Troubleshooting
 
@@ -153,6 +153,10 @@ mus1 setup status
 ```
 
 ### Override Configuration Location
+### Known Behavior / Limitations
+- Setup Wizard is creation-focused and does not offer picking existing users/labs. Use the User/Lab Selection dialog at startup for existing selections.
+- Storage precedence at runtime is: project `shared_root` → lab storage root → global shared storage. The wizard configures only the global shared storage. Set per-project in Project Settings.
+- Project dropdown is filtered by Local/Shared; ensure the filter matches where the project resides.
 ```bash
 export MUS1_ROOT="/custom/path"
 mus1-gui

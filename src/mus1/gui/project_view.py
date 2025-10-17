@@ -351,16 +351,18 @@ class ProjectView(BaseView):
         try:
             if hasattr(self, 'switch_location_combo') and self.window().project_manager:
                 pm = self.window().project_manager
-                from ..core.setup_service import get_setup_service
-                setup_service = get_setup_service()
-                shared_root = setup_service.get_shared_storage_path()
                 is_shared = False
-                # Prefer explicit shared_root in project config
+                # Shared if project explicitly sets shared_root, or the project path is under the selected lab's storage root
                 if getattr(pm.config, 'shared_root', None):
                     is_shared = True
-                elif shared_root:
+                else:
                     try:
-                        is_shared = str(pm.project_path.resolve()).startswith(str(shared_root.resolve()))
+                        current_lab_id = getattr(self.window(), 'selected_lab_id', None)
+                        if current_lab_id:
+                            from ..core.config_manager import get_lab_storage_root as _glsr
+                            lab_root = _glsr(current_lab_id)
+                            if lab_root:
+                                is_shared = str(pm.project_path.resolve()).startswith(str(lab_root.resolve()))
                     except Exception:
                         is_shared = False
                 target_index = 1 if is_shared else 0  # 0=Local, 1=Shared
@@ -468,9 +470,26 @@ class ProjectView(BaseView):
                     if location_filter.lower() == 'local' and is_shared:
                         continue
 
-                    loc_txt = 'Shared' if is_shared else 'Local'
+                    # Build explicit designation
+                    designation = 'Local'
+                    if proj_shared:
+                        designation = 'Shared (Project)'
+                    else:
+                        # Check lab then global
+                        try:
+                            current_lab_id = getattr(self.window(), 'selected_lab_id', None)
+                            if current_lab_id:
+                                from ..core.config_manager import get_lab_storage_root as _glsr
+                                lab_root = _glsr(current_lab_id)
+                                if lab_root and str(p.resolve()).startswith(str(lab_root.resolve())):
+                                    designation = 'Shared (Lab)'
+                            if designation == 'Local' and shared_root and str(p.resolve()).startswith(str(shared_root.resolve())):
+                                designation = 'Shared (Global)'
+                        except Exception:
+                            pass
+
                     lab_txt = f" ({lab_names.get(lab_id)})" if lab_id and lab_id in lab_names else ""
-                    display = f"{name} — {loc_txt}{lab_txt}"
+                    display = f"{name} — {designation}{lab_txt}"
                     items.append((display, str(p)))
                 except Exception:
                     continue
@@ -826,6 +845,15 @@ class ProjectView(BaseView):
         self.register_with_lab_check.setChecked(False)
         reg_row.addWidget(self.register_with_lab_check)
         layout.addWidget(register_group)
+
+        # Quick actions
+        quick_group, quick_layout_container = self.create_form_section("Quick Actions", layout)
+        quick_row = self.create_form_row(quick_layout_container)
+        browse_lab_btn = QPushButton("Browse Lab Library…")
+        browse_lab_btn.setProperty("class", "mus1-secondary-button")
+        browse_lab_btn.clicked.connect(self.handle_browse_lab_library)
+        quick_row.addWidget(browse_lab_btn)
+        layout.addWidget(quick_group)
         
         selector_layout.addWidget(switch_label)
         selector_layout.addWidget(self.switch_location_combo)
@@ -1006,7 +1034,7 @@ class ProjectView(BaseView):
             pm = self.window().project_manager
             sr = pm.config.shared_root
             if not sr:
-                QMessageBox.warning(self, "Shared Root", "Set a shared root first.")
+                self.navigation_pane.add_log_message("Set a shared root first.", "warning")
                 return
             new_path = pm.move_project_to_directory(Path(sr))
             self.navigation_pane.add_log_message(f"Project moved to {new_path}", "success")
@@ -1211,7 +1239,7 @@ class ProjectView(BaseView):
                 return
             subdir = self.stage_subdir_line.text().strip()
             if not subdir:
-                QMessageBox.warning(self, "Stage", "Enter a destination subdirectory under shared root.")
+                self.navigation_pane.add_log_message("Enter a destination subdirectory under shared root.", "warning")
                 return
             dest_base = Path(sr) / subdir
 
@@ -1374,6 +1402,28 @@ class ProjectView(BaseView):
         except Exception as e:
             self.navigation_pane.add_log_message(f"Remove target failed: {e}", "error")
 
+    def handle_browse_lab_library(self):
+        try:
+            main_window = self.window()
+            if not main_window:
+                return
+            # Switch to Lab tab
+            if hasattr(main_window, 'navigation_tabs'):
+                # Find the Lab tab index by title
+                for i in range(main_window.navigation_tabs.count()):
+                    if main_window.navigation_tabs.tabText(i).lower().startswith("lab"):
+                        main_window.navigation_tabs.setCurrentIndex(i)
+                        break
+            # Ensure LabView selects current lab and opens Lab Library page
+            if hasattr(main_window, 'lab_view') and main_window.lab_view:
+                # Trigger refresh and auto-select
+                main_window.lab_view.refresh_lab_data()
+                # Open Lab Library page if available
+                if hasattr(main_window.lab_view, 'change_page'):
+                    # Lab Library is page index 1 per setup
+                    main_window.lab_view.change_page(1)
+        except Exception:
+            pass
 
         
    

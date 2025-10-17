@@ -20,6 +20,7 @@ from .qt import (
     QWizard, QWizardPage, QLabel, QLineEdit, QVBoxLayout,
     QHBoxLayout, QFormLayout, QCheckBox, QPushButton,
     QTextEdit, QMessageBox, QGroupBox, QRadioButton,
+    QComboBox, QListWidget, QListWidgetItem,
     Qt, Signal, QThread, QObject, QFileDialog
 )
 
@@ -30,6 +31,7 @@ from ..core.setup_service import (
 from ..core.metadata import LabDTO
 from ..core.config_manager import resolve_mus1_root
 from ..core.config_manager import init_config_manager
+from ..core.utils.ssh_config import list_ssh_aliases
 
 
 # ===========================================
@@ -427,8 +429,8 @@ class UserProfilePage(QWizardPage):
         # Platform-specific info
         if platform.system() == "Darwin":  # macOS
             info_label = QLabel(
-                "📁 Default project location: ~/Documents/MUS1/Projects\n"
-                "💾 Suggested shared storage: /Volumes/CuSSD3"
+                "📁 Default project location: ~/Desktop/MUS1/Projects\n"
+                "💾 Suggested shared storage: ~/Desktop/MUS1/Shared"
             )
         else:
             info_label = QLabel(
@@ -504,7 +506,7 @@ class SharedStoragePage(QWizardPage):
         path_layout = QHBoxLayout()
         self.path_edit = QLineEdit()
         if platform.system() == "Darwin":
-            self.path_edit.setText("/Volumes/CuSSD3")
+            self.path_edit.setText(str(Path.home() / "Desktop" / "MUS1" / "Shared"))
         else:
             self.path_edit.setText(str(Path.home() / "mus1-shared"))
         path_layout.addWidget(self.path_edit)
@@ -556,6 +558,102 @@ class SharedStoragePage(QWizardPage):
             return False
 
         return True
+
+
+class ModeSelectionPage(QWizardPage):
+    """Choose between starting fresh or editing an existing configuration.
+
+    When starting fresh, offer an option to wipe old config artifacts.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.setTitle("Setup Mode")
+        self.setSubTitle("Start from scratch or edit an existing configuration")
+
+        layout = QVBoxLayout()
+
+        self.start_fresh_radio = QRadioButton("Start from scratch")
+        self.edit_existing_radio = QRadioButton("Edit existing configuration")
+        self.start_fresh_radio.setChecked(True)
+        layout.addWidget(self.start_fresh_radio)
+        layout.addWidget(self.edit_existing_radio)
+
+        self.wipe_checkbox = QCheckBox("Wipe old MUS1 configuration (dangerous)")
+        self.wipe_checkbox.setChecked(False)
+        layout.addWidget(self.wipe_checkbox)
+
+        info = QLabel("Wipe removes config.db/root pointer/log under the resolved MUS1 root.")
+        info.setStyleSheet("color: #888; font-size: 11px;")
+        layout.addWidget(info)
+
+        self.setLayout(layout)
+
+    def validatePage(self) -> bool:
+        if self.start_fresh_radio.isChecked() and self.wipe_checkbox.isChecked():
+            # Confirm wipe via modal
+            reply = QMessageBox.question(
+                self,
+                "Confirm Wipe",
+                "This will delete existing MUS1 configuration files. Continue?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return False
+            # Execute wipe
+            try:
+                from ..core.setup_service import get_setup_service
+                svc = get_setup_service()
+                svc.wipe_existing_configuration()
+            except Exception:
+                pass
+        return True
+
+
+class WorkersSetupPage(QWizardPage):
+    """Page for importing SSH workers from ~/.ssh/config and configuring roles."""
+
+    def __init__(self):
+        super().__init__()
+        self.setTitle("Workers Setup")
+        self.setSubTitle("Import SSH workers from your local SSH config and set roles")
+
+        layout = QVBoxLayout()
+
+        desc = QLabel(
+            "MUS1 can use SSH workers configured in your local ~/.ssh/config.\n"
+            "Select which aliases to import. You can attach workers to a lab later."
+        )
+        desc.setWordWrap(True)
+        layout.addWidget(desc)
+
+        # Aliases list
+        self.aliases_list = QListWidget()
+        aliases = list_ssh_aliases()
+        for a in aliases:
+            item = QListWidgetItem(a)
+            item.setCheckState(Qt.CheckState.Checked)
+            self.aliases_list.addItem(item)
+        layout.addWidget(self.aliases_list)
+
+        # Role input for selected workers (optional)
+        form = QFormLayout()
+        self.default_role_edit = QLineEdit()
+        self.default_role_edit.setPlaceholderText("Optional: default role (e.g., gpu, cpu, storage)")
+        form.addRow("Default Role:", self.default_role_edit)
+        layout.addLayout(form)
+
+        self.setLayout(layout)
+
+    def get_selected_workers(self) -> list[dict]:
+        selected: list[dict] = []
+        role = self.default_role_edit.text().strip() or None
+        for i in range(self.aliases_list.count()):
+            item = self.aliases_list.item(i)
+            if item.checkState() == Qt.CheckState.Checked:
+                alias = item.text()
+                selected.append({"name": alias, "ssh_alias": alias, "role": role, "provider": "ssh"})
+        return selected
 
 
 class LabSetupPage(QWizardPage):
@@ -844,9 +942,11 @@ class MUS1SetupWizard(QWizard):
 
         # Add pages
         self.addPage(WelcomePage())
+        self.addPage(ModeSelectionPage())
         # Removed MUS1RootLocationPage from the default flow to avoid conflating app root with data roots
         self.addPage(UserProfilePage())
         self.addPage(SharedStoragePage())
+        self.addPage(WorkersSetupPage())
         self.addPage(LabSetupPage())
         self.addPage(ConclusionPage())
 
@@ -855,7 +955,7 @@ class MUS1SetupWizard(QWizard):
 
     def on_page_changed(self, page_id: int):
         """Handle page changes."""
-        if page_id == 5:  # Conclusion page (index 5, not 4)
+        if page_id == 7:  # Conclusion page after adding 2 new pages
             # Collect data from pages before initializing conclusion page
             self.collect_setup_data()
             self.run_setup()
@@ -889,7 +989,7 @@ class MUS1SetupWizard(QWizard):
         self.setup_completed.connect(self.update_conclusion_page)
 
         # Show progress on conclusion page
-        conclusion_page = self.page(5)  # Conclusion page is at index 5
+        conclusion_page = self.page(7)  # Conclusion page is at index 7
         progress_label = QLabel("Running setup...")
         conclusion_page.layout().addWidget(progress_label)
 
@@ -917,9 +1017,9 @@ class MUS1SetupWizard(QWizard):
                 name=user_page.field("user_name").strip(),
                 email=user_page.field("user_email").strip(),
                 organization=user_page.field("user_organization").strip(),
-                default_projects_dir=Path.home() / "Documents" / "MUS1" / "Projects" if platform.system() == "Darwin"
+                default_projects_dir=Path.home() / "Desktop" / "MUS1" / "Projects" if platform.system() == "Darwin"
                                      else Path.home() / "mus1-projects",
-                default_shared_dir=Path("/Volumes/CuSSD3") if platform.system() == "Darwin"
+                default_shared_dir=Path.home() / "Desktop" / "MUS1" / "Shared" if platform.system() == "Darwin"
                                  else Path.home() / "mus1-shared"
             )
 
@@ -932,8 +1032,16 @@ class MUS1SetupWizard(QWizard):
                 verify_permissions=storage_page.verify_checkbox.isChecked()
             )
 
+        # Workers (SSH aliases)
+        workers_page = self.page(4)  # WorkersSetupPage
+        try:
+            selected_workers = workers_page.get_selected_workers()
+        except Exception:
+            selected_workers = []
+        self._selected_workers = selected_workers
+
         # Lab
-        lab_page = self.page(4)  # LabSetupPage
+        lab_page = self.page(5)  # LabSetupPage (shifted by Workers page)
         if hasattr(lab_page, 'use_existing_lab_checkbox') and lab_page.use_existing_lab_checkbox.isChecked():
             self.lab_dto = None
             self.selected_lab_id = lab_page.existing_lab_combo.currentData()
@@ -963,9 +1071,16 @@ class MUS1SetupWizard(QWizard):
         self.setup_completed.emit(result)
         # If lab was created and a lab storage root was provided, set it now via service
         try:
+            from ..core.setup_service import get_setup_service
+            svc = get_setup_service()
+            # Persist selected workers
+            for w in getattr(self, '_selected_workers', []) or []:
+                try:
+                    svc.add_worker(w["name"], w["ssh_alias"], role=w.get("role"), provider=w.get("provider", "ssh"))
+                except Exception:
+                    pass
+            # Set lab storage root if provided
             if getattr(self, 'lab_dto', None) and getattr(self, '_lab_storage_root', None):
-                from ..core.setup_service import get_setup_service
-                svc = get_setup_service()
                 svc.set_lab_storage_root(self.lab_dto.id, self._lab_storage_root)
             # If shared storage was set and a project is active, offer to set project shared_root
             parent = self.parent()
@@ -1003,7 +1118,7 @@ class MUS1SetupWizard(QWizard):
 
     def update_conclusion_page(self, result: dict):
         """Update the conclusion page when setup completes."""
-        conclusion_page = self.page(5)  # Conclusion page is at index 5
+        conclusion_page = self.page(7)  # Conclusion page is at index 7
         try:
             # Cast to the concrete page type that defines the methods
             from typing import Any

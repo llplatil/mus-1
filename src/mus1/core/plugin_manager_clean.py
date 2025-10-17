@@ -37,12 +37,12 @@ class PluginService:
             return None
 
         subject = self.repos.subjects.find_by_id(experiment.subject_id)
-        # Note: Video relationships would need to be implemented in repository
-        # For now, return basic experiment data
+        # Fetch associated videos via repository (many-to-many association)
+        videos = self.repos.experiments.get_videos_for_experiment(experiment_id)
         return {
             'experiment': experiment,
             'subject': subject,
-            'videos': []  # TODO: Implement experiment-video relationships
+            'videos': videos
         }
 
     def save_analysis_result(self, experiment_id: str, plugin_name: str,
