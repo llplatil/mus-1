@@ -28,9 +28,12 @@ class ExperimentView(BaseView):
         # Initialize logging
         self.log_bus = LoggingEventBus.get_instance()
 
-        # Initialize GUI services
+        # Initialize GUI services and dependent service handles
         self.gui_services = None  # Will be set when project is loaded
         self.plugin_manager = None  # Will be set when project is loaded
+        self.subject_service = None  # Avoid AttributeError before services are ready
+        self.experiment_service = None
+        self.plugin_service = None
 
         # Fetch processing stages from the new metadata
         self.PROCESSING_STAGES = [stage.value for stage in ProcessingStage]

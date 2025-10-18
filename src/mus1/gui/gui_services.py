@@ -955,11 +955,11 @@ class GUISetupService(BaseGUIService):
             return []
         return self.safe_execute("getting all users", lambda: list(self.setup_service.get_all_users().values()), [])
 
-    def get_labs(self) -> List[Dict[str, Any]]:
+    def get_labs(self) -> Dict[str, Dict[str, Any]]:
         """Get all labs for display."""
         if not self.setup_service:
-            return []
-        return self.safe_execute("getting labs", lambda: list(self.setup_service.get_labs().values()), [])
+            return {}
+        return self.safe_execute("getting labs", lambda: self.setup_service.get_labs(), {})
 
 
 class GUIPluginService(BaseGUIService):

@@ -1,6 +1,6 @@
 from .qt import (
     QWidget, QVBoxLayout, QFormLayout, QLabel, QLineEdit, QHBoxLayout,
-    QPushButton, QListWidget, QListWidgetItem, QComboBox, QFileDialog, QMessageBox,
+    QPushButton, QListWidget, QListWidgetItem, QComboBox, QFileDialog,
     Qt, QCheckBox, QSlider
 )
 """
@@ -16,7 +16,6 @@ from pathlib import Path
 from .base_view import BaseView
 from ..core.logging_bus import LoggingEventBus
 from typing import Dict, Any
-from ..core.setup_service import SharedStorageDTO
 
 
 class SettingsView(BaseView):
@@ -77,36 +76,7 @@ class SettingsView(BaseView):
         projects_row.addWidget(self.projects_dir_edit, 1)
         projects_row.addWidget(self.projects_dir_btn)
 
-        # Shared directory row
-        shared_row = self.create_form_row(dirs_layout)
-        shared_label = self.create_form_label("Shared Directory:")
-        self.shared_dir_edit = QLineEdit()
-        self.shared_dir_edit.setProperty("class", "mus1-text-input")
-        self.shared_dir_btn = QPushButton("Browse...")
-        self.shared_dir_btn.setProperty("class", "mus1-secondary-button")
-        self.shared_dir_btn.clicked.connect(self._browse_shared_dir)
-        shared_row.addWidget(shared_label)
-        shared_row.addWidget(self.shared_dir_edit, 1)
-        shared_row.addWidget(self.shared_dir_btn)
-
-        # Shared Storage Group (Global Configuration)
-        storage_group, storage_layout = self.create_form_section("Shared Storage", layout)
-
-        storage_row = self.create_form_row(storage_layout)
-        storage_label = self.create_form_label("Shared Storage Root:")
-        self.shared_storage_edit = QLineEdit()
-        self.shared_storage_edit.setProperty("class", "mus1-text-input")
-        self.shared_storage_btn = QPushButton("Browse...")
-        self.shared_storage_btn.setProperty("class", "mus1-secondary-button")
-        self.shared_storage_btn.clicked.connect(self._browse_shared_storage)
-        storage_row.addWidget(storage_label)
-        storage_row.addWidget(self.shared_storage_edit, 1)
-        storage_row.addWidget(self.shared_storage_btn)
-
-        storage_help = QLabel("Optional shared storage root used during development. Lab projects are registered per-lab; discovery lists lab-registered or local projects only.")
-        storage_help.setWordWrap(True)
-        storage_help.setStyleSheet("color: gray; font-size: 11px;")
-        storage_layout.addWidget(storage_help)
+        
 
         # Lab Shared Library (per-lab storage root)
         lab_group, lab_layout = self.create_form_section("Lab Shared Library", layout)
@@ -146,11 +116,11 @@ class SettingsView(BaseView):
         save_lab_btn.clicked.connect(self.handle_save_lab_library)
         lab_button_row.addWidget(save_lab_btn)
 
-        # Designate as Shared Library (validates and persists)
+        # Designate as Lab Shared Folder (validates and persists)
         designate_row = self.create_form_row(lab_layout)
-        designate_btn = QPushButton("Designate as Shared Library")
+        designate_btn = QPushButton("Designate as Lab Shared Folder")
         designate_btn.setProperty("class", "mus1-primary-button")
-        designate_btn.clicked.connect(self.handle_designate_shared_library)
+        designate_btn.clicked.connect(self.handle_designate_lab_shared_folder)
         designate_row.addWidget(designate_btn)
 
         # Save button
@@ -158,11 +128,8 @@ class SettingsView(BaseView):
         save_btn = QPushButton("Save User Settings")
         save_btn.setProperty("class", "mus1-primary-button")
         save_btn.clicked.connect(self.handle_save_user_settings)
-        save_storage_btn = QPushButton("Save Storage Settings")
-        save_storage_btn.setProperty("class", "mus1-primary-button")
-        save_storage_btn.clicked.connect(self.handle_save_storage_settings)
         button_row.addWidget(save_btn)
-        button_row.addWidget(save_storage_btn)
+        # Global shared storage settings removed in lab-centric model
 
         layout.addStretch(1)
         self.add_page(self.user_settings_page, "User")
@@ -243,12 +210,6 @@ class SettingsView(BaseView):
                 self.user_email_edit.setText(profile.email or "")
                 self.user_org_edit.setText(profile.organization or "")
                 self.projects_dir_edit.setText(str(profile.default_projects_dir or ""))
-                self.shared_dir_edit.setText(str(profile.default_shared_dir or ""))
-
-            # Load shared storage setting
-            shared_storage_path = svc.get_shared_storage_path()
-            if shared_storage_path:
-                self.shared_storage_edit.setText(str(shared_storage_path))
         except Exception as e:
             self.log_bus.log(f"Error loading user settings: {e}", "error", "SettingsView")
 
@@ -259,17 +220,7 @@ class SettingsView(BaseView):
         if directory:
             self.projects_dir_edit.setText(directory)
 
-    def _browse_shared_dir(self):
-        """Browse for shared directory."""
-        directory = QFileDialog.getExistingDirectory(self, "Select Shared Directory")
-        if directory:
-            self.shared_dir_edit.setText(directory)
-
-    def _browse_shared_storage(self):
-        """Browse for shared storage root directory."""
-        directory = QFileDialog.getExistingDirectory(self, "Select Shared Storage Root")
-        if directory:
-            self.shared_storage_edit.setText(directory)
+    # Shared directory/global shared storage pickers removed in lab-centric model
 
     def _browse_lab_library(self):
         """Browse for lab shared library root directory."""
@@ -287,7 +238,6 @@ class SettingsView(BaseView):
                 name=self.user_name_edit.text().strip() or None,
                 organization=self.user_org_edit.text().strip() or None,
                 default_projects_dir=Path(self.projects_dir_edit.text().strip()) if self.projects_dir_edit.text().strip() else None,
-                default_shared_dir=Path(self.shared_dir_edit.text().strip()) if self.shared_dir_edit.text().strip() else None,
             )
             if result.get("success"):
                 self.log_bus.log("User settings saved successfully", "success", "SettingsView")
@@ -296,64 +246,37 @@ class SettingsView(BaseView):
         except Exception as e:
             self.log_bus.log(f"Error saving user settings: {e}", "error", "SettingsView")
 
-    def handle_save_storage_settings(self):
-        """Save shared storage settings."""
+    def handle_designate_lab_shared_folder(self):
+        """Validate and set the current lab's shared folder (lab storage root)."""
         try:
             from pathlib import Path
             from ..core.setup_service import get_setup_service
+            from ..core.config_manager import get_config
             svc = get_setup_service()
 
-            storage_path_str = self.shared_storage_edit.text().strip()
-            if not storage_path_str:
-                # Clear shared storage setting
-                from ..core.config_manager import set_config
-                set_config("storage.shared_root", None, scope="user")
-                self.log_bus.log("Shared storage cleared", "success", "SettingsView")
+            lab_id = get_config("app.selected_lab_id", scope="user")
+            if not lab_id:
+                self.log_bus.log("No lab selected.", "warning", "SettingsView")
                 return
 
-            storage_path = Path(storage_path_str)
-
-            # Validate the path exists and is a directory
-            if not storage_path.exists() or not storage_path.is_dir():
-                self.log_bus.log(f"Invalid shared storage path: {storage_path}", "error", "SettingsView")
+            path_str = self.lab_library_edit.text().strip()
+            if not path_str:
+                self.log_bus.log("Please enter a lab shared folder path.", "warning", "SettingsView")
                 return
 
-            # Configure shared storage
-            result = svc.setup_shared_storage(
-                SharedStorageDTO(
-                    path=storage_path,
-                    create_if_missing=False,  # Directory should already exist
-                    verify_permissions=True
-                )
-            )
+            path = Path(path_str)
+            if not path.exists() or not path.is_dir():
+                self.log_bus.log(f"Invalid lab shared folder: {path}", "error", "SettingsView")
+                return
 
+            result = svc.set_lab_storage_root(lab_id, path)
             if result.get("success"):
-                self.log_bus.log("Shared storage settings saved successfully", "success", "SettingsView")
+                self._update_lab_status_badge(lab_id)
+                self.log_bus.log("Lab shared folder designated successfully.", "success", "SettingsView")
             else:
-                self.log_bus.log(result.get("message", "Failed to save shared storage settings", "SettingsView"), "error")
-
+                self.log_bus.log(result.get("message", "Failed to designate lab shared folder", "SettingsView"), "error")
         except Exception as e:
-            self.log_bus.log(f"Error saving shared storage settings: {e}", "error", "SettingsView")
-
-    def handle_designate_shared_library(self):
-        """Validate and set the shared library root using SetupService helper."""
-        try:
-            from pathlib import Path
-            from ..core.setup_service import get_setup_service
-            svc = get_setup_service()
-
-            storage_path_str = self.shared_storage_edit.text().strip()
-            if not storage_path_str:
-                self.log_bus.log("Please enter a path to designate as shared library.", "warning", "SettingsView")
-                return
-            storage_path = Path(storage_path_str)
-            result = svc.designate_shared_folder(storage_path, ensure_exists=True, verify_permissions=True)
-            if result.get("success"):
-                self.log_bus.log("Shared library designated successfully.", "success", "SettingsView")
-            else:
-                self.log_bus.log(result.get("message", "Failed to designate shared library", "SettingsView"), "error")
-        except Exception as e:
-            self.log_bus.log(f"Designate shared library failed: {e}", "error", "SettingsView")
+            self.log_bus.log(f"Designate lab shared folder failed: {e}", "error", "SettingsView")
 
     def handle_save_lab_library(self):
         """Save per-lab shared library root (lab storage root)."""
@@ -770,15 +693,7 @@ class SettingsView(BaseView):
         self.update_frame_rate_from_state()
         self.update_theme_dropdown_from_state()
 
-        # Also refresh shared storage setting
-        try:
-            from ..core.setup_service import get_setup_service
-            svc = get_setup_service()
-            shared_storage_path = svc.get_shared_storage_path()
-            if shared_storage_path and hasattr(self, 'shared_storage_edit'):
-                self.shared_storage_edit.setText(str(shared_storage_path))
-        except Exception as e:
-            self.log_bus.log(f"Error loading shared storage path: {e}", "error", "SettingsView")
+        # Global shared storage deprecated — no refresh
 
         # Refresh current lab and lab library path + mode + status
         try:

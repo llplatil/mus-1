@@ -37,18 +37,6 @@ class GlobalServices:
             self._lab_service.set_services(get_setup_service())
         return self._lab_service
 
-    @property
-    def project_manager(self):
-        """Get the current project manager, if any."""
-        if self.service_factory and hasattr(self.service_factory, 'project_manager'):
-            return self.service_factory.project_manager
-        return None
-
-    @property  
-    def service_factory_safe(self):
-        """Get service_factory with safety check."""
-        return self.service_factory
-
 logger = logging.getLogger(__name__)
 
 class MainWindow(QMainWindow):
@@ -251,8 +239,10 @@ class MainWindow(QMainWindow):
     
     def _activate_initial_tab(self):
         """Activate the initial tab after all setup is complete."""
-        self.tab_widget.setCurrentIndex(0)
-        self.on_tab_changed(0)
+        # Only activate once we have enough context to avoid early warnings
+        if self.selected_project_name is not None or self.selected_user_id is not None:
+            self.tab_widget.setCurrentIndex(0)
+            self.on_tab_changed(0)
 
     def register_log_observers(self):
         """Register all navigation panes as log observers."""
@@ -573,6 +563,8 @@ class MainWindow(QMainWindow):
                 # Now switch to project management tab
                 self.tab_widget.setCurrentWidget(self.project_view)
                 # The project_view will handle project creation/selection from here
+            # Activate initial tab flow now that selections are available
+            self._activate_initial_tab()
         else:
             # User cancelled the dialog
             self.log_bus.log("User/lab selection cancelled.", "warning", "MainWindow")

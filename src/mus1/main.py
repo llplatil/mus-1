@@ -93,9 +93,9 @@ def main():
             logger.info("First-time setup required - showing setup wizard")
 
         from .gui.setup_wizard import show_setup_wizard
-        setup_wizard = show_setup_wizard(theme_manager=theme_manager)
+        setup_success = show_setup_wizard(theme_manager=theme_manager)
 
-        if setup_wizard is None:
+        if not setup_success:
             logger.info("Setup cancelled by user")
             if not setup_service.is_user_configured():
                 reply = QMessageBox.question(
@@ -104,11 +104,11 @@ def main():
                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
                 )
                 if reply == QMessageBox.StandardButton.Yes:
-                    setup_wizard = show_setup_wizard(theme_manager=theme_manager)
-                    if setup_wizard is None:
+                    setup_success = show_setup_wizard(theme_manager=theme_manager)
+                    if not setup_success:
                         sys.exit(0)  # User cancelled again - exit cleanly
-                else:
-                    sys.exit(0)  # User doesn't want to setup - exit cleanly
+            else:
+                sys.exit(0)  # User doesn't want to setup - exit cleanly
 
         logger.info("Setup wizard completed successfully")
         setup_completed = True
