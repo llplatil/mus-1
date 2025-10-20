@@ -64,6 +64,13 @@ class ExperimentView(BaseView):
             self.refresh_data()
         except Exception as e:
             self.log_bus.log(f"Error in ExperimentView.on_services_ready: {e}", "error", "ExperimentView")
+        # Subscribe to context changes to refresh when user/lab/project changes
+        try:
+            mw = self.window()
+            if mw and hasattr(mw, 'contextChanged'):
+                mw.contextChanged.connect(lambda _ctx: self.refresh_data())
+        except Exception:
+            pass
 
     def set_plugin_manager(self, plugin_manager):
         """Set the plugin manager for this view."""

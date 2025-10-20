@@ -78,6 +78,13 @@ class SubjectView(BaseView):
             self.change_page(0)
         except Exception:
             pass
+        # Subscribe to context changes to refresh when user/lab/project changes
+        try:
+            mw = self.window()
+            if mw and hasattr(mw, 'contextChanged'):
+                mw.contextChanged.connect(lambda _ctx: self.on_activated())
+        except Exception:
+            pass
 
     def on_activated(self):
         # Lightweight refresh when tab becomes active

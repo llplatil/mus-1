@@ -751,6 +751,30 @@ class ProjectServiceFactory:
 - `ThemeManager.apply_theme(app)` sets the application palette and processes `themes/mus1.qss` by substituting `$VARIABLES` based on Light/Dark.
 - `MainWindow.apply_theme()` propagates the effective theme to views via `update_theme(theme)`.
 
+### View State Synchronization (2025-10)
+- `MainWindow` is the single source of truth for ephemeral GUI context: `selected_user_id`, `selected_lab_id`, `selected_project_name`, and `service_factory`.
+- `MainWindow` emits a `contextChanged` signal whenever the user/lab changes or a project is loaded.
+- Views subscribe to `contextChanged` and refresh accordingly:
+  - `ProjectView`: refreshes lists and lab combo via GUI services
+  - `SubjectView`: refreshes overview, grids, and colony combos
+  - `ExperimentView`: refreshes active page data and plugin discovery
+- Pre-project: `GlobalServices` with `lab_service` is provided to views needing lab-only operations.
+- Post-project: `ProjectServiceFactory.gui_services` (subject/experiment/project services) are provided.
+
+### Storage Model Cleanup (2025-10)
+- Deprecated global shared storage (`storage.shared_root`) is no longer surfaced in GUI. There is no "Shared (Global)" classification in UI.
+- Shared projects are strictly recognized by the active lab’s storage root; local projects live under `user.default_projects_dir`.
+- Project creation in "Shared" mode requires a selected lab with a configured lab storage root; otherwise the UI prompts to configure it in Lab Settings.
+
+### GUI Service Boundaries (Reinforced)
+- Views do not call `get_setup_service()` directly for lab data when a GUI service exists.
+- Lab data flows through `LabService` (from `GlobalServices` or `GUIServiceFactory.create_lab_service()`).
+- Project-scoped data flows through `GUIProjectService`, `GUISubjectService`, and `GUIExperimentService`.
+
+### Known Deviations (Current)
+- `SettingsView` workers remain persisted in project config; lab-scoped display is supported without project context, but SQL-backed lab workers are not yet implemented.
+- Some startup dialogs call `SetupService` directly for data population (acceptable); runtime GUI should prefer GUI services elsewhere.
+
 Usage example:
 ```python
 # main.py

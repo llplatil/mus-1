@@ -100,9 +100,18 @@ class ProjectView(BaseView):
     # --- Lifecycle hooks ---
     def on_services_ready(self, services):
         super().on_services_ready(services)
-        # services is the GUIServiceFactory, create the project service we need
+        # services may be a GUIServiceFactory (project-scoped) or GlobalServices (no project)
         self.gui_services = services
-        self.project_service = services.create_project_service()
+        try:
+            if hasattr(services, 'create_project_service'):
+                # Project is loaded; create the project-scoped service
+                self.project_service = services.create_project_service()
+            else:
+                # No project yet; keep project_service unset and allow global-only operations
+                self.project_service = None
+        except Exception:
+            # Be resilient during early startup before a project is loaded
+            self.project_service = None
         try:
             main_window = self.window()
             if hasattr(main_window, 'service_factory') and main_window.service_factory and hasattr(main_window.service_factory, 'plugin_manager'):
@@ -113,6 +122,13 @@ class ProjectView(BaseView):
                 self.log_bus.log("No project loaded - plugin manager not available", "info", "ProjectView")
         except Exception as e:
             self.log_bus.log(f"Plugin manager init failed: {e}", "warning", "ProjectView")
+        # Subscribe to context changes to refresh lists when user/lab/project changes
+        try:
+            mw = self.window()
+            if mw and hasattr(mw, 'contextChanged'):
+                mw.contextChanged.connect(lambda _ctx: self.refresh_lists())
+        except Exception:
+            pass
 
     def format_item(self, item):
         """Utility to return the proper display string for an item."""
@@ -482,12 +498,8 @@ class ProjectView(BaseView):
             except Exception:
                 pass
 
-            # Resolve shared root
-            try:
-                from ..core.setup_service import get_setup_service as _gss
-                shared_root = _gss().get_shared_storage_path()
-            except Exception:
-                shared_root = None
+            # Remove deprecated global shared root usage
+            shared_root = None
 
             from pathlib import Path as _Path
             items = []  # (display, path)
@@ -530,7 +542,7 @@ class ProjectView(BaseView):
                     if proj_shared:
                         designation = 'Shared (Project)'
                     else:
-                        # Check lab then global
+                        # Check if under selected lab root only
                         try:
                             current_lab_id = getattr(self.window(), 'selected_lab_id', None)
                             if current_lab_id:
@@ -538,8 +550,6 @@ class ProjectView(BaseView):
                                 lab_root = _glsr(current_lab_id)
                                 if lab_root and str(p.resolve()).startswith(str(lab_root.resolve())):
                                     designation = 'Shared (Lab)'
-                            if designation == 'Local' and shared_root and str(p.resolve()).startswith(str(shared_root.resolve())):
-                                designation = 'Shared (Global)'
                         except Exception:
                             pass
 
@@ -587,13 +597,21 @@ class ProjectView(BaseView):
 
         self.creation_lab_combo.clear()
         try:
-            from ..core.setup_service import get_setup_service
-            setup_service = get_setup_service()
-            labs = setup_service.get_labs()
+            # Prefer GUI LabService via global/project services
+            lab_service = None
+            if hasattr(self.gui_services, 'create_lab_service'):
+                lab_service = self.gui_services.create_lab_service()
+            elif hasattr(self.gui_services, 'lab_service'):
+                lab_service = getattr(self.gui_services, 'lab_service')
+            elif hasattr(self.window(), '_global_services') and hasattr(self.window()._global_services, 'lab_service'):
+                lab_service = self.window()._global_services.lab_service
+
+            labs = lab_service.get_labs() if lab_service else []
             self.log_bus.log(f"Found {len(labs)} labs for user", "info")
             if labs:
-                for lab_id, lab_data in labs.items():
-                    display_name = f"{lab_data.get('name', 'Unknown Lab')} ({lab_data.get('institution', 'Unknown Institution')})"
+                for lab in labs:
+                    lab_id = lab.get('id')
+                    display_name = f"{lab.get('name', 'Unknown Lab')} ({lab.get('institution', 'Unknown Institution')})"
                     self.creation_lab_combo.addItem(display_name, lab_id)
                     self.log_bus.log(f"Added lab: {display_name}", "info", "ProjectView")
             else:
@@ -627,11 +645,16 @@ class ProjectView(BaseView):
 
             # Determine base path
             if location_type == "shared":
-                shared_root = setup_service.get_shared_storage_path()
-                if not shared_root:
-                    QMessageBox.warning(self, "Project Creation", "Shared storage not configured.")
+                # Use per-lab storage root only
+                try:
+                    from ..core.config_manager import get_lab_storage_root
+                    lab_root = get_lab_storage_root(lab_id) if lab_id else None
+                except Exception:
+                    lab_root = None
+                if not lab_root:
+                    QMessageBox.warning(self, "Project Creation", "Selected lab has no storage root configured. Set lab storage in Lab Settings.")
                     return
-                base_path = Path(shared_root) / "Projects"
+                base_path = Path(lab_root) / "Projects"
             else:
                 # Use local projects directory
                 user_profile = setup_service.get_user_profile()
@@ -663,14 +686,13 @@ class ProjectView(BaseView):
             from ..core.project_manager_clean import ProjectManagerClean
             project_manager = ProjectManagerClean(project_path)
 
-            # If created as Shared, set shared_root on project config
+            # If created as Shared, persist lab root on project config (optional)
             if location_type == "shared":
                 try:
-                    sr = setup_service.get_shared_storage_path()
-                    if sr:
-                        project_manager.set_shared_root(Path(sr))
+                    if lab_root:
+                        project_manager.set_shared_root(Path(lab_root))
                 except Exception as e:
-                    self.log_bus.log(f"Failed to persist shared root on project: {e}", "warning", "ProjectView")
+                    self.log_bus.log(f"Failed to persist lab shared root on project: {e}", "warning", "ProjectView")
 
             # Associate with lab if specified or requested for local
             if lab_id or (location_type == "local" and getattr(self, 'register_with_lab_check', None) and self.register_with_lab_check.isChecked()):
@@ -681,14 +703,27 @@ class ProjectView(BaseView):
                 
                 project_manager.set_lab_id(lab_id)
                 # Register with lab using service layer
-                lab_service = self.gui_services.create_lab_service()
-                success = lab_service.associate_project_with_lab(
-                    lab_id=lab_id,
-                    project_name=project_name,
-                    project_path=str(project_path)
-                )
-                if not success:
-                    self.log_bus.log(f"Warning: Failed to associate project with lab '{lab_id}'", "warning", "ProjectView")
+                lab_service = None
+                try:
+                    if hasattr(self.gui_services, 'create_lab_service'):
+                        lab_service = self.gui_services.create_lab_service()
+                    elif hasattr(self.gui_services, 'lab_service'):
+                        lab_service = getattr(self.gui_services, 'lab_service')
+                    elif hasattr(self.window(), '_global_services') and hasattr(self.window()._global_services, 'lab_service'):
+                        lab_service = self.window()._global_services.lab_service
+                except Exception:
+                    lab_service = None
+
+                if lab_service:
+                    success = lab_service.associate_project_with_lab(
+                        lab_id=lab_id,
+                        project_name=project_name,
+                        project_path=str(project_path)
+                    )
+                    if not success:
+                        self.log_bus.log(f"Warning: Failed to associate project with lab '{lab_id}'", "warning", "ProjectView")
+                else:
+                    self.log_bus.log("Lab service unavailable; skipping lab association.", "warning", "ProjectView")
 
             # Switch to the newly created project
             self.window().load_project_path(project_path)
@@ -938,65 +973,7 @@ class ProjectView(BaseView):
         layout.addWidget(rename_group)
         
         # Project notes - placed last as requested
-        # Shared storage group
-        shared_group, shared_layout_container = self.create_form_section("Shared Storage", layout)
-        shared_layout = self.create_form_row(shared_layout_container)
-
-        self.shared_root_line = QLineEdit()
-        self.shared_root_line.setProperty("class", "mus1-text-input")
-        browse_shared_btn = QPushButton("Browse…")
-        browse_shared_btn.setProperty("class", "mus1-secondary-button")
-        browse_shared_btn.clicked.connect(self._browse_shared_root)
-
-        set_shared_btn = QPushButton("Set Shared Root")
-        set_shared_btn.setProperty("class", "mus1-primary-button")
-        set_shared_btn.clicked.connect(self.handle_set_shared_root)
-
-        move_to_shared_btn = QPushButton("Move Project to Shared")
-        move_to_shared_btn.setProperty("class", "mus1-primary-button")
-        move_to_shared_btn.clicked.connect(self.handle_move_project_to_shared)
-
-        shared_layout.addWidget(self.create_form_label("Shared Root:"))
-        shared_layout.addWidget(self.shared_root_line, 1)
-        shared_layout.addWidget(browse_shared_btn)
-        shared_layout.addWidget(set_shared_btn)
-        shared_layout.addWidget(move_to_shared_btn)
-
-        # Pre-fill from state if available
-        try:
-            # First try to get from current project
-            shared_root = None
-            if hasattr(self, 'project_service') and self.project_service:
-                project_info = self.project_service.get_project_info()
-                if project_info.get('shared_root'):
-                    shared_root = project_info['shared_root']
-
-            # If no project-specific shared root, try lab storage root
-            if not shared_root:
-                try:
-                    current_lab_id = None
-                    if hasattr(self.window(), 'selected_lab_id'):
-                        current_lab_id = self.window().selected_lab_id
-                    if current_lab_id:
-                        from ..core.config_manager import get_lab_storage_root as _glsr
-                        lab_root = _glsr(current_lab_id)
-                        if lab_root:
-                            shared_root = str(lab_root)
-                except Exception:
-                    pass
-
-            # If still none, try global config
-            if not shared_root:
-                from ..core.setup_service import get_setup_service
-                setup_service = get_setup_service()
-                global_path = setup_service.get_shared_storage_path()
-                if global_path:
-                    shared_root = str(global_path)
-
-            if shared_root:
-                self.shared_root_line.setText(shared_root)
-        except Exception:
-            pass
+        # Removed deprecated global/shared root UI group
 
         self.project_notes_box = NotesBox(
             title="Project Notes",
@@ -1046,55 +1023,7 @@ class ProjectView(BaseView):
             # print(error_msg) # Keep commented
             self.log_bus.log(error_msg, 'error', "ProjectView")
 
-    def _browse_shared_root(self):
-        try:
-            directory = QFileDialog.getExistingDirectory(self, "Select Shared Root", str(Path.home()))
-            if directory:
-                self.shared_root_line.setText(directory)
-        except Exception as e:
-            self.log_bus.log(f"Error selecting shared root: {e}", "error", "ProjectView")
-
-    def handle_set_shared_root(self):
-        try:
-            path_text = self.shared_root_line.text().strip()
-            if not path_text:
-                QMessageBox.warning(self, "Shared Root", "Please select or enter a shared root path.")
-                return
-            sr = Path(path_text).expanduser()
-            if not sr.exists():
-                # Offer to create
-                create = QMessageBox.question(self, "Create Directory", f"Create directory?\n{sr}")
-                if create == QMessageBox.StandardButton.Yes:
-                    sr.mkdir(parents=True, exist_ok=True)
-                else:
-                    return
-
-            # Set global shared storage config
-            from ..core.setup_service import get_setup_service
-            setup_service = get_setup_service()
-            from ..core.config_manager import set_config
-            set_config("storage.shared_root", str(sr), scope="user")
-
-            # Also set per-project if there's a current project
-            if hasattr(self.window(), 'project_manager') and self.window().project_manager:
-                self.window().project_manager.set_shared_root(sr)
-                self.window().project_manager.save_project()
-
-            self.log_bus.log(f"Shared root set to {sr}", "success", "ProjectView")
-        except Exception as e:
-            self.log_bus.log(f"Failed to set shared root: {e}", "error", "ProjectView")
-
-    def handle_move_project_to_shared(self):
-        try:
-            pm = self.window().project_manager
-            sr = pm.config.shared_root
-            if not sr:
-                self.log_bus.log("Set a shared root first.", "warning", "ProjectView")
-                return
-            new_path = pm.move_project_to_directory(Path(sr))
-            self.log_bus.log(f"Project moved to {new_path}", "success", "ProjectView")
-        except Exception as e:
-            self.log_bus.log(f"Failed to move project: {e}", "error", "ProjectView")
+    # Removed deprecated shared-root handlers (global/shared UI)
 
     def update_theme(self, theme):
         """Update theme for this view and propagate any view-specific changes."""

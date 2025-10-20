@@ -8,6 +8,7 @@ from .qt import (
     QAction,
     QIcon,
 )
+from .qt import Signal
 from .project_view import ProjectView
 from .subject_view import SubjectView
 from .experiment_view import ExperimentView
@@ -41,6 +42,8 @@ logger = logging.getLogger(__name__)
 
 class MainWindow(QMainWindow):
     """
+    # Broadcast context changes (user/lab/project)
+    contextChanged = Signal(object)
     The main QMainWindow of the MUS1 application, with tabs for different views.
     
     Responsibilities:
@@ -134,20 +137,34 @@ class MainWindow(QMainWindow):
             return None
 
     def update_window_title(self):
-        """Sets the window title based on the current project."""
+        """Sets the window title to include user, lab, and current project when available."""
         # Fetch active user profile (if configured)
         try:
             setup_service = get_setup_service()
             profile = setup_service.get_user_profile()
-            user_str = f" — {profile.name} <{profile.email}>" if profile else ""
+            user_str = f"User: {profile.name} <{profile.email}>" if profile else "User: None"
         except Exception:
-            user_str = ""
+            user_str = "User: Unknown"
 
-        if self.selected_project_name:
-            self.setWindowTitle(f"Mus1 — {self.selected_project_name}{user_str}")
-        else:
-            # Consistent title when no project is loaded or selected yet
-            self.setWindowTitle(f"Mus1 — No Project Loaded{user_str}")
+        # Resolve lab display
+        lab_str = "Lab: None"
+        try:
+            if self.selected_lab_id:
+                labs = get_setup_service().get_labs() or {}
+                lab = labs.get(self.selected_lab_id)
+                if isinstance(lab, dict):
+                    lab_name = lab.get('name') or self.selected_lab_id
+                    inst = lab.get('institution')
+                    lab_label = f"{lab_name} ({inst})" if inst else lab_name
+                    lab_str = f"Lab: {lab_label}"
+                else:
+                    lab_str = f"Lab: {self.selected_lab_id}"
+        except Exception:
+            pass
+
+        project_str = f"Project: {self.selected_project_name}" if self.selected_project_name else "Project: None"
+
+        self.setWindowTitle(f"Mus1 — {user_str} — {lab_str} — {project_str}")
 
     def create_menu_bar(self):
         """Create the main menu bar with application menus."""
@@ -216,6 +233,14 @@ class MainWindow(QMainWindow):
             self.lab_view.on_services_ready(self._global_services)
         else:
             self.log_bus.log("LabView does not have on_services_ready method", "warning", "MainWindow")
+
+        # Also provide global services to ProjectView so it can use lab service before a project is loaded
+        if hasattr(self.project_view, 'on_services_ready'):
+            self.log_bus.log("MainWindow providing global services to ProjectView", "info", "MainWindow")
+            try:
+                self.project_view.on_services_ready(self._global_services)
+            except Exception as e:
+                self.log_bus.log(f"Failed to provide global services to ProjectView: {e}", "warning", "MainWindow")
 
         # Connect the rename signal from ProjectView
         if hasattr(self.project_view, 'project_renamed'):
@@ -379,6 +404,15 @@ class MainWindow(QMainWindow):
                 self.experiment_view.on_services_ready(self.service_factory.gui_services)  # ExperimentView creates experiment service internally
             if hasattr(self.experiment_view, 'set_plugin_manager') and hasattr(self.service_factory, 'plugin_manager'):
                 self.experiment_view.set_plugin_manager(self.service_factory.plugin_manager)  # Set plugin manager on ExperimentView
+            # Broadcast that project context changed
+            try:
+                self.contextChanged.emit({
+                    "user_id": self.selected_user_id,
+                    "lab_id": self.selected_lab_id,
+                    "project_name": self.selected_project_name
+                })
+            except Exception:
+                pass
             if hasattr(self.settings_view, 'on_services_ready'):
                 self.settings_view.on_services_ready(self.service_factory.gui_services)  # SettingsView doesn't use services
 
@@ -555,6 +589,18 @@ class MainWindow(QMainWindow):
             self.log_bus.log(f"Selected user: {self.selected_user_id}, lab: {self.selected_lab_id}", "info", "MainWindow")
             if selected_project_path:
                 self.log_bus.log(f"Selected project: {selected_project_path}", "info", "MainWindow")
+
+            # Reflect selection in window title immediately
+            self.update_window_title()
+            # Notify views that context changed
+            try:
+                self.contextChanged.emit({
+                    "user_id": self.selected_user_id,
+                    "lab_id": self.selected_lab_id,
+                    "project_name": self.selected_project_name
+                })
+            except Exception:
+                pass
 
             # If a project was selected, load it directly
             if selected_project_path:

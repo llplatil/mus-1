@@ -53,6 +53,13 @@ class LabView(BaseView):
             self.log_bus.log("LabView using GUI services factory", "info", "LabView")
         else:
             self.log_bus.log(f"LabView: No lab service available from services object: {services}", "warning", "LabView")
+        # Subscribe to MainWindow context changes to auto-refresh
+        try:
+            mw = self.window()
+            if mw and hasattr(mw, 'contextChanged'):
+                mw.contextChanged.connect(lambda _ctx: self.on_activated())
+        except Exception:
+            pass
 
     def on_activated(self):
         # Check if services are available, if not, try to get them from global services
@@ -604,11 +611,11 @@ class LabView(BaseView):
 
         lab_id = current_lab_item.data(Qt.ItemDataRole.UserRole)
 
-        # Recordings
+        # Recordings via lab service if available
         try:
-            from ..core.setup_service import get_setup_service
-            svc = get_setup_service()
-            rec = svc.list_lab_recordings(lab_id=lab_id)
+            rec = {"recordings": []}
+            if self.lab_service and hasattr(self.lab_service.setup_service, 'list_lab_recordings'):
+                rec = self.lab_service.setup_service.list_lab_recordings(lab_id=lab_id)
             self.recordings_list.clear()
             for p in rec.get("recordings", []):
                 self.recordings_list.addItem(p)
@@ -617,11 +624,11 @@ class LabView(BaseView):
             self.log_bus.log(f"Error loading lab recordings: {e}", "error", "LabView")
             self.recordings_list.clear()
 
-        # Subjects
+        # Subjects via lab service if available
         try:
-            from ..core.setup_service import get_setup_service
-            svc = get_setup_service()
-            subj = svc.get_lab_subjects(lab_id)
+            subj = {"subjects": []}
+            if self.lab_service and hasattr(self.lab_service.setup_service, 'get_lab_subjects'):
+                subj = self.lab_service.setup_service.get_lab_subjects(lab_id)
             self.lab_subjects_list.clear()
             for s in subj.get("subjects", []):
                 disp = f"{s.get('id')} (geno={s.get('genotype') or 'N/A'})"

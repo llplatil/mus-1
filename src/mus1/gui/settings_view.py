@@ -35,6 +35,13 @@ class SettingsView(BaseView):
     # --- Lifecycle hooks ---
     def on_services_ready(self, services):
         super().on_services_ready(services)
+        # Subscribe to context changes to refresh workers/lab UI when user/lab changes
+        try:
+            mw = self.window()
+            if mw and hasattr(mw, 'contextChanged'):
+                mw.contextChanged.connect(lambda _ctx: self.refresh_lists())
+        except Exception:
+            pass
 
     def on_activated(self):
         # Refresh lists when settings tab becomes active
@@ -316,23 +323,28 @@ class SettingsView(BaseView):
             return
         self.workers_list.clear()
         try:
-            # Get workers from project manager config
-            main_window = self.window()
-            if not main_window or not hasattr(main_window, 'service_factory') or not main_window.service_factory or not hasattr(main_window.service_factory, 'project_manager'):
-                self.log_bus.log("No project loaded - cannot load workers", "warning", "SettingsView")
-                return
-            pm = main_window.service_factory.project_manager
-            if pm:
-                # Determine scope
-                use_lab_scope = getattr(self, 'scope_workers_to_lab_check', None) and self.scope_workers_to_lab_check.isChecked()
-                if use_lab_scope and hasattr(self.window(), 'selected_lab_id') and self.window().selected_lab_id:
-                    lab_id = self.window().selected_lab_id
+            workers = []
+            use_lab_scope = getattr(self, 'scope_workers_to_lab_check', None) and self.scope_workers_to_lab_check.isChecked()
+            # If lab-scoped and lab selected, prefer lab worker list even without project
+            if use_lab_scope and hasattr(self.window(), 'selected_lab_id') and self.window().selected_lab_id:
+                lab_id = self.window().selected_lab_id
+                # If a project is loaded, read from project config lab map to stay consistent
+                main_window = self.window()
+                pm = None
+                if main_window and hasattr(main_window, 'service_factory') and main_window.service_factory and hasattr(main_window.service_factory, 'project_manager'):
+                    pm = main_window.service_factory.project_manager
+                if pm:
                     lab_workers_map = pm.config.settings.get('lab_workers', {}) or {}
                     workers = lab_workers_map.get(lab_id, [])
-                else:
-                    workers = pm.config.settings.get('workers', [])
+                # Else: no project context; leave workers empty (future: persist lab workers in SQL)
             else:
-                workers = []
+                # Fallback to project-level workers if a project is loaded
+                main_window = self.window()
+                pm = None
+                if main_window and hasattr(main_window, 'service_factory') and main_window.service_factory and hasattr(main_window.service_factory, 'project_manager'):
+                    pm = main_window.service_factory.project_manager
+                if pm:
+                    workers = pm.config.settings.get('workers', [])
         except Exception as e:
             self.log_bus.log(f"Error loading workers list: {e}", "error", "SettingsView")
             workers = []

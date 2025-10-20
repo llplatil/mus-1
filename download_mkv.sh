@@ -9,9 +9,6 @@ SOURCE="drive:leftovers"
 # List of MKV files to download
 files=(
 
-    "217_t2.mkv"
-    "217_t3.mkv"
-    "218_t3.mkv"
     "215_t3.mkv"
     "214_t3.mkv"
     "214_t2.mkv"

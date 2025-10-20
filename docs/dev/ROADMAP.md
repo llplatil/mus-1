@@ -98,16 +98,18 @@ This roadmap shows current status and planned development priorities for the sim
   - In `src/mus1/main.py`, when configuring logs, prefer configured `get_config("mus1.root_path")` when present; fall back to `resolve_mus1_root()` only if unset — 🔄 pending
   - Audit imports using `resolve_mus1_root()` and switch to configuration value post-setup where appropriate — 🔄 pending
 
-### High Priority (New): Storage Model Cleanup, Discovery Fixes, and DTO Consolidation
+### High Priority (New): Storage Model Cleanup, Discovery Fixes, DTO Consolidation, and Context Sync
 
 - **Problem A (Storage Model)**: Global `storage.shared_root` and related UI/CLI surfaces persist, conflicting with the per-lab storage model.
 - **Problem B (Discovery/Dialog)**: `ProjectDiscoveryService.get_project_root_for_dialog(...)` has an incomplete default-dir branch; GUI still references global shared storage.
 - **Problem C (DTOs/Validators)**: Duplicate DTOs/validators across layers cause drift and maintenance overhead.
+- **Problem D (Context Sync)**: Views do not consistently refresh when user/lab/project changes.
 
 - **Decision/Approach**:
   - Storage: Deprecate global `storage.shared_root`; use `get_lab_storage_root(lab_id)` for lab projects and `get_config("user.default_projects_dir")` for local projects. Remove CLI flags `--use-shared`/`--shared-root` and Settings UI "Shared Storage" group.
   - Discovery/Dialog: Ensure dialog root helper returns lab root when present, otherwise user default dir. Remove any global shared root references.
   - DTOs/Validators: Single DTO source in `metadata.py` (Pydantic); centralize validation; repositories own persistence transformations. Treat `ProjectConfig` as read/view model only.
+  - Context Sync: Add `MainWindow.contextChanged` signal; have `ProjectView`, `SubjectView`, `ExperimentView`, and `SettingsView` (workers) refresh on signal.
 
 - **Tasks**:
   1. Remove global shared storage surfaces
@@ -121,11 +123,14 @@ This roadmap shows current status and planned development priorities for the sim
      - Ensure services import `LabDTO`/`ColonyDTO` from `metadata.py` exclusively
      - Convert setup-wizard dataclass DTOs to Pydantic or document as view-only
      - Remove duplicated `__post_init__` validations where Pydantic covers rules
-  4. CI & audits
+  4. Context Sync
+     - Implement `contextChanged` (done)
+     - Wire `ProjectView`, `SubjectView`, `ExperimentView`, and `SettingsView` to refresh on signal (done)
+  5. CI & audits
      - Add lints for banned `storage.shared_root` usage in new code
      - Run `.audit` checks and remove dead code
 
-- **Expected Outcome**: Per-lab storage as the only shared model; discovery strictly lab+local; single DTO source; fewer user-facing ambiguities and cleaner layering.
+- **Expected Outcome**: Per-lab storage as the only shared model; discovery strictly lab+local; single DTO source; consistent view refresh on context changes; fewer user-facing ambiguities and cleaner layering.
 
 ### Medium Priority
 1. **Scanner Improvements**: OS-specific video scanners for Windows/Linux
