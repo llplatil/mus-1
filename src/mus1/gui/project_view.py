@@ -9,6 +9,7 @@ from ..core.logging_bus import LoggingEventBus
 from typing import Dict, Any
 from ..core.plugin_manager_clean import PluginManagerClean
 from ..core.scanners.remote import collect_from_targets
+from ..core.scanners.video_discovery import get_scanner
 from .gui_services import GUIProjectService
 
 
@@ -1164,11 +1165,41 @@ class ProjectView(BaseView):
                     val = max(0, min(100, int(done * 100 / total)))
                     self.scan_progress.setValue(val)
 
-            # Collect and dedup - TODO: Integrate with clean architecture
-            # items = collect_from_targets(self.state_manager, self.data_manager, targets, extensions=extensions, exclude_dirs=excludes, non_recursive=non_recursive)
-            items = []  # Placeholder until integration is complete
-            # dedup = list(self.data_manager.deduplicate_video_list(items, progress_cb=_cb))
-            dedup = []  # Placeholder until integration is complete
+            # Collect using local scanner for local targets
+            roots = []
+            for t in targets:
+                if (t.get('kind') or '').lower() == 'local':
+                    for r in t.get('roots', []) or []:
+                        roots.append(r)
+
+            # If no local roots, nothing to scan for now (remote scan integration pending)
+            if not roots:
+                QMessageBox.information(self, "Scan", "No local roots to scan for the selected targets.")
+                return
+
+            scanner = get_scanner()
+            items = list(
+                scanner.iter_videos(
+                    roots,
+                    extensions=extensions,
+                    recursive=not non_recursive,
+                    excludes=excludes,
+                    progress_cb=_cb,
+                )
+            )  # (Path, hash)
+
+            # Deduplicate by hash, keep first occurrence, attach mtime as timestamp
+            seen_hashes = set()
+            dedup = []
+            for p, h in items:
+                if h in seen_hashes:
+                    continue
+                seen_hashes.add(h)
+                try:
+                    ts = float(Path(p).stat().st_mtime)
+                except Exception:
+                    ts = 0.0
+                dedup.append((p, h, ts))
 
             # Partition by shared root
             self._dedup_results = dedup

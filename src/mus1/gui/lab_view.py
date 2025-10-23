@@ -17,6 +17,7 @@ from pathlib import Path
 from .base_view import BaseView
 from ..core.logging_bus import LoggingEventBus
 from typing import Dict, Any
+from ..core.utils.file_hash import compute_sample_hash
 
 
 class LabView(BaseView):
@@ -79,6 +80,17 @@ class LabView(BaseView):
                 self.log_bus.log(f"Auto-selecting lab: {main_window.selected_lab_id}", "info", "LabView")
                 # Try immediate selection first
                 self._delayed_auto_select(main_window.selected_lab_id)
+                # Sync Lab Library header immediately
+                try:
+                    if hasattr(self, 'current_lab_label'):
+                        self.current_lab_label.setText(f"Current Lab: {main_window.selected_lab_id}")
+                    from ..core.config_manager import get_lab_storage_root
+                    lab_root = get_lab_storage_root(main_window.selected_lab_id)
+                    if lab_root and hasattr(self, 'lab_library_edit'):
+                        self.lab_library_edit.setText(str(lab_root))
+                    self._update_lab_status_badge(main_window.selected_lab_id)
+                except Exception:
+                    pass
             else:
                 self.log_bus.log("No lab selected from user/lab dialog", "warning", "LabView")
         else:
@@ -223,10 +235,68 @@ class LabView(BaseView):
         # Note: Data loading happens in on_activated(), not during setup
 
     def setup_lab_library_page(self):
-        """Setup the Lab Library page to browse shared recordings and lab subjects."""
+        """Setup the Lab Library page to browse shared recordings and lab subjects.
+        The Lab Shared Library controls are placed first for visibility.
+        """
         self.lab_library_page = QWidget()
         layout = self.setup_page_layout(self.lab_library_page)
 
+        # --- Lab Shared Library (moved from Settings) ---
+        lab_group, lab_layout = self.create_form_section("Lab Shared Library", layout)
+
+        # Show currently selected lab
+        lab_info_row = self.create_form_row(lab_layout)
+        self.current_lab_label = self.create_form_label("Current Lab: (none)")
+        self.current_lab_label.setToolTip("The active lab context. Choose a lab in Lab Settings.")
+        lab_info_row.addWidget(self.current_lab_label)
+
+        # Path editor for lab shared library
+        lab_path_row = self.create_form_row(lab_layout)
+        lab_path_label = self.create_form_label("Lab Library Root:")
+        self.lab_library_edit = QLineEdit()
+        self.lab_library_edit.setProperty("class", "mus1-text-input")
+        self.lab_library_edit.setToolTip("Select the root folder used for this lab's shared library")
+        lab_browse_btn = QPushButton("Browse…")
+        lab_browse_btn.setProperty("class", "mus1-secondary-button")
+        lab_browse_btn.clicked.connect(self._browse_lab_library)
+        lab_browse_btn.setToolTip("Browse for the lab library root folder")
+        lab_path_row.addWidget(lab_path_label)
+        lab_path_row.addWidget(self.lab_library_edit, 1)
+        lab_path_row.addWidget(lab_browse_btn)
+
+        lab_help = QLabel(
+            "Set the lab's shared library root. This path is shared by lab members and workers for recordings and subjects.\n"
+            "If the folder is on a network share or mounted volume, configure it as network accessible."
+        )
+        lab_help.setWordWrap(True)
+        lab_help.setProperty("class", "mus1-help-text")
+        lab_help.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+        lab_layout.addWidget(lab_help)
+
+        # Status (advisory reachability only)
+        status_row = self.create_form_row(lab_layout)
+        status_row.addWidget(self.create_form_label("Status:"))
+        self.lab_status_label = QLabel("unknown")
+        self.lab_status_label.setToolTip("Online/offline status of the configured lab library root")
+        status_row.addWidget(self.lab_status_label)
+
+        # Save lab library button
+        lab_button_row = self.create_button_row(lab_layout)
+        save_lab_btn = QPushButton("Save Root")
+        save_lab_btn.setProperty("class", "mus1-primary-button")
+        save_lab_btn.clicked.connect(self.handle_save_lab_library)
+        save_lab_btn.setToolTip("Save the selected path as this lab's library root")
+        lab_button_row.addWidget(save_lab_btn)
+
+        # Designate as Lab Shared Folder (validates and persists)
+        designate_row = self.create_form_row(lab_layout)
+        designate_btn = QPushButton("Configure as Network Accessible")
+        designate_btn.setProperty("class", "mus1-primary-button")
+        designate_btn.clicked.connect(self.handle_designate_lab_shared_folder)
+        designate_btn.setToolTip("Validate path and mark it as a shared/network-accessible lab library")
+        designate_row.addWidget(designate_btn)
+
+        # --- Existing Lab Library lists ---
         # Recordings list
         self.recordings_list = QListWidget()
         self.recordings_list.setProperty("class", "mus1-list-widget")
@@ -611,6 +681,26 @@ class LabView(BaseView):
 
         lab_id = current_lab_item.data(Qt.ItemDataRole.UserRole)
 
+        # Update current lab label and lab root field/status
+        try:
+            # Prefer showing lab name if available
+            lab_name = None
+            try:
+                lab_data_obj = current_lab_item.data(Qt.ItemDataRole.UserRole + 1)
+                if isinstance(lab_data_obj, dict):
+                    lab_name = lab_data_obj.get('name')
+            except Exception:
+                lab_name = None
+            header = f"Current Lab: {lab_name} ({lab_id})" if lab_name else f"Current Lab: {lab_id}"
+            self.current_lab_label.setText(header)
+            from ..core.config_manager import get_lab_storage_root
+            lab_root = get_lab_storage_root(lab_id)
+            if lab_root and hasattr(self, 'lab_library_edit'):
+                self.lab_library_edit.setText(str(lab_root))
+            self._update_lab_status_badge(lab_id)
+        except Exception:
+            pass
+
         # Recordings via lab service if available
         try:
             rec = {"recordings": []}
@@ -657,11 +747,20 @@ class LabView(BaseView):
             try:
                 p = Path(it.text())
                 if link_only_enabled:
-                    vf = VideoFile(path=p, hash="")
+                    # Compute a quick content hash to identify the recording
+                    try:
+                        h = compute_sample_hash(p)
+                    except Exception:
+                        h = ""
+                    vf = VideoFile(path=p, hash=h)
                     pm.add_or_update_video_from_file(vf) if hasattr(pm, 'add_or_update_video_from_file') else pm.add_video(vf)
                 else:
                     # Copy mode not implemented: fall back to linking
-                    vf = VideoFile(path=p, hash="")
+                    try:
+                        h = compute_sample_hash(p)
+                    except Exception:
+                        h = ""
+                    vf = VideoFile(path=p, hash=h)
                     pm.add_or_update_video_from_file(vf) if hasattr(pm, 'add_or_update_video_from_file') else pm.add_video(vf)
                 added += 1
             except Exception:
@@ -671,6 +770,91 @@ class LabView(BaseView):
         # Clear form
         self.shared_project_name_edit.clear()
         self.shared_project_path_edit.clear()
+
+    # ---- Lab Shared Library Handlers ----
+    def _browse_lab_library(self):
+        """Browse for lab shared library root directory."""
+        directory = QFileDialog.getExistingDirectory(self, "Select Lab Library Root")
+        if directory and hasattr(self, 'lab_library_edit'):
+            self.lab_library_edit.setText(directory)
+
+    def handle_save_lab_library(self):
+        """Save per-lab shared library root (lab storage root)."""
+        try:
+            from pathlib import Path
+            from ..core.setup_service import get_setup_service
+            svc = get_setup_service()
+            # current lab
+            current_lab_item = getattr(self, 'labs_list', None).currentItem() if hasattr(self, 'labs_list') else None
+            if not current_lab_item:
+                self.log_bus.log("No lab selected.", "warning", "LabView")
+                return
+            lab_id = current_lab_item.data(Qt.ItemDataRole.UserRole)
+            path_str = self.lab_library_edit.text().strip() if hasattr(self, 'lab_library_edit') else ""
+            if not path_str:
+                self.log_bus.log("Please enter a lab library path.", "warning", "LabView")
+                return
+            path = Path(path_str)
+            if not path.exists() or not path.is_dir():
+                self.log_bus.log(f"Invalid lab library path: {path}", "error", "LabView")
+                return
+            # Persist lab root
+            result = svc.set_lab_storage_root(lab_id, path)
+            if result.get("success"):
+                # Update status
+                self._update_lab_status_badge(lab_id)
+                self.log_bus.log("Lab library saved successfully.", "success", "LabView")
+            else:
+                self.log_bus.log(result.get("message", "Failed to save lab library", "LabView"), "error")
+        except Exception as e:
+            self.log_bus.log(f"Error saving lab library: {e}", "error", "LabView")
+
+    def handle_designate_lab_shared_folder(self):
+        """Validate and set the current lab's shared folder (lab storage root)."""
+        try:
+            from pathlib import Path
+            from ..core.setup_service import get_setup_service
+            svc = get_setup_service()
+
+            current_lab_item = getattr(self, 'labs_list', None).currentItem() if hasattr(self, 'labs_list') else None
+            if not current_lab_item:
+                self.log_bus.log("No lab selected.", "warning", "LabView")
+                return
+            lab_id = current_lab_item.data(Qt.ItemDataRole.UserRole)
+
+            path_str = self.lab_library_edit.text().strip() if hasattr(self, 'lab_library_edit') else ""
+            if not path_str:
+                self.log_bus.log("Please enter a lab shared folder path.", "warning", "LabView")
+                return
+
+            path = Path(path_str)
+            if not path.exists() or not path.is_dir():
+                self.log_bus.log(f"Invalid lab shared folder: {path}", "error", "LabView")
+                return
+
+            result = svc.set_lab_storage_root(lab_id, path)
+            if result.get("success"):
+                self._update_lab_status_badge(lab_id)
+                self.log_bus.log("Lab shared folder designated successfully.", "success", "LabView")
+            else:
+                self.log_bus.log(result.get("message", "Failed to designate lab shared folder", "LabView"), "error")
+        except Exception as e:
+            self.log_bus.log(f"Designate lab shared folder failed: {e}", "error", "LabView")
+
+    def _update_lab_status_badge(self, lab_id: str):
+        try:
+            from ..core.config_manager import is_lab_storage_online
+            status = is_lab_storage_online(lab_id)
+            if hasattr(self, 'lab_status_label'):
+                if status.get("online"):
+                    self.lab_status_label.setText("online")
+                    self.lab_status_label.setStyleSheet("color: #2e7d32;")
+                else:
+                    reason = status.get("reason") or "offline"
+                    self.lab_status_label.setText(f"offline: {reason}")
+                    self.lab_status_label.setStyleSheet("color: #c62828;")
+        except Exception as e:
+            self.log_bus.log(f"Error updating lab status badge: {e}", "error", "LabView")
 
     def handle_remove_shared_project(self):
         """Remove selected project from lab."""
@@ -877,6 +1061,21 @@ class LabView(BaseView):
 
         # Load members for this lab
         self.load_lab_members()
+
+        # Sync Lab Library section with selected lab
+        try:
+            lab_id = lab_data.get('id')
+            if hasattr(self, 'current_lab_label'):
+                lab_name = lab_data.get('name')
+                header = f"Current Lab: {lab_name} ({lab_id})" if lab_name else f"Current Lab: {lab_id}"
+                self.current_lab_label.setText(header)
+            from ..core.config_manager import get_lab_storage_root
+            lab_root = get_lab_storage_root(lab_id)
+            if lab_root and hasattr(self, 'lab_library_edit'):
+                self.lab_library_edit.setText(str(lab_root))
+            self._update_lab_status_badge(lab_id)
+        except Exception:
+            pass
 
     def handle_create_lab(self):
         """Create a new lab."""

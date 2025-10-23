@@ -778,7 +778,7 @@ class ProjectManagerClean:
         name = name.strip()
         # Use database instead of JSON settings
         lab_id = self.config.lab_id  # Associate with lab if project has one
-        success = self.repos.treatments().add(name, lab_id)
+        success = self.repos.treatments.add(name, lab_id)
         if success:
             logger.info(f"Added treatment '{name}' to project {self.config.name}")
         else:
@@ -792,7 +792,7 @@ class ProjectManagerClean:
         name = name.strip()
         # Use database instead of JSON settings
         lab_id = self.config.lab_id  # Associate with lab if project has one
-        success = self.repos.genotypes().add(name, lab_id)
+        success = self.repos.genotypes.add(name, lab_id)
         if success:
             logger.info(f"Added genotype '{name}' to project {self.config.name}")
         else:
@@ -803,20 +803,20 @@ class ProjectManagerClean:
         lab_id = self.config.lab_id
         if lab_id:
             # Return lab-specific treatments
-            return self.repos.treatments().get_by_lab(lab_id)
+            return self.repos.treatments.get_by_lab(lab_id)
         else:
             # Return all treatments (for local projects)
-            return self.repos.treatments().get_all()
+            return self.repos.treatments.get_all()
 
     def get_available_genotypes(self) -> List[str]:
         """Get all available genotypes for this project."""
         lab_id = self.config.lab_id
         if lab_id:
             # Return lab-specific genotypes
-            return self.repos.genotypes().get_by_lab(lab_id)
+            return self.repos.genotypes.get_by_lab(lab_id)
         else:
             # Return all genotypes (for local projects)
-            return self.repos.genotypes().get_all()
+            return self.repos.genotypes.get_all()
 
     def update_available_genotypes(self, genotypes: List[str]) -> None:
         """Update the list of available genotypes for this project."""
@@ -827,9 +827,9 @@ class ProjectManagerClean:
         to_add = set(genotypes) - set(existing)
 
         for name in to_remove:
-            self.repos.genotypes().remove(name)
+            self.repos.genotypes.remove(name)
         for name in to_add:
-            self.repos.genotypes().add(name, lab_id)
+            self.repos.genotypes.add(name, lab_id)
 
         logger.info(f"Updated available genotypes for project {self.config.name}: {genotypes}")
 
@@ -842,22 +842,22 @@ class ProjectManagerClean:
         to_add = set(treatments) - set(existing)
 
         for name in to_remove:
-            self.repos.treatments().remove(name)
+            self.repos.treatments.remove(name)
         for name in to_add:
-            self.repos.treatments().add(name, lab_id)
+            self.repos.treatments.add(name, lab_id)
 
         logger.info(f"Updated available treatments for project {self.config.name}: {treatments}")
 
     def remove_treatment(self, name: str) -> bool:
         """Remove a treatment from available treatments."""
-        success = self.repos.treatments().remove(name)
+        success = self.repos.treatments.remove(name)
         if success:
             logger.info(f"Removed treatment '{name}' from project {self.config.name}")
         return success
 
     def remove_genotype(self, name: str) -> bool:
         """Remove a genotype from available genotypes."""
-        success = self.repos.genotypes().remove(name)
+        success = self.repos.genotypes.remove(name)
         if success:
             logger.info(f"Removed genotype '{name}' from project {self.config.name}")
         return success
@@ -873,9 +873,9 @@ class ProjectManagerClean:
         to_add = set(active_list) - set(existing)
 
         for name in to_remove:
-            self.repos.body_parts().remove(name)
+            self.repos.body_parts.remove(name)
         for name in to_add:
-            self.repos.body_parts().add(name, lab_id)
+            self.repos.body_parts.add(name, lab_id)
 
         logger.info(f"Updated active body parts: {active_list}")
 
@@ -891,10 +891,10 @@ class ProjectManagerClean:
         lab_id = self.config.lab_id
         if lab_id:
             # Return lab-specific body parts
-            return self.repos.body_parts().get_by_lab(lab_id)
+            return self.repos.body_parts.get_by_lab(lab_id)
         else:
             # Return all body parts (for local projects)
-            return self.repos.body_parts().get_all()
+            return self.repos.body_parts.get_all()
 
     def get_master_body_parts(self) -> List[str]:
         """Get master body parts for this project."""
@@ -911,9 +911,9 @@ class ProjectManagerClean:
             to_add = set(items) - set(existing)
 
             for name in to_remove:
-                self.repos.tracked_objects().remove(name)
+                self.repos.tracked_objects.remove(name)
             for name in to_add:
-                self.repos.tracked_objects().add(name, lab_id)
+                self.repos.tracked_objects.add(name, lab_id)
         else:
             # Master tracked objects are project-specific
             self.config.settings[f'{list_type}_tracked_objects'] = items
@@ -934,10 +934,10 @@ class ProjectManagerClean:
             lab_id = self.config.lab_id
             if lab_id:
                 # Return lab-specific tracked objects
-                return self.repos.tracked_objects().get_by_lab(lab_id)
+                return self.repos.tracked_objects.get_by_lab(lab_id)
             else:
                 # Return all tracked objects (for local projects)
-                return self.repos.tracked_objects().get_all()
+                return self.repos.tracked_objects.get_all()
         else:
             # Master tracked objects are project-specific
             key = f"{list_type}_tracked_objects"
@@ -959,7 +959,7 @@ class ProjectManagerClean:
         name = name.strip()
         # Add to active tracked objects in database
         lab_id = self.config.lab_id
-        success = self.repos.tracked_objects().add(name, lab_id)
+        success = self.repos.tracked_objects.add(name, lab_id)
         if success:
             logger.info(f"Added tracked object '{name}' to project {self.config.name}")
         else:

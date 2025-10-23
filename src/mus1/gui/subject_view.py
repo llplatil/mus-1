@@ -818,7 +818,7 @@ class SubjectView(BaseView):
                 , "SubjectView")
         except Exception as e:
             self.log_bus.log(
-                f"Failed to add subject to colony: {str(e, "SubjectView")}", "error"
+                f"Failed to add subject to colony: {str(e)}", "error", "SubjectView"
             )
 
     def handle_remove_subject_from_colony(self):
@@ -857,7 +857,7 @@ class SubjectView(BaseView):
                 , "SubjectView")
         except Exception as e:
             self.log_bus.log(
-                f"Failed to remove subject from colony: {str(e, "SubjectView")}", "error"
+                f"Failed to remove subject from colony: {str(e)}", "error", "SubjectView"
             )
 
     def _get_selected_subject_id(self) -> str | None:

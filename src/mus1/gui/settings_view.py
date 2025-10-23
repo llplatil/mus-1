@@ -85,50 +85,7 @@ class SettingsView(BaseView):
 
         
 
-        # Lab Shared Library (per-lab storage root)
-        lab_group, lab_layout = self.create_form_section("Lab Shared Library", layout)
-
-        # Show currently selected lab
-        lab_info_row = self.create_form_row(lab_layout)
-        self.current_lab_label = self.create_form_label("Current Lab: (none)")
-        lab_info_row.addWidget(self.current_lab_label)
-
-        # Path editor for lab shared library
-        lab_path_row = self.create_form_row(lab_layout)
-        lab_path_label = self.create_form_label("Lab Library Root:")
-        self.lab_library_edit = QLineEdit()
-        self.lab_library_edit.setProperty("class", "mus1-text-input")
-        lab_browse_btn = QPushButton("Browse…")
-        lab_browse_btn.setProperty("class", "mus1-secondary-button")
-        lab_browse_btn.clicked.connect(self._browse_lab_library)
-        lab_path_row.addWidget(lab_path_label)
-        lab_path_row.addWidget(self.lab_library_edit, 1)
-        lab_path_row.addWidget(lab_browse_btn)
-
-        lab_help = QLabel("Designate a lab-specific shared library root. Lab members and lab workers will use this location for shared recordings and subjects.")
-        lab_help.setWordWrap(True)
-        lab_help.setStyleSheet("color: gray; font-size: 11px;")
-        lab_layout.addWidget(lab_help)
-
-        # Status (advisory reachability only)
-        mode_row = self.create_form_row(lab_layout)
-        mode_row.addWidget(self.create_form_label("Status:"))
-        self.lab_status_label = QLabel("unknown")
-        mode_row.addWidget(self.lab_status_label)
-
-        # Save lab library button
-        lab_button_row = self.create_button_row(lab_layout)
-        save_lab_btn = QPushButton("Save Lab Library")
-        save_lab_btn.setProperty("class", "mus1-primary-button")
-        save_lab_btn.clicked.connect(self.handle_save_lab_library)
-        lab_button_row.addWidget(save_lab_btn)
-
-        # Designate as Lab Shared Folder (validates and persists)
-        designate_row = self.create_form_row(lab_layout)
-        designate_btn = QPushButton("Designate as Lab Shared Folder")
-        designate_btn.setProperty("class", "mus1-primary-button")
-        designate_btn.clicked.connect(self.handle_designate_lab_shared_folder)
-        designate_row.addWidget(designate_btn)
+        # (Lab Shared Library UI moved to LabView → Lab Library tab)
 
         # Save button
         button_row = self.create_button_row(layout)
@@ -229,11 +186,7 @@ class SettingsView(BaseView):
 
     # Shared directory/global shared storage pickers removed in lab-centric model
 
-    def _browse_lab_library(self):
-        """Browse for lab shared library root directory."""
-        directory = QFileDialog.getExistingDirectory(self, "Select Lab Library Root")
-        if directory:
-            self.lab_library_edit.setText(directory)
+    # (Lab shared library browse moved to LabView)
 
     def handle_save_user_settings(self):
         """Save user settings."""
@@ -253,68 +206,9 @@ class SettingsView(BaseView):
         except Exception as e:
             self.log_bus.log(f"Error saving user settings: {e}", "error", "SettingsView")
 
-    def handle_designate_lab_shared_folder(self):
-        """Validate and set the current lab's shared folder (lab storage root)."""
-        try:
-            from pathlib import Path
-            from ..core.setup_service import get_setup_service
-            from ..core.config_manager import get_config
-            svc = get_setup_service()
+    # (Lab shared library designate moved to LabView)
 
-            lab_id = get_config("app.selected_lab_id", scope="user")
-            if not lab_id:
-                self.log_bus.log("No lab selected.", "warning", "SettingsView")
-                return
-
-            path_str = self.lab_library_edit.text().strip()
-            if not path_str:
-                self.log_bus.log("Please enter a lab shared folder path.", "warning", "SettingsView")
-                return
-
-            path = Path(path_str)
-            if not path.exists() or not path.is_dir():
-                self.log_bus.log(f"Invalid lab shared folder: {path}", "error", "SettingsView")
-                return
-
-            result = svc.set_lab_storage_root(lab_id, path)
-            if result.get("success"):
-                self._update_lab_status_badge(lab_id)
-                self.log_bus.log("Lab shared folder designated successfully.", "success", "SettingsView")
-            else:
-                self.log_bus.log(result.get("message", "Failed to designate lab shared folder", "SettingsView"), "error")
-        except Exception as e:
-            self.log_bus.log(f"Designate lab shared folder failed: {e}", "error", "SettingsView")
-
-    def handle_save_lab_library(self):
-        """Save per-lab shared library root (lab storage root)."""
-        try:
-            from pathlib import Path
-            from ..core.setup_service import get_setup_service
-            svc = get_setup_service()
-            # current lab
-            from ..core.config_manager import get_config
-            lab_id = get_config("app.selected_lab_id", scope="user")
-            if not lab_id:
-                self.log_bus.log("No lab selected.", "warning", "SettingsView")
-                return
-            path_str = self.lab_library_edit.text().strip()
-            if not path_str:
-                self.log_bus.log("Please enter a lab library path.", "warning", "SettingsView")
-                return
-            path = Path(path_str)
-            if not path.exists() or not path.is_dir():
-                self.log_bus.log(f"Invalid lab library path: {path}", "error", "SettingsView")
-                return
-            # Persist lab root
-            result = svc.set_lab_storage_root(lab_id, path)
-            if result.get("success"):
-                # Update status
-                self._update_lab_status_badge(lab_id)
-                self.log_bus.log("Lab library saved successfully.", "success", "SettingsView")
-            else:
-                self.log_bus.log(result.get("message", "Failed to save lab library", "SettingsView"), "error")
-        except Exception as e:
-            self.log_bus.log(f"Error saving lab library: {e}", "error", "SettingsView")
+    # (Lab shared library save moved to LabView)
 
 
     def refresh_workers_list(self):
@@ -353,24 +247,7 @@ class SettingsView(BaseView):
             item.setData(Qt.ItemDataRole.UserRole, w.get('name', ''))
             self.workers_list.addItem(item)
 
-    def handle_toggle_lab_sharing(self, enabled: bool):
-        """Handle toggling lab sharing on/off."""
-        try:
-            lab_id = getattr(self.window(), 'selected_lab_id', None)
-            if not lab_id:
-                self.log_bus.log("No lab selected. Select a lab first (User/Lab dialog).", "warning", "SettingsView")
-                return
-
-            # Update lab storage root configuration
-            # Note: The actual enable/disable is handled by presence of storage root
-            if enabled:
-                self.log_bus.log("Lab sharing enabled", "success", "SettingsView")
-            else:
-                self.log_bus.log("Lab sharing disabled", "info", "SettingsView")
-
-            self._refresh_lab_library_status()
-        except Exception as e:
-            self.log_bus.log(f"Error updating lab sharing: {e}", "error", "SettingsView")
+    # (Lab sharing toggle removed; managed by LabView status and root presence)
 
     def handle_add_worker(self):
         """Add a new worker."""
@@ -704,56 +581,6 @@ class SettingsView(BaseView):
         self.update_sort_mode_from_state()
         self.update_frame_rate_from_state()
         self.update_theme_dropdown_from_state()
-
         # Global shared storage deprecated — no refresh
 
-        # Refresh current lab and lab library path + mode + status
-        try:
-            from ..core.config_manager import get_config, get_lab_storage_root
-            lab_id = get_config("app.selected_lab_id", scope="user")
-            if lab_id and hasattr(self, 'lab_library_edit'):
-                lab_root = get_lab_storage_root(lab_id)
-                if lab_root:
-                    self.lab_library_edit.setText(str(lab_root))
-                self._update_lab_status_badge(lab_id)
-        except Exception as e:
-            self.log_bus.log(f"Error loading lab library path: {e}", "error", "SettingsView")
-
-    def _refresh_lab_library_status(self):
-        """Refresh label showing online/offline status for current lab library."""
-        try:
-            lab_id = getattr(self.window(), 'selected_lab_id', None)
-            if not lab_id or not hasattr(self, 'lab_library_status_label'):
-                return
-            from ..core.setup_service import get_setup_service
-            svc = get_setup_service()
-            st = svc.get_lab_library_online_status(lab_id)
-            if st.get("success"):
-                online = st.get("online")
-                path = st.get("path")
-                reason = st.get("reason")
-                txt = f"{ 'online' if online else 'offline' }"
-                if path:
-                    txt += f" — {path}"
-                if not online and reason:
-                    txt += f" — {reason}"
-                self.lab_library_status_label.setText(txt)
-            else:
-                self.lab_library_status_label.setText("unknown")
-        except Exception as e:
-            self.log_bus.log(f"Error refreshing lab library status: {e}", "error", "SettingsView")
-
-    def _update_lab_status_badge(self, lab_id: str):
-        try:
-            from ..core.config_manager import is_lab_storage_online
-            status = is_lab_storage_online(lab_id)
-            if hasattr(self, 'lab_status_label'):
-                if status.get("online"):
-                    self.lab_status_label.setText("online")
-                    self.lab_status_label.setStyleSheet("color: #2e7d32;")
-                else:
-                    reason = status.get("reason") or "offline"
-                    self.lab_status_label.setText(f"offline: {reason}")
-                    self.lab_status_label.setStyleSheet("color: #c62828;")
-        except Exception as e:
-            self.log_bus.log(f"Error updating lab status badge: {e}", "error", "SettingsView")
+    # (Lab library status helpers moved to LabView)

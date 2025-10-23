@@ -795,3 +795,18 @@ main_window.apply_theme()
 - Mixing DTO types during refactor → Mitigate by changing imports in one PR and running all functional tests.
 - Service call sites expecting dataclass instances → Update service parameters to accept Pydantic DTOs and adjust call sites.
 
+Clarified model: what lives where
+Lab Library (per lab)
+Treatments: name + category (“breeding” or “experimental”). No “culled” at treatment level; “culled” is a subject designation with an optional death_date.
+Genes: gene symbol/name + inheritance pattern; variants (WT/HET/KO) are implied by pattern. Colonies adopt genes-of-interest; subjects pick the variant.
+Objects, Bodyparts: lab-wide named lists for reuse across projects; can be adopted into projects.
+Colony Adoption (per colony)
+Treatments: adopt a subset from lab library to be available for colony tagging. These do not enforce who got what; they’re convenience lists for selection.
+Genes: adopt genes-of-interest from lab library. Subject-level genotype selection becomes a variant relative to adopted genes.
+Project Usage
+Projects read lab library as the primary source when lab_id is set.
+Project can keep local unique additions and later promote them back to lab or colony as appropriate.
+“Recent” convenience: track recently used (per project) to make setup fast without conflating it with adoption.
+Objects/Bodyparts
+Remain project-level for assignment and selectable in project UIs.
+Provide “save commonly used list to lab” to seed future projects.
