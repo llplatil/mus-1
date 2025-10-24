@@ -1,0 +1,7 @@
+id,colony_id,sex,birth_date,individual_genotype,individual_treatment,designation,notes
+169,ZN-1,F,2023-10-30,het,,BREEDING,
+180,ZN-1,M,2023-11-07,het,,BREEDING,
+248,ZN-2,F,2024-03-04,het,,BREEDING,
+336,ZN-2,M,2024-06-12,ko,,BREEDING,
+852,ZN-3,F,2025-03-17,ko,,CULLED,
+833,ZN-3,F,2025-02-25,het,,EXPERIMENTAL,example note

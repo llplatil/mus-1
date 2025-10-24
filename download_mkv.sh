@@ -9,13 +9,6 @@ SOURCE="drive:leftovers"
 # List of MKV files to download
 files=(
 
-    "215_t3.mkv"
-    "214_t3.mkv"
-    "214_t2.mkv"
-    "976f.mkv"
-    "OFP20_777_KO_F.mkv"
-    "OFP20_779_KO_F.mkv"
-    "OFP20_776_KO_F.mkv"
     "OFP20_799_Wt_M.mkv"
     "OFP20_798_Wt_M.mkv"
     "OFP20_790_Wt_F.mkv"

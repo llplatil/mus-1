@@ -43,7 +43,6 @@ logger = logging.getLogger(__name__)
 class MainWindow(QMainWindow):
     """
     # Broadcast context changes (user/lab/project)
-    contextChanged = Signal(object)
     The main QMainWindow of the MUS1 application, with tabs for different views.
     
     Responsibilities:
@@ -52,6 +51,8 @@ class MainWindow(QMainWindow):
     - Handles global menu actions
     - Manages project selection and view setup
     """
+    # Broadcast context changes (user/lab/project)
+    contextChanged = Signal(object)
     def __init__(self, project_path=None, selected_project=None, setup_completed=False, theme_manager: ThemeManager | None = None):
         super().__init__()
 

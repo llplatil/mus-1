@@ -6,6 +6,16 @@ QWidget {
   color: $TEXT_COLOR;
 }
 
+/* Helper text paragraphs under form sections */
+.mus1-help-text {
+  background: transparent;
+  color: $TEXT_COLOR;
+  font-size: 12px;
+  line-height: 1.35em;
+  margin-top: 4px;
+  margin-bottom: 6px;
+}
+
 /* Explicitly set transparent background for all labels */
 QLabel {
   background: transparent;

@@ -83,7 +83,8 @@ class LabView(BaseView):
                 # Sync Lab Library header immediately
                 try:
                     if hasattr(self, 'current_lab_label'):
-                        self.current_lab_label.setText(f"Current Lab: {main_window.selected_lab_id}")
+                        # Display-only field already provides the descriptor label
+                        self.current_lab_label.setText(f"{main_window.selected_lab_id}")
                     from ..core.config_manager import get_lab_storage_root
                     lab_root = get_lab_storage_root(main_window.selected_lab_id)
                     if lab_root and hasattr(self, 'lab_library_edit'):
@@ -244,25 +245,21 @@ class LabView(BaseView):
         # --- Lab Shared Library (moved from Settings) ---
         lab_group, lab_layout = self.create_form_section("Lab Shared Library", layout)
 
-        # Show currently selected lab
-        lab_info_row = self.create_form_row(lab_layout)
-        self.current_lab_label = self.create_form_label("Current Lab: (none)")
+        # Show currently selected lab (display-only field using standardized helper)
+        self.current_lab_label = QLabel("(none)")
         self.current_lab_label.setToolTip("The active lab context. Choose a lab in Lab Settings.")
-        lab_info_row.addWidget(self.current_lab_label)
+        self.create_form_display_field("Current Lab", self.current_lab_label, lab_layout)
 
-        # Path editor for lab shared library
-        lab_path_row = self.create_form_row(lab_layout)
-        lab_path_label = self.create_form_label("Lab Library Root:")
-        self.lab_library_edit = QLineEdit()
-        self.lab_library_edit.setProperty("class", "mus1-text-input")
-        self.lab_library_edit.setToolTip("Select the root folder used for this lab's shared library")
-        lab_browse_btn = QPushButton("Browse…")
-        lab_browse_btn.setProperty("class", "mus1-secondary-button")
-        lab_browse_btn.clicked.connect(self._browse_lab_library)
-        lab_browse_btn.setToolTip("Browse for the lab library root folder")
-        lab_path_row.addWidget(lab_path_label)
-        lab_path_row.addWidget(self.lab_library_edit, 1)
-        lab_path_row.addWidget(lab_browse_btn)
+        # Path editor for lab shared library (standardized helper with inline button)
+        _row, self.lab_library_edit, lab_browse_btn = self.create_form_field_with_button(
+            "Lab Library Root", parent_layout=lab_layout
+        )
+        if self.lab_library_edit:
+            self.lab_library_edit.setToolTip("Select the root folder used for this lab's shared library")
+        if lab_browse_btn:
+            lab_browse_btn.setProperty("class", "mus1-secondary-button")
+            lab_browse_btn.setToolTip("Browse for the lab library root folder")
+            lab_browse_btn.clicked.connect(self._browse_lab_library)
 
         lab_help = QLabel(
             "Set the lab's shared library root. This path is shared by lab members and workers for recordings and subjects.\n"
@@ -273,28 +270,24 @@ class LabView(BaseView):
         lab_help.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
         lab_layout.addWidget(lab_help)
 
-        # Status (advisory reachability only)
-        status_row = self.create_form_row(lab_layout)
-        status_row.addWidget(self.create_form_label("Status:"))
+        # Status (advisory reachability only) - standardized display field
         self.lab_status_label = QLabel("unknown")
         self.lab_status_label.setToolTip("Online/offline status of the configured lab library root")
-        status_row.addWidget(self.lab_status_label)
+        self.create_form_display_field("Status", self.lab_status_label, lab_layout)
 
-        # Save lab library button
+        # Actions (single standardized button row)
         lab_button_row = self.create_button_row(lab_layout)
         save_lab_btn = QPushButton("Save Root")
         save_lab_btn.setProperty("class", "mus1-primary-button")
-        save_lab_btn.clicked.connect(self.handle_save_lab_library)
         save_lab_btn.setToolTip("Save the selected path as this lab's library root")
+        save_lab_btn.clicked.connect(self.handle_save_lab_library)
         lab_button_row.addWidget(save_lab_btn)
 
-        # Designate as Lab Shared Folder (validates and persists)
-        designate_row = self.create_form_row(lab_layout)
         designate_btn = QPushButton("Configure as Network Accessible")
         designate_btn.setProperty("class", "mus1-primary-button")
-        designate_btn.clicked.connect(self.handle_designate_lab_shared_folder)
         designate_btn.setToolTip("Validate path and mark it as a shared/network-accessible lab library")
-        designate_row.addWidget(designate_btn)
+        designate_btn.clicked.connect(self.handle_designate_lab_shared_folder)
+        lab_button_row.addWidget(designate_btn)
 
         # --- Existing Lab Library lists ---
         # Recordings list
@@ -691,8 +684,8 @@ class LabView(BaseView):
                     lab_name = lab_data_obj.get('name')
             except Exception:
                 lab_name = None
-            header = f"Current Lab: {lab_name} ({lab_id})" if lab_name else f"Current Lab: {lab_id}"
-            self.current_lab_label.setText(header)
+            value = f"{lab_name} ({lab_id})" if lab_name else f"{lab_id}"
+            self.current_lab_label.setText(value)
             from ..core.config_manager import get_lab_storage_root
             lab_root = get_lab_storage_root(lab_id)
             if lab_root and hasattr(self, 'lab_library_edit'):
@@ -1067,8 +1060,8 @@ class LabView(BaseView):
             lab_id = lab_data.get('id')
             if hasattr(self, 'current_lab_label'):
                 lab_name = lab_data.get('name')
-                header = f"Current Lab: {lab_name} ({lab_id})" if lab_name else f"Current Lab: {lab_id}"
-                self.current_lab_label.setText(header)
+                value = f"{lab_name} ({lab_id})" if lab_name else f"{lab_id}"
+                self.current_lab_label.setText(value)
             from ..core.config_manager import get_lab_storage_root
             lab_root = get_lab_storage_root(lab_id)
             if lab_root and hasattr(self, 'lab_library_edit'):

@@ -117,7 +117,7 @@ class ProjectView(BaseView):
             main_window = self.window()
             if hasattr(main_window, 'service_factory') and main_window.service_factory and hasattr(main_window.service_factory, 'plugin_manager'):
                 self.plugin_manager = main_window.service_factory.plugin_manager
-                self.plugin_manager.discover_entry_points()
+                # Discovery now happens lazily inside PluginManager/GUI services; safe if zero plugins
                 self.populate_importer_plugins()
             else:
                 self.log_bus.log("No project loaded - plugin manager not available", "info", "ProjectView")

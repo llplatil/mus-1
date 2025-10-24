@@ -41,6 +41,7 @@ class SubjectView(BaseView):
         # Initialize GUI services
         self.gui_services = None  # Will be set when project is loaded
         self.subject_service = None  # Will be set when project is loaded
+        self.lab_service = None  # Global lab service for colony lookups
 
         # Setup navigation for this view with six pages
         self.setup_navigation(["Subject Overview", "Bodyparts", "Genotypes", "Treatments", "Objects", "Subjects"])
@@ -71,11 +72,23 @@ class SubjectView(BaseView):
         self.service_factory = services
         self.subject_service = services.create_subject_service()
         self.experiment_service = services.create_experiment_service()
+        # Lab service (global) for colony-level queries and lab library checks
+        try:
+            if hasattr(services, 'create_lab_service'):
+                self.lab_service = services.create_lab_service()
+        except Exception:
+            self.lab_service = None
         try:
             self.refresh_subject_list_display()
             self.refresh_overview()
             self.refresh_colony_combo()  # Refresh colonies now that services are available
             self.change_page(0)
+        except Exception:
+            pass
+        # Wire colony selection to update genotype/treatment dropdowns for add-subject
+        try:
+            if hasattr(self, 'add_subject_colony_combo'):
+                self.add_subject_colony_combo.currentIndexChanged.connect(self._on_add_subject_colony_changed)
         except Exception:
             pass
         # Subscribe to context changes to refresh when user/lab/project changes
@@ -93,6 +106,7 @@ class SubjectView(BaseView):
             self.refresh_overview()
         elif self.pages.currentIndex() == 5:  # Subjects page
             self.refresh_colony_combo()
+            self._update_add_to_colony_enabled()
 
     def setup_add_subject_page(self):
         """Setup the Subjects page (previously named Add Subject)."""
@@ -103,7 +117,7 @@ class SubjectView(BaseView):
         add_layout.setSpacing(self.SECTION_SPACING)
 
         # Create input form for adding a subject
-        self.subject_group = QGroupBox("Add Subject")
+        self.subject_group = QGroupBox("Add Subject to Project")
         self.subject_group.setProperty("class", "mus1-input-group")
         
         # Switch to a horizontal layout with two columns for inputs
@@ -208,10 +222,16 @@ class SubjectView(BaseView):
 
         # Colony management buttons
         colony_buttons_row = self.create_button_row(colony_layout)
-        add_to_colony_button = QPushButton("Add Selected Subject to Colony")
-        add_to_colony_button.setProperty("class", "mus1-primary-button")
-        add_to_colony_button.clicked.connect(self.handle_add_subject_to_colony)
-        colony_buttons_row.addWidget(add_to_colony_button)
+        self.add_to_colony_button = QPushButton("Add Selected Subject to Colony")
+        # Purple accent to distinguish the action
+        try:
+            self.add_to_colony_button.setStyleSheet("background-color: #8e44ad; color: white;")
+        except Exception:
+            pass
+        self.add_to_colony_button.setProperty("class", "mus1-primary-button")
+        self.add_to_colony_button.setToolTip("Enabled when a Lab Library root is configured for the selected lab")
+        self.add_to_colony_button.clicked.connect(self.handle_add_subject_to_colony)
+        colony_buttons_row.addWidget(self.add_to_colony_button)
 
         remove_from_colony_button = QPushButton("Remove Selected Subject from Colony")
         remove_from_colony_button.setProperty("class", "mus1-secondary-button")
@@ -285,7 +305,13 @@ class SubjectView(BaseView):
 
             # Refresh the displayed subject list on the same page
             self.refresh_subject_list_display()
-            self.log_bus.log(f"Subject '{subject_id}' added successfully", "success", "SubjectView")
+            self.log_bus.log(f"Subject '{subject_id}' added to project", "success", "SubjectView")
+            # If no colony selected, attempt to match existing subject in lab colonies and auto-associate
+            try:
+                if colony_id is None:
+                    self._match_subject_in_lab_and_associate(subject_id)
+            except Exception:
+                pass
         
         # Log the successful addition and show notification
         self.log_bus.log(f"Subject '{subject_id}' added successfully", "success", "SubjectView")
@@ -766,6 +792,23 @@ class SubjectView(BaseView):
             self.log_bus.log(f"Loaded {len(colonies)} colonies for lab {current_lab_id}", "info", "SubjectView")
         except Exception as e:
             self.log_bus.log(f"Error loading colonies for combo: {e}", "error", "SubjectView")
+        # Also refresh the add-subject colony combo list in case lab changed
+        try:
+            if hasattr(self, 'add_subject_colony_combo'):
+                self.add_subject_colony_combo.blockSignals(True)
+                self.add_subject_colony_combo.clear()
+                self.add_subject_colony_combo.addItem("No Colony", None)
+                colonies = self.subject_service.get_colonies_for_display(lab_id=current_lab_id)
+                for colony in colonies:
+                    display_text = f"{colony.get('name', 'Unknown')} ({colony.get('genotype_of_interest', 'N/A')} - {colony.get('background_strain', 'N/A')})"
+                    self.add_subject_colony_combo.addItem(display_text, colony.get('id'))
+                self.add_subject_colony_combo.blockSignals(False)
+                # Sync dependent dropdowns for genotype/treatment
+                self._on_add_subject_colony_changed(self.add_subject_colony_combo.currentIndex())
+        except Exception:
+            pass
+        # Update colony add button enablement
+        self._update_add_to_colony_enabled()
 
     def handle_add_subject_to_colony(self):
         """Add the selected subject to the selected colony."""
@@ -1587,40 +1630,143 @@ class SubjectView(BaseView):
         self.add_subject_colony_combo.clear()
         self.add_subject_colony_combo.addItem("No Colony", None)  # Always allow no colony
 
-        # Get available genotypes, treatments, and colonies from the service
         if self.subject_service:
-            available_genotypes = self.subject_service.get_available_genotypes()
-            available_treatments = self.subject_service.get_available_treatments()
-            available_colonies = self.subject_service.get_colonies_for_display()
-
-            # Populate genotype combo
-            if available_genotypes:
-                for genotype in available_genotypes:
-                    self.genotype_combo.addItem(genotype)
-            else:
-                # Add some defaults if none configured
-                default_genotypes = ["WT", "HET", "KO"]
-                for genotype in default_genotypes:
-                    self.genotype_combo.addItem(genotype)
-
-            # Populate treatment combo
-            if available_treatments:
-                for treatment in available_treatments:
-                    self.treatment_combo.addItem(treatment)
-            else:
-                self.treatment_combo.addItem("No treatments configured")
-
-            # Populate colony combo - get colonies for current lab
+            # Populate colony list first
             from ..core.config_manager import get_config
             current_lab_id = get_config("app.selected_lab_id", scope="user")
+            lab_colonies = []
             if current_lab_id:
-                lab_colonies = self.subject_service.get_colonies_for_display(lab_id=current_lab_id)
-                for colony in lab_colonies:
-                    display_text = f"{colony.get('name', 'Unknown')} ({colony.get('genotype_of_interest', 'N/A')} - {colony.get('background_strain', 'N/A')})"
-                    self.add_subject_colony_combo.addItem(display_text, colony.get('id'))
+                try:
+                    lab_colonies = self.subject_service.get_colonies_for_display(lab_id=current_lab_id)
+                except Exception:
+                    lab_colonies = []
+            for colony in lab_colonies:
+                display_text = f"{colony.get('name', 'Unknown')} ({colony.get('genotype_of_interest', 'N/A')} - {colony.get('background_strain', 'N/A')})"
+                self.add_subject_colony_combo.addItem(display_text, colony.get('id'))
+
+            # Determine current colony selection for colony-aware metadata
+            sel_colony_id = self.add_subject_colony_combo.currentData()
+            try:
+                if sel_colony_id:
+                    genotypes = self.subject_service.get_colony_genotypes(sel_colony_id)
+                    treatments = self.subject_service.get_colony_treatments(sel_colony_id)
+                else:
+                    genotypes = self.subject_service.get_available_genotypes()
+                    treatments = self.subject_service.get_available_treatments()
+            except Exception:
+                genotypes, treatments = [], []
+
+            # Genotypes
+            if genotypes:
+                for gt in genotypes:
+                    self.genotype_combo.addItem(gt)
+            else:
+                for gt in ["WT", "HET", "KO"]:
+                    self.genotype_combo.addItem(gt)
+
+            # Treatments
+            if treatments:
+                for tr in treatments:
+                    self.treatment_combo.addItem(tr)
+            else:
+                self.treatment_combo.addItem("No treatments configured")
         else:
-            # Fallback if service not available
             self.genotype_combo.addItem("Service unavailable")
             self.treatment_combo.addItem("Service unavailable")
             self.add_subject_colony_combo.addItem("Service unavailable")
+
+    def _on_add_subject_colony_changed(self, _index: int):
+        """Adjust genotype/treatment options when the add-subject colony changes."""
+        if not hasattr(self, 'genotype_combo') or not self.subject_service:
+            return
+        sel_colony_id = self.add_subject_colony_combo.currentData() if hasattr(self, 'add_subject_colony_combo') else None
+        # Rebuild genotypes based on colony
+        try:
+            self.genotype_combo.clear()
+            if sel_colony_id:
+                genotypes = self.subject_service.get_colony_genotypes(sel_colony_id)
+            else:
+                genotypes = self.subject_service.get_available_genotypes()
+            if genotypes:
+                for gt in genotypes:
+                    self.genotype_combo.addItem(gt)
+            else:
+                for gt in ["WT", "HET", "KO"]:
+                    self.genotype_combo.addItem(gt)
+        except Exception:
+            pass
+        # Rebuild treatments similarly (colony-aware when available)
+        try:
+            self.treatment_combo.clear()
+            if sel_colony_id:
+                treatments = self.subject_service.get_colony_treatments(sel_colony_id)
+            else:
+                treatments = self.subject_service.get_available_treatments()
+            if treatments:
+                for tr in treatments:
+                    self.treatment_combo.addItem(tr)
+            else:
+                self.treatment_combo.addItem("No treatments configured")
+        except Exception:
+            pass
+
+    def _update_add_to_colony_enabled(self):
+        """Enable the 'Add Selected Subject to Colony' action only when lab library is configured."""
+        try:
+            if not hasattr(self, 'add_to_colony_button'):
+                return
+            from ..core.config_manager import get_config, get_lab_storage_root
+            current_lab_id = get_config("app.selected_lab_id", scope="user")
+            enabled = False
+            if current_lab_id:
+                try:
+                    lab_root = get_lab_storage_root(current_lab_id)
+                    enabled = bool(lab_root)
+                except Exception:
+                    enabled = False
+            self.add_to_colony_button.setEnabled(enabled)
+        except Exception:
+            pass
+
+    def _match_subject_in_lab_and_associate(self, subject_id: str):
+        """If subject exists in any colony of current lab, associate and notify."""
+        try:
+            from ..core.config_manager import get_config
+            lab_id = get_config("app.selected_lab_id", scope="user")
+            if not lab_id or not self.lab_service:
+                return
+            colonies = self.lab_service.get_lab_colonies(lab_id)
+            for c in colonies:
+                col_id = c.get('id')
+                try:
+                    subjects = self.lab_service.get_colony_subjects(col_id)
+                except Exception:
+                    continue
+                if any((s.get('id') == subject_id) for s in subjects):
+                    if self.subject_service.update_subject_colony(subject_id, col_id):
+                        self.log_bus.log(
+                            f"Subject '{subject_id}' matches colony '{c.get('name')}' and was associated automatically",
+                            "success",
+                            "SubjectView"
+                        )
+                        # Also surface in navigation pane via log bus; already handled
+                        # Refresh displays
+                        self.refresh_subject_list_display()
+                        if hasattr(self, 'refresh_overview'):
+                            self.refresh_overview()
+                    else:
+                        self.log_bus.log(
+                            f"Subject '{subject_id}' exists in lab colony but association failed",
+                            "warning",
+                            "SubjectView"
+                        )
+                    return
+            # If no match found, inform user
+            self.log_bus.log(
+                f"Subject '{subject_id}' added to project; no matching subject found in lab colonies",
+                "info",
+                "SubjectView"
+            )
+        except Exception:
+            pass
 

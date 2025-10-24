@@ -491,11 +491,9 @@ Many of the claimed fixes are not actually working due to critical bugs:
 - **Status**: **Needs Verification**. Database schema exists but GUI integration status unclear.
 - **Action Needed**: Verify if lab-project registration works in practice.
 
-#### **❌ MISSING: Experiment-Video Repository Methods**
-- **Problem**: Repository layer lacks experiment-video relationship methods.
-- **Impact**: GUIPluginService cannot access video data for experiments through clean repository pattern.
-- **Workaround**: ProjectManagerClean handles experiment-video associations directly.
-- **Status**: **Missing Implementation**. Violates repository pattern completeness for experiment-video associations.
+#### **✅ WORKING: Experiment-Video Repository Methods**
+- **Status**: Implemented. Repository APIs for experiment↔video associations exist and are used via `ProjectManagerClean`.
+- **Validation**: `ExperimentRepository.add_video_to_experiment`, `remove_video_from_experiment`, and `get_videos_for_experiment` are available and exercised by GUI flows.
 
 ### ✅/🔄 **User Profile Single Source of Truth**
 - Implemented: Only `user.id` is persisted in ConfigManager; user fields live in SQL. A one-time migration from legacy keys to SQL is invoked at startup.
@@ -734,8 +732,8 @@ class ProjectServiceFactory:
 
 ### Ambiguities and Unnecessary Separation to Address
 
-- **Global shared storage surfaces**: CLI flags (`--use-shared`, `--shared-root`), Settings UI group, and `ProjectModel.shared_root` field remain. These should be removed in favor of per-lab roots.
-- **Project selection dialog root helper**: `ProjectDiscoveryService.get_project_root_for_dialog(...)` has an incomplete `default_dir` branch; ensure it returns the user default dir when no lab root is present and that it’s a proper method on the service.
+- **Global shared storage surfaces**: GUI no longer surfaces a global shared storage; per-lab roots are authoritative in UI. CLI retains `--use-shared/--shared-root` for worker/SSH workflows. The `ProjectModel.shared_root` field remains for CLI/dev compatibility and migration.
+- **Project selection dialog root helper**: `ProjectDiscoveryService.get_project_root_for_dialog(...)` returns lab root when present; otherwise the user default directory. GUI uses this helper (no global shared root references).
 - **GUI vs Service layering**: Some GUI code still reads/writes config directly for storage roots; route these through `SetupService` to keep the presentation layer thin.
 - **Worker registration visibility**: Worker registration/management is not clearly surfaced in lab settings; align UI and services to treat workers as lab-scoped resources.
 

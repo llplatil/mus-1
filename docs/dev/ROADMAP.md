@@ -29,7 +29,7 @@ This roadmap shows current status and planned development priorities for the sim
 1. **Service Pattern Standardization**: Implement ProjectServiceFactory and standardize all service instantiation ✅ **IN PROGRESS**
 2. **Plugin GUI Integration**: Connect PluginManagerClean to ExperimentView.set_plugin_manager() ✅ **DONE**
 3. **Metadata Database Persistence**: Move objects/bodyparts/treatments/genotypes from JSON config to database tables ✅ **DONE**
-4. **Modal Popup Replacement**: Replace QMessageBox with navigation log/status messages ✅ **DONE**
+4. **Modal Popup Replacement**: Replace QMessageBox with navigation log/status messages 🔄 **IN PROGRESS**
 5. **Data Migration**: Implement migration path for existing users to simplified model
 
 ### Medium Priority
@@ -98,34 +98,33 @@ This roadmap shows current status and planned development priorities for the sim
   - In `src/mus1/main.py`, when configuring logs, prefer configured `get_config("mus1.root_path")` when present; fall back to `resolve_mus1_root()` only if unset — 🔄 pending
   - Audit imports using `resolve_mus1_root()` and switch to configuration value post-setup where appropriate — 🔄 pending
 
-### High Priority (New): Storage Model Cleanup, Discovery Fixes, DTO Consolidation, and Context Sync
+### High Priority (New): Storage Model Cleanup, DTO Consolidation, and Context Sync
 
-- **Problem A (Storage Model)**: Global `storage.shared_root` and related UI/CLI surfaces persist, conflicting with the per-lab storage model.
-- **Problem B (Discovery/Dialog)**: `ProjectDiscoveryService.get_project_root_for_dialog(...)` has an incomplete default-dir branch; GUI still references global shared storage.
+- **Problem A (Storage Model)**: Global `storage.shared_root` is deprecated in GUI; CLI still exposes shared-root flags for worker/SSH workflows.
+- **Problem B (Discovery/Dialog)**: (Resolved) `ProjectDiscoveryService.get_project_root_for_dialog(...)` returns lab root when present, else user default dir.
 - **Problem C (DTOs/Validators)**: Duplicate DTOs/validators across layers cause drift and maintenance overhead.
 - **Problem D (Context Sync)**: Views do not consistently refresh when user/lab/project changes.
 
 - **Decision/Approach**:
-  - Storage: Deprecate global `storage.shared_root`; use `get_lab_storage_root(lab_id)` for lab projects and `get_config("user.default_projects_dir")` for local projects. Remove CLI flags `--use-shared`/`--shared-root` and Settings UI "Shared Storage" group.
-  - Discovery/Dialog: Ensure dialog root helper returns lab root when present, otherwise user default dir. Remove any global shared root references.
+  - Storage: GUI uses per-lab storage roots (`get_lab_storage_root(lab_id)`) and local user directory (`get_config("user.default_projects_dir")`); CLI retains `--use-shared/--shared-root` to support SSH/worker tasks.
+  - Discovery/Dialog: Dialog helper complete; GUI relies on it and does not reference a global shared root.
   - DTOs/Validators: Single DTO source in `metadata.py` (Pydantic); centralize validation; repositories own persistence transformations. Treat `ProjectConfig` as read/view model only.
   - Context Sync: Add `MainWindow.contextChanged` signal; have `ProjectView`, `SubjectView`, `ExperimentView`, and `SettingsView` (workers) refresh on signal.
 
 - **Tasks**:
-  1. Remove global shared storage surfaces
-     - Delete Settings UI "Shared Storage" group; surface only per-lab root
-     - Remove `--use-shared`/`--shared-root` flags from `simple_cli.py` and related config writes
-     - Drop `ProjectModel.shared_root` if unused; migrate data or mark ignored
-  2. Fix discovery/dialog helper
-     - Implement complete default-dir branch in `ProjectDiscoveryService.get_project_root_for_dialog(...)`
-     - Ensure GUI uses discovery service and lab roots only
+  1. GUI storage surfaces
+     - Delete Settings UI "Shared Storage" group; surface only per-lab root in GUI
+     - Keep CLI flags `--use-shared/--shared-root` and clarify help text as worker/SSH-oriented
+     - Keep `ProjectModel.shared_root` for CLI/dev compatibility; mark as deprecated in GUI context
+  2. Discovery/dialog helper
+     - (Done) `ProjectDiscoveryService.get_project_root_for_dialog(...)` returns lab root or user default dir
   3. Consolidate DTOs/validators
      - Ensure services import `LabDTO`/`ColonyDTO` from `metadata.py` exclusively
      - Convert setup-wizard dataclass DTOs to Pydantic or document as view-only
      - Remove duplicated `__post_init__` validations where Pydantic covers rules
   4. Context Sync
-     - Implement `contextChanged` (done)
-     - Wire `ProjectView`, `SubjectView`, `ExperimentView`, and `SettingsView` to refresh on signal (done)
+     - Define `MainWindow.contextChanged` as a real `Signal(object)` (missing)
+     - Views (`ProjectView`, `SubjectView`, `ExperimentView`, `SettingsView`) already subscribe; confirm after signal is declared
   5. CI & audits
      - Add lints for banned `storage.shared_root` usage in new code
      - Run `.audit` checks and remove dead code
@@ -207,9 +206,9 @@ This roadmap shows current status and planned development priorities for the sim
 - `src/mus1/gui/setup_wizard.py`: **✅ COMPLETED** - Workflow with ConfigManager re-initialization
 
 ### 🔄 **PENDING - High Priority**
-- `src/mus1/core/`: Implement ProjectServiceFactory for standardized service instantiation — **ARCHITECTURAL**
-- `src/mus1/gui/main_window.py`: Connect PluginManagerClean to ExperimentView.set_plugin_manager() — **CRITICAL**
-- `src/mus1/core/repository.py`: Add experiment-video relationship repository methods — **MISSING**
+- `src/mus1/core/`: Implement ProjectServiceFactory for standardized service instantiation — **ARCHITECTURAL** (factory exists; continue adoption)
+- `src/mus1/gui/main_window.py`: Ensure PluginManagerClean is wired (already done via `ProjectServiceFactory`)
+- `src/mus1/core/repository.py`: Experiment-video relationship repository methods — **DONE** (update docs; keep improving callers)
 - `src/mus1/core/schema.py`: Add metadata tables (objects, bodyparts, treatments, genotypes) for database persistence — **DESIGN DECISION**
 
 ### 🔄 **PENDING - Medium Priority**
@@ -250,9 +249,10 @@ This roadmap shows current status and planned development priorities for the sim
 - **Domain Models**: Proper DTOs and enums throughout
 
 ### 🚨 **Critical Gaps Identified**
-1. **Plugin GUI Integration**: PluginManagerClean exists but ExperimentView never receives plugin instances
-2. **Metadata Persistence**: Objects/bodyparts/treatments/genotypes stored in JSON config, not database
-3. **Experiment-Video Repository**: Missing repository methods for experiment-video associations
+1. **Modal Dialogs**: Replace remaining QMessageBox usages with navigation log/status in development flows
+2. **Context Sync**: Define `MainWindow.contextChanged` signal (views already subscribe)
+3. **Scan Targets**: Reintroduce `ScanTargetRepository` surface in `RepositoryFactory` and wire GUI under Lab manager for scan/import with optional move
+4. **Video Listing**: Add `VideoRepository.find_all()` or update `ProjectManagerClean.list_videos()` to not call a missing method
 
 ### 📊 **Architecture Health Assessment**
 - **Overall Status**: **EXCELLENT** - Core architecture solid and working

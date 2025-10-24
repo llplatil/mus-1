@@ -795,7 +795,7 @@ class ExperimentView(BaseView):
                 if hasattr(self, 'batch_experiment_grid'):
                     self.batch_experiment_grid.set_columns(columns)
                     self.batch_experiment_grid.populate_data(grid_data, columns)
-                    self.log_bus.log(f"Populated experiment grid with {len(grid_data, "info", "ExperimentView")} experiments")
+                    self.log_bus.log(f"Populated experiment grid with {len(grid_data)} experiments", "info", "ExperimentView")
             else:
                 if hasattr(self, 'batch_experiment_grid'):
                     self.batch_experiment_grid.set_columns(["Status"])
@@ -824,8 +824,7 @@ class ExperimentView(BaseView):
     def handle_create_batch(self):
         """Create a new batch with the selected experiments."""
         if not self.window().project_manager:
-            self.log_bus.log("ProjectManager not available for creating batch.", "error", "ExperimentView")
-            QMessageBox.critical(self, "Error", "Core managers not available. Cannot create batch.")
+            self.log_bus.log("Core managers not available. Cannot create batch.", "error", "ExperimentView")
             return
 
         # Get batch info from UI
@@ -835,19 +834,19 @@ class ExperimentView(BaseView):
 
         # Validate required Batch ID
         if not batch_id:
-            QMessageBox.warning(self, "Validation Error", "Batch ID is required.")
+            self.log_bus.log("Batch ID is required.", "warning", "ExperimentView")
             return
 
         # Get selected experiments directly from the grid component
         selected_experiment_ids = self.batch_experiment_grid.get_selected_items()
 
         if not selected_experiment_ids:
-            QMessageBox.warning(self, "Validation Error", "Please select at least one experiment to include in the batch.")
+            self.log_bus.log("Please select at least one experiment to include in the batch.", "warning", "ExperimentView")
             return
 
         # Create the batch via ProjectManager
         try:
-            self.log_bus.log(f"Attempting to create batch '{batch_id}' with {len(selected_experiment_ids, "info", "ExperimentView")} experiments.")
+            self.log_bus.log(f"Attempting to create batch '{batch_id}' with {len(selected_experiment_ids)} experiments.", "info", "ExperimentView")
             # Basic selection criteria (can be expanded later if needed)
             selection_criteria = {"manual_selection": True}
             if batch_name:
@@ -880,12 +879,10 @@ class ExperimentView(BaseView):
             self.update_experiment_grid() # This re-populates and inherently clears checkboxes
 
         except ValueError as ve: # Catch specific errors like duplicate batch ID
-             self.log_bus.log(f"Failed to create batch '{batch_id}': {ve}", "error", "ExperimentView") # Log concisely
-             QMessageBox.critical(self, "Batch Creation Error", f"Failed to create batch:\n{ve}")
+             self.log_bus.log(f"Failed to create batch '{batch_id}': {ve}", "error", "ExperimentView")
              self.batch_notification_label.setText("Batch creation failed.")
         except Exception as e: # Catch unexpected errors
-            self.log_bus.log(f"Unexpected error creating batch '{batch_id}': {e}", "error", "ExperimentView", "ExperimentView")
-            QMessageBox.critical(self, "Error", f"An unexpected error occurred during batch creation:\n{str(e)}")
+            self.log_bus.log(f"Unexpected error creating batch '{batch_id}': {e}", "error", "ExperimentView")
             self.batch_notification_label.setText("Batch creation failed.")
 
     def closeEvent(self, event):
@@ -909,109 +906,8 @@ class ExperimentView(BaseView):
                 self.update_plugin_fields()
             except Exception as e:
                 if hasattr(self, 'navigation_pane'):
-                    self.log_bus.log(f"Error updating plugin fields: {str(e, "ExperimentView")}", "warning")
+                    self.log_bus.log(f"Error updating plugin fields: {e}", "warning", "ExperimentView")
         
-    def _discover_plugins(self):
-        """
-        Discovers and updates the available data handler and analysis plugins
-        based on the selected experiment type.
-        Finds handlers based on 'load_tracking_data' capability.
-        Finds analysis plugins by listing those with capabilities beyond loading data
-        and matching the selected experiment type.
-        """
-        # self.log_bus.log("Discovering plugins...", "info", "ExperimentView") # Commented out
-        # Ensure plugin_manager is available
-        if not self.plugin_manager:
-            self.log_bus.log("Plugin manager not available for discovery.", "warning", "ExperimentView")
-            # Plugin system now integrated - clear lists if no plugins
-            try:
-                if hasattr(self, 'importer_plugin_list') and self.importer_plugin_list:
-                    self.importer_plugin_list.clear()
-            except RuntimeError:
-                pass
-            try:
-                if hasattr(self, 'analysis_plugin_list') and self.analysis_plugin_list:
-                    self.analysis_plugin_list.clear()
-            except RuntimeError:
-                pass
-            try:
-                if hasattr(self, 'exporter_plugin_list') and self.exporter_plugin_list:
-                    self.exporter_plugin_list.clear()
-            except RuntimeError:
-                pass
-            self.clear_plugin_fields()
-            return
-
-        # Clear previous entries and parameter fields
-        try:
-            if hasattr(self, 'importer_plugin_list') and self.importer_plugin_list:
-                self.importer_plugin_list.clear()
-        except RuntimeError:
-            pass
-        try:
-            if hasattr(self, 'analysis_plugin_list') and self.analysis_plugin_list:
-                self.analysis_plugin_list.clear()
-        except RuntimeError:
-            pass
-        try:
-            if hasattr(self, 'exporter_plugin_list') and self.exporter_plugin_list:
-                self.exporter_plugin_list.clear()
-        except RuntimeError:
-            pass
-        self.clear_plugin_fields()
-
-        # Get the selected experiment type
-        selected_type = self.experiment_type_combo.currentData()
-        if not selected_type:
-            # self.log_bus.log("No experiment type selected, skipping plugin discovery.", "info", "ExperimentView") # Commented out
-            return # No type selected, nothing to discover
-
-        # self.log_bus.log(f"Discovering plugins for experiment type: {selected_type}", "info", "ExperimentView") # Commented out
-
-        # Update subtype list based on selected type
-        # Plugin system now integrated
-        # For now, disable subtypes
-        self.experiment_subtype_combo.clear()
-        self.experiment_subtype_combo.setEnabled(False)
-        self.experiment_subtype_combo.addItem("(none)", None)
-
-        # Fetch plugin groups from core (PluginManager owns selection logic)
-        importer_plugins = self.plugin_service.get_importer_plugins()
-        analysis_plugins = self.plugin_service.get_analysis_plugins_for_type(selected_type)
-        exporter_plugins = self.plugin_service.get_exporter_plugins() if hasattr(self, 'exporter_plugin_list') else []
-
-        # Populate Data Handler/Importer List (Plugin system now integrated)
-        try:
-            if hasattr(self, 'importer_plugin_list') and self.importer_plugin_list:
-                for plugin in importer_plugins:
-                    item = QListWidgetItem(plugin.plugin_self_metadata().name)
-                    item.setData(Qt.ItemDataRole.UserRole, plugin) # Store the actual plugin object
-                    self.importer_plugin_list.addItem(item)
-        except RuntimeError:
-            pass
-
-        # Populate Analysis Plugin List
-        try:
-            if hasattr(self, 'analysis_plugin_list') and self.analysis_plugin_list:
-                for plugin in analysis_plugins:
-                    item = QListWidgetItem(plugin.plugin_self_metadata().name)
-                    item.setData(Qt.ItemDataRole.UserRole, plugin) # Store the actual plugin object
-                    self.analysis_plugin_list.addItem(item)
-        except RuntimeError:
-            pass
-
-        # Populate Exporter Plugin List (if present)
-        try:
-            if hasattr(self, 'exporter_plugin_list') and self.exporter_plugin_list:
-                for plugin in exporter_plugins:
-                    item = QListWidgetItem(plugin.plugin_self_metadata().name)
-                    item.setData(Qt.ItemDataRole.UserRole, plugin)
-                    self.exporter_plugin_list.addItem(item)
-        except RuntimeError:
-            pass
-
-        # Update button state based on whether plugins are now available etc.
-        self._update_add_button_state()
 
     def _get_selected_plugins(self) -> List['BasePlugin']: # Forward reference if BasePlugin not imported yet
         """Helper to get the plugin objects currently selected in the UI lists."""
@@ -1358,13 +1254,13 @@ class ExperimentView(BaseView):
 
         # Validate ProjectManager availability
         if not self.window().project_manager:
-            self.show_error_message("Internal Error", "Project Manager not initialized.")
+            self.log_bus.log("Project Manager not initialized.", "error", "ExperimentView")
             return
 
         # Validate selection
         current_item = self.experimentListWidget.currentItem()
         if current_item is None:
-            QMessageBox.warning(self, "No Experiment Selected", "Please select an experiment from the list first.")
+            self.log_bus.log("Please select an experiment from the list first.", "warning", "ExperimentView")
             return
 
         # Prefer the ID stored in UserRole for reliability
@@ -1395,12 +1291,11 @@ class ExperimentView(BaseView):
             )
 
             if success:
-                QMessageBox.information(self, "Success", f"Video linked to experiment '{exp_id}'.")
+                self.log_bus.log(f"Video linked to experiment '{exp_id}'.", "success", "ExperimentView")
             else:
-                QMessageBox.warning(self, "Warning", f"Video was added to project but could not be linked to experiment '{exp_id}'.")
+                self.log_bus.log(f"Video was added to project but could not be linked to experiment '{exp_id}'.", "warning", "ExperimentView")
         except Exception as e:
-            self.log_bus.log(f"Failed to link video to experiment {exp_id}: {e}", "error", "ExperimentView", "ExperimentView")
-            QMessageBox.critical(self, "Error", f"Failed to link video:\n{e}")
+            self.log_bus.log(f"Failed to link video to experiment {exp_id}: {e}", "error", "ExperimentView")
 
         # Refresh info
         self._update_recording_info(exp_id)
@@ -1580,7 +1475,7 @@ class ExperimentView(BaseView):
     def _multi_save_experiments(self):
         """Iterate rows and save experiments via ProjectManager."""
         # Multi-save experiments not yet implemented in clean architecture
-        QMessageBox.information(self, "Not Implemented", "Multi-save experiments not yet implemented in clean architecture.")
+        self.log_bus.log("Multi-save experiments not yet implemented in clean architecture.", "info", "ExperimentView")
         return
 
     def on_experiment_selection_changed(self, exp_id: str, is_selected: bool):
@@ -1622,7 +1517,7 @@ class ExperimentView(BaseView):
 
         # Create the batch via ProjectManager
         try:
-            self.log_bus.log(f"Attempting to create batch '{batch_id}' with {len(selected_experiment_ids, "info", "ExperimentView")} experiments.")
+            self.log_bus.log(f"Attempting to create batch '{batch_id}' with {len(selected_experiment_ids)} experiments.", "info", "ExperimentView")
             # Basic selection criteria (can be expanded later if needed)
             selection_criteria = {"manual_selection": True}
             if batch_name:
@@ -1675,11 +1570,8 @@ class ExperimentView(BaseView):
 
     def _discover_plugins(self):
         """
-        Discovers and updates the available data handler and analysis plugins
-        based on the selected experiment type.
-        Finds handlers based on 'load_tracking_data' capability.
-        Finds analysis plugins by listing those with capabilities beyond loading data
-        and matching the selected experiment type.
+        Discover and update available plugins for the selected experiment type using GUIPluginService.
+        Safe when zero plugins are installed.
         """
         # Clear previous entries and parameter fields
         try:
@@ -1699,62 +1591,59 @@ class ExperimentView(BaseView):
             pass
         self.clear_plugin_fields()
 
-        # Get the selected experiment type
+        # Selected experiment type
         selected_type = self.experiment_type_combo.currentData()
         if not selected_type:
-            return # No type selected, nothing to discover
+            return
 
-        # Discover plugins using plugin service
+        # Use plugin service; if unavailable, skip silently
         if not self.plugin_service:
             self.log_bus.log("Plugin service not available for discovery.", "warning", "ExperimentView")
             return
 
-        # Update subtype list based on selected type
-        # Plugin system now integrated
-        # For now, disable subtypes
+        # Disable subtypes for now
         self.experiment_subtype_combo.clear()
         self.experiment_subtype_combo.setEnabled(False)
         self.experiment_subtype_combo.addItem("(none)", None)
 
-        # Fetch plugin groups from core (PluginManager owns selection logic)
+        # Fetch plugin groups
         importer_plugins = self.plugin_service.get_importer_plugins()
         analysis_plugins = self.plugin_service.get_analysis_plugins_for_type(selected_type)
         exporter_plugins = self.plugin_service.get_exporter_plugins() if hasattr(self, 'exporter_plugin_list') else []
 
-        # Populate Importer List
+        # Populate importer list
         try:
             if hasattr(self, 'importer_plugin_list') and self.importer_plugin_list:
                 for plugin_data in importer_plugins:
                     item = QListWidgetItem(plugin_data['name'])
-                    item.setData(Qt.ItemDataRole.UserRole, plugin_data) # Store the plugin data dict
+                    item.setData(Qt.ItemDataRole.UserRole, plugin_data)
                     self.importer_plugin_list.addItem(item)
         except RuntimeError:
             pass
 
-        # Populate Analysis Plugin List
+        # Populate analysis list
         try:
             if hasattr(self, 'analysis_plugin_list') and self.analysis_plugin_list:
                 for plugin_data in analysis_plugins:
                     item = QListWidgetItem(plugin_data['name'])
-                    item.setData(Qt.ItemDataRole.UserRole, plugin_data) # Store the plugin data dict
+                    item.setData(Qt.ItemDataRole.UserRole, plugin_data)
                     self.analysis_plugin_list.addItem(item)
         except RuntimeError:
             pass
 
-        # Populate Exporter Plugin List (if present)
+        # Populate exporter list
         try:
             if hasattr(self, 'exporter_plugin_list') and self.exporter_plugin_list:
                 for plugin_data in exporter_plugins:
                     item = QListWidgetItem(plugin_data['name'])
-                    item.setData(Qt.ItemDataRole.UserRole, plugin_data) # Store the plugin data dict
+                    item.setData(Qt.ItemDataRole.UserRole, plugin_data)
                     self.exporter_plugin_list.addItem(item)
         except RuntimeError:
             pass
 
-        # Update button state based on whether plugins are now available etc.
         self._update_add_button_state()
 
     def show_error_message(self, title: str, message: str):
-        """Show an error message dialog."""
-        QMessageBox.critical(self, title, message)
+        """Log an error message via navigation log (no modal dialogs in dev)."""
+        self.log_bus.log(f"{title}: {message}", "error", "ExperimentView")
 
