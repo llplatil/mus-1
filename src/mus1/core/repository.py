@@ -4,14 +4,16 @@ Repository layer for clean data access patterns.
 This provides a clean abstraction over the SQLite database for domain operations.
 """
 
+import json
 from typing import List, Optional, Dict, Any
 from pathlib import Path
 from sqlalchemy.orm import Session
 from sqlalchemy import text
-from .metadata import Subject, Experiment, VideoFile, Worker, ScanTarget
+from .metadata import Subject, Experiment, VideoFile, Worker, ScanTarget, AssaySession, AssayMeasurement
 from .schema import (
     Database, SubjectModel, ExperimentModel, VideoModel,
     WorkerModel, ScanTargetModel, ProjectModel, ColonyModel,
+    AssaySessionModel, AssayMeasurementModel,
     TrackedObjectModel, BodyPartModel, TreatmentModel, GenotypeModel,
     subject_to_model, model_to_subject,
     experiment_to_model, model_to_experiment,
@@ -351,8 +353,10 @@ class VideoRepository(BaseRepository):
                     date_added=db_video.date_added
                 )
 
-    def find_by_hash(self, hash_value: str) -> Optional[VideoFile]:
+    def find_by_hash(self, hash_value: Optional[str]) -> Optional[VideoFile]:
         """Find video by hash."""
+        if not hash_value:
+            return None
         with self._get_session() as session:
             db_video = session.query(VideoModel).filter(
                 VideoModel.hash == hash_value
@@ -393,7 +397,7 @@ class VideoRepository(BaseRepository):
             duplicates = session.query(
                 VideoModel.hash,
                 func.count(VideoModel.id).label('count')
-            ).group_by(VideoModel.hash).having(func.count(VideoModel.id) > 1).all()
+            ).filter(VideoModel.hash.isnot(None)).group_by(VideoModel.hash).having(func.count(VideoModel.id) > 1).all()
 
             result = []
             for hash_val, count in duplicates:
@@ -410,6 +414,46 @@ class VideoRepository(BaseRepository):
                     } for v in videos]
                 })
             return result
+
+
+class AssaySessionRepository(BaseRepository):
+    """Repository for assay session operations."""
+
+    def create(self, assay: AssaySession) -> int:
+        """Insert an assay session and return its integer ID."""
+        with self._get_session() as session:
+            row = AssaySessionModel(
+                assay_type=assay.assay_type,
+                subject_id=assay.subject_id,
+                occurred_at=assay.occurred_at,
+                experiment_id=assay.experiment_id,
+                source_path=str(assay.source_path) if assay.source_path else None,
+                meta_json=json.dumps(assay.meta or {}),
+                created_at=assay.date_added,
+            )
+            session.add(row)
+            session.commit()
+            return int(row.id)
+
+
+class AssayMeasurementRepository(BaseRepository):
+    """Repository for assay measurement operations."""
+
+    def add(self, m: AssayMeasurement) -> int:
+        """Insert a measurement and return its integer ID."""
+        with self._get_session() as session:
+            row = AssayMeasurementModel(
+                assay_session_id=m.assay_session_id,
+                metric=m.metric,
+                value=m.value,
+                units=m.units,
+                qc_flags_json=json.dumps(m.qc_flags or []),
+                details_json=json.dumps(m.details or {}),
+                created_at=m.date_added,
+            )
+            session.add(row)
+            session.commit()
+            return int(row.id)
 
 class WorkerRepository(BaseRepository):
     """Repository for worker operations."""
@@ -828,6 +872,9 @@ class RepositoryFactory:
         self._videos: Optional[VideoRepository] = None
         self._workers: Optional[WorkerRepository] = None
 # Removed: _scan_targets (part of scan target functionality)
+        # Dataset-first extensions
+        self._assay_sessions: Optional[AssaySessionRepository] = None
+        self._assay_measurements: Optional[AssayMeasurementRepository] = None
         # Metadata repositories
         self._tracked_objects: Optional[TrackedObjectRepository] = None
         self._body_parts: Optional[BodyPartRepository] = None
@@ -875,6 +922,18 @@ class RepositoryFactory:
         if self._workers is None:
             self._workers = WorkerRepository(self.db)
         return self._workers
+
+    @property
+    def assay_sessions(self) -> AssaySessionRepository:
+        if self._assay_sessions is None:
+            self._assay_sessions = AssaySessionRepository(self.db)
+        return self._assay_sessions
+
+    @property
+    def assay_measurements(self) -> AssayMeasurementRepository:
+        if self._assay_measurements is None:
+            self._assay_measurements = AssayMeasurementRepository(self.db)
+        return self._assay_measurements
 
     @property
 # Removed: scan_targets() method (part of scan target functionality)

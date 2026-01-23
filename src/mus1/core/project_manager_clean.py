@@ -251,11 +251,12 @@ class ProjectManagerClean:
 
     def add_video(self, video: VideoFile) -> VideoFile:
         """Add a video file to the project."""
-        # Check for duplicates
-        existing = self.repos.videos.find_by_hash(video.hash)
-        if existing:
-            logger.warning(f"Video with hash {video.hash} already exists: {existing.path}")
-            return existing
+        # Check for duplicates (only when a hash is available)
+        if video.hash:
+            existing = self.repos.videos.find_by_hash(video.hash)
+            if existing:
+                logger.warning(f"Video with hash {video.hash} already exists: {existing.path}")
+                return existing
 
         logger.info(f"Adding video {video.path} to project {self.config.name}")
         saved_video = self.repos.videos.save(video)

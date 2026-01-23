@@ -77,7 +77,9 @@ class VideoModel(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     path = Column(String, nullable=False, unique=True)
-    hash = Column(String, nullable=False, index=True)
+    # NOTE: Hash is optional to support "path-only" datasets on Chinook.
+    # When present, it can be used for dedupe/verification.
+    hash = Column(String, nullable=True, index=True)
     recorded_time = Column(DateTime, nullable=True)
     size_bytes = Column(Integer, default=0)
     last_modified = Column(Float, default=0.0)
@@ -176,6 +178,69 @@ class PluginResultModel(Base):
     output_files = Column(Text, default="{}")  # JSON-encoded list of output file paths
     created_at = Column(DateTime, nullable=False)
     completed_at = Column(DateTime, nullable=True)
+
+
+# ===========================================
+# DATASET-FIRST EXTENSIONS (assays, artifacts, QC)
+# ===========================================
+
+class AssaySessionModel(Base):
+    """Database model for non-video assay sessions (e.g. rotarod)."""
+    __tablename__ = 'assay_sessions'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    assay_type = Column(String, nullable=False, index=True)
+    subject_id = Column(String, ForeignKey('subjects.id'), nullable=False, index=True)
+    occurred_at = Column(DateTime, nullable=True, index=True)
+    experiment_id = Column(String, ForeignKey('experiments.id'), nullable=True, index=True)
+    source_path = Column(Text, nullable=True)
+    meta_json = Column(Text, default="{}")
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+
+class AssayMeasurementModel(Base):
+    """Database model for measurements taken within an assay session."""
+    __tablename__ = 'assay_measurements'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    assay_session_id = Column(Integer, ForeignKey('assay_sessions.id'), nullable=False, index=True)
+    metric = Column(String, nullable=False, index=True)
+    value = Column(Float, nullable=True)
+    units = Column(String, nullable=True)
+    qc_flags_json = Column(Text, default="[]")
+    details_json = Column(Text, default="{}")
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+
+class ExternalArtifactModel(Base):
+    """Pointer to an external artifact file (path-first; optional payload for small JSON)."""
+    __tablename__ = 'external_artifacts'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    kind = Column(String, nullable=False, index=True)
+    # Linkage (nullable to allow incomplete data during import/QC)
+    subject_id = Column(String, ForeignKey('subjects.id'), nullable=True, index=True)
+    experiment_id = Column(String, ForeignKey('experiments.id'), nullable=True, index=True)
+    assay_session_id = Column(Integer, ForeignKey('assay_sessions.id'), nullable=True, index=True)
+    path = Column(Text, nullable=False)
+    content_sha256 = Column(String, nullable=True, index=True)
+    payload_json = Column(Text, nullable=True)
+    meta_json = Column(Text, default="{}")
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+
+class QCEventModel(Base):
+    """Non-fatal integrity / QC event recorded during import and processing."""
+    __tablename__ = 'qc_events'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    scope = Column(String, nullable=False, index=True)  # e.g. subject|experiment|video|artifact|assay
+    code = Column(String, nullable=False, index=True)   # e.g. MISSING_DLC_CSV, CORRUPT_MP4
+    subject_id = Column(String, ForeignKey('subjects.id'), nullable=True, index=True)
+    experiment_id = Column(String, ForeignKey('experiments.id'), nullable=True, index=True)
+    assay_session_id = Column(Integer, ForeignKey('assay_sessions.id'), nullable=True, index=True)
+    details_json = Column(Text, default="{}")
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 
 class UserModel(Base):
     """Database model for users."""

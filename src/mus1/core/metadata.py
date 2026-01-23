@@ -196,10 +196,34 @@ class Experiment:
 class VideoFile:
     """Core video file entity."""
     path: Path
-    hash: str
+    hash: Optional[str] = None
     recorded_time: Optional[datetime] = None
     size_bytes: int = 0
     last_modified: float = 0.0
+    date_added: datetime = field(default_factory=datetime.now)
+
+
+@dataclass
+class AssaySession:
+    """A non-video assay session (e.g. rotarod) linked to a subject (and optionally an experiment)."""
+    assay_type: str
+    subject_id: str
+    occurred_at: Optional[datetime] = None
+    experiment_id: Optional[str] = None
+    source_path: Optional[Path] = None
+    meta: Dict[str, Any] = field(default_factory=dict)
+    date_added: datetime = field(default_factory=datetime.now)
+
+
+@dataclass
+class AssayMeasurement:
+    """A single measurement within an assay session."""
+    assay_session_id: int
+    metric: str
+    value: Optional[float] = None
+    units: Optional[str] = None
+    qc_flags: List[str] = field(default_factory=list)
+    details: Dict[str, Any] = field(default_factory=dict)
     date_added: datetime = field(default_factory=datetime.now)
 
 @dataclass
