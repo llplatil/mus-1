@@ -349,6 +349,51 @@ def add_subject(
     if subject.genotype:
         rich_print(f"[blue]ℹ[/blue] Genotype: {subject.genotype}")
 
+@app.command("import-rotarod")
+def import_rotarod(
+    project_path: Path = typer.Option(..., help="Target MUS1 project directory (contains mus1.db)"),
+    csv_path: Path = typer.Option(..., help="Path to rotarod CSV file"),
+    assay_type: str = typer.Option("rotarod", help="Assay type identifier"),
+):
+    """Import rotarod assay data from CSV into a MUS1 project DB."""
+    from .schema import Database
+    from .repository import get_repository_factory
+    from .importers.rotarod import import_rotarod_csv
+
+    if not project_path.exists():
+        rich_print(f"[red]✗[/red] Project path does not exist: {project_path}")
+        raise typer.Exit(1)
+
+    db_path = project_path / "mus1.db"
+    if not db_path.exists():
+        rich_print(f"[red]✗[/red] No mus1.db found at: {db_path}")
+        rich_print("[blue]ℹ[/blue] Create one with: mus1 project init \"<name>\" --path <project_path>")
+        raise typer.Exit(1)
+
+    if not csv_path.exists():
+        rich_print(f"[red]✗[/red] CSV file not found: {csv_path}")
+        raise typer.Exit(1)
+
+    db = Database(str(db_path))
+    db.create_tables()
+    repos = get_repository_factory(db)
+
+    stats = import_rotarod_csv(
+        repos,
+        csv_path=csv_path,
+        assay_type=assay_type,
+    )
+
+    rich_print("[green]✓[/green] Import complete")
+    rich_print(f"[blue]ℹ[/blue] Rows processed: {stats.rows_total}")
+    rich_print(f"[blue]ℹ[/blue] Assay sessions created: {stats.assay_sessions_created}")
+    rich_print(f"[blue]ℹ[/blue] Assay measurements created: {stats.assay_measurements_created}")
+    rich_print(f"[blue]ℹ[/blue] Subjects created: {stats.subjects_created}")
+    if stats.subjects_skipped > 0:
+        rich_print(f"[yellow]⚠[/yellow] Subjects skipped: {stats.subjects_skipped}")
+    if stats.errors > 0:
+        rich_print(f"[yellow]⚠[/yellow] Errors encountered: {stats.errors}")
+
 @app.command("add-experiment")
 def add_experiment(
     experiment_id: str = typer.Argument(..., help="Experiment ID"),
