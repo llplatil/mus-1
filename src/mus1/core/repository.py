@@ -14,6 +14,7 @@ from .schema import (
     Database, SubjectModel, ExperimentModel, VideoModel,
     WorkerModel, ScanTargetModel, ProjectModel, ColonyModel,
     AssaySessionModel, AssayMeasurementModel,
+    ExternalArtifactModel, QCEventModel,
     TrackedObjectModel, BodyPartModel, TreatmentModel, GenotypeModel,
     subject_to_model, model_to_subject,
     experiment_to_model, model_to_experiment,
@@ -455,6 +456,72 @@ class AssayMeasurementRepository(BaseRepository):
             session.commit()
             return int(row.id)
 
+
+class ExternalArtifactRepository(BaseRepository):
+    """Repository for artifact pointers (path-first)."""
+
+    def add(
+        self,
+        *,
+        kind: str,
+        path: str,
+        subject_id: Optional[str] = None,
+        experiment_id: Optional[str] = None,
+        assay_session_id: Optional[int] = None,
+        content_sha256: Optional[str] = None,
+        payload_json: Optional[str] = None,
+        meta: Optional[Dict[str, Any]] = None,
+    ) -> int:
+        """Add an external artifact and return its integer ID."""
+        from datetime import datetime
+        from .schema import ExternalArtifactModel
+        with self._get_session() as session:
+            row = ExternalArtifactModel(
+                kind=kind,
+                subject_id=subject_id,
+                experiment_id=experiment_id,
+                assay_session_id=assay_session_id,
+                path=path,
+                content_sha256=content_sha256,
+                payload_json=payload_json,
+                meta_json=json.dumps(meta or {}),
+                created_at=datetime.utcnow(),
+            )
+            session.add(row)
+            session.commit()
+            return int(row.id)
+
+
+class QCEventRepository(BaseRepository):
+    """Repository for non-fatal QC events."""
+
+    def add(
+        self,
+        *,
+        scope: str,
+        code: str,
+        details: Optional[Dict[str, Any]] = None,
+        subject_id: Optional[str] = None,
+        experiment_id: Optional[str] = None,
+        assay_session_id: Optional[int] = None,
+    ) -> int:
+        """Add a QC event and return its integer ID."""
+        from datetime import datetime
+        from .schema import QCEventModel
+        with self._get_session() as session:
+            row = QCEventModel(
+                scope=scope,
+                code=code,
+                subject_id=subject_id,
+                experiment_id=experiment_id,
+                assay_session_id=assay_session_id,
+                details_json=json.dumps(details or {}),
+                created_at=datetime.utcnow(),
+            )
+            session.add(row)
+            session.commit()
+            return int(row.id)
+
 class WorkerRepository(BaseRepository):
     """Repository for worker operations."""
 
@@ -875,6 +942,8 @@ class RepositoryFactory:
         # Dataset-first extensions
         self._assay_sessions: Optional[AssaySessionRepository] = None
         self._assay_measurements: Optional[AssayMeasurementRepository] = None
+        self._external_artifacts: Optional[ExternalArtifactRepository] = None
+        self._qc_events: Optional[QCEventRepository] = None
         # Metadata repositories
         self._tracked_objects: Optional[TrackedObjectRepository] = None
         self._body_parts: Optional[BodyPartRepository] = None
@@ -934,6 +1003,18 @@ class RepositoryFactory:
         if self._assay_measurements is None:
             self._assay_measurements = AssayMeasurementRepository(self.db)
         return self._assay_measurements
+
+    @property
+    def external_artifacts(self) -> ExternalArtifactRepository:
+        if self._external_artifacts is None:
+            self._external_artifacts = ExternalArtifactRepository(self.db)
+        return self._external_artifacts
+
+    @property
+    def qc_events(self) -> QCEventRepository:
+        if self._qc_events is None:
+            self._qc_events = QCEventRepository(self.db)
+        return self._qc_events
 
     @property
 # Removed: scan_targets() method (part of scan target functionality)
