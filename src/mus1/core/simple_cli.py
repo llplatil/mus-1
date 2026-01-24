@@ -285,6 +285,66 @@ def project_status(
     rich_print(f"[bold]Experiments:[/bold] {stats['experiments']}")
     rich_print(f"[bold]Videos:[/bold] {stats['videos']}")
 
+@project_app.command("import-kpms-recordings")
+def import_kpms_recordings_cmd(
+    csv_paths: str = typer.Argument(..., help="Comma-separated paths to recordings CSV files"),
+    workspace_root: Path = typer.Option(..., "--workspace-root", help="Workspace root directory"),
+    project_path: Path = typer.Option(Path.cwd(), help="Project directory"),
+):
+    """Import KPMS recordings metadata from CSV files."""
+    from .importers.kpms_recordings import import_kpms_recordings
+    
+    db_path = project_path / "mus1.db"
+    if not db_path.exists():
+        rich_print(f"[red]✗[/red] No database found at {db_path}")
+        rich_print("[blue]ℹ[/blue] Run 'mus1 project init' first")
+        raise typer.Exit(1)
+    
+    # Parse CSV paths
+    csv_file_paths = [Path(p.strip()) for p in csv_paths.split(',')]
+    
+    # Validate paths
+    for csv_path in csv_file_paths:
+        if not csv_path.exists():
+            rich_print(f"[red]✗[/red] CSV file not found: {csv_path}")
+            raise typer.Exit(1)
+    
+    if not workspace_root.exists():
+        rich_print(f"[red]✗[/red] Workspace root not found: {workspace_root}")
+        raise typer.Exit(1)
+    
+    rich_print(f"[blue]ℹ[/blue] Importing {len(csv_file_paths)} CSV file(s)...")
+    rich_print(f"[blue]ℹ[/blue] Workspace root: {workspace_root}")
+    rich_print(f"[blue]ℹ[/blue] Database: {db_path}")
+    
+    try:
+        stats = import_kpms_recordings(db_path, csv_file_paths, workspace_root)
+        
+        rich_print("\n[bold green]✓ Import completed![/bold green]")
+        rich_print(f"\n[bold]Summary:[/bold]")
+        rich_print(f"  Total artifacts added: {stats['total_artifacts']}")
+        rich_print(f"  Linked to experiments: {stats['total_linked_to_experiment']}")
+        rich_print(f"  Linked to subjects: {stats['total_linked_to_subject']}")
+        rich_print(f"  Unlinked: {stats['total_unlinked']}")
+        
+        if stats['sources']:
+            rich_print(f"\n[bold]By source:[/bold]")
+            for source_name, source_stats in stats['sources'].items():
+                if 'error' in source_stats:
+                    rich_print(f"  [red]✗[/red] {source_name}: {source_stats['error']}")
+                else:
+                    rich_print(f"  [green]✓[/green] {source_name}:")
+                    rich_print(f"    Artifacts: {source_stats['artifacts_added']}")
+                    rich_print(f"    Linked to exp: {source_stats['linked_to_experiment']}")
+                    rich_print(f"    Linked to subject: {source_stats['linked_to_subject']}")
+                    rich_print(f"    Unlinked: {source_stats['unlinked']}")
+    
+    except Exception as e:
+        rich_print(f"[red]✗[/red] Import failed: {e}")
+        import traceback
+        rich_print(traceback.format_exc())
+        raise typer.Exit(1)
+
 # ===========================================
 # DATA MANAGEMENT
 # ===========================================
@@ -490,6 +550,69 @@ def scan_videos(
             rich_print(f"  {video['path']}")
         if len(videos) > 5:
             rich_print(f"  ... and {len(videos) - 5} more")
+
+@app.command("test-kpms-import")
+def test_kpms_import(
+    csv_path: Path = typer.Argument(..., help="Path to a recordings CSV file"),
+    workspace_root: Path = typer.Option(..., "--workspace-root", help="Workspace root directory"),
+    project_path: Path = typer.Option(Path.cwd(), help="Project directory"),
+):
+    """Smoke test for KPMS recordings import (dry-run, shows what would be imported)."""
+    from .importers.kpms_recordings import import_kpms_recordings_csv
+    from .repository import get_repository_factory
+    
+    db_path = project_path / "mus1.db"
+    if not db_path.exists():
+        rich_print(f"[red]✗[/red] No database found at {db_path}")
+        rich_print("[blue]ℹ[/blue] Run 'mus1 project init' first")
+        raise typer.Exit(1)
+    
+    if not csv_path.exists():
+        rich_print(f"[red]✗[/red] CSV file not found: {csv_path}")
+        raise typer.Exit(1)
+    
+    if not workspace_root.exists():
+        rich_print(f"[red]✗[/red] Workspace root not found: {workspace_root}")
+        raise typer.Exit(1)
+    
+    rich_print("[blue]ℹ[/blue] Running smoke test (dry-run)...")
+    rich_print(f"[blue]ℹ[/blue] CSV: {csv_path}")
+    rich_print(f"[blue]ℹ[/blue] Workspace root: {workspace_root}")
+    
+    # Extract source name
+    source_name = csv_path.parent.parent.name if csv_path.name == "recordings.csv" else csv_path.stem
+    
+    try:
+        from .schema import Database
+        db = Database(str(db_path))
+        db.create_tables()
+        repos = get_repository_factory(db)
+        
+        # Count before
+        from .schema import ExternalArtifactModel
+        with db.get_session() as session:
+            before_count = session.query(ExternalArtifactModel).count()
+        
+        # Run import
+        stats = import_kpms_recordings_csv(repos, csv_path, workspace_root, source_name)
+        
+        # Count after
+        with db.get_session() as session:
+            after_count = session.query(ExternalArtifactModel).count()
+        
+        rich_print("\n[bold green]✓ Smoke test passed![/bold green]")
+        rich_print(f"\n[bold]Results:[/bold]")
+        rich_print(f"  Artifacts added: {stats['artifacts_added']}")
+        rich_print(f"  Linked to experiments: {stats['linked_to_experiment']}")
+        rich_print(f"  Linked to subjects: {stats['linked_to_subject']}")
+        rich_print(f"  Unlinked: {stats['unlinked']}")
+        rich_print(f"  Total artifacts in DB: {before_count} -> {after_count}")
+        
+    except Exception as e:
+        rich_print(f"[red]✗[/red] Smoke test failed: {e}")
+        import traceback
+        rich_print(traceback.format_exc())
+        raise typer.Exit(1)
 
 # ===========================================
 # SETUP COMMANDS
