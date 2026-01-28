@@ -618,6 +618,9 @@ def web_experiment_browser(
         str(port),
         "--server.address",
         str(address),
+        "--",
+        "--project-path",
+        str(project_path),
     ]
 
     rich_print("[blue]ℹ[/blue] Starting Streamlit experiment browser")
@@ -627,8 +630,7 @@ def web_experiment_browser(
     rich_print("")
     rich_print(f"[blue]ℹ[/blue] Running: {' '.join(cmd)}")
 
-    # Streamlit will parse its own args; the app reads project_path via UI input (default cwd).
-    # We intentionally keep this deterministic and avoid filesystem crawling.
+    # Streamlit parses its own args; app args after `--` are forwarded to the script.
     subprocess.run(cmd, check=True)
 
 # ===========================================

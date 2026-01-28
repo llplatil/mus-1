@@ -10,6 +10,7 @@ This app deliberately queries SQLite directly (no GUI/Qt dependencies).
 
 from __future__ import annotations
 
+import argparse
 import json
 import sqlite3
 from dataclasses import dataclass
@@ -17,6 +18,14 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import streamlit as st
+
+
+def _parse_args() -> argparse.Namespace:
+    p = argparse.ArgumentParser(add_help=False)
+    p.add_argument("--project-path", default=None)
+    # Streamlit adds its own flags; ignore unknown.
+    args, _ = p.parse_known_args()
+    return args
 
 
 @dataclass(frozen=True)
@@ -165,7 +174,9 @@ def main() -> None:
     st.title("MUS1 Experiment Browser")
 
     st.sidebar.header("Database")
-    project_path_str = st.sidebar.text_input("Project path (contains mus1.db)", value=str(Path.cwd()))
+    args = _parse_args()
+    default_project = args.project_path or str(Path.cwd())
+    project_path_str = st.sidebar.text_input("Project path (contains mus1.db)", value=str(default_project))
     project_path = Path(project_path_str).expanduser()
     db_path = project_path / "mus1.db"
 
