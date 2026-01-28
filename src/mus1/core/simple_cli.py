@@ -605,6 +605,7 @@ def web_experiment_browser(
     project_path: Path = typer.Option(Path.cwd(), help="MUS1 project directory (contains mus1.db)"),
     port: int = typer.Option(8502, help="Streamlit server port"),
     address: str = typer.Option("127.0.0.1", help="Bind address (use 127.0.0.1 for SSH port-forwarding)"),
+    workspace_root: Optional[Path] = typer.Option(None, help="Optional MoSeq2 workspace root (enables matching/suggestions)"),
 ):
     """Launch the MUS1 experiment browser (Streamlit)."""
     script_path = (Path(__file__).resolve().parents[1] / "web" / "experiment_browser.py").resolve()
@@ -623,6 +624,8 @@ def web_experiment_browser(
         "--project-path",
         str(project_path),
     ]
+    if workspace_root is not None:
+        cmd.extend(["--workspace-root", str(workspace_root)])
 
     rich_print("[blue]ℹ[/blue] Starting Streamlit experiment browser")
     rich_print(f"[blue]ℹ[/blue] DB project path: {project_path}")

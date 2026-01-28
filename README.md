@@ -85,7 +85,8 @@ mus1 import arena-zones \
 mus1 web experiment-browser \
   --project-path /path/to/mus1_project \
   --port 8502 \
-  --address 127.0.0.1
+  --address 127.0.0.1 \
+  --workspace-root /center1/WDMOSEQ2/llplatil/WDMOSEQ2/moseq2_workspace
 ```
 
 From your local machine:

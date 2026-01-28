@@ -23,6 +23,7 @@ import streamlit as st
 def _parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(add_help=False)
     p.add_argument("--project-path", default=None)
+    p.add_argument("--workspace-root", default=None)
     # Streamlit adds its own flags; ignore unknown.
     args, _ = p.parse_known_args()
     return args
@@ -182,6 +183,52 @@ def _get_annotation_qc(con: sqlite3.Connection) -> List[sqlite3.Row]:
     return _fetchall(con, sql, ())
 
 
+@st.cache_data(show_spinner=False)
+def _load_session_index(workspace_root: str) -> Optional[Dict[Tuple[str, str], Dict[str, Any]]]:
+    """
+    Load session_index_filtered.csv and build (task, basename) -> row mapping.
+    """
+    if not workspace_root:
+        return None
+    try:
+        import pandas as pd
+    except Exception:
+        return None
+
+    ws = Path(workspace_root)
+    csv_path = ws / "ml_tracking_metadata_model" / "index" / "session_index_filtered.csv"
+    if not csv_path.exists():
+        return None
+    df = pd.read_csv(csv_path)
+    if "video_path" not in df.columns or "task" not in df.columns:
+        return None
+    vps = df["video_path"].fillna("").astype(str).str.strip()
+    df = df.loc[vps.ne("")].copy()
+    df["basename"] = df["video_path"].astype(str).apply(lambda s: Path(s).name)
+    grouped = df.groupby(["task", "basename"]).size()
+    unique_keys = set(k for k, n in grouped.items() if int(n) == 1)
+    out: Dict[Tuple[str, str], Dict[str, Any]] = {}
+    for _, r in df.iterrows():
+        task = str(r.get("task", "")).strip()
+        bn = str(r.get("basename", "")).strip()
+        key = (task, bn)
+        if key not in unique_keys:
+            continue
+        out[key] = {k: (None if pd.isna(v) else v) for k, v in r.to_dict().items()}
+    return out
+
+
+def _normalize_basename(basename: Optional[str]) -> Optional[str]:
+    if not basename:
+        return None
+    b = str(basename)
+    if "DLC_" in b:
+        b = b.split("DLC_")[0]
+        if not b.endswith(".mp4"):
+            b = b + ".mp4"
+    return b
+
+
 def main() -> None:
     st.set_page_config(page_title="MUS1 Experiment Browser", layout="wide")
     st.title("MUS1 Experiment Browser")
@@ -192,6 +239,7 @@ def main() -> None:
     project_path_str = st.sidebar.text_input("Project path (contains mus1.db)", value=str(default_project))
     project_path = Path(project_path_str).expanduser()
     db_path = project_path / "mus1.db"
+    workspace_root = args.workspace_root
 
     if not db_path.exists():
         st.sidebar.error(f"mus1.db not found at: {db_path}")
@@ -221,6 +269,7 @@ def main() -> None:
         if not ann_qc:
             st.caption("No annotation QC events found.")
         else:
+            index_map = _load_session_index(workspace_root) if workspace_root else None
             # Show a small, readable table view.
             rows = []
             for r in ann_qc[:300]:
@@ -228,6 +277,23 @@ def main() -> None:
                     details = json.loads(r["details_json"] or "{}")
                 except Exception:
                     details = {"_raw": r["details_json"]}
+
+                inferred_task = details.get("inferred_task")
+                bn = _normalize_basename(details.get("video_basename") or (Path(details["video_path"]).name if details.get("video_path") else None))
+                suggested_session_id = None
+                suggested_video_path = None
+                if index_map and inferred_task and bn:
+                    hit = index_map.get((str(inferred_task), str(bn)))
+                    if hit:
+                        suggested_session_id = hit.get("session_id")
+                        suggested_video_path = hit.get("video_path")
+
+                # Simple reason classification (kept lightweight)
+                reason = "not_in_session_index"
+                vp = details.get("video_path") or ""
+                if "unknown" in vp:
+                    reason = "video_path_in_unknown_folder"
+
                 rows.append(
                     {
                         "id": r["id"],
@@ -236,6 +302,11 @@ def main() -> None:
                         "zone_json": details.get("zone_json") or details.get("path"),
                         "video_path": details.get("video_path"),
                         "kind": details.get("kind"),
+                        "inferred_task": inferred_task,
+                        "video_basename": bn,
+                        "reason": reason,
+                        "suggested_session_id": suggested_session_id,
+                        "suggested_video_path": suggested_video_path,
                         "error": details.get("error"),
                     }
                 )
