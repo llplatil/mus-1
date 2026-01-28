@@ -322,7 +322,12 @@ def import_kpms_recordings_cmd(
     rich_print(f"[blue]ℹ[/blue] Database: {db_path}")
     
     try:
-        stats = import_kpms_recordings(db_path, csv_file_paths, workspace_root)
+        from .repository import get_repository_factory
+        db = Database(str(db_path))
+        db.create_tables()
+        repos = get_repository_factory(db)
+
+        stats = import_kpms_recordings(repos, csv_file_paths, workspace_root)
         
         rich_print("\n[bold green]✓ Import completed![/bold green]")
         rich_print(f"\n[bold]Summary:[/bold]")
@@ -348,6 +353,131 @@ def import_kpms_recordings_cmd(
         import traceback
         rich_print(traceback.format_exc())
         raise typer.Exit(1)
+
+
+@import_app.command("workspace-db-sync")
+def workspace_db_sync(
+    project_path: Path = typer.Option(..., help="Target MUS1 project directory (contains mus1.db)"),
+    workspace_root: Path = typer.Option(..., help="MoSeq2 workspace root"),
+    index_csv: Path = typer.Option(
+        None,
+        help="Session index CSV (defaults to ml_tracking_metadata_model/index/session_index_filtered.csv under workspace_root)",
+    ),
+    rotarod_csv: Path = typer.Option(
+        None,
+        help="Rotarod attempts CSV (defaults to statistics_summaries/rotarod_reanalysis/rotarod_attempts_long_cleaned.csv under workspace_root)",
+    ),
+    kpms_csvs: Optional[str] = typer.Option(
+        None,
+        help="Comma-separated KPMS recordings.csv paths (defaults to the two trim30s rerun recordings.csv files under workspace_root)",
+    ),
+):
+    """Sync this MoSeq2 workspace into a MUS1 project DB (index + rotarod + KPMS trim30s metadata)."""
+    from .repository import get_repository_factory
+    from .importers.moseq2_workspace import import_session_index
+    from .importers.rotarod import import_rotarod_csv
+    from .importers.kpms_recordings import import_kpms_recordings
+
+    if not project_path.exists():
+        rich_print(f"[red]✗[/red] Project path does not exist: {project_path}")
+        raise typer.Exit(1)
+
+    db_path = project_path / "mus1.db"
+    if not db_path.exists():
+        rich_print(f"[red]✗[/red] No mus1.db found at: {db_path}")
+        rich_print("[blue]ℹ[/blue] Create one with: mus1 project init \"<name>\" --path <project_path>")
+        raise typer.Exit(1)
+
+    if index_csv is None:
+        index_csv = workspace_root / "ml_tracking_metadata_model" / "index" / "session_index_filtered.csv"
+    if rotarod_csv is None:
+        rotarod_csv = workspace_root / "statistics_summaries" / "rotarod_reanalysis" / "rotarod_attempts_long_cleaned.csv"
+    if kpms_csvs is None:
+        kpms_paths = [
+            workspace_root
+            / "analysis_keypoint_moseq"
+            / "_reruns"
+            / "20260122_trim30s_ezm"
+            / "metadata"
+            / "recordings.csv",
+            workspace_root
+            / "analysis_keypoint_moseq"
+            / "_reruns"
+            / "20260122_trim30s_nor_nof"
+            / "metadata"
+            / "recordings.csv",
+        ]
+    else:
+        kpms_paths = [Path(p.strip()) for p in kpms_csvs.split(",") if p.strip()]
+
+    db = Database(str(db_path))
+    db.create_tables()
+    repos = get_repository_factory(db)
+
+    qc_added = 0
+    def _qc(code: str, details: dict):
+        nonlocal qc_added
+        try:
+            repos.qc_events.add(scope="import", code=code, details=details)
+            qc_added += 1
+        except Exception:
+            # If QC insert fails, don't block the sync.
+            pass
+
+    rich_print("[bold]Workspace DB sync[/bold]")
+    rich_print(f"[blue]ℹ[/blue] Project: {project_path}")
+    rich_print(f"[blue]ℹ[/blue] Workspace root: {workspace_root}")
+
+    # 1) Session index (subjects/experiments/external_artifacts/qc_events)
+    if not index_csv.exists():
+        _qc("MISSING_INPUT", {"kind": "session_index_filtered_csv", "path": str(index_csv)})
+        rich_print(f"[yellow]⚠[/yellow] Missing session index CSV: {index_csv}")
+        index_stats = None
+    else:
+        index_stats = import_session_index(
+            repos,
+            workspace_root=workspace_root,
+            session_index_csv=index_csv,
+            check_paths_exist=True,
+        )
+
+    # 2) Rotarod assay ingestion
+    if not rotarod_csv.exists():
+        _qc("MISSING_INPUT", {"kind": "rotarod_attempts_long_cleaned_csv", "path": str(rotarod_csv)})
+        rich_print(f"[yellow]⚠[/yellow] Missing rotarod attempts CSV: {rotarod_csv}")
+        rotarod_stats = None
+    else:
+        rotarod_stats = import_rotarod_csv(repos, csv_path=rotarod_csv, assay_type="rotarod")
+
+    # 3) KPMS trim30s recordings index
+    existing_kpms = [p for p in kpms_paths if p.exists()]
+    missing_kpms = [p for p in kpms_paths if not p.exists()]
+    for p in missing_kpms:
+        _qc("MISSING_INPUT", {"kind": "kpms_recordings_csv", "path": str(p)})
+        rich_print(f"[yellow]⚠[/yellow] Missing KPMS recordings CSV: {p}")
+    if existing_kpms:
+        kpms_stats = import_kpms_recordings(repos, existing_kpms, workspace_root)
+    else:
+        kpms_stats = None
+
+    rich_print("\n[bold green]✓ Sync complete[/bold green]")
+    if index_stats is not None:
+        rich_print(f"[blue]ℹ[/blue] Index rows: {index_stats.rows_total}")
+        rich_print(f"[blue]ℹ[/blue] Subjects upserted: {index_stats.subjects_upserted}")
+        rich_print(f"[blue]ℹ[/blue] Experiments upserted: {index_stats.experiments_upserted}")
+        rich_print(f"[blue]ℹ[/blue] Artifacts added: {index_stats.artifacts_added}")
+        rich_print(f"[blue]ℹ[/blue] QC events added (index): {index_stats.qc_events_added}")
+    if rotarod_stats is not None:
+        rich_print(f"[blue]ℹ[/blue] Rotarod rows processed: {rotarod_stats.rows_total}")
+        rich_print(f"[blue]ℹ[/blue] Rotarod sessions created: {rotarod_stats.assay_sessions_created}")
+        rich_print(f"[blue]ℹ[/blue] Rotarod measurements created: {rotarod_stats.assay_measurements_created}")
+    if kpms_stats is not None:
+        rich_print(f"[blue]ℹ[/blue] KPMS artifacts added: {kpms_stats['total_artifacts']}")
+        rich_print(f"[blue]ℹ[/blue] KPMS linked to experiments: {kpms_stats['total_linked_to_experiment']}")
+        rich_print(f"[blue]ℹ[/blue] KPMS linked to subjects: {kpms_stats['total_linked_to_subject']}")
+        rich_print(f"[blue]ℹ[/blue] KPMS unlinked: {kpms_stats['total_unlinked']}")
+    if qc_added:
+        rich_print(f"[yellow]⚠[/yellow] QC events added (sync inputs): {qc_added}")
 
 # ===========================================
 # IMPORT COMMANDS

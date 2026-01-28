@@ -8,11 +8,10 @@ external artifacts linked to experiments/subjects when possible.
 import csv
 import json
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 from datetime import datetime
 
 from ..repository import RepositoryFactory
-from ..schema import Database
 
 
 def resolve_absolute_path(workspace_root: Path, path_str: str) -> Optional[Path]:
@@ -244,24 +243,20 @@ def import_kpms_recordings_csv(
 
 
 def import_kpms_recordings(
-    db_path: Path,
+    repos: RepositoryFactory,
     csv_paths: List[Path],
     workspace_root: Path,
-) -> Dict[str, any]:
+) -> Dict[str, Any]:
     """Import recordings from multiple CSV files.
     
     Args:
-        db_path: Path to the MUS1 database
+        repos: Repository factory bound to the project database
         csv_paths: List of CSV file paths to import
         workspace_root: Root of the workspace
     
     Returns:
         Dictionary with import statistics
     """
-    db = Database(str(db_path))
-    db.create_tables()
-    repos = RepositoryFactory(db)
-    
     all_stats = {
         "total_artifacts": 0,
         "total_linked_to_experiment": 0,

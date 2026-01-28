@@ -122,6 +122,37 @@ Downstream “stats outputs” currently land as CSVs under `statistics_summarie
 
 ## Proposed branch deliverables (incremental)
 
+## Current implementation status (as of 2026-01-28)
+
+Implemented in `feature/moseq2-workspace-import`:
+
+- ✅ **Core tables added**:
+  - `external_artifacts`
+  - `qc_events`
+  - `assay_sessions`
+  - `assay_measurements`
+- ✅ **MoSeq2 session index importer**:
+  - CLI: `mus1 import moseq2-workspace`
+  - Reads: `ml_tracking_metadata_model/index/session_index_filtered.csv`
+  - Writes: `subjects`, `experiments`, `external_artifacts`, `qc_events` (path-only; missing paths become QC events)
+- ✅ **Rotarod ingestion**:
+  - CLI: `mus1 import-rotarod`
+  - Reads: `statistics_summaries/rotarod_reanalysis/rotarod_attempts_long_cleaned.csv`
+  - Writes: `assay_sessions` and `assay_measurements` (preserves exclude/qc fields into measurement qc flags/details)
+- ✅ **KPMS trim30s recordings index**:
+  - CLI: `mus1 project import-kpms-recordings --workspace-root ... <csv1,csv2>`
+  - Indexes the rerun `metadata/recordings.csv` files as `external_artifacts` (path-only; no video copying)
+- ✅ **Unified deterministic sync entrypoint** (new):
+  - CLI: `mus1 import workspace-db-sync`
+  - Runs: session index import + rotarod import + KPMS recordings index in one command.
+
+Not yet implemented (still planned):
+
+- ⏳ Reading/importing additional “sources of truth” (rosters, `syllable_uuid_map.csv`) as first-class inputs.
+- ⏳ Dedicated tables like `moseq_sessions` / `moseq_syllable_uuid_map` (beyond generic `external_artifacts`).
+- ⏳ `videos.hash` nullable change / new file locator strategy (schema direction still pending).
+- ⏳ Export/bundling workflow (`manifest.json` + portable bundle) (Deliverable C).
+
 ### Deliverable A — importer creates core entities and indexes (dataset-first)
 
 Implement a new MUS1 import entrypoint that:
