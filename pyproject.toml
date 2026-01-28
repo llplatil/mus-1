@@ -4,11 +4,6 @@ dynamic = ["version"]
 description = "MUS1 Behavior Analysis Tool"
 requires-python = ">=3.10"
 dependencies = [
-  # Qt backends - platform specific for maximum compatibility
-  "PySide6>=6.7.0; sys_platform == 'darwin'",  # macOS - PySide6 has better compatibility
-  "PyQt6>=6.7.1; sys_platform != 'darwin'",    # Linux/Windows - PyQt6 generally works better
-
-  "qt-material>=2.14.0",
   "pydantic>=1.9.0",
   "pandas>=1.5.0",
   "numpy>=1.21.0,<=1.26.4",
@@ -22,6 +17,16 @@ dependencies = [
   "rich>=13.0.0",
   "tqdm>=4.66.0",
   "SQLAlchemy>=1.4.0",
+]
+
+[project.optional-dependencies]
+# Keep GUI dependencies optional so DB/import workflows work on HPC nodes without Qt build tooling.
+gui = [
+  "PySide6>=6.7.0; sys_platform == 'darwin'",
+  "PyQt6>=6.7.1; sys_platform != 'darwin'",
+  "qt-material>=2.14.0",
+]
+web = [
   "streamlit",
 ]
 

@@ -58,7 +58,7 @@ Use a dedicated conda env (recommended):
 ```bash
 conda create -n mus1-dev python=3.10 -y
 conda activate mus1-dev
-pip install -e .
+pip install -e ".[web]"
 ```
 
 ### 2) Sync workspace → DB (subjects/experiments/artifacts/QC + rotarod + KPMS)
