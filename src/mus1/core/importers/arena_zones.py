@@ -28,6 +28,38 @@ class ArenaZonesIndexStats:
     unlinked: int
 
 
+def _path_aliases(p: Path) -> list[str]:
+    """
+    Return a small set of canonical/aliased path strings for matching.
+
+    This workspace commonly references the same files via both:
+    - /center1/... (canonical)
+    - /import/c1/... (alternate mount path)
+    """
+    out: list[str] = []
+    s = str(p)
+    out.append(s)
+
+    try:
+        out.append(str(p.resolve()))
+    except Exception:
+        pass
+
+    if s.startswith("/import/c1/"):
+        out.append("/center1/" + s[len("/import/c1/"):])
+    elif s.startswith("/center1/"):
+        out.append("/import/c1/" + s[len("/center1/"):])
+
+    # unique, preserve order
+    uniq: list[str] = []
+    seen: set[str] = set()
+    for x in out:
+        if x not in seen:
+            seen.add(x)
+            uniq.append(x)
+    return uniq
+
+
 def _read_session_index_by_video_path(session_index_csv: Path) -> Dict[str, Dict[str, str]]:
     """
     Build a lookup of absolute video path -> row dict from session_index_filtered.csv.
@@ -44,7 +76,8 @@ def _read_session_index_by_video_path(session_index_csv: Path) -> Dict[str, Dict
             vp = (row.get("video_path") or "").strip()
             if not vp:
                 continue
-            by_path[str(Path(vp))] = row
+        for alias in _path_aliases(Path(vp)):
+            by_path[alias] = row
     return by_path
 
 
@@ -115,7 +148,11 @@ def index_arena_zone_jsons(
                 unlinked += 1
                 meta = {"workspace_root": str(workspace_root), "zone_json": str(p)}
             else:
-                row = by_video_path.get(str(video_abs)) or by_video_path.get(str(video_abs.resolve()))
+                row = None
+                for alias in _path_aliases(video_abs):
+                    row = by_video_path.get(alias)
+                    if row:
+                        break
                 if row:
                     exp_id = (row.get("session_id") or "").strip() or None
                     subj_id = (row.get("subject_id") or "").strip() or None
