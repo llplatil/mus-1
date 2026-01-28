@@ -96,6 +96,16 @@ ssh -L 8502:localhost:8502 llplatil@chinook04.alaska.edu
 
 Then open `http://localhost:8502`.
 
+#### Reliable port-forwarding tip (macOS/Cursor)
+
+If your local port is already in use (common when Cursor is running a local listener), use a different local port:
+
+```bash
+ssh -L 8503:localhost:8502 llplatil@chinook04.alaska.edu
+```
+
+Then open `http://localhost:8503`.
+
 ## Current Status
 
 ### ⚠️ **Remaining Issues**

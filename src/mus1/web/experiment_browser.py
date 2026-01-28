@@ -169,6 +169,19 @@ def _get_experiment_qc(con: sqlite3.Connection, experiment_id: str) -> List[sqli
     return _fetchall(con, sql, (experiment_id,))
 
 
+def _get_annotation_qc(con: sqlite3.Connection) -> List[sqlite3.Row]:
+    """
+    Return QC events emitted by arena zone indexing that are not tied to an experiment.
+    """
+    sql = """
+    SELECT id, scope, code, details_json, created_at
+    FROM qc_events
+    WHERE scope = 'annotation'
+    ORDER BY created_at DESC
+    """
+    return _fetchall(con, sql, ())
+
+
 def main() -> None:
     st.set_page_config(page_title="MUS1 Experiment Browser", layout="wide")
     st.title("MUS1 Experiment Browser")
@@ -201,6 +214,32 @@ def main() -> None:
 
     st.caption(f"DB: `{db_path}`")
     st.caption(f"Experiments: {len(exps)}")
+
+    # High-signal QC: show unlinked annotation JSONs so users can fix mappings.
+    with st.expander("Annotation QC (unlinked / errors)", expanded=False):
+        ann_qc = _get_annotation_qc(con)
+        if not ann_qc:
+            st.caption("No annotation QC events found.")
+        else:
+            # Show a small, readable table view.
+            rows = []
+            for r in ann_qc[:300]:
+                try:
+                    details = json.loads(r["details_json"] or "{}")
+                except Exception:
+                    details = {"_raw": r["details_json"]}
+                rows.append(
+                    {
+                        "id": r["id"],
+                        "code": r["code"],
+                        "created_at": r["created_at"],
+                        "zone_json": details.get("zone_json") or details.get("path"),
+                        "video_path": details.get("video_path"),
+                        "kind": details.get("kind"),
+                        "error": details.get("error"),
+                    }
+                )
+            st.dataframe(rows, use_container_width=True, hide_index=True)
 
     # Selection
     exp_ids = [e.experiment_id for e in exps]
