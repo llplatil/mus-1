@@ -15,6 +15,7 @@ from rich.panel import Panel
 import json
 import platform
 # from datetime import datetime  # not needed at module scope
+import subprocess
 
 from .metadata import ProjectConfig, SubjectDTO, ExperimentDTO, ColonyDTO, LabDTO
 from .config_manager import get_config_manager, get_config
@@ -45,6 +46,10 @@ app.add_typer(project_app, name="project")
 # Import subcommand group
 import_app = typer.Typer(help="Dataset import commands")
 app.add_typer(import_app, name="import")
+
+# Web subcommand group
+web_app = typer.Typer(help="Web (Streamlit) tools")
+app.add_typer(web_app, name="web")
 
 # ===========================================
 # CORE COMMANDS
@@ -592,6 +597,39 @@ def import_arena_zones(
     rich_print(f"[blue]ℹ[/blue] Linked to experiments: {stats.linked_to_experiment}")
     rich_print(f"[blue]ℹ[/blue] Unlinked: {stats.unlinked}")
     rich_print(f"[blue]ℹ[/blue] QC events added: {stats.qc_events_added}")
+
+
+@web_app.command("experiment-browser")
+def web_experiment_browser(
+    project_path: Path = typer.Option(Path.cwd(), help="MUS1 project directory (contains mus1.db)"),
+    port: int = typer.Option(8502, help="Streamlit server port"),
+    address: str = typer.Option("127.0.0.1", help="Bind address (use 127.0.0.1 for SSH port-forwarding)"),
+):
+    """Launch the MUS1 experiment browser (Streamlit)."""
+    script_path = (Path(__file__).resolve().parents[1] / "web" / "experiment_browser.py").resolve()
+    if not script_path.exists():
+        raise typer.Exit(1)
+
+    cmd = [
+        "streamlit",
+        "run",
+        str(script_path),
+        "--server.port",
+        str(port),
+        "--server.address",
+        str(address),
+    ]
+
+    rich_print("[blue]ℹ[/blue] Starting Streamlit experiment browser")
+    rich_print(f"[blue]ℹ[/blue] DB project path: {project_path}")
+    rich_print(f"[blue]ℹ[/blue] Port-forward example:")
+    rich_print(f"  ssh -L {port}:localhost:{port} $USER@chinook04.alaska.edu")
+    rich_print("")
+    rich_print(f"[blue]ℹ[/blue] Running: {' '.join(cmd)}")
+
+    # Streamlit will parse its own args; the app reads project_path via UI input (default cwd).
+    # We intentionally keep this deterministic and avoid filesystem crawling.
+    subprocess.run(cmd, check=True)
 
 # ===========================================
 # DATA MANAGEMENT
