@@ -40,6 +40,62 @@ mus1 --setup               # CLI mode with setup wizard
 ./dev-launch.sh --setup    # CLI mode with setup wizard
 ```
 
+## MoSeq2 workspace → MUS1 DB sync (Chinook workflow)
+
+This repo includes importers intended to make the MoSeq2 workspace queryable from a MUS1 project DB.
+
+### 0) Start from `base` on Chinook
+
+```bash
+cd /center1/WDMOSEQ2/llplatil/WDMOSEQ2/moseq2_workspace/mus1_work/mus-1__sync
+git checkout feature/workspace-db-sync
+```
+
+### 1) Install MUS1 (dev)
+
+Use a dedicated conda env (recommended):
+
+```bash
+conda create -n mus1-dev python=3.10 -y
+conda activate mus1-dev
+pip install -e .
+```
+
+### 2) Sync workspace → DB (subjects/experiments/artifacts/QC + rotarod + KPMS)
+
+```bash
+mus1 import workspace-db-sync \
+  --project-path /path/to/mus1_project \
+  --workspace-root /center1/WDMOSEQ2/llplatil/WDMOSEQ2/moseq2_workspace
+```
+
+### 3) Index existing arena annotation outputs into the DB
+
+This keeps zone JSONs written to the workspace, but also makes them queryable via `external_artifacts`:
+
+```bash
+mus1 import arena-zones \
+  --project-path /path/to/mus1_project \
+  --workspace-root /center1/WDMOSEQ2/llplatil/WDMOSEQ2/moseq2_workspace
+```
+
+### 4) Launch the DB-first experiment browser (Streamlit)
+
+```bash
+mus1 web experiment-browser \
+  --project-path /path/to/mus1_project \
+  --port 8502 \
+  --address 127.0.0.1
+```
+
+From your local machine:
+
+```bash
+ssh -L 8502:localhost:8502 llplatil@chinook04.alaska.edu
+```
+
+Then open `http://localhost:8502`.
+
 ## Current Status
 
 ### ⚠️ **Remaining Issues**

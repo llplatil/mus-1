@@ -22,6 +22,7 @@ dependencies = [
   "rich>=13.0.0",
   "tqdm>=4.66.0",
   "SQLAlchemy>=1.4.0",
+  "streamlit",
 ]
 
 [project.scripts]
