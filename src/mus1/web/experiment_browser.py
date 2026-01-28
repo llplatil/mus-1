@@ -183,6 +183,45 @@ def _get_annotation_qc(con: sqlite3.Connection) -> List[sqlite3.Row]:
     return _fetchall(con, sql, ())
 
 
+def _update_external_artifact_linkage(
+    con: sqlite3.Connection,
+    *,
+    kind: str,
+    path: str,
+    experiment_id: str,
+    subject_id: Optional[str],
+    meta_patch: Dict[str, Any],
+) -> bool:
+    """
+    Update linkage for an existing external_artifacts row identified by (kind, path).
+    Returns True if an artifact row was found and updated.
+    """
+    row = con.execute(
+        "SELECT id, meta_json FROM external_artifacts WHERE kind = ? AND path = ? ORDER BY id DESC LIMIT 1",
+        (kind, path),
+    ).fetchone()
+    if not row:
+        return False
+
+    try:
+        current_meta = json.loads(row["meta_json"] or "{}")
+        if not isinstance(current_meta, dict):
+            current_meta = {}
+    except Exception:
+        current_meta = {}
+
+    merged_meta = {**current_meta, **(meta_patch or {})}
+    con.execute(
+        "UPDATE external_artifacts SET experiment_id = ?, subject_id = ?, meta_json = ? WHERE id = ?",
+        (experiment_id, subject_id, json.dumps(merged_meta), int(row["id"])),
+    )
+    return True
+
+
+def _delete_qc_event(con: sqlite3.Connection, qc_id: int) -> None:
+    con.execute("DELETE FROM qc_events WHERE id = ?", (qc_id,))
+
+
 @st.cache_data(show_spinner=False)
 def _load_session_index(workspace_root: str) -> Optional[Dict[Tuple[str, str], Dict[str, Any]]]:
     """
@@ -311,6 +350,54 @@ def main() -> None:
                     }
                 )
             st.dataframe(rows, use_container_width=True, hide_index=True)
+
+            relink_candidates = [
+                r
+                for r in rows
+                if r.get("suggested_session_id") and r.get("zone_json") and r.get("kind")
+            ]
+            if relink_candidates:
+                st.markdown("**Relink an annotation (apply suggested match)**")
+                options = [str(r["id"]) for r in relink_candidates]
+                qc_choice = st.selectbox("QC event id", options=options, key="relink_qc_id")
+                selected = next(r for r in relink_candidates if str(r["id"]) == str(qc_choice))
+
+                st.caption(f"Zone JSON: `{selected.get('zone_json')}`")
+                st.caption(f"Suggested experiment_id: `{selected.get('suggested_session_id')}`")
+                if selected.get("suggested_video_path"):
+                    st.caption(f"Suggested video_path: `{selected.get('suggested_video_path')}`")
+
+                if st.button("Apply relink + clear QC event", key=f"relink_apply_{selected['id']}"):
+                    try:
+                        con.execute("BEGIN")
+                        ok = _update_external_artifact_linkage(
+                            con,
+                            kind=str(selected["kind"]),
+                            path=str(selected["zone_json"]),
+                            experiment_id=str(selected["suggested_session_id"]),
+                            subject_id=None,
+                            meta_patch={
+                                "link_method": "manual_suggested",
+                                "suggested_session_id": str(selected["suggested_session_id"]),
+                                "suggested_video_path": selected.get("suggested_video_path"),
+                            },
+                        )
+                        if not ok:
+                            con.rollback()
+                            st.error("No external_artifacts row found for this kind+path.")
+                        else:
+                            _delete_qc_event(con, int(selected["id"]))
+                            con.commit()
+                            st.success("Relink applied and QC event cleared. Refreshing…")
+                            st.rerun()
+                    except Exception as e:
+                        try:
+                            con.rollback()
+                        except Exception:
+                            pass
+                        st.error(f"Relink failed: {e}")
+            else:
+                st.caption("No relink suggestions available for the remaining rows.")
 
     # Selection
     exp_ids = [e.experiment_id for e in exps]
