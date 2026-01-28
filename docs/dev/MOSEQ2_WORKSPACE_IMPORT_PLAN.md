@@ -153,6 +153,43 @@ Not yet implemented (still planned):
 - ⏳ `videos.hash` nullable change / new file locator strategy (schema direction still pending).
 - ⏳ Export/bundling workflow (`manifest.json` + portable bundle) (Deliverable C).
 
+## Streamlit browser + arena annotation integration plan (next dev tasks)
+
+Immediate incremental goal: keep using the existing workspace Streamlit annotator (`scripts/arena_annotation/app.py`)
+and make its outputs **DB-queryable** so MUS1 can act as the “source of truth” for:
+- what was annotated,
+- what is missing / needs QC,
+- what downstream pipelines can run next.
+
+Constraints / decisions:
+- Zone JSON outputs must continue to be written into the workspace (to support arena inference workflows independently of the app).
+- Deterministic linkage should be based on stable identifiers from the compiled session index, not ad-hoc path heuristics.
+- Multi-user annotation should use a simple “lock” mechanism (file- or DB-backed) to avoid collisions; for now, assume single-user.
+
+Planned milestones:
+
+1) **Index arena annotation outputs into MUS1 DB** (no rewriting the annotator required)
+   - Add an importer that reads per-video zone JSON directories:
+     - `resources/arena_zones/ezm_per_video_v2/` → `kind=ezm_zone_json_v2`
+     - `resources/arena_zones/nor_nof_per_video_v1/` → `kind=nor_nof_objects_json_v1`
+   - Use each JSON’s embedded `video_path` and join to `ml_tracking_metadata_model/index/session_index_filtered.csv`
+     to link the artifact to `experiment_id=session_id` and `subject_id`.
+   - Record QC events for unlinked annotations (e.g. `ANNOTATION_UNLINKED`).
+
+2) **Experiment browser (Streamlit)**
+   - Build a clean “experiment detail” page that shows:
+     - artifacts by kind (MoSeq2 outputs, KPMS inputs, annotation JSONs, etc.)
+     - QC events
+     - assay summaries (rotarod)
+   - Provide affordances to launch the annotator for a selected experiment/video.
+
+3) **Add lightweight locking**
+   - Prevent two annotators from editing the same recording simultaneously (initially a file lock is fine).
+
+4) **Host on Chinook during development**
+   - Continue running Streamlit via SSH port-forwarding (as in `start_arena_annotator.sh`).
+   - Later: optionally deploy as a shared lab service with user auth + lab membership.
+
 ### Deliverable A — importer creates core entities and indexes (dataset-first)
 
 Implement a new MUS1 import entrypoint that:

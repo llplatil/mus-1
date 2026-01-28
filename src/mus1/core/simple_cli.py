@@ -534,6 +534,65 @@ def import_moseq2_workspace(
     rich_print(f"[blue]ℹ[/blue] Artifacts added: {stats.artifacts_added}")
     rich_print(f"[blue]ℹ[/blue] QC events added: {stats.qc_events_added}")
 
+
+@import_app.command("arena-zones")
+def import_arena_zones(
+    project_path: Path = typer.Option(..., help="Target MUS1 project directory (contains mus1.db)"),
+    workspace_root: Path = typer.Option(..., help="MoSeq2 workspace root"),
+    session_index_csv: Path = typer.Option(
+        None,
+        help="Session index CSV (defaults to ml_tracking_metadata_model/index/session_index_filtered.csv under workspace_root)",
+    ),
+    ezm_dir: Path = typer.Option(
+        None,
+        help="Directory of EZM per-video zone JSONs (defaults to resources/arena_zones/ezm_per_video_v2 under workspace_root)",
+    ),
+    nor_nof_dir: Path = typer.Option(
+        None,
+        help="Directory of NOR/NOF per-video ROI JSONs (defaults to resources/arena_zones/nor_nof_per_video_v1 under workspace_root)",
+    ),
+):
+    """Index arena annotation JSON outputs into MUS1 DB as external artifacts."""
+    from .repository import get_repository_factory
+    from .importers.arena_zones import index_arena_zone_jsons
+
+    if session_index_csv is None:
+        session_index_csv = workspace_root / "ml_tracking_metadata_model" / "index" / "session_index_filtered.csv"
+    if ezm_dir is None:
+        ezm_dir = workspace_root / "resources" / "arena_zones" / "ezm_per_video_v2"
+    if nor_nof_dir is None:
+        nor_nof_dir = workspace_root / "resources" / "arena_zones" / "nor_nof_per_video_v1"
+
+    db_path = project_path / "mus1.db"
+    if not db_path.exists():
+        rich_print(f"[red]✗[/red] No mus1.db found at: {db_path}")
+        rich_print("[blue]ℹ[/blue] Create one with: mus1 project init \"<name>\" --path <project_path>")
+        raise typer.Exit(1)
+
+    if not session_index_csv.exists():
+        rich_print(f"[red]✗[/red] Session index CSV not found: {session_index_csv}")
+        raise typer.Exit(1)
+
+    db = Database(str(db_path))
+    db.create_tables()
+    repos = get_repository_factory(db)
+
+    stats = index_arena_zone_jsons(
+        repos,
+        workspace_root=workspace_root,
+        session_index_csv=session_index_csv,
+        ezm_dir=ezm_dir,
+        nor_nof_dir=nor_nof_dir,
+    )
+
+    rich_print("[green]✓[/green] Arena zones indexed")
+    rich_print(f"[blue]ℹ[/blue] Total JSONs scanned: {stats.total_jsons}")
+    rich_print(f"[blue]ℹ[/blue] Artifacts added: {stats.artifacts_added}")
+    rich_print(f"[blue]ℹ[/blue] Artifacts skipped (existing): {stats.artifacts_skipped_existing}")
+    rich_print(f"[blue]ℹ[/blue] Linked to experiments: {stats.linked_to_experiment}")
+    rich_print(f"[blue]ℹ[/blue] Unlinked: {stats.unlinked}")
+    rich_print(f"[blue]ℹ[/blue] QC events added: {stats.qc_events_added}")
+
 # ===========================================
 # DATA MANAGEMENT
 # ===========================================

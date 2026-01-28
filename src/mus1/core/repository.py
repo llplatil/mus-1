@@ -461,6 +461,26 @@ class AssayMeasurementRepository(BaseRepository):
 class ExternalArtifactRepository(BaseRepository):
     """Repository for artifact pointers (path-first)."""
 
+    def exists(
+        self,
+        *,
+        kind: str,
+        path: str,
+        subject_id: Optional[str] = None,
+        experiment_id: Optional[str] = None,
+    ) -> bool:
+        """Return True if an artifact row already exists for this locator."""
+        with self._get_session() as session:
+            q = session.query(ExternalArtifactModel).filter(
+                ExternalArtifactModel.kind == kind,
+                ExternalArtifactModel.path == path,
+            )
+            if subject_id is not None:
+                q = q.filter(ExternalArtifactModel.subject_id == subject_id)
+            if experiment_id is not None:
+                q = q.filter(ExternalArtifactModel.experiment_id == experiment_id)
+            return q.first() is not None
+
     def add(
         self,
         *,
