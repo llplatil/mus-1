@@ -459,7 +459,7 @@ class AssayMeasurementRepository(BaseRepository):
 
 
 class ExternalArtifactRepository(BaseRepository):
-    """Repository for external artifact operations."""
+    """Repository for artifact pointers (path-first)."""
 
     def add(
         self,
@@ -473,7 +473,7 @@ class ExternalArtifactRepository(BaseRepository):
         payload_json: Optional[str] = None,
         meta: Optional[Dict[str, Any]] = None,
     ) -> int:
-        """Add an external artifact. Returns the artifact ID."""
+        """Add an external artifact and return its integer ID."""
         with self._get_session() as session:
             row = ExternalArtifactModel(
                 kind=kind,
@@ -528,19 +528,19 @@ class ExternalArtifactRepository(BaseRepository):
 
 
 class QCEventRepository(BaseRepository):
-    """Repository for QC event operations."""
+    """Repository for non-fatal QC events."""
 
     def add(
         self,
         *,
         scope: str,
         code: str,
+        details: Optional[Dict[str, Any]] = None,
         subject_id: Optional[str] = None,
         experiment_id: Optional[str] = None,
         assay_session_id: Optional[int] = None,
-        details: Optional[Dict[str, Any]] = None,
     ) -> int:
-        """Add a QC event. Returns the event ID."""
+        """Add a QC event and return its integer ID."""
         with self._get_session() as session:
             row = QCEventModel(
                 scope=scope,
