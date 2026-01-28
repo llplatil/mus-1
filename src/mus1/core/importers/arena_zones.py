@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple
 
 import pandas as pd
 
@@ -24,6 +24,7 @@ class ArenaZonesIndexStats:
     total_jsons: int
     artifacts_added: int
     artifacts_skipped_existing: int
+    artifacts_updated_linkage: int
     qc_events_added: int
     linked_to_experiment: int
     unlinked: int
@@ -85,6 +86,69 @@ def _read_session_index_by_video_path(session_index_csv: Path) -> Dict[str, Dict
     return by_path
 
 
+def _read_session_index_by_task_basename(session_index_csv: Path) -> Dict[Tuple[str, str], Dict[str, str]]:
+    """
+    Build a lookup of (task, video_basename) -> row dict from session_index_filtered.csv.
+    Only includes tasks with non-empty video_path.
+    """
+    df = pd.read_csv(session_index_csv)
+    if "video_path" not in df.columns or "task" not in df.columns:
+        return {}
+
+    vps = df["video_path"].fillna("").astype(str).str.strip()
+    df = df.loc[vps.ne("")].copy()
+    df["basename"] = df["video_path"].astype(str).apply(lambda s: Path(s).name)
+
+    # Ensure uniqueness per (task, basename)
+    grouped = df.groupby(["task", "basename"]).size()
+    unique_keys = set(k for k, n in grouped.items() if int(n) == 1)
+
+    out: Dict[Tuple[str, str], Dict[str, str]] = {}
+    for _, r in df.iterrows():
+        task = str(r.get("task", "")).strip()
+        basename = str(r.get("basename", "")).strip()
+        key = (task, basename)
+        if key not in unique_keys:
+            continue
+        row = {k: ("" if pd.isna(v) else str(v)) for k, v in r.to_dict().items()}
+        out[key] = row
+    return out
+
+
+def _infer_task(zone_payload: dict) -> Optional[str]:
+    ann = zone_payload.get("annotations") or {}
+    calib = ann.get("calibration") or {}
+    meta = ann.get("meta") or {}
+
+    # NOR/NOF schema includes explicit assay field.
+    assay = str(meta.get("assay", "")).strip().upper()
+    if assay in {"NOR", "NOF", "EZM", "OF"}:
+        return assay
+
+    src = str(calib.get("source_overview_csv", "")).lower()
+    name = Path(src).name
+    if "ezm_overview" in name:
+        return "EZM"
+    if "nor_overview" in name:
+        return "NOR"
+    if "nof_overview" in name:
+        return "NOF"
+    return None
+
+
+def _normalize_basename(basename: str) -> str:
+    """
+    Normalize basenames that include DLC suffixes or other artifacts.
+    Example: '02.15.2024_161M_FAMDLC_Resnet50_..._labeled.mp4' -> '02.15.2024_161M_FAM.mp4'
+    """
+    b = basename
+    if "DLC_" in b:
+        b = b.split("DLC_")[0]
+        if not b.endswith(".mp4"):
+            b = b + ".mp4"
+    return b
+
+
 def _resolve_video_path(workspace_root: Path, zone_payload: dict) -> Optional[Path]:
     """
     Extract the `video_path` saved by the annotator and resolve it to an absolute path.
@@ -118,10 +182,12 @@ def index_arena_zone_jsons(
     `video_path` column in session_index_filtered.csv (compiled contract).
     """
     by_video_path = _read_session_index_by_video_path(session_index_csv)
+    by_task_basename = _read_session_index_by_task_basename(session_index_csv)
 
     total = 0
     added = 0
     skipped = 0
+    updated = 0
     qc_added = 0
     linked = 0
     unlinked = 0
@@ -132,7 +198,7 @@ def index_arena_zone_jsons(
         qc_added += 1
 
     def _index_dir(kind: str, d: Path):
-        nonlocal total, added, skipped, linked, unlinked
+        nonlocal total, added, skipped, updated, linked, unlinked
         if not d.exists():
             _qc("MISSING_INPUT", {"kind": kind, "path": str(d)})
             return
@@ -144,6 +210,8 @@ def index_arena_zone_jsons(
             except Exception as e:
                 _qc("ANNOTATION_JSON_READ_ERROR", {"path": str(p), "error": str(e)})
                 continue
+
+            existing = repos.external_artifacts.find_one(kind=kind, path=str(p))
 
             video_abs = _resolve_video_path(workspace_root, payload)
             if video_abs is None:
@@ -159,6 +227,16 @@ def index_arena_zone_jsons(
                     row = by_video_path.get(alias)
                     if row:
                         break
+                link_method = "path"
+
+                if not row:
+                    task = _infer_task(payload)
+                    bn = _normalize_basename(video_abs.name)
+                    if task:
+                        row = by_task_basename.get((task, bn))
+                        if row:
+                            link_method = "basename"
+
                 if row:
                     exp_id = (row.get("session_id") or "").strip() or None
                     subj_id = (row.get("subject_id") or "").strip() or None
@@ -170,6 +248,7 @@ def index_arena_zone_jsons(
                         "subject_id": subj_id,
                         "recording_date": (row.get("recording_date") or "").strip(),
                         "video_path": str(video_abs),
+                        "link_method": link_method,
                     }
                 else:
                     exp_id = None
@@ -179,10 +258,31 @@ def index_arena_zone_jsons(
                         "workspace_root": str(workspace_root),
                         "video_path": str(video_abs),
                     }
-                    _qc("ANNOTATION_UNLINKED", {"zone_json": str(p), "video_path": str(video_abs), "kind": kind})
+                    _qc(
+                        "ANNOTATION_UNLINKED",
+                        {
+                            "zone_json": str(p),
+                            "video_path": str(video_abs),
+                            "video_basename": video_abs.name,
+                            "inferred_task": _infer_task(payload),
+                            "kind": kind,
+                        },
+                    )
 
-            if repos.external_artifacts.exists(kind=kind, path=str(p), subject_id=subj_id, experiment_id=exp_id):
-                skipped += 1
+            if existing is not None:
+                # If we previously indexed unlinked and now can link, update in place.
+                if (existing.get("experiment_id") is None or existing.get("subject_id") is None) and (
+                    exp_id is not None or subj_id is not None
+                ):
+                    repos.external_artifacts.update_linkage(
+                        artifact_id=int(existing["id"]),
+                        subject_id=subj_id,
+                        experiment_id=exp_id,
+                        meta=meta,
+                    )
+                    updated += 1
+                else:
+                    skipped += 1
                 continue
 
             repos.external_artifacts.add(
@@ -201,6 +301,7 @@ def index_arena_zone_jsons(
         total_jsons=total,
         artifacts_added=added,
         artifacts_skipped_existing=skipped,
+        artifacts_updated_linkage=updated,
         qc_events_added=qc_added,
         linked_to_experiment=linked,
         unlinked=unlinked,

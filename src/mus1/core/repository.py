@@ -461,6 +461,45 @@ class AssayMeasurementRepository(BaseRepository):
 class ExternalArtifactRepository(BaseRepository):
     """Repository for artifact pointers (path-first)."""
 
+    def find_one(self, *, kind: str, path: str) -> Optional[Dict[str, Any]]:
+        """Return a single artifact row (best-effort) for kind+path."""
+        with self._get_session() as session:
+            a = (
+                session.query(ExternalArtifactModel)
+                .filter(ExternalArtifactModel.kind == kind, ExternalArtifactModel.path == path)
+                .order_by(ExternalArtifactModel.id.desc())
+                .first()
+            )
+            if not a:
+                return None
+            return {
+                "id": int(a.id),
+                "kind": a.kind,
+                "path": a.path,
+                "subject_id": a.subject_id,
+                "experiment_id": a.experiment_id,
+                "meta": json.loads(a.meta_json) if a.meta_json else {},
+            }
+
+    def update_linkage(
+        self,
+        *,
+        artifact_id: int,
+        subject_id: Optional[str],
+        experiment_id: Optional[str],
+        meta: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Update linkage/meta for an existing artifact row."""
+        with self._get_session() as session:
+            a = session.query(ExternalArtifactModel).filter(ExternalArtifactModel.id == artifact_id).first()
+            if not a:
+                return
+            a.subject_id = subject_id
+            a.experiment_id = experiment_id
+            if meta is not None:
+                a.meta_json = json.dumps(meta)
+            session.commit()
+
     def exists(
         self,
         *,

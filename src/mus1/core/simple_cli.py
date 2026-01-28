@@ -594,6 +594,7 @@ def import_arena_zones(
     rich_print(f"[blue]ℹ[/blue] Total JSONs scanned: {stats.total_jsons}")
     rich_print(f"[blue]ℹ[/blue] Artifacts added: {stats.artifacts_added}")
     rich_print(f"[blue]ℹ[/blue] Artifacts skipped (existing): {stats.artifacts_skipped_existing}")
+    rich_print(f"[blue]ℹ[/blue] Artifacts updated (linkage): {stats.artifacts_updated_linkage}")
     rich_print(f"[blue]ℹ[/blue] Linked to experiments: {stats.linked_to_experiment}")
     rich_print(f"[blue]ℹ[/blue] Unlinked: {stats.unlinked}")
     rich_print(f"[blue]ℹ[/blue] QC events added: {stats.qc_events_added}")
