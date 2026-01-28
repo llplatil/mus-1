@@ -115,6 +115,8 @@ def import_session_index(
     now = datetime.utcnow()
     session = repos.db.get_session()
     try:
+        seen_subjects: set[str] = set()
+        seen_experiments: set[str] = set()
         for _, row in df.iterrows():
             subject_id = str(row.get("subject_id", "")).strip()
             if not subject_id:
@@ -125,21 +127,23 @@ def import_session_index(
             birthdate = _parse_date(row.get("birthdate"))
             treatment = str(row.get("treatment", "")).strip() or None
 
-            session.merge(
-                SubjectModel(
-                    id=subject_id,
-                    colony_id=None,
-                    sex=sex,
-                    designation=SubjectDesignation.EXPERIMENTAL,
-                    birth_date=birthdate,
-                    death_date=None,
-                    individual_genotype=genotype,
-                    individual_treatment=treatment,
-                    notes="",
-                    date_added=now,
+            if subject_id not in seen_subjects:
+                seen_subjects.add(subject_id)
+                session.merge(
+                    SubjectModel(
+                        id=subject_id,
+                        colony_id=None,
+                        sex=sex,
+                        designation=SubjectDesignation.EXPERIMENTAL,
+                        birth_date=birthdate,
+                        death_date=None,
+                        individual_genotype=genotype,
+                        individual_treatment=treatment,
+                        notes="",
+                        date_added=now,
+                    )
                 )
-            )
-            stats.subjects_upserted += 1
+                stats.subjects_upserted += 1
 
             session_id = str(row.get("session_id", "")).strip()
             if not session_id:
@@ -148,19 +152,21 @@ def import_session_index(
             task = str(row.get("task", "")).strip() or "unknown"
             recording_date = _parse_date(row.get("recording_date")) or datetime.utcnow()
 
-            session.merge(
-                ExperimentModel(
-                    id=session_id,
-                    subject_id=subject_id,
-                    experiment_type=task,
-                    date_recorded=recording_date,
-                    processing_stage=ProcessingStage.RECORDED,
-                    experiment_subtype=None,
-                    notes="",
-                    date_added=now,
+            if session_id not in seen_experiments:
+                seen_experiments.add(session_id)
+                session.merge(
+                    ExperimentModel(
+                        id=session_id,
+                        subject_id=subject_id,
+                        experiment_type=task,
+                        date_recorded=recording_date,
+                        processing_stage=ProcessingStage.RECORDED,
+                        experiment_subtype=None,
+                        notes="",
+                        date_added=now,
+                    )
                 )
-            )
-            stats.experiments_upserted += 1
+                stats.experiments_upserted += 1
 
             # Record video path as an external artifact (path-only).
             video_path = _as_path(row.get("video_path"))
