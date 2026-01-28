@@ -9,11 +9,12 @@ Purpose:
 
 from __future__ import annotations
 
-import csv
 import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Optional
+
+import pandas as pd
 
 from ..repository import RepositoryFactory
 
@@ -66,16 +67,19 @@ def _read_session_index_by_video_path(session_index_csv: Path) -> Dict[str, Dict
     Uses the 'video_path' column.
     """
     by_path: Dict[str, Dict[str, str]] = {}
-    with session_index_csv.open(newline="") as f:
-        reader = csv.DictReader(f)
-        if not reader.fieldnames:
-            return {}
-        if "video_path" not in reader.fieldnames:
-            return {}
-        for row in reader:
-            vp = (row.get("video_path") or "").strip()
-            if not vp:
-                continue
+    df = pd.read_csv(session_index_csv)
+    if "video_path" not in df.columns:
+        return {}
+
+    # Keep only rows with a non-empty video_path
+    vps = df["video_path"].fillna("").astype(str).str.strip()
+    df = df.loc[vps.ne("")].copy()
+
+    for _, r in df.iterrows():
+        vp = str(r.get("video_path", "")).strip()
+        if not vp:
+            continue
+        row = {k: ("" if pd.isna(v) else str(v)) for k, v in r.to_dict().items()}
         for alias in _path_aliases(Path(vp)):
             by_path[alias] = row
     return by_path
