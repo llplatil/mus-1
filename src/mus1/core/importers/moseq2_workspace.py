@@ -14,7 +14,8 @@ import json
 import pandas as pd
 
 from ..repository import RepositoryFactory
-from ..metadata import Subject, Experiment, VideoFile, Sex, ProcessingStage, SubjectDesignation
+from ..metadata import Sex, ProcessingStage, SubjectDesignation
+from ..schema import SubjectModel, ExperimentModel, ExternalArtifactModel, QCEventModel
 
 
 @dataclass
@@ -109,145 +110,163 @@ def import_session_index(
     stats.rows_total = len(df)
 
     workspace_root = Path(workspace_root).resolve()
-
-    for _, row in df.iterrows():
-        # Extract subject information
-        subject_id = str(row.get("subject_id", "")).strip()
-        if not subject_id:
-            continue  # Skip rows without subject_id
-
-        # Parse subject fields
-        sex = _parse_sex(row.get("sex"))
-        genotype = str(row.get("genotype", "")).strip() or None
-        birthdate = _parse_date(row.get("birthdate"))
-
-        # Create/upsert subject
-        subject = Subject(
-            id=subject_id,
-            colony_id=None,  # No colony association from CSV
-            sex=sex,
-            designation=SubjectDesignation.EXPERIMENTAL,
-            birth_date=birthdate,
-            individual_genotype=genotype,
-            individual_treatment=str(row.get("treatment", "")).strip() or None,
-        )
-        repos.subjects.save(subject)
-        stats.subjects_upserted += 1
-
-        # Extract experiment information
-        session_id = str(row.get("session_id", "")).strip()
-        if not session_id:
-            session_id = f"{subject_id}_{row.get('recording_date', 'unknown')}"
-
-        task = str(row.get("task", "")).strip() or "unknown"
-        recording_date = _parse_date(row.get("recording_date"))
-        if not recording_date:
-            recording_date = datetime.now()  # Fallback
-
-        # Create/upsert experiment
-        experiment = Experiment(
-            id=session_id,
-            subject_id=subject_id,
-            experiment_type=task,
-            date_recorded=recording_date,
-            processing_stage=ProcessingStage.RECORDED,  # Assume recorded since we have data
-        )
-        repos.experiments.save(experiment)
-        stats.experiments_upserted += 1
-
-        # Handle video path
-        video_path = _as_path(row.get("video_path"))
-        if video_path:
-            video_path = _resolve_path(video_path, workspace_root)
-            # Save video (path-only, no hash)
-            repos.videos.save(VideoFile(path=video_path, hash=None))
-            stats.videos_upserted += 1
-            # Link video to experiment
-            repos.experiments.add_video_to_experiment_by_path(experiment.id, video_path)
-
-            # Store as external artifact
-            repos.external_artifacts.add(
-                kind="video_path",
-                experiment_id=experiment.id,
-                subject_id=subject_id,
-                path=str(video_path),
-                meta={"source": "session_index_filtered.csv"},
-            )
-            stats.artifacts_added += 1
-
-            # Check if video exists
-            if check_paths_exist and not video_path.exists():
-                repos.qc_events.add(
-                    scope="artifact",
-                    code="MISSING_PATH",
-                    subject_id=subject_id,
-                    experiment_id=experiment.id,
-                    details={"kind": "video_path", "path": str(video_path)},
-                )
-                stats.qc_events_added += 1
-
-        # Artifact columns to index directly
-        artifact_cols = [
-            "dlc_csv_path",
-            "moseq2_results_h5_path",
-            "moseq2_results_yaml_path",
-            "moseq2_metadata_path",
-            "moseq2_identifier_path",
-            "syllable_stats_path",
-            "syllable_h5_path",
-            "kpms_syllable_stats_path",
-        ]
-
-        for col in artifact_cols:
-            p = _as_path(row.get(col))
-            if not p:
+    # Performance note: use a single SQLAlchemy session and commit once.
+    # This avoids thousands of per-row commits during large workspace imports.
+    now = datetime.utcnow()
+    session = repos.db.get_session()
+    try:
+        for _, row in df.iterrows():
+            subject_id = str(row.get("subject_id", "")).strip()
+            if not subject_id:
                 continue
 
-            p = _resolve_path(p, workspace_root)
+            sex = _parse_sex(row.get("sex"))
+            genotype = str(row.get("genotype", "")).strip() or None
+            birthdate = _parse_date(row.get("birthdate"))
+            treatment = str(row.get("treatment", "")).strip() or None
 
-            # Store as external artifact
-            repos.external_artifacts.add(
-                kind=col,
-                experiment_id=experiment.id,
-                subject_id=subject_id,
-                path=str(p),
-                meta={"source": "session_index_filtered.csv"},
-            )
-            stats.artifacts_added += 1
-
-            # Check if path exists
-            if check_paths_exist and not p.exists():
-                repos.qc_events.add(
-                    scope="artifact",
-                    code="MISSING_PATH",
-                    subject_id=subject_id,
-                    experiment_id=experiment.id,
-                    details={"kind": col, "path": str(p)},
+            session.merge(
+                SubjectModel(
+                    id=subject_id,
+                    colony_id=None,
+                    sex=sex,
+                    designation=SubjectDesignation.EXPERIMENTAL,
+                    birth_date=birthdate,
+                    death_date=None,
+                    individual_genotype=genotype,
+                    individual_treatment=treatment,
+                    notes="",
+                    date_added=now,
                 )
-                stats.qc_events_added += 1
-
-        # Store scalar identifiers as meta on an artifact record
-        identifiers: Dict[str, Any] = {}
-        for k in (
-            "syllable_uuid",
-            "kpms_recording_id",
-            "moseq2_session_name",
-            "arena_bucket",
-            "moseq2_source_filename",
-        ):
-            v = str(row.get(k, "")).strip()
-            if v:
-                identifiers[k] = v
-
-        if identifiers:
-            repos.external_artifacts.add(
-                kind="identifiers",
-                experiment_id=experiment.id,
-                subject_id=subject_id,
-                path="",  # No file path for identifiers
-                payload_json=json.dumps(identifiers),  # Store as JSON string
-                meta={"source": "session_index_filtered.csv"},
             )
-            stats.artifacts_added += 1
+            stats.subjects_upserted += 1
+
+            session_id = str(row.get("session_id", "")).strip()
+            if not session_id:
+                session_id = f"{subject_id}_{row.get('recording_date', 'unknown')}"
+
+            task = str(row.get("task", "")).strip() or "unknown"
+            recording_date = _parse_date(row.get("recording_date")) or datetime.utcnow()
+
+            session.merge(
+                ExperimentModel(
+                    id=session_id,
+                    subject_id=subject_id,
+                    experiment_type=task,
+                    date_recorded=recording_date,
+                    processing_stage=ProcessingStage.RECORDED,
+                    experiment_subtype=None,
+                    notes="",
+                    date_added=now,
+                )
+            )
+            stats.experiments_upserted += 1
+
+            # Record video path as an external artifact (path-only).
+            video_path = _as_path(row.get("video_path"))
+            if video_path:
+                video_path = _resolve_path(video_path, workspace_root)
+                session.add(
+                    ExternalArtifactModel(
+                        kind="video_path",
+                        experiment_id=session_id,
+                        subject_id=subject_id,
+                        assay_session_id=None,
+                        path=str(video_path),
+                        content_sha256=None,
+                        payload_json=None,
+                        meta_json=json.dumps({"source": "session_index_filtered.csv"}),
+                        created_at=now,
+                    )
+                )
+                stats.artifacts_added += 1
+                if check_paths_exist and not video_path.exists():
+                    session.add(
+                        QCEventModel(
+                            scope="artifact",
+                            code="MISSING_PATH",
+                            subject_id=subject_id,
+                            experiment_id=session_id,
+                            assay_session_id=None,
+                            details_json=json.dumps({"kind": "video_path", "path": str(video_path)}),
+                            created_at=now,
+                        )
+                    )
+                    stats.qc_events_added += 1
+
+            artifact_cols = [
+                "dlc_csv_path",
+                "moseq2_results_h5_path",
+                "moseq2_results_yaml_path",
+                "moseq2_metadata_path",
+                "moseq2_identifier_path",
+                "syllable_stats_path",
+                "syllable_h5_path",
+                "kpms_syllable_stats_path",
+            ]
+
+            for col in artifact_cols:
+                p = _as_path(row.get(col))
+                if not p:
+                    continue
+                p = _resolve_path(p, workspace_root)
+                session.add(
+                    ExternalArtifactModel(
+                        kind=col,
+                        experiment_id=session_id,
+                        subject_id=subject_id,
+                        assay_session_id=None,
+                        path=str(p),
+                        content_sha256=None,
+                        payload_json=None,
+                        meta_json=json.dumps({"source": "session_index_filtered.csv"}),
+                        created_at=now,
+                    )
+                )
+                stats.artifacts_added += 1
+                if check_paths_exist and not p.exists():
+                    session.add(
+                        QCEventModel(
+                            scope="artifact",
+                            code="MISSING_PATH",
+                            subject_id=subject_id,
+                            experiment_id=session_id,
+                            assay_session_id=None,
+                            details_json=json.dumps({"kind": col, "path": str(p)}),
+                            created_at=now,
+                        )
+                    )
+                    stats.qc_events_added += 1
+
+            identifiers: Dict[str, Any] = {}
+            for k in (
+                "syllable_uuid",
+                "kpms_recording_id",
+                "moseq2_session_name",
+                "arena_bucket",
+                "moseq2_source_filename",
+            ):
+                v = str(row.get(k, "")).strip()
+                if v:
+                    identifiers[k] = v
+            if identifiers:
+                session.add(
+                    ExternalArtifactModel(
+                        kind="identifiers",
+                        experiment_id=session_id,
+                        subject_id=subject_id,
+                        assay_session_id=None,
+                        path="",
+                        content_sha256=None,
+                        payload_json=json.dumps(identifiers),
+                        meta_json=json.dumps({"source": "session_index_filtered.csv"}),
+                        created_at=now,
+                    )
+                )
+                stats.artifacts_added += 1
+
+        session.commit()
+    finally:
+        session.close()
 
     return stats
