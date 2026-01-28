@@ -85,9 +85,11 @@ def _resolve_video_path(workspace_root: Path, zone_payload: dict) -> Optional[Pa
     """
     Extract the `video_path` saved by the annotator and resolve it to an absolute path.
     """
-    # Both schemas store this under annotations.meta.video_path (currently).
-    meta = (zone_payload.get("annotations") or {}).get("meta") or {}
-    vp = (meta.get("video_path") or "").strip()
+    ann = zone_payload.get("annotations") or {}
+    # Current schemas store this under annotations.calibration.video_path.
+    calib = ann.get("calibration") or {}
+    meta = ann.get("meta") or {}
+    vp = (calib.get("video_path") or meta.get("video_path") or "").strip()
     if not vp:
         return None
     p = Path(vp)
