@@ -89,6 +89,12 @@ mus1 web experiment-browser \
   --workspace-root /center1/WDMOSEQ2/llplatil/WDMOSEQ2/moseq2_workspace
 ```
 
+Or use the helper script (recommended for iteration):
+
+```bash
+./scripts/run_experiment_browser.sh --pull --install
+```
+
 From your local machine:
 
 ```bash
