@@ -60,7 +60,7 @@ else
   subcmd="web"
 fi
 
-project_path="${MUS1_PROJECT_PATH:-/center1/WDMOSEQ2/llplatil/WDMOSEQ2/moseq2_workspace/mus1_projects/moseq2_workspace_db}"
+project_path="${MUS1_PROJECT_PATH:-/center1/WDMOSEQ2/llplatil/WDMOSEQ2/mus1_projects/moseq2_workspace_db}"
 workspace_root="${MOSEQ2_WORKSPACE_ROOT:-/center1/WDMOSEQ2/llplatil/WDMOSEQ2/moseq2_workspace}"
 port="8502"
 address="127.0.0.1"
