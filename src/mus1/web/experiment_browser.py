@@ -12,7 +12,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sqlite3
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
@@ -49,6 +51,40 @@ def _connect(db_path: Path) -> sqlite3.Connection:
     con = sqlite3.connect(str(db_path))
     con.row_factory = sqlite3.Row
     return con
+
+
+def _ensure_ml_tables(con: sqlite3.Connection) -> None:
+    """
+    Lightweight DB-first tables used by the Streamlit app.
+
+    We keep these in SQLite directly (no ORM) so the web UI can evolve quickly
+    without entangling core MUS1 schema/migrations.
+    """
+    con.execute(
+        """
+        CREATE TABLE IF NOT EXISTS ml_frame_reviews (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          kind TEXT NOT NULL,
+          run_path TEXT NOT NULL,
+          video_path TEXT NOT NULL,
+          frame_idx INTEGER,
+          overlay_path TEXT,
+          zone_json TEXT,
+          metric REAL,
+          label TEXT,
+          notes TEXT,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+        """
+    )
+    con.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_ml_frame_reviews_unique
+        ON ml_frame_reviews(kind, run_path, video_path, frame_idx, overlay_path)
+        """
+    )
+    con.commit()
 
 
 def _one_col(con: sqlite3.Connection, sql: str, params: Tuple[Any, ...] = ()) -> List[str]:
@@ -268,6 +304,273 @@ def _normalize_basename(basename: Optional[str]) -> Optional[str]:
     return b
 
 
+@st.cache_data(show_spinner=False)
+def _list_ezm_unet_runs(workspace_root: str) -> List[Dict[str, Any]]:
+    """
+    Discover EZM open/closed U-Net training run directories under the workspace.
+
+    Returns newest-first list with:
+      - run_path (absolute)
+      - name
+      - mtime
+      - has_labeled_eval
+    """
+    if not workspace_root:
+        return []
+    ws = Path(workspace_root)
+    base = ws / "statistics_summaries" / "dlc_ezm_open_closed_ml_unet"
+    if not base.exists():
+        return []
+
+    runs = []
+    for p in base.iterdir():
+        if not p.is_dir():
+            continue
+        if not p.name.startswith("train_"):
+            continue
+        try:
+            st_mtime = p.stat().st_mtime
+        except Exception:
+            st_mtime = 0.0
+        labeled_eval = p / "labeled_eval"
+        runs.append(
+            {
+                "run_path": str(p.resolve()),
+                "name": p.name,
+                "mtime": float(st_mtime),
+                "has_labeled_eval": labeled_eval.exists(),
+            }
+        )
+
+    runs.sort(key=lambda r: float(r.get("mtime", 0.0)), reverse=True)
+    return runs
+
+
+def _read_csv_rows(path: Path, *, limit: int = 500) -> List[Dict[str, Any]]:
+    """
+    Small CSV reader for UI tables (keeps deps minimal).
+    """
+    import csv
+
+    out: List[Dict[str, Any]] = []
+    with path.open() as f:
+        r = csv.DictReader(f)
+        for i, row in enumerate(r):
+            if i >= int(limit):
+                break
+            out.append({k: row.get(k) for k in (row.keys() or [])})
+    return out
+
+
+def _render_ezm_ml(con: sqlite3.Connection, *, workspace_root: Optional[str]) -> None:
+    st.header("EZM → open/closed U-Net (active review)")
+    if not workspace_root:
+        st.error("This view requires `--workspace-root` so we can find training runs.")
+        st.stop()
+
+    _ensure_ml_tables(con)
+
+    runs = _list_ezm_unet_runs(str(workspace_root))
+    if not runs:
+        st.info("No EZM U-Net runs found under `statistics_summaries/dlc_ezm_open_closed_ml_unet/`.")
+        st.stop()
+
+    run_labels = [f"{r['name']}" for r in runs]
+    default_idx = 0
+    run_choice = st.selectbox("Select run", options=run_labels, index=default_idx)
+    run = next(r for r in runs if r["name"] == run_choice)
+    run_dir = Path(str(run["run_path"]))
+
+    st.caption(f"Run dir: `{run_dir}`")
+
+    # Labeled dataset == zone-derived training index for now.
+    st.subheader("Labeled dataset")
+    labeled_index = run_dir / "training_index_from_zones.csv"
+    if labeled_index.exists():
+        st.caption(f"Index: `{labeled_index}`")
+        with st.expander("Preview labeled index (first 20 rows)", expanded=False):
+            rows = _read_csv_rows(labeled_index, limit=20)
+            st.dataframe(rows, width="stretch", hide_index=True)
+    else:
+        st.warning("Missing `training_index_from_zones.csv` in this run dir.")
+
+    st.subheader("Review worst frames")
+    n = int(st.number_input("N worst frames", min_value=1, max_value=100, value=5, step=1))
+
+    worst_csv = run_dir / "labeled_eval" / "worst_frames.csv"
+    if not worst_csv.exists():
+        st.warning(
+            "Missing `labeled_eval/worst_frames.csv` for this run. "
+            "Run inference to generate it (outside the app) or rerun the inference step for this run."
+        )
+        st.stop()
+
+    worst_rows = _read_csv_rows(worst_csv, limit=max(200, n))
+    # Sort by miou_open_closed when present (as string)
+    def _as_float(v: Any) -> float:
+        try:
+            return float(v)
+        except Exception:
+            return float("nan")
+
+    worst_rows.sort(key=lambda r: _as_float(r.get("miou_open_closed")), reverse=False)
+    worst_rows = worst_rows[:n]
+
+    st.dataframe(worst_rows, width="stretch", hide_index=True)
+
+    if not worst_rows:
+        st.stop()
+
+    if "ezm_ml_idx" not in st.session_state:
+        st.session_state.ezm_ml_idx = 0
+    st.session_state.ezm_ml_idx = int(
+        max(0, min(int(st.session_state.ezm_ml_idx), len(worst_rows) - 1))
+    )
+
+    nav1, nav2, nav3 = st.columns([1, 1, 3])
+    with nav1:
+        if st.button("Prev", disabled=st.session_state.ezm_ml_idx <= 0):
+            st.session_state.ezm_ml_idx -= 1
+    with nav2:
+        if st.button("Next", disabled=st.session_state.ezm_ml_idx >= len(worst_rows) - 1):
+            st.session_state.ezm_ml_idx += 1
+    with nav3:
+        st.write(f"Item {st.session_state.ezm_ml_idx + 1} / {len(worst_rows)}")
+
+    row = worst_rows[int(st.session_state.ezm_ml_idx)]
+    overlay_path = Path(str(row.get("overlay_path") or "")).expanduser()
+    if not overlay_path.is_absolute():
+        overlay_path = (Path(workspace_root) / overlay_path).resolve()
+
+    st.markdown("#### Overlay (GT vs pred)")
+    st.caption(f"video: `{row.get('video_path')}`  frame_idx: `{row.get('frame_idx')}`")
+    if row.get("zone_json"):
+        st.caption(f"zone_json: `{row.get('zone_json')}`")
+    st.caption(f"miou_open_closed: `{row.get('miou_open_closed')}`")
+
+    if overlay_path.exists():
+        st.image(str(overlay_path), width="stretch")
+    else:
+        st.error(f"Overlay image not found: {overlay_path}")
+
+    st.markdown("#### Label this frame")
+    label = st.radio(
+        "Label",
+        options=["unreviewed", "gt_issue", "model_issue", "ambiguous"],
+        horizontal=True,
+        index=0,
+        key="ezm_ml_label",
+    )
+    notes = st.text_area("Notes", value="", key="ezm_ml_notes")
+
+    if st.button("Save label to DB", key="ezm_ml_save"):
+        con.execute("BEGIN")
+        con.execute(
+            """
+            INSERT INTO ml_frame_reviews (kind, run_path, video_path, frame_idx, overlay_path, zone_json, metric, label, notes, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+            ON CONFLICT(kind, run_path, video_path, frame_idx, overlay_path) DO UPDATE SET
+              zone_json=excluded.zone_json,
+              metric=excluded.metric,
+              label=excluded.label,
+              notes=excluded.notes,
+              updated_at=datetime('now')
+            """,
+            (
+                "ezm_unet_open_closed",
+                str(run_dir),
+                str(row.get("video_path") or ""),
+                int(float(row.get("frame_idx") or 0)),
+                str(overlay_path),
+                str(row.get("zone_json") or ""),
+                _as_float(row.get("miou_open_closed")),
+                str(label),
+                str(notes),
+            ),
+        )
+        con.commit()
+        st.success("Saved.")
+
+    with st.expander("Recent saved labels (this run)", expanded=False):
+        saved = _fetchall(
+            con,
+            """
+            SELECT video_path, frame_idx, metric, label, notes, updated_at
+            FROM ml_frame_reviews
+            WHERE kind = ? AND run_path = ?
+            ORDER BY updated_at DESC
+            LIMIT 50
+            """,
+            ("ezm_unet_open_closed", str(run_dir)),
+        )
+        st.dataframe([dict(r) for r in saved], width="stretch", hide_index=True)
+
+    st.subheader("Retrain (Slurm)")
+    # We do a "free node" check before offering submit.
+    slurm_script = Path(workspace_root) / "scripts" / "statistics_organized" / "dlc_ezm_open_closed" / "torch_ml" / "run_train_unet_open_closed_from_zones_augfix_sched_and_qc.slurm"
+    st.caption(f"Training script: `{slurm_script}`")
+    if not slurm_script.exists():
+        st.warning("Slurm script not found; cannot submit retrain from the UI.")
+        st.stop()
+
+    part = ""
+    try:
+        for line in slurm_script.read_text().splitlines():
+            if line.startswith("#SBATCH --partition="):
+                part = line.split("=", 1)[1].strip()
+                break
+    except Exception:
+        part = ""
+    if part:
+        st.caption(f"Detected partition: `{part}`")
+
+    check = st.button("Check for idle nodes", key="ezm_ml_check_idle")
+    idle_ok = False
+    if check:
+        try:
+            # Cluster rule: look for a free node before starting jobs.
+            cmd = ["sinfo", "-h", "-t", "idle,mix", "-o", "%P %D %N"]
+            r = subprocess.run(cmd, check=False, capture_output=True, text=True)
+            out = (r.stdout or "").strip()
+            err = (r.stderr or "").strip()
+            if err:
+                st.caption(err)
+            st.code(out or "(no output)")
+            if part:
+                # Best-effort: require at least one line mentioning the partition.
+                idle_ok = any(line.strip().startswith(part) for line in out.splitlines())
+            else:
+                idle_ok = bool(out)
+        except Exception as e:
+            st.error(f"sinfo failed: {e}")
+
+    submit = st.button("Submit retrain job", key="ezm_ml_submit", disabled=not check)
+    if submit:
+        if part and not idle_ok:
+            st.error(f"No idle/mix nodes detected for partition `{part}`. Not submitting.")
+            st.stop()
+        try:
+            r = subprocess.run(["sbatch", str(slurm_script)], check=False, capture_output=True, text=True)
+            if r.returncode != 0:
+                st.error(r.stderr or r.stdout or "sbatch failed.")
+            else:
+                msg = (r.stdout or "").strip()
+                st.success(msg or "Submitted.")
+                # Print monitoring commands
+                jobid = msg.split()[-1] if msg else ""
+                if jobid.isdigit():
+                    st.code(
+                        "\n".join(
+                            [
+                                f"squeue -j {jobid}",
+                                f"sacct -j {jobid} --format=JobID,JobName%25,State,Elapsed,MaxRSS,AllocCPUS,NodeList%25",
+                            ]
+                        )
+                    )
+        except Exception as e:
+            st.error(f"sbatch failed: {e}")
+
+
 def main() -> None:
     st.set_page_config(page_title="MUS1 Experiment Browser", layout="wide")
     st.title("MUS1 Experiment Browser")
@@ -285,6 +588,13 @@ def main() -> None:
         st.stop()
 
     con = _connect(db_path)
+
+    st.sidebar.header("View")
+    view = st.sidebar.radio("Mode", options=["Experiments", "EZM ML"], index=0)
+
+    if view == "EZM ML":
+        _render_ezm_ml(con, workspace_root=workspace_root)
+        st.stop()
 
     st.sidebar.header("Filters")
     exp_types = _one_col(con, "SELECT DISTINCT experiment_type FROM experiments ORDER BY experiment_type ASC")
