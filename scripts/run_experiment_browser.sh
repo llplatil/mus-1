@@ -83,8 +83,8 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ ! -d "$repo_root/.git" ]]; then
-  echo "ERROR: expected a git repo at: $repo_root" >&2
+if ! git -C "$repo_root" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  echo "ERROR: expected a git repo (or worktree) at: $repo_root" >&2
   exit 2
 fi
 
