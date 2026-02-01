@@ -349,7 +349,7 @@ def main() -> None:
                         "error": details.get("error"),
                     }
                 )
-            st.dataframe(rows, use_container_width=True, hide_index=True)
+            st.dataframe(rows, width="stretch", hide_index=True)
 
             relink_candidates = [
                 r
@@ -423,7 +423,7 @@ def main() -> None:
             }
             for e in exps
         ],
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
     )
 
