@@ -28,10 +28,6 @@ gui = [
 ]
 web = [
   "streamlit",
-  "streamlit-drawable-canvas",
-  # OpenCV is used only for ellipse fitting in the in-app EZM annotator.
-  # 4.12+ enforces numpy>=2 on py3.9+, while MUS1 pins numpy<=1.26.4.
-  "opencv-python-headless<4.12",
 ]
 
 [project.scripts]
