@@ -42,82 +42,11 @@ mus1 --setup               # CLI mode with setup wizard
 
 ## MoSeq2 workspace → MUS1 DB sync (Chinook workflow)
 
-This repo includes importers intended to make the MoSeq2 workspace queryable from a MUS1 project DB.
+Canonical Chinook workflow docs live in the workspace root `README.md`:
 
-### 0) Start from `base` on Chinook
+- `/center1/WDMOSEQ2/llplatil/WDMOSEQ2/moseq2_workspace/README.md`
 
-```bash
-cd /center1/WDMOSEQ2/llplatil/WDMOSEQ2/moseq2_workspace/mus1_work/mus-1__sync
-git checkout feature/workspace-db-sync
-```
-
-### 1) Install MUS1 (dev)
-
-Use a dedicated conda env (recommended):
-
-```bash
-conda create -n mus1-dev python=3.10 -y
-conda activate mus1-dev
-pip install -e ".[web]"
-```
-
-### 2) Sync workspace → DB (subjects/experiments/artifacts/QC + rotarod + KPMS)
-
-```bash
-mus1 import workspace-db-sync \
-  --project-path /path/to/mus1_project \
-  --workspace-root /center1/WDMOSEQ2/llplatil/WDMOSEQ2/moseq2_workspace
-```
-
-### 3) Index existing arena annotation outputs into the DB
-
-This keeps zone JSONs written to the workspace, but also makes them queryable via `external_artifacts`:
-
-```bash
-mus1 import arena-zones \
-  --project-path /path/to/mus1_project \
-  --workspace-root /center1/WDMOSEQ2/llplatil/WDMOSEQ2/moseq2_workspace
-```
-
-### 4) Launch the DB-first experiment browser (Streamlit)
-
-```bash
-mus1 web experiment-browser \
-  --project-path /path/to/mus1_project \
-  --port 8502 \
-  --address 127.0.0.1 \
-  --workspace-root /center1/WDMOSEQ2/llplatil/WDMOSEQ2/moseq2_workspace
-```
-
-Or use the helper script (recommended for iteration; single entrypoint for web + train):
-
-```bash
-./scripts/run_experiment_browser.sh web --pull --install
-```
-
-Submit retraining (checks for idle/mix nodes first, then tails logs):
-
-```bash
-./scripts/run_experiment_browser.sh train --check-idle --follow
-```
-
-From your local machine:
-
-```bash
-ssh -L 8502:localhost:8502 llplatil@chinook04.alaska.edu
-```
-
-Then open `http://localhost:8502`.
-
-#### Reliable port-forwarding tip (macOS/Cursor)
-
-If your local port is already in use (common when Cursor is running a local listener), use a different local port:
-
-```bash
-ssh -L 8503:localhost:8502 llplatil@chinook04.alaska.edu
-```
-
-Then open `http://localhost:8503`.
+This avoids duplicating setup/launch instructions across multiple READMEs.
 
 ## Current Status
 
