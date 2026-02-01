@@ -15,6 +15,7 @@ import json
 import os
 import sqlite3
 import subprocess
+import math
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
@@ -386,6 +387,303 @@ def _read_csv_rows(path: Path, *, limit: int = 500) -> List[Dict[str, Any]]:
     return out
 
 
+def _tail_text(path: Path, *, max_lines: int = 200) -> str:
+    """
+    Efficient-ish tail for log files (best effort).
+    """
+    try:
+        if max_lines <= 0:
+            return ""
+        # Read from the end in chunks until we have enough newlines.
+        with path.open("rb") as f:
+            f.seek(0, os.SEEK_END)
+            size = f.tell()
+            block = 8192
+            data = b""
+            pos = size
+            while pos > 0 and data.count(b"\n") <= max_lines:
+                step = block if pos >= block else pos
+                pos -= step
+                f.seek(pos, os.SEEK_SET)
+                data = f.read(step) + data
+            txt = data.decode(errors="replace")
+            lines = txt.splitlines()[-max_lines:]
+            return "\n".join(lines)
+    except Exception:
+        return ""
+
+
+def _run_cmd(cmd: List[str]) -> Tuple[int, str, str]:
+    try:
+        r = subprocess.run(cmd, check=False, capture_output=True, text=True)
+        return int(r.returncode), (r.stdout or "").strip(), (r.stderr or "").strip()
+    except Exception as e:
+        return 1, "", str(e)
+
+
+@st.cache_data(show_spinner=False, ttl=20)
+def _slurm_squeue(user: str) -> List[Dict[str, str]]:
+    """
+    Return a table of active jobs for the given user.
+    """
+    # Use a parsable format to avoid brittle whitespace parsing.
+    fmt = "%i|%P|%j|%u|%T|%M|%D|%R"
+    code, out, err = _run_cmd(["squeue", "-u", str(user), "-h", "-o", fmt])
+    if code != 0:
+        return [{"jobid": "", "partition": "", "name": "", "user": str(user), "state": "ERROR", "time": "", "nodes": "", "reason": err or out}]
+    rows = []
+    for line in (out.splitlines() if out else []):
+        parts = line.split("|")
+        if len(parts) != 8:
+            continue
+        rows.append(
+            {
+                "jobid": parts[0],
+                "partition": parts[1],
+                "name": parts[2],
+                "user": parts[3],
+                "state": parts[4],
+                "time": parts[5],
+                "nodes": parts[6],
+                "nodelist_reason": parts[7],
+            }
+        )
+    return rows
+
+
+@st.cache_data(show_spinner=False, ttl=60)
+def _slurm_sacct(jobid: str) -> str:
+    code, out, err = _run_cmd(
+        [
+            "sacct",
+            "-j",
+            str(jobid),
+            "--format=JobID,JobName%25,Partition,State,Elapsed,Timelimit,AllocCPUS,NodeList%25,ExitCode,MaxRSS",
+            "-n",
+        ]
+    )
+    if code != 0:
+        return err or out
+    return out
+
+
+@st.cache_data(show_spinner=False, ttl=20)
+def _slurm_sstat(jobid: str) -> str:
+    # Often only meaningful while running.
+    code, out, err = _run_cmd(
+        [
+            "sstat",
+            "-j",
+            f"{jobid}.batch",
+            "--format=JobID,AveCPU,MaxRSS,AveRSS,MaxVMSize",
+            "-n",
+        ]
+    )
+    if code != 0:
+        return err or out
+    return out
+
+
+@st.cache_data(show_spinner=False, ttl=60)
+def _slurm_scontrol_node(node: str) -> str:
+    code, out, err = _run_cmd(["scontrol", "show", "node", "-o", str(node)])
+    if code != 0:
+        return err or out
+    return out
+
+
+@st.cache_data(show_spinner=False, ttl=30)
+def _discover_ml_tracking_runs(workspace_root: str) -> List[Dict[str, Any]]:
+    """
+    Discover ML tracking run outputs that contain run_status.json (and optionally metrics.csv).
+    """
+    if not workspace_root:
+        return []
+    ws = Path(workspace_root)
+    base = ws / "ml_tracking_metadata_model" / "runs"
+    if not base.exists():
+        return []
+
+    runs: List[Dict[str, Any]] = []
+    # Common patterns used by this workspace.
+    patterns = [
+        "*/train_session_long_*",
+        "*/train_session_test_*",
+        "*/train_session",
+        "*/train",  # legacy baseline trainer output
+        "**/train_session_long_*",
+        "**/train_session_test_*",
+    ]
+    seen: set[str] = set()
+    for pat in patterns:
+        for p in base.glob(pat):
+            if not p.is_dir():
+                continue
+            rs = p / "run_status.json"
+            if not rs.exists():
+                continue
+            key = str(p.resolve())
+            if key in seen:
+                continue
+            seen.add(key)
+            try:
+                st_mtime = rs.stat().st_mtime
+            except Exception:
+                st_mtime = 0.0
+            runs.append(
+                {
+                    "run_path": key,
+                    "name": p.name,
+                    "mtime": float(st_mtime),
+                    "has_metrics": (p / "metrics.csv").exists(),
+                    "has_by_exposure": (p / "metrics_by_exposure.csv").exists(),
+                }
+            )
+    runs.sort(key=lambda r: float(r.get("mtime", 0.0)), reverse=True)
+    return runs
+
+
+def _render_training_monitor(*, workspace_root: Optional[str]) -> None:
+    st.header("Training Monitor")
+    st.caption("Read-only monitoring of Slurm jobs and ML run outputs (metrics + logs).")
+    if not workspace_root:
+        st.error("This view requires `--workspace-root` so we can find run outputs.")
+        st.stop()
+
+    user = os.environ.get("USER", "").strip() or "unknown"
+
+    col_a, col_b = st.columns([1, 1])
+    with col_a:
+        if st.button("Refresh now"):
+            st.cache_data.clear()
+            st.rerun()
+    with col_b:
+        st.caption("Auto-refresh by reloading the page; cached queries update every ~20–60s.")
+
+    st.subheader("What to watch (best practice)")
+    st.markdown(
+        "\n".join(
+            [
+                "- **Job health**: job state (RUNNING/PENDING), time remaining, and whether the job is writing outputs regularly.",
+                "- **Resource usage**: MaxRSS / AveRSS, and CPU utilization (low CPU can indicate a stall or oversubscription).",
+                "- **Learning signal**: session-level balanced accuracy trends by repeat; don’t interpret single repeats.",
+                "- **Timepoint trend**: performance by `exposure_num` with consistent subject-grouped splits (session-level aggregation).",
+                "- **Failure modes**: max-iter convergence warnings, missing classes in test fold, and timeouts.",
+            ]
+        )
+    )
+
+    st.subheader("Active Slurm jobs")
+    jobs = _slurm_squeue(user)
+    st.dataframe(jobs, width="stretch", hide_index=True)
+
+    jobids = [j["jobid"] for j in jobs if str(j.get("jobid", "")).isdigit()]
+    selected_job = st.selectbox("Inspect job", options=(["(none)"] + jobids), index=0)
+    if selected_job != "(none)":
+        st.markdown("#### Job accounting (sacct)")
+        st.code(_slurm_sacct(selected_job) or "(no output)")
+        st.markdown("#### Live usage (sstat)")
+        st.code(_slurm_sstat(selected_job) or "(no output)")
+        # Extract node name if present in nodelist_reason like "n144" or "(Priority)".
+        nodelist = next((j.get("nodelist_reason", "") for j in jobs if j.get("jobid") == selected_job), "")
+        node = ""
+        for tok in str(nodelist).replace(",", " ").split():
+            if tok.startswith("n") and tok[1:].isdigit():
+                node = tok
+                break
+        if node:
+            st.markdown(f"#### Node snapshot (`{node}`)")
+            st.code(_slurm_scontrol_node(node) or "(no output)")
+
+    st.subheader("ML tracking runs (what it learned)")
+    runs = _discover_ml_tracking_runs(str(workspace_root))
+    if not runs:
+        st.info("No ML tracking runs found under `ml_tracking_metadata_model/runs/**/train*`.")
+        st.stop()
+
+    run_labels = [f"{r['name']}  ({'metrics' if r['has_metrics'] else 'no-metrics'})  {r['run_path']}" for r in runs[:200]]
+    choice = st.selectbox("Select run output dir", options=run_labels, index=0)
+    run = next(r for r in runs if f"{r['name']}  ({'metrics' if r['has_metrics'] else 'no-metrics'})  {r['run_path']}" == choice)
+    run_dir = Path(str(run["run_path"]))
+
+    st.caption(f"Run dir: `{run_dir}`")
+    # Status
+    try:
+        status = json.loads((run_dir / "run_status.json").read_text())
+    except Exception:
+        status = {}
+    with st.expander("run_status.json", expanded=False):
+        st.json(status, expanded=False)
+
+    # Metrics
+    metrics_path = run_dir / "metrics.csv"
+    if metrics_path.exists():
+        try:
+            mdf = pd.read_csv(metrics_path)
+        except Exception:
+            mdf = pd.DataFrame()
+        if not mdf.empty and "repeat" in mdf.columns and "value" in mdf.columns:
+            mdf["repeat"] = pd.to_numeric(mdf["repeat"], errors="coerce")
+            mdf["value"] = pd.to_numeric(mdf["value"], errors="coerce")
+            if "score_level" in mdf.columns:
+                mdf = mdf[mdf["score_level"].astype(str) == "session"].copy()
+            st.markdown("#### Session-level accuracy trend (by repeat)")
+            for tgt in ["sex", "genotype"]:
+                sub = mdf[mdf["target"].astype(str) == tgt].sort_values("repeat", kind="mergesort")
+                if sub.empty:
+                    continue
+                st.line_chart(sub.set_index("repeat")["value"], height=160)
+        with st.expander("metrics.csv (tail)", expanded=False):
+            st.code(_tail_text(metrics_path, max_lines=120) or "(empty)")
+    else:
+        st.warning("metrics.csv not found yet (run may still be in progress).")
+
+    byexp_path = run_dir / "metrics_by_exposure.csv"
+    if byexp_path.exists():
+        try:
+            bdf = pd.read_csv(byexp_path)
+        except Exception:
+            bdf = pd.DataFrame()
+        if not bdf.empty and "exposure_num" in bdf.columns and "value" in bdf.columns:
+            bdf["exposure_num"] = pd.to_numeric(bdf["exposure_num"], errors="coerce")
+            bdf["value"] = pd.to_numeric(bdf["value"], errors="coerce")
+            st.markdown("#### Accuracy by exposure_num (mean over repeats so far)")
+            piv = (
+                bdf.groupby(["target", "exposure_num"], dropna=False)["value"]
+                .mean()
+                .reset_index()
+                .pivot(index="exposure_num", columns="target", values="value")
+                .sort_index()
+            )
+            st.line_chart(piv, height=200)
+        with st.expander("metrics_by_exposure.csv (tail)", expanded=False):
+            st.code(_tail_text(byexp_path, max_lines=120) or "(empty)")
+
+    # Logs: user-provided path (we can't reliably infer jobid -> log file)
+    st.subheader("Log tail (optional)")
+    default_log = str((Path(workspace_root) / "logs").resolve())
+    log_path_str = st.text_input(
+        "Path to a log file to tail (absolute or relative to workspace root)",
+        value="",
+        help=f"Example: `{default_log}/train_sess_eval_long_<jobid>.out`",
+    )
+    if log_path_str.strip():
+        p = Path(log_path_str.strip()).expanduser()
+        if not p.is_absolute():
+            p = (Path(workspace_root) / p).resolve()
+        # Safety: ensure within workspace root
+        try:
+            ws = Path(workspace_root).resolve()
+            if ws not in p.parents and p != ws:
+                st.error("Refusing to read a path outside the workspace root.")
+            elif p.exists():
+                st.code(_tail_text(p, max_lines=200) or "(empty)")
+            else:
+                st.warning(f"Not found: {p}")
+        except Exception as e:
+            st.error(f"Path error: {e}")
+
+
 def _render_ezm_ml(con: sqlite3.Connection, *, workspace_root: Optional[str]) -> None:
     st.header("EZM → open/closed U-Net (active review)")
     if not workspace_root:
@@ -477,10 +775,307 @@ def _render_ezm_ml(con: sqlite3.Connection, *, workspace_root: Optional[str]) ->
     else:
         st.error(f"Overlay image not found: {overlay_path}")
 
-    st.markdown("#### Add to next training run")
+    st.markdown("#### Label arena markings on this frame")
     st.caption(
-        "This does not ask you to classify QC. It queues this (video, frame_idx) so the next retrain can include it as a supervised sample."
+        "Use this editor to label the EZM arena (outer/inner boundaries + 4 borders + open sectors) on this exact frame. "
+        "Saving updates the referenced zone JSON. Then you can add this frame to the training frame set."
     )
+
+    # --- Minimal EZM annotator (ported from scripts/arena_annotation/app.py) ---
+    try:
+        import numpy as np  # type: ignore
+        import cv2  # type: ignore
+        from PIL import Image  # type: ignore
+        from streamlit_drawable_canvas import st_canvas  # type: ignore
+    except Exception as e:
+        st.error(
+            "EZM frame labeling requires extra deps. Reinstall with:\n"
+            "  pip install -e \".[web]\"\n"
+            f"Import error: {e}"
+        )
+        st.stop()
+
+    TAU = 2.0 * math.pi
+
+    @dataclass(frozen=True)
+    class _EllipseParams:
+        center_xy: Tuple[float, float]
+        axes_xy: Tuple[float, float]  # diameters
+        angle_deg: float
+
+        @property
+        def a(self) -> float:
+            return float(self.axes_xy[0]) / 2.0
+
+        @property
+        def b(self) -> float:
+            return float(self.axes_xy[1]) / 2.0
+
+        @property
+        def angle_rad(self) -> float:
+            return math.radians(float(self.angle_deg))
+
+    def _wrap_angle(theta: np.ndarray) -> np.ndarray:
+        return np.mod(theta, TAU)
+
+    def _rotation_matrix(angle_rad: float) -> np.ndarray:
+        c = math.cos(angle_rad)
+        s = math.sin(angle_rad)
+        return np.array([[c, -s], [s, c]], dtype=float)
+
+    def _compute_r_theta(x: np.ndarray, y: np.ndarray, outer: _EllipseParams) -> Tuple[np.ndarray, np.ndarray]:
+        x = np.asarray(x, dtype=float)
+        y = np.asarray(y, dtype=float)
+        cx, cy = outer.center_xy
+        pts = np.stack([x - cx, y - cy], axis=0)
+        R = _rotation_matrix(-outer.angle_rad)
+        rot = R @ pts
+        a = outer.a if outer.a > 0 else np.nan
+        b = outer.b if outer.b > 0 else np.nan
+        xn = rot[0, :] / a
+        yn = rot[1, :] / b
+        r = np.sqrt(xn * xn + yn * yn)
+        theta = _wrap_angle(np.arctan2(yn, xn))
+        return r, theta
+
+    def _circular_mean(angles: List[float]) -> float:
+        ang = np.asarray(list(angles), dtype=float)
+        s = float(np.nanmean(np.sin(ang)))
+        c = float(np.nanmean(np.cos(ang)))
+        return float((math.atan2(s, c)) % TAU)
+
+    def _open_ranges_from_boundary_angles(boundary_angles_sorted: Tuple[float, float, float, float], open_sectors: List[int]) -> Tuple[Tuple[float, float], Tuple[float, float]]:
+        angles = [float(a) % TAU for a in boundary_angles_sorted]
+        if len(angles) != 4:
+            raise ValueError("Expected 4 boundary angles")
+        if len(open_sectors) != 2:
+            raise ValueError("Expected exactly 2 open sectors")
+        ranges = []
+        for sidx in open_sectors:
+            start = angles[int(sidx)]
+            end = angles[(int(sidx) + 1) % 4]
+            ranges.append((start, end))
+        return (ranges[0], ranges[1])
+
+    def _ensure_dict(x: Any) -> Dict[str, Any]:
+        return x if isinstance(x, dict) else {}
+
+    def _extract_points_from_canvas(canvas_json: Dict[str, Any]) -> List[Tuple[float, float]]:
+        pts = []
+        objs = list((_ensure_dict(canvas_json).get("objects", []) or []))
+        for obj in objs:
+            if not isinstance(obj, dict):
+                continue
+            if obj.get("type") != "circle":
+                continue
+            # Fabric circles are stored by bounding box top/left + radius
+            left = float(obj.get("left", 0.0))
+            top = float(obj.get("top", 0.0))
+            radius = float(obj.get("radius", 0.0))
+            pts.append((left + radius, top + radius))
+        return pts
+
+    def _extract_lines_from_canvas(canvas_json: Dict[str, Any]) -> List[Tuple[Tuple[float, float], Tuple[float, float]]]:
+        lines = []
+        objs = list((_ensure_dict(canvas_json).get("objects", []) or []))
+        for obj in objs:
+            if not isinstance(obj, dict):
+                continue
+            if obj.get("type") != "line":
+                continue
+            # Fabric lines are stored with x1..y2 in object-local coords + left/top offset
+            left = float(obj.get("left", 0.0))
+            top = float(obj.get("top", 0.0))
+            x1 = float(obj.get("x1", 0.0))
+            y1 = float(obj.get("y1", 0.0))
+            x2 = float(obj.get("x2", 0.0))
+            y2 = float(obj.get("y2", 0.0))
+            lines.append(((left + x1, top + y1), (left + x2, top + y2)))
+        return lines
+
+    def _scale_for_display(img_rgb: np.ndarray, disp_w: int) -> Tuple[Image.Image, float]:
+        h, w = img_rgb.shape[:2]
+        if w <= 0 or h <= 0:
+            raise ValueError("Invalid image")
+        scale = float(disp_w) / float(w)
+        new_w = int(round(w * scale))
+        new_h = int(round(h * scale))
+        pil = Image.fromarray(img_rgb)
+        pil = pil.resize((new_w, new_h))
+        return pil, scale
+
+    def _fit_zones_from_annotations(
+        outer_pts: List[Tuple[float, float]],
+        inner_pts: List[Tuple[float, float]],
+        border_lines: List[Tuple[Tuple[float, float], Tuple[float, float]]],
+        open_sectors: List[int],
+    ) -> Tuple[_EllipseParams, float, Tuple[float, float, float, float], Tuple[Tuple[float, float], Tuple[float, float]]]:
+        outer_arr = np.array(outer_pts, dtype=np.float32).reshape(-1, 1, 2)
+        (cx, cy), (major, minor), angle_deg = cv2.fitEllipse(outer_arr)
+        outer = _EllipseParams(center_xy=(float(cx), float(cy)), axes_xy=(float(major), float(minor)), angle_deg=float(angle_deg))
+
+        inner_xy = np.array(inner_pts, dtype=float)
+        r_inner_pts, _ = _compute_r_theta(inner_xy[:, 0], inner_xy[:, 1], outer)
+        r_inner = float(np.nanmedian(r_inner_pts))
+
+        angles = []
+        for (p1, p2) in border_lines:
+            _, th1 = _compute_r_theta(np.array([p1[0]]), np.array([p1[1]]), outer)
+            _, th2 = _compute_r_theta(np.array([p2[0]]), np.array([p2[1]]), outer)
+            angles.append(_circular_mean([float(th1[0]), float(th2[0])]))
+        boundary_angles = tuple(sorted(float(a) for a in angles))  # type: ignore[assignment]
+        open_ranges = _open_ranges_from_boundary_angles(boundary_angles, open_sectors)
+        return outer, r_inner, boundary_angles, open_ranges
+
+    video_rel = str(row.get("video_path") or "")
+    frame_idx = int(float(row.get("frame_idx") or 0))
+    # training_index uses relative paths under workspace; convert to absolute for reading
+    video_abs = (Path(workspace_root) / video_rel).resolve() if not Path(video_rel).is_absolute() else Path(video_rel)
+
+    zone_json_path = Path(str(row.get("zone_json") or "")).expanduser()
+    if not zone_json_path.is_absolute():
+        zone_json_path = (Path(workspace_root) / zone_json_path).resolve()
+
+    # Load the specific frame for labeling
+    if not video_abs.exists():
+        st.error(f"Video not found: {video_abs}")
+        st.stop()
+    cap = cv2.VideoCapture(str(video_abs))
+    cap.set(cv2.CAP_PROP_POS_FRAMES, int(frame_idx))
+    ret, frame_bgr = cap.read()
+    cap.release()
+    if not ret or frame_bgr is None:
+        st.error(f"Could not read frame {frame_idx} from: {video_abs}")
+        st.stop()
+    frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+
+    disp_img, scale = _scale_for_display(frame_rgb, disp_w=900)
+    inv_scale = 1.0 / float(scale)
+
+    prefix = f"ezm_label::{video_rel}::frame{frame_idx}"
+    k_outer = f"{prefix}::outer"
+    k_inner = f"{prefix}::inner"
+    k_borders = f"{prefix}::borders"
+    k_open = f"{prefix}::open_sectors"
+
+    if k_open not in st.session_state:
+        st.session_state[k_open] = [0, 2]
+
+    with st.expander("Arena labeling editor (save zone JSON)", expanded=False):
+        if zone_json_path.exists() and st.button("Load existing zone JSON into editor", key=f"{prefix}::load"):
+            try:
+                data = json.loads(zone_json_path.read_text())
+                ann = data.get("annotations", {}) if isinstance(data, dict) else {}
+                st.session_state[k_outer] = ann.get("outer_canvas")
+                st.session_state[k_inner] = ann.get("inner_canvas")
+                st.session_state[k_borders] = ann.get("borders_canvas")
+                # best-effort open sectors infer from stored open_angle_ranges if present
+                st.success("Loaded.")
+            except Exception as e:
+                st.error(f"Failed to load: {e}")
+
+        st.write("Step 1: outer points (>=10)")
+        outer_canvas = st_canvas(
+            fill_color="rgba(0, 255, 0, 0.3)",
+            stroke_width=2,
+            stroke_color="rgba(0, 255, 0, 0.8)",
+            background_image=disp_img,
+            update_streamlit=True,
+            height=disp_img.size[1],
+            width=disp_img.size[0],
+            drawing_mode="circle",
+            initial_drawing=st.session_state.get(k_outer),
+            key=f"{prefix}::outer_canvas",
+        )
+        st.session_state[k_outer] = _ensure_dict(outer_canvas.json_data if outer_canvas else {})
+
+        st.write("Step 2: inner points (>=10)")
+        inner_canvas = st_canvas(
+            fill_color="rgba(0, 255, 255, 0.3)",
+            stroke_width=2,
+            stroke_color="rgba(0, 255, 255, 0.8)",
+            background_image=disp_img,
+            update_streamlit=True,
+            height=disp_img.size[1],
+            width=disp_img.size[0],
+            drawing_mode="circle",
+            initial_drawing=st.session_state.get(k_inner),
+            key=f"{prefix}::inner_canvas",
+        )
+        st.session_state[k_inner] = _ensure_dict(inner_canvas.json_data if inner_canvas else {})
+
+        st.write("Step 3: borders (4 lines)")
+        borders_canvas = st_canvas(
+            fill_color="rgba(255, 0, 0, 0.2)",
+            stroke_width=3,
+            stroke_color="rgba(255, 0, 0, 0.9)",
+            background_image=disp_img,
+            update_streamlit=True,
+            height=disp_img.size[1],
+            width=disp_img.size[0],
+            drawing_mode="line",
+            initial_drawing=st.session_state.get(k_borders),
+            key=f"{prefix}::borders_canvas",
+        )
+        st.session_state[k_borders] = _ensure_dict(borders_canvas.json_data if borders_canvas else {})
+
+        open_sectors = st.multiselect("Open sectors (pick 2)", options=[0, 1, 2, 3], default=st.session_state.get(k_open, [0, 2]))
+        st.session_state[k_open] = list(open_sectors)
+
+        # Fit + save
+        if st.button("Fit + save zone JSON for this video", key=f"{prefix}::save"):
+            outer_pts = [(x * inv_scale, y * inv_scale) for (x, y) in _extract_points_from_canvas(st.session_state[k_outer])]
+            inner_pts = [(x * inv_scale, y * inv_scale) for (x, y) in _extract_points_from_canvas(st.session_state[k_inner])]
+            border_lines = [
+                ((p1[0] * inv_scale, p1[1] * inv_scale), (p2[0] * inv_scale, p2[1] * inv_scale))
+                for (p1, p2) in _extract_lines_from_canvas(st.session_state[k_borders])
+            ]
+            if len(outer_pts) < 10 or len(inner_pts) < 10:
+                st.error("Need >=10 outer points and >=10 inner points.")
+                st.stop()
+            if len(border_lines) != 4:
+                st.error("Need exactly 4 border lines.")
+                st.stop()
+            if len(open_sectors) != 2:
+                st.error("Select exactly 2 open sectors.")
+                st.stop()
+
+            outer, r_inner, boundary_angles, open_ranges = _fit_zones_from_annotations(
+                outer_pts=outer_pts,
+                inner_pts=inner_pts,
+                border_lines=border_lines,
+                open_sectors=list(open_sectors),
+            )
+
+            payload = {
+                "version": "ezm_open_closed_v2",
+                "image": {"width": int(frame_rgb.shape[1]), "height": int(frame_rgb.shape[0])},
+                "outer_ellipse": {
+                    "center": [float(outer.center_xy[0]), float(outer.center_xy[1])],
+                    "axes": [float(outer.axes_xy[0]), float(outer.axes_xy[1])],
+                    "angle_deg": float(outer.angle_deg),
+                },
+                "r_inner": float(r_inner),
+                "boundary_angles": [float(a) for a in boundary_angles],
+                "open_angle_ranges": [[float(open_ranges[0][0]), float(open_ranges[0][1])], [float(open_ranges[1][0]), float(open_ranges[1][1])]],
+                "annotations": {
+                    "outer_canvas": st.session_state.get(k_outer),
+                    "inner_canvas": st.session_state.get(k_inner),
+                    "borders_canvas": st.session_state.get(k_borders),
+                    "calibration": {
+                        "video_path": str(video_abs),
+                        "frame_idx": int(frame_idx),
+                        "video_source": "MUS1 web (EZM ML)",
+                    },
+                },
+                "notes": f"labeled_from_run={run_dir.name} frame_idx={frame_idx}",
+            }
+            zone_json_path.parent.mkdir(parents=True, exist_ok=True)
+            zone_json_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+            st.success(f"Saved: {zone_json_path}")
+
+    st.markdown("#### Add this labeled frame to the next training run")
+    st.caption("This adds the frame index to the next training run’s `--frames` list (it does not mean “label 1200 frames”).")
 
     if st.button("Queue this frame for retraining", key="ezm_ml_queue"):
         con.execute("BEGIN")
@@ -624,10 +1219,13 @@ def main() -> None:
     con = _connect(db_path)
 
     st.sidebar.header("View")
-    view = st.sidebar.radio("Mode", options=["Experiments", "EZM ML"], index=0)
+    view = st.sidebar.radio("Mode", options=["Experiments", "EZM ML", "Training Monitor"], index=0)
 
     if view == "EZM ML":
         _render_ezm_ml(con, workspace_root=workspace_root)
+        st.stop()
+    if view == "Training Monitor":
+        _render_training_monitor(workspace_root=workspace_root)
         st.stop()
 
     st.sidebar.header("Filters")
