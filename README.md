@@ -89,10 +89,16 @@ mus1 web experiment-browser \
   --workspace-root /center1/WDMOSEQ2/llplatil/WDMOSEQ2/moseq2_workspace
 ```
 
-Or use the helper script (recommended for iteration):
+Or use the helper script (recommended for iteration; single entrypoint for web + train):
 
 ```bash
-./scripts/run_experiment_browser.sh --pull --install
+./scripts/run_experiment_browser.sh web --pull --install
+```
+
+Submit retraining (checks for idle/mix nodes first, then tails logs):
+
+```bash
+./scripts/run_experiment_browser.sh train --check-idle --follow
 ```
 
 From your local machine:
