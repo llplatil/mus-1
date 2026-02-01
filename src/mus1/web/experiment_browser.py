@@ -86,6 +86,30 @@ def _ensure_ml_tables(con: sqlite3.Connection) -> None:
     )
     con.commit()
 
+    con.execute(
+        """
+        CREATE TABLE IF NOT EXISTS ml_training_frame_queue (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          kind TEXT NOT NULL,
+          run_path TEXT NOT NULL,
+          video_path TEXT NOT NULL,
+          frame_idx INTEGER NOT NULL,
+          overlay_path TEXT,
+          zone_json TEXT,
+          score REAL,
+          status TEXT NOT NULL DEFAULT 'queued',
+          created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+        """
+    )
+    con.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_ml_training_frame_queue_unique
+        ON ml_training_frame_queue(kind, run_path, video_path, frame_idx)
+        """
+    )
+    con.commit()
+
 
 def _one_col(con: sqlite3.Connection, sql: str, params: Tuple[Any, ...] = ()) -> List[str]:
     cur = con.execute(sql, params)
@@ -453,28 +477,22 @@ def _render_ezm_ml(con: sqlite3.Connection, *, workspace_root: Optional[str]) ->
     else:
         st.error(f"Overlay image not found: {overlay_path}")
 
-    st.markdown("#### Label this frame")
-    label = st.radio(
-        "Label",
-        options=["unreviewed", "gt_issue", "model_issue", "ambiguous"],
-        horizontal=True,
-        index=0,
-        key="ezm_ml_label",
+    st.markdown("#### Add to next training run")
+    st.caption(
+        "This does not ask you to classify QC. It queues this (video, frame_idx) so the next retrain can include it as a supervised sample."
     )
-    notes = st.text_area("Notes", value="", key="ezm_ml_notes")
 
-    if st.button("Save label to DB", key="ezm_ml_save"):
+    if st.button("Queue this frame for retraining", key="ezm_ml_queue"):
         con.execute("BEGIN")
         con.execute(
             """
-            INSERT INTO ml_frame_reviews (kind, run_path, video_path, frame_idx, overlay_path, zone_json, metric, label, notes, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
-            ON CONFLICT(kind, run_path, video_path, frame_idx, overlay_path) DO UPDATE SET
+            INSERT INTO ml_training_frame_queue (kind, run_path, video_path, frame_idx, overlay_path, zone_json, score, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'queued')
+            ON CONFLICT(kind, run_path, video_path, frame_idx) DO UPDATE SET
+              overlay_path=excluded.overlay_path,
               zone_json=excluded.zone_json,
-              metric=excluded.metric,
-              label=excluded.label,
-              notes=excluded.notes,
-              updated_at=datetime('now')
+              score=excluded.score,
+              status='queued'
             """,
             (
                 "ezm_unet_open_closed",
@@ -484,26 +502,24 @@ def _render_ezm_ml(con: sqlite3.Connection, *, workspace_root: Optional[str]) ->
                 str(overlay_path),
                 str(row.get("zone_json") or ""),
                 _as_float(row.get("miou_open_closed")),
-                str(label),
-                str(notes),
             ),
         )
         con.commit()
-        st.success("Saved.")
+        st.success("Queued.")
 
-    with st.expander("Recent saved labels (this run)", expanded=False):
-        saved = _fetchall(
-            con,
-            """
-            SELECT video_path, frame_idx, metric, label, notes, updated_at
-            FROM ml_frame_reviews
-            WHERE kind = ? AND run_path = ?
-            ORDER BY updated_at DESC
-            LIMIT 50
-            """,
-            ("ezm_unet_open_closed", str(run_dir)),
-        )
-        st.dataframe([dict(r) for r in saved], width="stretch", hide_index=True)
+    queued = _fetchall(
+        con,
+        """
+        SELECT video_path, frame_idx, score, zone_json, created_at
+        FROM ml_training_frame_queue
+        WHERE kind = ? AND run_path = ? AND status = 'queued'
+        ORDER BY score ASC, created_at DESC
+        LIMIT 200
+        """,
+        ("ezm_unet_open_closed", str(run_dir)),
+    )
+    with st.expander(f"Queued frames for this run ({len(queued)})", expanded=False):
+        st.dataframe([dict(r) for r in queued], width="stretch", hide_index=True)
 
     st.subheader("Retrain (Slurm)")
     # We do a "free node" check before offering submit.
@@ -523,6 +539,19 @@ def _render_ezm_ml(con: sqlite3.Connection, *, workspace_root: Optional[str]) ->
         part = ""
     if part:
         st.caption(f"Detected partition: `{part}`")
+
+    # Build a frames list for training: default base frames + any queued frames.
+    base_frames = []
+    try:
+        cfg = json.loads((run_dir / "train_config.json").read_text())
+        if isinstance(cfg, dict) and isinstance(cfg.get("frames"), list):
+            base_frames = [int(x) for x in cfg["frames"]]
+    except Exception:
+        base_frames = []
+    queued_frames = sorted({int(r["frame_idx"]) for r in queued}) if queued else []
+    frames_union = sorted(set(base_frames).union(set(queued_frames)))
+    frames_str = ",".join(str(x) for x in frames_union) if frames_union else "0,1200,2400"
+    st.caption(f"Training frames to use: `{frames_str}`")
 
     check = st.button("Check for idle nodes", key="ezm_ml_check_idle")
     idle_ok = False
@@ -550,7 +579,12 @@ def _render_ezm_ml(con: sqlite3.Connection, *, workspace_root: Optional[str]) ->
             st.error(f"No idle/mix nodes detected for partition `{part}`. Not submitting.")
             st.stop()
         try:
-            r = subprocess.run(["sbatch", str(slurm_script)], check=False, capture_output=True, text=True)
+            r = subprocess.run(
+                ["sbatch", "--export", f"ALL,EZM_UNET_TRAIN_FRAMES={frames_str}", str(slurm_script)],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
             if r.returncode != 0:
                 st.error(r.stderr or r.stdout or "sbatch failed.")
             else:
