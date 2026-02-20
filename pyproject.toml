@@ -1,38 +1,33 @@
 [project]
 name = "mus1"
 dynamic = ["version"]
-description = "MUS1 Behavior Analysis Tool"
+description = "MUS1 web-based experiment browser and analysis tool"
 requires-python = ">=3.10"
 dependencies = [
   "pydantic>=1.9.0",
   "pandas>=1.5.0",
   "numpy>=1.21.0,<=1.26.4",
-  "matplotlib>=3.5.0",
   "PyYAML>=6.0",
   "openpyxl>=3.1.0",
-  "shapely>=2.0.7",
-  "google-cloud-storage>=2.0.0,<3.0.0",
-  "requests>=2.20.0,<3.0.0",
   "typer>=0.12.0",
   "rich>=13.0.0",
-  "tqdm>=4.66.0",
   "SQLAlchemy>=1.4.0",
 ]
 
 [project.optional-dependencies]
-# Keep GUI dependencies optional so DB/import workflows work on HPC nodes without Qt build tooling.
-gui = [
-  "PySide6>=6.7.0; sys_platform == 'darwin'",
-  "PyQt6>=6.7.1; sys_platform != 'darwin'",
-  "qt-material>=2.14.0",
-]
 web = [
   "streamlit",
+  "pillow",
+  "opencv-python-headless",
+  "matplotlib>=3.5.0",
+  "shapely>=2.0.7",
+  # streamlit-drawable-canvas is archived and breaks on Streamlit>=1.41.
+  # Use a maintained drop-in fix.
+  "streamlit-drawable-canvas-fix>=0.9.8",
 ]
 
 [project.scripts]
 mus1 = "mus1.core.simple_cli:app"
-mus1-gui = "mus1.main:main"
 
 [project.entry-points."mus1.plugins"]
 project_importer = "mus1.plugins.project_importer:ProjectImporterPlugin"

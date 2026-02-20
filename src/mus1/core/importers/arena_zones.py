@@ -2,9 +2,9 @@
 Arena annotation zone JSON indexing.
 
 Purpose:
-- Keep zone JSONs written into the MoSeq2 workspace (for arena inference workflows).
-- Make them DB-queryable by indexing them into MUS1 as external artifacts linked to
-  experiments/subjects via the compiled session index contract.
+- Keep zone JSONs written into the MUS1 repo workspace (for arena inference workflows).
+- Make them DB-queryable by indexing them into MUS1 as external artifacts, optionally linked to
+  experiments/subjects via the compiled session index contract (`session_index_filtered.csv`).
 """
 
 from __future__ import annotations
@@ -154,10 +154,14 @@ def _resolve_video_path(workspace_root: Path, zone_payload: dict) -> Optional[Pa
     Extract the `video_path` saved by the annotator and resolve it to an absolute path.
     """
     ann = zone_payload.get("annotations") or {}
-    # Current schemas store this under annotations.calibration.video_path.
-    calib = ann.get("calibration") or {}
-    meta = ann.get("meta") or {}
-    vp = (calib.get("video_path") or meta.get("video_path") or "").strip()
+    # Support multiple schemas:
+    # - MUS1-local annotator: annotations.video_path
+    # - historical: annotations.calibration.video_path or annotations.meta.video_path
+    vp = str(ann.get("video_path") or "").strip()
+    if not vp:
+        calib = ann.get("calibration") or {}
+        meta = ann.get("meta") or {}
+        vp = str(calib.get("video_path") or meta.get("video_path") or "").strip()
     if not vp:
         return None
     p = Path(vp)
@@ -295,7 +299,7 @@ def index_arena_zone_jsons(
             added += 1
 
     _index_dir("ezm_zone_json_v2", ezm_dir)
-    _index_dir("nor_nof_objects_json_v1", nor_nof_dir)
+    _index_dir("nor_nof_objects_json_v2", nor_nof_dir)
 
     return ArenaZonesIndexStats(
         total_jsons=total,

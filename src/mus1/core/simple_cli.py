@@ -51,6 +51,10 @@ app.add_typer(import_app, name="import")
 web_app = typer.Typer(help="Web (Streamlit) tools")
 app.add_typer(web_app, name="web")
 
+# Runs subcommand group
+runs_app = typer.Typer(help="Run registry and run directory helpers")
+app.add_typer(runs_app, name="runs")
+
 # ===========================================
 # CORE COMMANDS
 # ===========================================
@@ -59,28 +63,167 @@ app.add_typer(web_app, name="web")
 def main(
     ctx: typer.Context,
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose output"),
-    setup: bool = typer.Option(False, "--setup", "-s", help="Run setup wizard after starting GUI"),
 ):
-    """MUS1 - Clean and simple."""
+    """MUS1 - Web-based experiment browser and analysis tool."""
     if ctx.invoked_subcommand is None:
-        rich_print("[bold blue]MUS1[/bold blue] - Video analysis system")
+        rich_print("[bold blue]MUS1[/bold blue] - Experiment browser and analysis tool")
         rich_print("Use 'mus1 --help' for available commands")
+        rich_print("Launch the web app: mus1 web experiment-browser")
 
-        # Launch GUI with setup flag if requested
-        if setup:
-            import os
-            # Set environment variable or modify sys.argv to pass setup flag to GUI
-            os.environ['MUS1_SETUP_REQUESTED'] = '1'
+# ===========================================
+# RUN REGISTRY COMMANDS
+# ===========================================
 
-        # Import and run GUI
+def _utc_now_iso() -> str:
+    from datetime import datetime, timezone
+
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+
+def _safe_slug(s: str) -> str:
+    out = []
+    for ch in str(s).strip():
+        if ch.isalnum() or ch in ("-", "_", "."):
+            out.append(ch)
+        elif ch.isspace():
+            out.append("_")
+        # else drop
+    slug = "".join(out).strip("._-")
+    return slug or "run"
+
+
+def _make_run_id(kind: str) -> str:
+    from datetime import datetime, timezone
+    import uuid
+
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    short = uuid.uuid4().hex[:8]
+    k = _safe_slug(kind)
+    return f"{k}_{ts}_{short}"
+
+
+@runs_app.command("init")
+def runs_init(
+    project_path: Path = typer.Option(..., help="Target MUS1 project directory (contains mus1.db)"),
+) -> None:
+    """Initialize project-scoped runs root under `<project_path>/runs/`."""
+    db_path = project_path / "mus1.db"
+    if not db_path.exists():
+        rich_print(f"[red]✗[/red] No mus1.db found at: {db_path}")
+        rich_print("[blue]ℹ[/blue] Create one with: mus1 project init \"<name>\" --path <project_path>")
+        raise typer.Exit(1)
+
+    runs_root = project_path / "runs"
+    runs_root.mkdir(parents=True, exist_ok=True)
+    rich_print("[green]✓[/green] Runs root ready")
+    rich_print(f"[blue]ℹ[/blue] runs_root: {runs_root}")
+
+
+@runs_app.command("new")
+def runs_new(
+    kind: str = typer.Argument(..., help="Run kind (e.g. ezm_unet, ml_tracking)"),
+    project_path: Path = typer.Option(..., help="Target MUS1 project directory (contains mus1.db)"),
+    name: Optional[str] = typer.Option(None, help="Optional short run name/label"),
+    as_json: bool = typer.Option(False, "--json", help="Print machine-readable JSON only"),
+) -> None:
+    """Create a new run directory under `<project_path>/runs/<kind>/<run_id>/` and index it into the DB."""
+    from .repository import get_repository_factory
+
+    kind_slug = _safe_slug(kind)
+    run_id = _make_run_id(kind_slug)
+
+    db_path = project_path / "mus1.db"
+    if not db_path.exists():
+        rich_print(f"[red]✗[/red] No mus1.db found at: {db_path}")
+        rich_print("[blue]ℹ[/blue] Create one with: mus1 project init \"<name>\" --path <project_path>")
+        raise typer.Exit(1)
+
+    db = Database(str(db_path))
+    db.create_tables()
+    repos = get_repository_factory(db)
+
+    run_dir = project_path / "runs" / kind_slug / run_id
+    run_dir.mkdir(parents=True, exist_ok=False)
+
+    status = {
+        "kind": kind_slug,
+        "run_id": run_id,
+        "state": "created",
+        "name": name,
+        "created_at": _utc_now_iso(),
+    }
+    (run_dir / "run_status.json").write_text(json.dumps(status, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    meta = {
+        "kind": kind_slug,
+        "run_id": run_id,
+        "name": name,
+        "project_path": str(project_path),
+        "run_dir": str(run_dir),
+        "created_at": status["created_at"],
+    }
+    repos.external_artifacts.add(kind=f"{kind_slug}_run_dir", path=str(run_dir), meta=meta)
+
+    if as_json:
+        print(json.dumps({"kind": kind_slug, "run_id": run_id, "run_dir": str(run_dir)}))
+        return
+
+    rich_print("[green]✓[/green] Created run")
+    rich_print(f"[blue]ℹ[/blue] kind: {kind_slug}")
+    rich_print(f"[blue]ℹ[/blue] run_id: {run_id}")
+    rich_print(f"[blue]ℹ[/blue] dir: {run_dir}")
+
+
+@runs_app.command("list")
+def runs_list(
+    project_path: Path = typer.Option(..., help="Target MUS1 project directory (contains mus1.db)"),
+    kind: Optional[str] = typer.Option(None, help="Filter by kind"),
+    limit: int = typer.Option(20, help="Max entries to show (most recent)"),
+) -> None:
+    """Show the most recent DB-indexed run directories."""
+    from .schema import ExternalArtifactModel
+
+    db_path = project_path / "mus1.db"
+    if not db_path.exists():
+        rich_print(f"[red]✗[/red] No mus1.db found at: {db_path}")
+        raise typer.Exit(1)
+
+    db = Database(str(db_path))
+    db.create_tables()
+
+    kind_slug = _safe_slug(kind) if kind else None
+    kind_key = f"{kind_slug}_run_dir" if kind_slug else None
+
+    with db.get_session() as session:
+        q = session.query(ExternalArtifactModel).filter(ExternalArtifactModel.kind.like("%_run_dir"))
+        if kind_key:
+            q = q.filter(ExternalArtifactModel.kind == kind_key)
+        q = q.order_by(ExternalArtifactModel.created_at.desc()).limit(int(limit))
+        rows = q.all()
+
+    if not rows:
+        rich_print("[yellow]⚠[/yellow] No runs found.")
+        return
+
+    table = Table(title="Runs (most recent first)")
+    table.add_column("kind", style="cyan")
+    table.add_column("run_id", style="white")
+    table.add_column("created_at", style="white")
+    table.add_column("name", style="white")
+    table.add_column("run_dir", style="green")
+    for r in rows:
         try:
-            from ..main import main as gui_main
-            gui_main()
-        except KeyboardInterrupt:
-            rich_print("\n[yellow]GUI interrupted by user[/yellow]")
-        except Exception as e:
-            rich_print(f"[red]Error launching GUI: {e}[/red]")
-            raise typer.Exit(1)
+            meta = json.loads(r.meta_json or "{}")
+        except Exception:
+            meta = {}
+        table.add_row(
+            str(r.kind).removesuffix("_run_dir"),
+            str(meta.get("run_id", "")),
+            str(getattr(r, "created_at", "") or ""),
+            str(meta.get("name", "")) if meta.get("name") else "",
+            str(r.path),
+        )
+    rich_print(table)
 
 # ===========================================
 # ENHANCED PROJECT MANAGEMENT
@@ -366,22 +509,37 @@ def workspace_db_sync(
     workspace_root: Path = typer.Option(..., help="MoSeq2 workspace root"),
     index_csv: Path = typer.Option(
         None,
-        help="Session index CSV (defaults to ml_tracking_metadata_model/index/session_index_filtered.csv under workspace_root)",
+        help="Session index CSV (defaults to apps/mus1/workspace/contracts/ml_tracking_metadata_model/index/session_index_filtered.csv)",
     ),
     rotarod_csv: Path = typer.Option(
         None,
-        help="Rotarod attempts CSV (defaults to statistics_summaries/rotarod_reanalysis/rotarod_attempts_long_cleaned.csv under workspace_root)",
+        help="Rotarod attempts CSV (defaults to statistics_summaries/rotarod_reanalysis/rotarod_attempts_long_timepoint_cleaned.csv under workspace_root)",
     ),
     kpms_csvs: Optional[str] = typer.Option(
         None,
         help="Comma-separated KPMS recordings.csv paths (defaults to the two trim30s rerun recordings.csv files under workspace_root)",
     ),
+    check_paths: bool = typer.Option(
+        False,
+        help="Check artifact paths exist on disk and create QC events for missing ones (slow on network FS).",
+    ),
+    include_arena_zones: bool = typer.Option(
+        False,
+        help="Also index arena annotation JSONs (opt-in; disabled by default to keep sync metadata-focused).",
+    ),
+    include_run_indexes: bool = typer.Option(
+        False,
+        help="Also index project run output dirs (EZM U-Net + ML tracking) (opt-in; disabled by default).",
+    ),
 ):
-    """Sync this MoSeq2 workspace into a MUS1 project DB (index + rotarod + KPMS trim30s metadata)."""
+    """Sync workspace metadata into MUS1 DB (index + rotarod + KPMS; opt-in extras for arenas/runs)."""
     from .repository import get_repository_factory
     from .importers.moseq2_workspace import import_session_index
     from .importers.rotarod import import_rotarod_csv
     from .importers.kpms_recordings import import_kpms_recordings
+    from .importers.arena_zones import index_arena_zone_jsons
+    from .importers.ezm_unet_runs import index_ezm_unet_runs
+    from .importers.ml_tracking_runs import index_ml_tracking_runs
 
     if not project_path.exists():
         rich_print(f"[red]✗[/red] Project path does not exist: {project_path}")
@@ -394,9 +552,11 @@ def workspace_db_sync(
         raise typer.Exit(1)
 
     if index_csv is None:
-        index_csv = workspace_root / "ml_tracking_metadata_model" / "index" / "session_index_filtered.csv"
+        repo_root = Path(__file__).resolve().parents[3]
+        contracts_root = repo_root / "workspace" / "contracts" / "ml_tracking_metadata_model"
+        index_csv = contracts_root / "index" / "session_index_filtered.csv"
     if rotarod_csv is None:
-        rotarod_csv = workspace_root / "statistics_summaries" / "rotarod_reanalysis" / "rotarod_attempts_long_cleaned.csv"
+        rotarod_csv = workspace_root / "statistics_summaries" / "rotarod_reanalysis" / "rotarod_attempts_long_timepoint_cleaned.csv"
     if kpms_csvs is None:
         kpms_paths = [
             workspace_root
@@ -443,7 +603,7 @@ def workspace_db_sync(
             repos,
             workspace_root=workspace_root,
             session_index_csv=index_csv,
-            check_paths_exist=True,
+            check_paths_exist=check_paths,
         )
 
     # 2) Rotarod assay ingestion
@@ -484,6 +644,55 @@ def workspace_db_sync(
     if qc_added:
         rich_print(f"[yellow]⚠[/yellow] QC events added (sync inputs): {qc_added}")
 
+    # Optional 4) Arena JSON indexing
+    arena_stats = None
+    if include_arena_zones:
+        repo_root = Path(__file__).resolve().parents[3]
+        contracts_root = repo_root / "workspace" / "contracts" / "ml_tracking_metadata_model"
+        session_index_csv = contracts_root / "index" / "session_index_filtered.csv"
+        arena_root = repo_root / "workspace" / "arena_zones"
+        ezm_dir = arena_root / "ezm_per_video_v2"
+        nor_nof_dir = arena_root / "nor_nof_per_video_v2"
+        if not session_index_csv.exists():
+            _qc("MISSING_INPUT", {"kind": "session_index_filtered_csv", "path": str(session_index_csv)})
+            rich_print(f"[yellow]⚠[/yellow] Missing session index CSV for arena indexing: {session_index_csv}")
+        else:
+            arena_stats = index_arena_zone_jsons(
+                repos,
+                workspace_root=workspace_root,
+                session_index_csv=session_index_csv,
+                ezm_dir=ezm_dir,
+                nor_nof_dir=nor_nof_dir,
+            )
+
+    # Optional 5) Run dir indexing (project-scoped runs only)
+    ezm_run_stats = None
+    ml_run_stats = None
+    if include_run_indexes:
+        ezm_run_stats = index_ezm_unet_runs(
+            repos,
+            workspace_root=workspace_root,
+            runs_root=project_path / "runs" / "ezm_unet",
+            only_latest=False,
+        )
+        ml_run_stats = index_ml_tracking_runs(
+            repos,
+            runs_root=project_path / "runs" / "ml_tracking",
+            only_latest=False,
+        )
+
+    if arena_stats is not None:
+        rich_print(f"[blue]ℹ[/blue] Arena JSONs scanned: {arena_stats.total_jsons}")
+        rich_print(f"[blue]ℹ[/blue] Arena artifacts added: {arena_stats.artifacts_added}")
+        rich_print(f"[blue]ℹ[/blue] Arena artifacts updated linkage: {arena_stats.artifacts_updated_linkage}")
+        rich_print(f"[blue]ℹ[/blue] Arena QC events added: {arena_stats.qc_events_added}")
+    if ezm_run_stats is not None:
+        rich_print(f"[blue]ℹ[/blue] EZM runs indexed: {ezm_run_stats.runs_indexed}")
+        rich_print(f"[blue]ℹ[/blue] EZM run artifacts added: {ezm_run_stats.artifacts_added}")
+    if ml_run_stats is not None:
+        rich_print(f"[blue]ℹ[/blue] ML tracking runs indexed: {ml_run_stats.runs_indexed}")
+        rich_print(f"[blue]ℹ[/blue] ML tracking artifacts added: {ml_run_stats.artifacts_added}")
+
 # ===========================================
 # IMPORT COMMANDS
 # ===========================================
@@ -494,7 +703,7 @@ def import_moseq2_workspace(
     workspace_root: Path = typer.Option(..., help="MoSeq2 workspace root"),
     index_csv: Path = typer.Option(
         None,
-        help="Compiled session index CSV (defaults to ml_tracking_metadata_model/index/session_index_filtered.csv under workspace_root)",
+        help="Compiled session index CSV (defaults to apps/mus1/workspace/contracts/ml_tracking_metadata_model/index/session_index_filtered.csv)",
     ),
     check_paths_exist: bool = typer.Option(True, help="Record QC events for missing paths"),
 ):
@@ -514,7 +723,9 @@ def import_moseq2_workspace(
         raise typer.Exit(1)
 
     if index_csv is None:
-        index_csv = workspace_root / "ml_tracking_metadata_model" / "index" / "session_index_filtered.csv"
+        repo_root = Path(__file__).resolve().parents[3]
+        contracts_root = repo_root / "workspace" / "contracts" / "ml_tracking_metadata_model"
+        index_csv = contracts_root / "index" / "session_index_filtered.csv"
 
     if not index_csv.exists():
         rich_print(f"[red]✗[/red] Index CSV not found: {index_csv}")
@@ -546,15 +757,15 @@ def import_arena_zones(
     workspace_root: Path = typer.Option(..., help="MoSeq2 workspace root"),
     session_index_csv: Path = typer.Option(
         None,
-        help="Session index CSV (defaults to ml_tracking_metadata_model/index/session_index_filtered.csv under workspace_root)",
+        help="Session index CSV (defaults to apps/mus1/workspace/contracts/ml_tracking_metadata_model/index/session_index_filtered.csv)",
     ),
     ezm_dir: Path = typer.Option(
         None,
-        help="Directory of EZM per-video zone JSONs (defaults to resources/arena_zones/ezm_per_video_v2 under workspace_root)",
+        help="Directory of EZM per-video zone JSONs (defaults to apps/mus1/workspace/arena_zones/ezm_per_video_v2)",
     ),
     nor_nof_dir: Path = typer.Option(
         None,
-        help="Directory of NOR/NOF per-video ROI JSONs (defaults to resources/arena_zones/nor_nof_per_video_v1 under workspace_root)",
+        help="Directory of NOR/NOF per-video ROI JSONs (defaults to apps/mus1/workspace/arena_zones/nor_nof_per_video_v2)",
     ),
 ):
     """Index arena annotation JSON outputs into MUS1 DB as external artifacts."""
@@ -562,11 +773,17 @@ def import_arena_zones(
     from .importers.arena_zones import index_arena_zone_jsons
 
     if session_index_csv is None:
-        session_index_csv = workspace_root / "ml_tracking_metadata_model" / "index" / "session_index_filtered.csv"
+        repo_root = Path(__file__).resolve().parents[3]
+        contracts_root = repo_root / "workspace" / "contracts" / "ml_tracking_metadata_model"
+        session_index_csv = contracts_root / "index" / "session_index_filtered.csv"
     if ezm_dir is None:
-        ezm_dir = workspace_root / "resources" / "arena_zones" / "ezm_per_video_v2"
+        repo_root = Path(__file__).resolve().parents[3]
+        arena_zones_root = repo_root / "workspace" / "arena_zones"
+        ezm_dir = arena_zones_root / "ezm_per_video_v2"
     if nor_nof_dir is None:
-        nor_nof_dir = workspace_root / "resources" / "arena_zones" / "nor_nof_per_video_v1"
+        repo_root = Path(__file__).resolve().parents[3]
+        arena_zones_root = repo_root / "workspace" / "arena_zones"
+        nor_nof_dir = arena_zones_root / "nor_nof_per_video_v2"
 
     db_path = project_path / "mus1.db"
     if not db_path.exists():
@@ -597,6 +814,79 @@ def import_arena_zones(
     rich_print(f"[blue]ℹ[/blue] Artifacts updated (linkage): {stats.artifacts_updated_linkage}")
     rich_print(f"[blue]ℹ[/blue] Linked to experiments: {stats.linked_to_experiment}")
     rich_print(f"[blue]ℹ[/blue] Unlinked: {stats.unlinked}")
+    rich_print(f"[blue]ℹ[/blue] QC events added: {stats.qc_events_added}")
+
+
+@import_app.command("ezm-unet-runs")
+def import_ezm_unet_runs(
+    project_path: Path = typer.Option(..., help="Target MUS1 project directory (contains mus1.db)"),
+    workspace_root: Path = typer.Option(..., help="MoSeq2 workspace root (contains statistics_summaries/...)"),
+    runs_root: Optional[Path] = typer.Option(
+        None,
+        help="Optional runs root dir (defaults to <project_path>/runs/ezm_unet)",
+    ),
+    only_latest: bool = typer.Option(False, help="Only index the latest train_* run directory"),
+):
+    """Index EZM open/closed U-Net run outputs into MUS1 DB (run provenance + worst_frames pointers)."""
+    from .repository import get_repository_factory
+    from .importers.ezm_unet_runs import index_ezm_unet_runs
+
+    db_path = project_path / "mus1.db"
+    if not db_path.exists():
+        rich_print(f"[red]✗[/red] No mus1.db found at: {db_path}")
+        rich_print("[blue]ℹ[/blue] Create one with: mus1 project init \"<name>\" --path <project_path>")
+        raise typer.Exit(1)
+
+    db = Database(str(db_path))
+    db.create_tables()
+    repos = get_repository_factory(db)
+
+    # Canonical: project-scoped runs folder (Option A). No fallback scanning of the MoSeq2 workspace.
+    if runs_root is None:
+        runs_root = project_path / "runs" / "ezm_unet"
+
+    stats = index_ezm_unet_runs(
+        repos,
+        workspace_root=workspace_root,
+        runs_root=runs_root,
+        only_latest=only_latest,
+    )
+
+    rich_print("[green]✓[/green] EZM U-Net runs indexed")
+    rich_print(f"[blue]ℹ[/blue] Runs seen: {stats.runs_seen}")
+    rich_print(f"[blue]ℹ[/blue] Runs indexed: {stats.runs_indexed}")
+    rich_print(f"[blue]ℹ[/blue] Artifacts added: {stats.artifacts_added}")
+    rich_print(f"[blue]ℹ[/blue] Artifacts skipped (existing): {stats.artifacts_skipped_existing}")
+    rich_print(f"[blue]ℹ[/blue] QC events added: {stats.qc_events_added}")
+
+
+@import_app.command("ml-tracking-runs")
+def import_ml_tracking_runs(
+    project_path: Path = typer.Option(..., help="Target MUS1 project directory (contains mus1.db)"),
+    only_latest: bool = typer.Option(False, help="Only index the latest run directory"),
+):
+    """Index ML tracking run output directories into MUS1 DB (project-scoped runs)."""
+    from .repository import get_repository_factory
+    from .importers.ml_tracking_runs import index_ml_tracking_runs
+
+    db_path = project_path / "mus1.db"
+    if not db_path.exists():
+        rich_print(f"[red]✗[/red] No mus1.db found at: {db_path}")
+        rich_print("[blue]ℹ[/blue] Create one with: mus1 project init \"<name>\" --path <project_path>")
+        raise typer.Exit(1)
+
+    db = Database(str(db_path))
+    db.create_tables()
+    repos = get_repository_factory(db)
+
+    runs_root = project_path / "runs" / "ml_tracking"
+    stats = index_ml_tracking_runs(repos, runs_root=runs_root, only_latest=only_latest)
+
+    rich_print("[green]✓[/green] ML tracking runs indexed")
+    rich_print(f"[blue]ℹ[/blue] Runs seen: {stats.runs_seen}")
+    rich_print(f"[blue]ℹ[/blue] Runs indexed: {stats.runs_indexed}")
+    rich_print(f"[blue]ℹ[/blue] Artifacts added: {stats.artifacts_added}")
+    rich_print(f"[blue]ℹ[/blue] Artifacts skipped (existing): {stats.artifacts_skipped_existing}")
     rich_print(f"[blue]ℹ[/blue] QC events added: {stats.qc_events_added}")
 
 

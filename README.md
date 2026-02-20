@@ -1,180 +1,56 @@
-# MUS1: Video Analysis System
+# MUS1
 
-A SQLite-based system for organizing and analyzing animal behavior videos with clean architecture, application-level user management, and complete lab-colony-project hierarchy.
+Streamlit web app for managing and annotating the WDMOSEQ2 experiment dataset on Chinook. Backed by a project-scoped SQLite database (`mus1.db`) and a CLI import pipeline.
 
-## Installation
+## Launch
 
-### Production Users
 ```bash
-pip install mus1
+./scripts/run_experiment_browser.sh web --install
 ```
 
-### Developers
+The script activates conda env `mus1-dev`, prints the SSH port-forward command, and launches the Streamlit app. Pass explicit paths when needed:
+
 ```bash
-git clone <repository-url>
-cd mus1
-./setup.sh
+./scripts/run_experiment_browser.sh web \
+  --project-path "/center1/WDMOSEQ2/llplatil/WDMOSEQ2/data" \
+  --workspace-root "/center1/WDMOSEQ2/llplatil/WDMOSEQ2/moseq2_workspace"
 ```
 
-## Quick Start
+## What this app does
 
-### GUI Mode (Recommended)
+### 1. Experiment data overview
+
+Browse experiments, subjects, artifacts, and QC events from `mus1.db`. The DB is populated via CLI importers that read from the session index, subject rosters, rotarod data, and KPMS recordings. This is the foundation for reproducible statistical analyses against a structured, queryable dataset.
+
+Web app mode: **Experiments**
+
+### 2. EZM arena annotation and U-Net training
+
+Annotate EZM open/closed zones, curate training sets, train U-Net segmentation models via Slurm, and visually QC both labeled and unlabeled predictions.
+
+Web app modes: **Annotator** (EZM marking), **EZM Zones QC** (training set curation), **EZM Border QC** (prediction QC), **EZM ML** (submit training, review frames)
+
+### 3. NOR/NOF arena annotation and model training
+
+Annotate NOR/NOF arena boundaries and object placements, export QC CSVs, and index annotations into the DB. Model training infrastructure for NOR/NOF is the next build target.
+
+Web app modes: **NOR/NOF ROI** (task list + annotation launch), **NOR/NOF QC** (annotation QC), **Annotator** (NOR/NOF marking)
+
+### 4. Training run monitoring
+
+Monitor Slurm job status, discover ML training runs (both U-Net and tracking model iterations), and compare metric trends across runs within each model type.
+
+Web app mode: **Training Monitor**
+
+## CLI (import pipeline)
+
 ```bash
-# Production
-mus1-gui                    # Normal GUI launch
-mus1-gui --setup           # GUI with setup wizard (can rerun anytime)
-
-# Development
-./dev-launch.sh gui        # Normal GUI launch
-./dev-launch.sh gui --setup # GUI with setup wizard (can rerun anytime)
-```
-
-### CLI Mode
-```bash
-# Production
-mus1 --help                # CLI help
-mus1 --setup               # CLI mode with setup wizard
-
-# Development
-./dev-launch.sh --help     # CLI help
-./dev-launch.sh --setup    # CLI mode with setup wizard
-```
-
-## MoSeq2 workspace → MUS1 DB sync (Chinook workflow)
-
-Canonical Chinook workflow docs live in the workspace root `README.md`:
-
-- `/center1/WDMOSEQ2/llplatil/WDMOSEQ2/moseq2_workspace/README.md`
-
-This avoids duplicating setup/launch instructions across multiple READMEs.
-
-## Current Status
-
-### ⚠️ **Remaining Issues**
-- **GUI has some remaining bugs** - subject management, video linking, and lab management now work, but other components may have issues
-- **JSON serialization issues** cause project files to become corrupted
-- **Incomplete clean architecture migration** - subject view, video linking, and lab management migrated, other components still need work
-- **Project loading fails** due to corruption and missing methods in some areas
-
-### ✅ **What Works**
-- **CLI Interface**: Basic command-line operations work reliably
-- **Setup Wizard**: Can be launched via `--setup` flag, basic user profile creation works
-- **Video Linking System**: Videos can be linked to experiments with proper association tables
-- **Subject Management**: Subject creation and genotype handling works with proper data relationships
-- **Lab Management**: Complete lab creation, member management, colony management, and project registration
-- **Colony Management**: Manual subject-to-colony assignment/removal with proper validation
-- **User Experience**: Enhanced user/lab selection dialog with optional project pre-selection
-- **Batch Creation**: Experiments can be grouped into batches for analysis
-- **Database Schema**: SQL tables exist for users, labs, colonies, subjects, experiments, videos
-- **Repository Pattern**: Data access layer implemented with proper update/merge handling
-
-### ❌ **What's Broken**
-- **GUI**: Some remaining AttributeError and signal disconnection issues (subject view and video linking fixed)
-
-- **State Management**: References resolved in subject view, video linking, and lab management
-- **Lab-Project Association**: Complete GUI integration with project registration and management
-- **Plugin System**: Entry-point discovery exists but GUI integration broken
-
-## Features (Planned/Partial)
-
-### 🎯 **Application-Level User & Lab Management (Complete)**
-- Complete user profile management with SQL-backed persistence
-- Full lab creation and management with institution/PI tracking
-- Member management with role-based permissions (admin/member)
-- Colony management with genotype tracking and subject assignment
-- Project registration and association with labs
-- Enhanced user/lab selection dialog with optional project pre-selection
-
-### 🔄 **Setup Wizard**
-- Can be launched via `--setup` flag (GUI/CLI) and rerun anytime
-- Start Fresh vs Edit Existing modes
-  - Start Fresh: optionally wipe old configs (config.db, root pointer, logs)
-  - Edit Existing: select an existing root containing `config/config.db`
-- User profile, shared storage, and first lab creation supported
-
-### 🎬 **Video Analysis System (Working)**
-- Video linking to experiments with proper database associations
-- Batch creation for grouping experiments for analysis
-- File hash computation for video deduplication
-
-### 🏗️ **Clean Architecture (Partial)**
-- Repository pattern implemented with proper update/merge handling
-- Service layer implemented for subject and experiment management
-- GUI migration completed for subject view and video linking
-
-### 🎨 **GUI (Partial)**
-- Subject management and video linking work properly
-- Basic tab structure exists with some functionality working
-- Some remaining bugs and signal handling issues in other components
-
-### 🔧 **Configuration System**
-- Hierarchical config with JSON serialization and Path handling
-- Deterministic MUS1 root resolution with root pointer
-- Project discovery:
-  - Lab mode: list lab-registered projects
-  - Local mode: list user default projects directory
-  - Advisory NFS checks only; no multi-root precedence
-
-## Usage Examples (CLI Only - GUI Broken)
-
-### Basic CLI Operations (Working)
-```bash
-# Setup wizard
-mus1 --setup
-
-# List projects (may work)
-mus1 project list
-
-# Check status
-mus1 setup status
-```
-
-### Data Management (May Not Work)
-```bash
-# These commands exist but may have issues
-mus1 add-subject SUB001 --sex M --designation experimental
-mus1 add-experiment EXP001 SUB001 "Open Field Test" --date 2024-01-15
-mus1 list-subjects
-```
-
-### Lab Management (Broken)
-```bash
-# Lab commands exist but GUI integration broken
-mus1 lab create mylab "My Laboratory"
-mus1 lab list
-```
-
-## Requirements
-
-- Python 3.10+
-- macOS, Linux, or Windows
-- Qt usage must go through the GUI Qt facade (`src/mus1/gui/qt.py`). Do not import `PyQt6` or `PySide6` directly in GUI views.
-
-## Troubleshooting
-
-### Fresh Start
-```bash
-# Remove configuration to start over
-rm -rf ~/Library/Application\ Support/MUS1/  # macOS
-rm -rf ~/.config/mus1/                       # Linux
-rm -rf "$APPDATA/MUS1/"                      # Windows
-```
-
-### Check Status
-```bash
-mus1 setup status
-```
-
-### Override Configuration Location
-### Known Behavior / Limitations
-- Setup Wizard focuses on creation; pick existing users/labs via the User/Lab Selection dialog after startup.
-- Project selection separates Lab (registered) vs Local; advisory NFS reachability only.
-```bash
-export MUS1_ROOT="/custom/path"
-mus1-gui
+mus1 import workspace-db-sync     # unified sync: session index + rotarod + KPMS
+mus1 import arena-zones            # index arena zone JSONs into DB
+mus1 import ezm-unet-runs         # index EZM U-Net training runs
+mus1 import ml-tracking-runs       # index ML tracking training runs
 ```
 
 ## Documentation
 
-- [docs/dev/ARCHITECTURE_CURRENT.md](docs/dev/ARCHITECTURE_CURRENT.md) - Architecture details
-- [docs/dev/ROADMAP.md](docs/dev/ROADMAP.md) - Development roadmap
+Operational reference for all workflows: `docs/web/README.md`

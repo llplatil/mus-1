@@ -97,3 +97,6 @@ src/functional_tests/
 .env.*.local
 .secrets/
 config.local.json
+
+# Chinook local curated workspace (copied from moseq2_workspace)
+workspace/

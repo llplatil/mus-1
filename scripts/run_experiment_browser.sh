@@ -36,6 +36,7 @@ Slurm:
 
 Train options:
   --script PATH           Slurm script to submit (default: EZM U-Net from zones)
+  --kind KIND             Run kind for DB indexing (default: ezm_unet)
   --check-idle            Refuse to submit unless sinfo shows idle/mix nodes for script partition
   --follow                Tail the output log after submission
   --no-follow             Do not tail output log
@@ -60,7 +61,8 @@ else
   subcmd="web"
 fi
 
-project_path="${MUS1_PROJECT_PATH:-/center1/WDMOSEQ2/llplatil/WDMOSEQ2/mus1_projects/moseq2_workspace_db}"
+wdmoseq2_root="$(cd "$repo_root/../.." && pwd)"
+project_path="${MUS1_PROJECT_PATH:-${wdmoseq2_root}/data}"
 workspace_root="${MOSEQ2_WORKSPACE_ROOT:-/center1/WDMOSEQ2/llplatil/WDMOSEQ2/moseq2_workspace}"
 port="8502"
 address="127.0.0.1"
@@ -78,6 +80,7 @@ slurm_cpus="1"
 slurm_mem=""
 
 train_script=""
+train_kind="ezm_unet"
 train_check_idle="0"
 train_follow="0"
 
@@ -100,6 +103,7 @@ while [[ $# -gt 0 ]]; do
     --cpus) slurm_cpus="$2"; shift 2 ;;
     --mem) slurm_mem="$2"; shift 2 ;;
     --script) train_script="$2"; shift 2 ;;
+    --kind) train_kind="$2"; shift 2 ;;
     --check-idle) train_check_idle="1"; shift 1 ;;
     --follow) train_follow="1"; shift 1 ;;
     --no-follow) train_follow="0"; shift 1 ;;
@@ -184,7 +188,11 @@ fi
 
 if [[ "$subcmd" == "train" ]]; then
   if [[ -z "$train_script" ]]; then
-    train_script="${workspace_root}/scripts/statistics_organized/dlc_ezm_open_closed/torch_ml/run_train_unet_open_closed_from_zones_augfix_sched_and_qc.slurm"
+    if [[ "$train_kind" == "ml_tracking" ]]; then
+      train_script="${repo_root}/workspace/ml_tracking/slurm/run_best_centermark_plus_of_scalars_time_distance_priority_syllables_bio.slurm"
+    else
+      train_script="${repo_root}/workspace/dlc_ezm_open_closed/torch_ml/run_train_unet_open_closed_from_zones_augfix_sched_and_qc.slurm"
+    fi
   fi
   if [[ ! -f "$train_script" ]]; then
     echo "ERROR: train script not found: $train_script" >&2
@@ -214,11 +222,25 @@ if [[ "$subcmd" == "train" ]]; then
     fi
   fi
 
-  submit_out="$(sbatch "$train_script")"
+  # Create a MUS1 run folder up-front (so it's not dependent on the training conda env).
+  # This run dir can store lightweight provenance even if the outputs live under the MoSeq2 workspace.
+  if [[ -z "${CONDA_DEFAULT_ENV:-}" || "${CONDA_DEFAULT_ENV:-}" != "mus1-dev" ]]; then
+    # shellcheck disable=SC1090
+    source "${HOME}/miniconda3/etc/profile.d/conda.sh"
+    conda activate mus1-dev
+  fi
+  cd "$repo_root"
+  run_json="$(PYTHONPATH="${repo_root}/src" python -m mus1.core.simple_cli runs new "${train_kind}" --project-path "${project_path}" --name "train_from_browser" --json)"
+  run_dir="$(python -c 'import json,sys; print(json.loads(sys.stdin.read())["run_dir"])' <<<"$run_json")"
+  run_id="$(python -c 'import json,sys; print(json.loads(sys.stdin.read())["run_id"])' <<<"$run_json")"
+
+  submit_out="$(sbatch --export=ALL,MUS1_RUN_DIR=\"${run_dir}\",MUS1_RUN_ID=\"${run_id}\",MOSEQ2_WORKSPACE_ROOT=\"${workspace_root}\" \"$train_script\")"
   echo "$submit_out"
   jobid="$(echo "$submit_out" | awk '{print $NF}')"
   echo ""
   echo "Job id: $jobid"
+  echo "MUS1 run: $run_id"
+  echo "MUS1 run dir: $run_dir"
   echo "Monitor:"
   echo "  squeue -j $jobid"
   echo "  sacct -j ${jobid} --format=JobID,JobName%25,State,Elapsed,MaxRSS,AllocCPUS,NodeList%25"

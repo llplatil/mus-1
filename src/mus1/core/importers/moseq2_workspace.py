@@ -40,15 +40,10 @@ def _as_path(value: Any) -> Optional[Path]:
 
 
 def _resolve_path(path: Path, workspace_root: Path) -> Path:
-    """Resolve a path to absolute, preferring absolute paths when possible."""
+    """Make a path absolute. Relative paths are resolved against workspace_root without stat calls."""
     if path.is_absolute():
         return path
-    # Try relative to workspace_root
-    resolved = workspace_root / path
-    if resolved.exists():
-        return resolved.resolve()
-    # Return as-is if it doesn't exist (will be caught by QC check)
-    return path
+    return workspace_root / path
 
 
 def _parse_date(date_str: Any) -> Optional[datetime]:
@@ -109,7 +104,7 @@ def import_session_index(
     df = pd.read_csv(session_index_csv)
     stats.rows_total = len(df)
 
-    workspace_root = Path(workspace_root).resolve()
+    workspace_root = Path(workspace_root)
     # Performance note: use a single SQLAlchemy session and commit once.
     # This avoids thousands of per-row commits during large workspace imports.
     now = datetime.utcnow()
