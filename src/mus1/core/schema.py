@@ -8,6 +8,7 @@ in metadata.py. These are the actual database tables.
 import json
 from datetime import datetime
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, Float, Boolean, Text, ForeignKey, Enum as SQLEnum
+from sqlalchemy import event
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, sessionmaker
 from typing import List
@@ -314,8 +315,26 @@ class LabWorkerModel(Base):
 class Database:
     """Database connection and session management."""
 
-    def __init__(self, db_path: str):
-        self.engine = create_engine(f'sqlite:///{db_path}')
+    def __init__(self, db_path: str, use_fast_pragmas: bool = False):
+        """
+        Args:
+            db_path: Path to SQLite database file.
+            use_fast_pragmas: If True, set PRAGMAs for faster bulk writes (sync/import).
+                Uses synchronous=NORMAL, journal_mode=WAL, larger cache. Safe to re-run on crash.
+        """
+        self.engine = create_engine(
+            f'sqlite:///{db_path}',
+            connect_args={"timeout": 60},
+        )
+        if use_fast_pragmas:
+
+            @event.listens_for(self.engine, "connect")
+            def _set_pragmas(dbapi_conn, _):
+                dbapi_conn.execute("PRAGMA synchronous=NORMAL")
+                dbapi_conn.execute("PRAGMA journal_mode=WAL")
+                dbapi_conn.execute("PRAGMA cache_size=-64000")
+                dbapi_conn.execute("PRAGMA temp_store=MEMORY")
+
         self.SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=self.engine)
 
     def create_tables(self):

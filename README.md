@@ -28,7 +28,11 @@ Web app mode: **Experiments**
 
 Annotate EZM open/closed zones, curate training sets, train U-Net segmentation models via Slurm, and visually QC both labeled and unlabeled predictions.
 
-Web app modes: **Annotator** (EZM marking), **EZM Zones QC** (training set curation), **EZM Border QC** (prediction QC), **EZM ML** (submit training, review frames)
+Web app modes: **Annotator** (EZM full marking + **EZM Wedge** boundary refinement), **EZM Zones QC** (training set curation), **EZM Border QC** (prediction QC), **EZM ML** (submit training, review frames)
+
+**EZM Wedge mode** (2026-02-24): faster boundary marking that reuses existing outer ellipse data. Click 2 border points per open wedge, adjust radial center, save. Replaces the slower 4-step freehand approach for boundary refinement.
+
+I want to click the 4 wedge points on a single frame now -lp (3/3/36)
 
 ### 3. NOR/NOF arena annotation and model training
 

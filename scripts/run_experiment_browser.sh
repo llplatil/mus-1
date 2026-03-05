@@ -63,7 +63,7 @@ fi
 
 wdmoseq2_root="$(cd "$repo_root/../.." && pwd)"
 project_path="${MUS1_PROJECT_PATH:-${wdmoseq2_root}/data}"
-workspace_root="${MOSEQ2_WORKSPACE_ROOT:-/center1/WDMOSEQ2/llplatil/WDMOSEQ2/moseq2_workspace}"
+workspace_root="${MOSEQ2_WORKSPACE_ROOT:-${wdmoseq2_root}}"
 port="8502"
 address="127.0.0.1"
 local_port="8503"
@@ -129,6 +129,12 @@ if [[ "$subcmd" == "web" ]]; then
     "--address" "$address"
   )
 
+  sync_cmd=(
+    "mus1" "import" "workspace-db-sync"
+    "--project-path" "$project_path"
+    "--workspace-root" "$workspace_root"
+  )
+
   pre_cmd=()
   if [[ "$do_install" == "1" ]]; then
     pre_cmd+=( "python" "-m" "pip" "install" "-e" ".[web]" )
@@ -167,6 +173,8 @@ if [[ "$subcmd" == "web" ]]; then
       conda activate mus1-dev
       cd \"${repo_root}\"
       $(if [[ ${#pre_cmd[@]} -gt 0 ]]; then printf '%q ' "${pre_cmd[@]}"; echo; fi)
+      echo 'Syncing DB before launch...'
+      $(printf '%q ' "${sync_cmd[@]}") || echo 'DB sync had warnings (continuing)'
       $(printf '%q ' "${run_app_cmd[@]}")
     "
   else
@@ -182,6 +190,8 @@ if [[ "$subcmd" == "web" ]]; then
     if [[ ${#pre_cmd[@]} -gt 0 ]]; then
       "${pre_cmd[@]}"
     fi
+    echo "Syncing DB before launch..."
+    "${sync_cmd[@]}" || echo "DB sync had warnings (continuing)"
     exec "${run_app_cmd[@]}"
   fi
 fi

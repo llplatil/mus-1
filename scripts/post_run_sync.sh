@@ -4,7 +4,7 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 wdmoseq2_root="$(cd "$repo_root/../.." && pwd)"
 project_path="${1:-${wdmoseq2_root}/data}"
-workspace_root="${2:-/center1/WDMOSEQ2/llplatil/WDMOSEQ2/moseq2_workspace}"
+workspace_root="${2:-${wdmoseq2_root}}"
 run_full_metadata_sync="${RUN_FULL_METADATA_SYNC:-0}"
 
 if [[ ! -d "$project_path" ]]; then

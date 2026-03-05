@@ -9,13 +9,38 @@
   - `video_path` (absolute or workspace-relative)
   - `frame_idx`
   - optional: `overlay_path`, `crop_xyxy`
-- Annotator mode: **`EZM: open/closed zone annotation`**
+
+**Two annotation modes are available:**
+
+#### EZM Wedge: refine boundaries (recommended for boundary refinement)
+
+Annotator mode: **`EZM Wedge: refine boundaries`**
+
+Requires an existing zone JSON for each video (outer ellipse + r_inner). Best used after initial marking or autofit.
+
+Workflow per video:
+1. Click **2 border points** on the outer track for **open wedge 1** (where open arm meets closed arm)
+2. Click **2 border points** for **open wedge 2**
+3. Optionally adjust the **radial center** with X/Y sliders (default = ellipse center)
+4. Verify the preview overlay (green = open, blue = closed)
+5. **Accept + Save + Next video** to save and advance
+
+Controls:
+- **Undo last point** and **Clear** per wedge
+- **Reset center** to return sliders to ellipse center
+- **Preview overlay** toggle (sidebar)
+
+#### EZM: full zone annotation (for initial marking)
+
+Annotator mode: **`EZM: open/closed zone annotation`**
+
+Use this when no zone JSON exists yet (first-time marking).
 
 Controls:
 - **Undo last** and **Clear** for outer boundary points, inner boundary points, and border lines
 - **Preview overlay** toggle (sidebar) to verify before saving
 
-Saved outputs: `workspace/arena_zones/ezm_per_video_v2/*.json`
+Saved outputs (both modes): `workspace/arena_zones/ezm_per_video_v2/*.json`
 
 Note: Streamlit may occasionally log `MediaFileHandler: Missing file <hash>.png` during rapid reruns. This does not mean your JSONs failed to save.
 
@@ -81,6 +106,8 @@ ML tracking model development details (what was tried, what worked, current best
 
 ### workspace-db-sync (default metadata sync)
 
+Subject Explorer and Experiment Browser **counts come from mus1.db**. After you add or move experiment data (e.g. new sessions under `data/experiment_data/OF`), run this so the DB reflects the session index; no app restart needed. In Subject Explorer, use "Refresh experiment data index" to clear the 5-min cache of the experiment_data JSON scan (enrichment only).
+
 ```bash
 mus1 import workspace-db-sync \
   --project-path "<project_path>" \
@@ -143,6 +170,14 @@ The session index contract lives at:
 
 It is built by scripts in `ml_workspace/ml_tracking_metadata_model/` and must be refreshed (copied) after any rebuild so the web app and importers use current data.
 
+**Planned**: Session index will be buildable from `data/experiment_data` (or mus1.db) so that resolving missing data, fixing paths, or improving tracking flows cleanly into ML training. See `ml_workspace/ml_tracking_metadata_model/README.md` section "Relationship to experiment_data reorganization" for the plan.
+
 ## Streamlit dependency note
 
 MUS1 uses `streamlit-drawable-canvas-fix` (the original `streamlit-drawable-canvas` is archived and breaks on Streamlit >= 1.41).
+
+
+### To Do:
+- the workprocesses that create outputs that would be included in data/experiment_data experiment jsons need to write their output paths to that json. We need a mechanism to trigger this and accept the input be written to the json. this should be resolved before reindexing. the app should not auto update the db on its own unless we trigger it and jsons are updated.
+
+See `data/DATA_ARCHITECTURE.md` for the full data flow rules and migration roadmap (items M-1 through M-15). 

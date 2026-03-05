@@ -258,7 +258,7 @@ def import_rotarod_csv(
                 errors += 1
                 # Continue processing other rows
                 continue
-    
+
     return RotarodImportStats(
         rows_total=rows_total,
         assay_sessions_created=assay_sessions_created,

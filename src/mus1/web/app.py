@@ -13,6 +13,9 @@ from .views.ezm_border_qc import render_ezm_border_qc
 from .views.ezm_ml import render_ezm_ml
 from .views.ezm_zones_qc import render_ezm_zones_qc
 from .views.experiments import render_experiments
+from .views.nor_nof_interaction_qc import render_nor_nof_interaction_qc
+from .views.nor_nof_object_marking import render_nor_nof_object_marking
+from .views.nor_nof_object_qc import render_nor_nof_object_qc
 from .views.nor_nof_qc import render_nor_nof_qc
 from .views.nor_nof_roi import render_nor_nof_roi
 from .views.subjects import render_subject_explorer
@@ -56,7 +59,7 @@ def main() -> None:
         st.session_state["mus1_view_mode"] = str(next_view)
     view = st.sidebar.radio(
         "Mode",
-        options=["Subjects", "Experiments", "EZM Zones QC", "EZM Border QC", "EZM ML", "NOR/NOF ROI", "NOR/NOF QC", "Annotator", "Training Monitor"],
+        options=["Subjects", "Experiments", "EZM Zones QC", "EZM Border QC", "EZM ML", "NOR/NOF ROI", "NOR/NOF QC", "NOR/NOF Object QC", "NOR/NOF Object Marking", "NOR/NOF Interaction QC", "Annotator", "Training Monitor"],
         index=0,
         key="mus1_view_mode",
     )
@@ -65,7 +68,7 @@ def main() -> None:
         render_subject_explorer(con, db_path=db_path, workspace_root=workspace_root, project_path=project_path)
         st.stop()
     if view == "EZM Zones QC":
-        render_ezm_zones_qc(db_path=db_path, workspace_root=workspace_root, project_path=project_path)
+        render_ezm_zones_qc(workspace_root=workspace_root, project_path=project_path)
         st.stop()
     if view == "EZM Border QC":
         render_ezm_border_qc(project_path=project_path, workspace_root=workspace_root)
@@ -79,6 +82,15 @@ def main() -> None:
     if view == "NOR/NOF QC":
         render_nor_nof_qc(project_path=project_path, workspace_root=workspace_root)
         st.stop()
+    if view == "NOR/NOF Object QC":
+        render_nor_nof_object_qc(project_path=project_path, workspace_root=workspace_root, db_path=db_path)
+        st.stop()
+    if view == "NOR/NOF Object Marking":
+        render_nor_nof_object_marking(project_path=project_path, workspace_root=workspace_root, db_path=db_path)
+        st.stop()
+    if view == "NOR/NOF Interaction QC":
+        render_nor_nof_interaction_qc(project_path=project_path, workspace_root=workspace_root)
+        st.stop()
     if view == "Annotator":
         render_annotator(workspace_root=workspace_root, project_path=project_path, db_path=db_path)
         st.stop()
@@ -86,7 +98,7 @@ def main() -> None:
         render_training_monitor(project_path=project_path, workspace_root=workspace_root)
         st.stop()
 
-    render_experiments(con, db_path=db_path, workspace_root=workspace_root)
+    render_experiments(con, db_path=db_path, workspace_root=workspace_root, project_path=project_path)
 
 
 if __name__ == "__main__":

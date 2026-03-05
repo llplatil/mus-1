@@ -379,7 +379,7 @@ def render_nor_nof_qc(
                 continue
             frame = _apply_crop(frame, ann.crop_xyxy)
             overlay = _draw_qc_overlay(frame, ann.payload, show_center_dots=True, highlight_novel=True)
-            st.image(overlay, use_container_width=True)
+            st.image(overlay, width="stretch")
 
             # Show metadata summary
             meta = ann.payload.get("meta", {})
@@ -449,7 +449,7 @@ def render_nor_nof_qc(
             "nof_json": p.nof.json_path.name,
             "nor_json": p.nor.json_path.name,
         })
-    st.dataframe(table_rows, use_container_width=True, hide_index=True)
+    st.dataframe(table_rows, width="stretch", hide_index=True)
 
     n_approved = sum(1 for r in table_rows if r["approved"])
     n_rejected = len(table_rows) - n_approved

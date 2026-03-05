@@ -26,14 +26,15 @@ def resolve_session_index_csv(workspace_root: Optional[str]) -> Optional[Path]:
         return None
 
     ws = Path(str(workspace_root)).expanduser()
-    p1 = ws / "ml_tracking_metadata_model" / "index" / "session_index_filtered.csv"
-    if p1.exists():
-        return p1
+    # workspace_root is now the WDMOSEQ2 repo root
+    p0 = ws / "ml_workspace" / "ml_tracking_metadata_model" / "index" / "session_index_filtered.csv"
+    if p0.exists():
+        return p0
 
     repo_root = Path(__file__).resolve().parents[3]
-    p2 = repo_root / "workspace" / "contracts" / "ml_tracking_metadata_model" / "index" / "session_index_filtered.csv"
-    if p2.exists():
-        return p2
+    p1 = repo_root / "workspace" / "contracts" / "ml_tracking_metadata_model" / "index" / "session_index_filtered.csv"
+    if p1.exists():
+        return p1
     return None
 
 

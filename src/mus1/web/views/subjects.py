@@ -49,8 +49,8 @@ def _load_experiment_data_index(
 
 
 def _subject_summary_from_db(con: sqlite3.Connection) -> pd.DataFrame:
-    """Build per-subject summary with experiment type counts from mus1.db."""
-    sql = """
+    """Build per-subject summary with experiment type counts + rotarod from assay_sessions."""
+    exp_sql = """
     SELECT
       s.id                    AS subject_id,
       s.sex                   AS sex,
@@ -63,7 +63,7 @@ def _subject_summary_from_db(con: sqlite3.Connection) -> pd.DataFrame:
     LEFT JOIN experiments e ON e.subject_id = s.id
     GROUP BY s.id, e.experiment_type
     """
-    rows = fetchall(con, sql)
+    rows = fetchall(con, exp_sql)
     if not rows:
         return pd.DataFrame()
 
@@ -84,11 +84,25 @@ def _subject_summary_from_db(con: sqlite3.Connection) -> pd.DataFrame:
         etype = str(r["experiment_type"] or "")
         n = int(r["n"])
         col = etype if etype in TASK_ORDER else None
-        if etype == "ROTAROD":
-            col = "RR"
         if col:
             subjects[sid][col] = n
-        subjects[sid]["Total"] += n
+            subjects[sid]["Total"] += n
+
+    rr_sql = """
+    SELECT subject_id,
+           COUNT(DISTINCT CASE WHEN occurred_at IS NOT NULL THEN DATE(occurred_at) END)
+           + CASE WHEN SUM(CASE WHEN occurred_at IS NULL THEN 1 ELSE 0 END) > 0 THEN 1 ELSE 0 END
+           AS n
+    FROM assay_sessions
+    WHERE assay_type = 'rotarod'
+    GROUP BY subject_id
+    """
+    for r in fetchall(con, rr_sql):
+        sid = str(r["subject_id"])
+        if sid in subjects:
+            old_rr = subjects[sid]["RR"]
+            subjects[sid]["RR"] = int(r["n"])
+            subjects[sid]["Total"] += int(r["n"]) - old_rr
 
     df = pd.DataFrame(list(subjects.values()))
     col_order = ["Subject", "Sex", "Genotype", "Treatment", "Birth date"] + TASK_ORDER + ["Total"]
@@ -166,6 +180,77 @@ def _experiment_assay_measurements(
     if not rows:
         return pd.DataFrame()
     return pd.DataFrame([dict(r) for r in rows])
+
+
+def _subject_rotarod_sessions(
+    con: sqlite3.Connection,
+    subject_id: str,
+    ed_index: Dict[str, Dict[str, Any]],
+) -> pd.DataFrame:
+    """Build rotarod session table from assay_sessions + assay_measurements.
+
+    Deduplicates by (experiment_id) to handle duplicate assay_session rows
+    that may exist from repeated sync runs.
+    """
+    sql = """
+    SELECT
+      a_s.id            AS session_id,
+      a_s.experiment_id AS experiment_id,
+      a_s.occurred_at   AS date,
+      a_m.metric        AS metric,
+      a_m.value         AS value
+    FROM assay_sessions a_s
+    JOIN assay_measurements a_m ON a_m.assay_session_id = a_s.id
+    WHERE a_s.subject_id = ? AND a_s.assay_type = 'rotarod'
+    ORDER BY a_s.occurred_at, a_m.metric
+    """
+    rows = fetchall(con, sql, (subject_id,))
+    if not rows:
+        return pd.DataFrame()
+
+    # Keep only the first session_id per experiment_id to deduplicate
+    first_session_for_exp: Dict[str, int] = {}
+    for r in rows:
+        eid = str(r["experiment_id"] or r["session_id"])
+        sid = int(r["session_id"])
+        if eid not in first_session_for_exp:
+            first_session_for_exp[eid] = sid
+
+    valid_session_ids = set(first_session_for_exp.values())
+
+    sessions: Dict[int, Dict[str, Any]] = {}
+    for r in rows:
+        sid = int(r["session_id"])
+        if sid not in valid_session_ids:
+            continue
+        if sid not in sessions:
+            sessions[sid] = {"Date": str(r["date"] or "")[:10]}
+        sessions[sid][str(r["metric"])] = r["value"]
+
+    df = pd.DataFrame(list(sessions.values()))
+
+    # Try to add timepoint from experiment_data RR JSONs
+    rr_by_date: Dict[str, Dict[str, Any]] = {}
+    for eid, ed in ed_index.items():
+        if ed.get("experiment_type") == "RR":
+            md = ed.get("metadata", {})
+            d = md.get("date_recorded", "")
+            sid = md.get("subject_id", "")
+            if sid == subject_id and d:
+                rr_by_date[d] = ed
+
+    if rr_by_date:
+        tp_col = []
+        for _, row in df.iterrows():
+            ed = rr_by_date.get(row["Date"])
+            if ed:
+                tp = ed.get("metadata", {}).get("experiment_level", {}).get("timepoint", "")
+                tp_col.append(str(tp) if tp != "" else "")
+            else:
+                tp_col.append("")
+        df.insert(1, "Timepoint", tp_col)
+
+    return df
 
 
 def _enrich_with_experiment_data(
@@ -257,6 +342,12 @@ def render_subject_explorer(
         st.warning("No subjects found in the database. Run `mus1 import workspace-db-sync` first.")
         return
 
+    # --- Sidebar: data refresh and sync note ---
+    st.sidebar.caption("Counts come from mus1.db. After adding/moving experiment data, run: mus1 import workspace-db-sync")
+    if st.sidebar.button("Refresh experiment data index", help="Clear 5-min cache of experiment_data JSON scan; next load rescans disk. Does not re-run DB sync."):
+        _load_experiment_data_index.clear()
+        st.rerun()
+
     # --- Sidebar filters ---
     st.sidebar.header("Filters")
     sex_opts = sorted(summary_df["Sex"].unique().tolist())
@@ -284,7 +375,7 @@ def render_subject_explorer(
     styler = filtered.style
     map_fn = getattr(styler, "map", None) or styler.applymap
     styled = map_fn(_color_cell, subset=count_cols)
-    st.dataframe(styled, use_container_width=True, height=min(35 * len(filtered) + 40, 800))
+    st.dataframe(styled, width="stretch", height=min(35 * len(filtered) + 40, 800))
 
     # --- Totals row ---
     totals = {t: int(filtered[t].sum()) for t in TASK_ORDER if t in filtered.columns}
@@ -316,42 +407,53 @@ def render_subject_explorer(
     c4.markdown(f"**Birth date** {subj_row['Birth date']}")
 
     exp_df = _subject_experiments(con, selected)
-    if exp_df.empty:
-        st.info("No experiments found for this subject.")
-        return
 
     # Try loading experiment_data JSONs for enrichment
+    ed_index: Dict[str, Dict[str, Any]] = {}
     if ed_root.is_dir():
         with st.spinner("Loading experiment data JSONs..."):
             ed_index = _load_experiment_data_index(str(ed_root))
-        if ed_index:
-            exp_df = _enrich_with_experiment_data(exp_df, ed_index)
 
-    # Group by experiment type
+    if not exp_df.empty and ed_index:
+        exp_df = _enrich_with_experiment_data(exp_df, ed_index)
+
+    # Group by experiment type (OF, EZM, NOR, NOF)
     for task in TASK_ORDER:
-        label = task if task != "RR" else "Rotarod"
-        task_df = exp_df[exp_df["Type"].isin([task, "ROTAROD"] if task == "RR" else [task])]
+        if task == "RR":
+            continue
+        task_df = exp_df[exp_df["Type"] == task] if not exp_df.empty else pd.DataFrame()
         if task_df.empty:
             continue
 
-        st.subheader(f"{label} ({len(task_df)} sessions)")
+        st.subheader(f"{task} ({len(task_df)} sessions)")
         display_cols = [c for c in task_df.columns if c != "Type"]
-        st.dataframe(task_df[display_cols].reset_index(drop=True), use_container_width=True)
+        st.dataframe(task_df[display_cols].reset_index(drop=True), width="stretch")
+
+    # Rotarod from assay_sessions
+    rr_df = _subject_rotarod_sessions(con, selected, ed_index)
+    if not rr_df.empty:
+        st.subheader(f"Rotarod ({len(rr_df)} sessions)")
+        st.dataframe(rr_df.reset_index(drop=True), width="stretch")
+
+    if exp_df.empty and rr_df.empty:
+        st.info("No experiments found for this subject.")
+        return
 
     st.divider()
 
     # --- Per-experiment artifact + assay detail ---
-    exp_ids = exp_df["Experiment"].tolist()
-    sel_exp = st.selectbox("Inspect experiment artifacts", exp_ids)
-    if sel_exp:
-        artifacts = _experiment_artifacts(con, sel_exp)
-        if artifacts:
-            st.markdown(f"**Artifacts for {sel_exp}** ({len(artifacts)} unique)")
-            st.dataframe(pd.DataFrame(artifacts), use_container_width=True)
-        else:
-            st.caption("No artifacts in DB for this experiment.")
+    exp_ids = exp_df["Experiment"].tolist() if not exp_df.empty else []
+    if exp_ids:
+        sel_exp = st.selectbox("Inspect experiment artifacts", exp_ids)
+        if sel_exp:
+            artifacts = _experiment_artifacts(con, sel_exp)
+            if artifacts:
+                st.markdown(f"**Artifacts for {sel_exp}** ({len(artifacts)} unique)")
+                st.dataframe(pd.DataFrame(artifacts), width="stretch")
+            else:
+                st.caption("No artifacts in DB for this experiment.")
 
-        assay_df = _experiment_assay_measurements(con, sel_exp)
-        if not assay_df.empty:
-            st.markdown(f"**Assay measurements for {sel_exp}**")
-            st.dataframe(assay_df, use_container_width=True)
+            assay_df = _experiment_assay_measurements(con, sel_exp)
+            if not assay_df.empty:
+                st.markdown(f"**Assay measurements for {sel_exp}**")
+                st.dataframe(assay_df, width="stretch")
