@@ -9,8 +9,9 @@ import streamlit as st
 from .db import connect
 from .paths import resolve_db_path
 from .views.annotator_embed import render_annotator
-from .views.ezm_border_qc import render_ezm_border_qc
+from .views.cohort_management import render_cohort_management
 from .views.ezm_ml import render_ezm_ml
+from .views.ezm_tracking_qc import render_ezm_tracking_qc
 from .views.ezm_zones_qc import render_ezm_zones_qc
 from .views.experiments import render_experiments
 from .views.nor_nof_interaction_qc import render_nor_nof_interaction_qc
@@ -59,7 +60,7 @@ def main() -> None:
         st.session_state["mus1_view_mode"] = str(next_view)
     view = st.sidebar.radio(
         "Mode",
-        options=["Subjects", "Experiments", "EZM Zones QC", "EZM Border QC", "EZM ML", "NOR/NOF ROI", "NOR/NOF QC", "NOR/NOF Object QC", "NOR/NOF Object Marking", "NOR/NOF Interaction QC", "Annotator", "Training Monitor"],
+        options=["Subjects", "Experiments", "EZM Zones QC", "EZM Tracking QC", "EZM ML", "NOR/NOF ROI", "NOR/NOF QC", "NOR/NOF Object QC", "NOR/NOF Object Marking", "NOR/NOF Interaction QC", "Cohort Management", "Annotator", "Training Monitor"],
         index=0,
         key="mus1_view_mode",
     )
@@ -70,8 +71,8 @@ def main() -> None:
     if view == "EZM Zones QC":
         render_ezm_zones_qc(workspace_root=workspace_root, project_path=project_path)
         st.stop()
-    if view == "EZM Border QC":
-        render_ezm_border_qc(project_path=project_path, workspace_root=workspace_root)
+    if view == "EZM Tracking QC":
+        render_ezm_tracking_qc(workspace_root=workspace_root, project_path=project_path)
         st.stop()
     if view == "EZM ML":
         render_ezm_ml(con, workspace_root=workspace_root, db_path=db_path)
@@ -90,6 +91,9 @@ def main() -> None:
         st.stop()
     if view == "NOR/NOF Interaction QC":
         render_nor_nof_interaction_qc(project_path=project_path, workspace_root=workspace_root)
+        st.stop()
+    if view == "Cohort Management":
+        render_cohort_management(project_path=project_path)
         st.stop()
     if view == "Annotator":
         render_annotator(workspace_root=workspace_root, project_path=project_path, db_path=db_path)

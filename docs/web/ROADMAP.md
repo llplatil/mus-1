@@ -2,88 +2,117 @@
 
 Priorities for the Streamlit web app and CLI toolset. Ordered by impact on the current workflow.
 
+**Last updated:** 2026-03-12
+
+## Current project context
+
+The project is assembling a **single unified manuscript** covering all 4 behavioral tasks (EZM, NOR/NOF, OF, RR) plus a cross-task phenotypic fingerprint and ML validation. The app's role is shifting from annotation/QC toward **figure generation, stats iteration, and cohort management**.
+
+Full execution plan: `~/.claude/plans/deep-juggling-sundae.md`
+Manuscript skeleton: `reports_workspace/manuscript_unified.md`
+Per-task methods+results: `reports_workspace/{ezm,nof_nor,of,rr}/*_methods_results.md`
+
 ## Active work
 
-### EZM arena annotation completion
+### Publication figure generation and QC (HIGH PRIORITY)
 
-- Finish full-set batch annotation pass (remaining sessions without zone JSONs)
-- Settings sweep on EZM U-Net training (learning rate, augmentation params, safe_bg ratio)
-- Goal: reliable EZM open/closed mask inference across all EZM sessions without per-video manual correction
+The unified manuscript needs consistent figures across all 4 tasks. Stats scripts produce figures but iteration requires:
 
-### NOR/NOF arena model training
+- **Figure viewer in app**: Display generated figures from `statistics_workspace/output/*/figures/` with experiment drill-down
+- **Cohort management view**: Already exists (`views/cohort_management.py`) — extend to show all 4 cohort JSONs side-by-side with group balance summaries
+- **Stats re-run trigger**: Button to re-run a publication stats script and diff output against prior run
 
-- Annotate enough NOR/NOF ROI JSONs (v2) to train a first NOR/NOF arena/object model
-- The web flow is already in place: NOR/NOF ROI view -> export QC CSV -> annotator -> save JSONs -> `mus1 import arena-zones`
-- Training infrastructure needs: decide on model architecture (U-Net reuse or separate), Slurm wrapper, QC overlay pipeline
+Current figure outputs:
+- EZM: `statistics_workspace/output/ezm_publication_stats_20260310/figures/` (6 figs, regenerating from no-trim)
+- NOR/NOF: `statistics_workspace/output/nor_nof_publication_stats_20260311/` (figures pending)
+- RR: `statistics_workspace/output/rr_publication_stats_20260312/figures/` (4 figs, complete)
+- OF: blocked on MoSeq2 pipeline
 
-### Path alignment after Stage 2 workspace restructure
+### EZM tracking QC completion
 
-Current issues and fixes needed:
+- Phase 3 visual QC: sort 155 experiments by artifact_rate, review in tracking QC pane
+- Mark QC status in experiment JSONs via app
+- Consensus multi-track overlay (head=blue, neck=green, nose=orange) already implemented
 
-| Issue | Current state | Fix |
-|-------|--------------|-----|
-| DLC project discovery | App tries `workspace_root/data/behavior_videos/dlc_projects` first | Resolve from `WDMOSEQ2/dlc_workspace/projects/` when present (partially done in `paths.py`) |
-| Session index resolution | Primary path is stale; fallback to contract works | Add `ml_workspace/ml_tracking_metadata_model/index/` as a resolution candidate |
-| Project path default | Launcher defaults to `apps/mus1/projects/moseq2_workspace_db` | Document using `--project-path /path/to/WDMOSEQ2/data` or make launcher auto-detect `../data/mus1.db` |
+### NOR/NOF QC flags in views
 
-### Session index contract refresh
+- QC flags seeded on all 339 experiments (shared module `apps/mus1/src/mus1/web/qc_flags_shared.py`)
+- Wire flags into NOR/NOF views (Phase 2c-app from NOR/NOF pipeline plan)
+- 5 new partner experiments need arena marking in app
 
-- The contract copy at `workspace/contracts/ml_tracking_metadata_model/index/session_index_filtered.csv` is built by ML workspace scripts
-- After any index rebuild, the contract must be refreshed so the web app and importers use current data
-- Add a small script or document the copy step explicitly
+### EZM arena annotation: COMPLETE
+
+All 171 EZM experiments marked and QC-passed. 4-point wedge marking approach fully deployed.
+
+## Pipeline status (data feeding the app)
+
+| Pipeline | Status | Blocking |
+|---|---|---|
+| EZM DLC | Complete (155/155) | Nothing |
+| NOR/NOF DLC | Complete (339/339) | Nothing |
+| EZM KPMS no-trim | Fitting Stage 2 (job 573050, bio) | Stats regeneration |
+| NOR/NOF KPMS no-trim | Fitting Stage 2 (job 573051, t1small) | Stats regeneration |
+| OF MoSeq2 kappa scan | Running (job 575828, t1small) | OF stats script |
+| RR stats | Complete (135 sessions, 8 tables, 4 figs) | Nothing |
+| Cross-task fingerprint | Not started | KPMS extraction + OF pipeline |
+| ML tracking model | Stale (trim30s syllables) | KPMS extraction |
 
 ## Next priorities
 
-### experiment_data integration
+### Experiment JSON → app pipeline
 
-- `moseq2_workspace/data/experiment_data/` is the canonical per-experiment folder structure with resolved metadata JSONs
-- The web app could read from these JSONs to backfill/cross-check mus1.db entries or to provide a QC view of resolution status
-- Not a replacement for the current DB-driven browser; additive view or import path
+Workprocesses that create outputs need to write paths to experiment JSONs. The app should not auto-update the DB — require explicit trigger:
+1. Script writes output path to experiment JSON (`computed_metrics`, `artifacts`)
+2. User triggers `mus1 import workspace-db-sync` (or app button)
+3. DB reflects current JSON state
+
+See `data/DATA_ARCHITECTURE.md` for full data flow rules.
 
 ### Experiment browser improvements
 
-- Show per-experiment artifact summary more clearly (what exists, what is missing)
-- Surface QC events inline with experiment detail
-- Filter/sort by annotation status (has EZM zone, has NOR/NOF ROI, missing tracking, etc.)
+- Show per-experiment artifact summary (what exists, what is missing)
+- Surface QC flags inline with experiment detail
+- Filter/sort by cohort membership, QC status, annotation status
 
 ### Reports workspace integration
 
-- `reports_workspace/` contains statistical report outputs
-- Web app could link report CSVs/figures to the experiments that contributed to them
-- Requires experiment_data resolution to be far enough along that we know which sessions fed which reports
+- Link `statistics_workspace/output/*/figures/` to experiments that contributed to them
+- Display figure thumbnails in experiment detail view
 
 ## Lower priority
 
-### Workspace-db-sync reliability
-
-- `workspace-db-sync` runs session index + rotarod + KPMS in one pass
-- Add better error reporting when individual import steps fail (currently silent on partial failures)
-- Add `--dry-run` mode for previewing what would change
-
 ### DB schema evolution
 
-- Current schema uses `create_all()` (no migrations). If schema changes, existing DBs need manual attention
-- If we move to Postgres for shared access, need Alembic or equivalent migration story
-- `videos.hash` is NOT NULL but imports rarely have hashes; consider making it nullable
+- Current schema uses `create_all()` (no migrations)
+- `videos.hash` is NOT NULL but imports rarely have hashes — consider nullable
+- Postgres migration story needed if shared access required
 
-### Standalone mus1-web extraction
+### Path alignment (partially done)
 
-- Extract the Streamlit app + minimal deps into its own repo/package
-- Deferred until the web app stabilizes and the desktop GUI is definitively retired
+| Issue | Status |
+|---|---|
+| DLC project discovery | Partially fixed in `paths.py` |
+| Session index resolution | Contract copy works; needs refresh after rebuilds |
+| Project path default | Document `--project-path /path/to/WDMOSEQ2/data` |
 
 ### Legacy desktop GUI
 
-- Code in `src/mus1/gui/` is not used
-- No active work planned
-- If removed, the core/importers/web modules and CLI would remain as the full MUS1 toolset
+Code in `src/mus1/gui/` is not used. No active work planned.
 
 ## Completed
 
-- Streamlit web app with 8 view modes (experiments, EZM zones/border/ML, NOR/NOF ROI/QC, annotator, training monitor)
-- CLI import pipeline: workspace-db-sync, moseq2-workspace, arena-zones, rotarod, KPMS recordings, EZM/ML run indexing
-- mus1.db schema: subjects, experiments, external_artifacts, qc_events, assay_sessions, assay_measurements
-- NOR/NOF v2 annotation flow (clean reset from v1, session_id prefix in filenames, embedded annotator handoff)
-- EZM annotator with undo/clear controls and pre-save preview overlay
-- ML tracking training submission with MUS1 run records and project-scoped output layout
-- Mount-alias aware path deduplication (`/center1` vs `/import/c1`)
-- Training monitor with Slurm job status and metric trend plots
+- Streamlit web app with 8+ view modes
+- CLI import pipeline (workspace-db-sync, arena-zones, rotarod, KPMS, EZM/ML runs)
+- mus1.db schema (subjects, experiments, artifacts, QC events, assay data)
+- EZM annotator: 4-point wedge marking, full zone annotation, undo/clear, preview overlay
+- NOR/NOF v2 annotation flow (clean reset, embedded annotator handoff)
+- EZM compute bridge: 8 zone classification variants, consensus multi-bodypart voting
+- EZM tracking QC pane: frame navigation, crosshair trajectory, variant selector
+- NOR/NOF object marking: all 339 sessions marked, arena_boundary geometric circle fit
+- Cohort management view (all task types)
+- QC flags system: unified schema across EZM/NOR/NOF, auto-flags + manual status
+- ML tracking training submission with MUS1 run records
+- Mount-alias aware path deduplication
+- Training monitor with Slurm job status and metric plots
+- RR publication cohort built (135 sessions, 45 subjects)
+- All 4 publication cohort JSONs created (`data/cohorts/`)

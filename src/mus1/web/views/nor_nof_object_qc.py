@@ -118,7 +118,8 @@ def _load_nor_nof_experiments(experiment_data_root: Path) -> List[_ExperimentRow
             el = md.get("experiment_level", {})
             vid = data.get("video", {})
             oqc = data.get("object_qc") or {}
-            pair_block = data.get("nor_nof_pair") or {}
+            _pair_raw = data.get("nor_nof_pair")
+            pair_block = _pair_raw if isinstance(_pair_raw, dict) else {}
 
             toys_raw = el.get("toys_raw") or el.get("toy_raw") or ""
             rows.append(_ExperimentRow(
@@ -306,7 +307,8 @@ def _change_experiment_type(
 
     # Update nor_nof_pair references: the moved experiment now pairs
     # with the same subject+date under the *other* new task type.
-    old_pair = data.get("nor_nof_pair", {})
+    _old_pair_raw = data.get("nor_nof_pair")
+    old_pair = _old_pair_raw if isinstance(_old_pair_raw, dict) else {}
     old_paired_eid = old_pair.get("paired_experiment_id")
     # After type flip, the new experiment pairs with the opposite task
     opposite_task = "NOF" if new_type == "NOR" else "NOR"

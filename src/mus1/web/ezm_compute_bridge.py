@@ -42,7 +42,19 @@ __all__ = [
     "choose_position_bodypart",
     "Track",
     "_compose_body_head_nose_tracks",
+    "ZONE_UNKNOWN",
+    "ZONE_OPEN",
+    "ZONE_CLOSED",
+    "ZONE_OFF_TRACK",
+    "ZONE_BUFFER",
 ]
+
+# Zone label constants for unified per-frame zone assignment
+ZONE_UNKNOWN: int = 0
+ZONE_OPEN: int = 1
+ZONE_CLOSED: int = 2
+ZONE_OFF_TRACK: int = 3
+ZONE_BUFFER: int = 4  # within angular hysteresis buffer at boundary
 
 
 # ---------------------------------------------------------------------------
@@ -120,6 +132,48 @@ def _bp_track(
         "ok": ok,
         "p_ok_mean": p_ok_mean,
         "above_frac": above_frac,
+    }
+
+
+def _apply_bodypart_bound(
+    track: Track,
+    ref_track: Track,
+    bound_px: float,
+    max_interp_gap_frames: int = 10,
+) -> Track:
+    """Reject frames where track is > bound_px from ref_track, then re-interpolate.
+
+    This removes ghost-point detections (e.g. nose detected far from head).
+    """
+    x = track["x"].copy()
+    y = track["y"].copy()
+    ok = track["ok"].copy()
+    ref_ok = ref_track["ok"]
+
+    both = ok & ref_ok
+    dist = np.full(len(x), np.nan)
+    dist[both] = np.sqrt(
+        (x[both] - ref_track["x"][both]) ** 2
+        + (y[both] - ref_track["y"][both]) ** 2
+    )
+
+    reject = both & (dist > bound_px)
+    x[reject] = np.nan
+    y[reject] = np.nan
+    ok[reject] = False
+    n_rejected = int(np.sum(reject))
+
+    # Re-interpolate after rejection
+    xs = pd.Series(x).interpolate(limit=max_interp_gap_frames, limit_direction="both")
+    ys = pd.Series(y).interpolate(limit=max_interp_gap_frames, limit_direction="both")
+    ok2 = (xs.notna() & ys.notna()).to_numpy(dtype=bool)
+
+    return {
+        "x": xs.to_numpy(dtype=float),
+        "y": ys.to_numpy(dtype=float),
+        "ok": ok2,
+        "p_ok_mean": track["p_ok_mean"],
+        "above_frac": track["above_frac"],
     }
 
 
@@ -282,6 +336,366 @@ def _compose_body_head_nose_tracks(
 
 
 # ---------------------------------------------------------------------------
+# 1a: Context-aware zone assignment for low-LH closed-arm frames
+# ---------------------------------------------------------------------------
+
+def _build_zone_labels(
+    ok: np.ndarray,
+    in_open_sector: np.ndarray,
+    in_closed_sector: np.ndarray,
+    off_track: np.ndarray,
+) -> np.ndarray:
+    """Build per-frame zone label array from boolean masks."""
+    n = len(ok)
+    labels = np.full(n, ZONE_UNKNOWN, dtype=np.int8)
+    labels[in_open_sector] = ZONE_OPEN
+    labels[in_closed_sector] = ZONE_CLOSED
+    labels[off_track] = ZONE_OFF_TRACK
+    # Frames with ok=False remain ZONE_UNKNOWN
+    return labels
+
+
+def _context_fill_closed(
+    zone_labels: np.ndarray,
+    ok: np.ndarray,
+    speed_px_s: np.ndarray,
+    max_gap_frames: int = 30,
+    max_speed_px_s: float = 500.0,
+) -> tuple:
+    """Fill ZONE_UNKNOWN gaps with closed-arm assignment when context supports it.
+
+    Only fills when:
+    - Last confident zone before the gap was ZONE_CLOSED
+    - Gap length <= max_gap_frames
+    - Speed at gap boundaries is below max_speed_px_s (mouse isn't moving fast)
+
+    Returns (filled_labels, n_context_filled_frames).
+    """
+    filled = zone_labels.copy()
+    n = len(filled)
+    n_filled = 0
+    i = 0
+    while i < n:
+        if ok[i]:
+            i += 1
+            continue
+        # Find gap: [i, j) are all ok=False
+        j = i
+        while j < n and not ok[j]:
+            j += 1
+        gap_len = j - i
+        if gap_len <= max_gap_frames and i > 0:
+            last_zone = int(filled[i - 1])
+            if last_zone == ZONE_CLOSED:
+                speed_ok = True
+                if np.isfinite(speed_px_s[i - 1]):
+                    speed_ok = speed_ok and (speed_px_s[i - 1] <= max_speed_px_s)
+                if j < n and np.isfinite(speed_px_s[j]):
+                    speed_ok = speed_ok and (speed_px_s[j] <= max_speed_px_s)
+                if speed_ok:
+                    filled[i:j] = ZONE_CLOSED
+                    n_filled += gap_len
+        i = j if j > i else i + 1
+    return filled, n_filled
+
+
+# ---------------------------------------------------------------------------
+# 1b: Committed-transition exit counting with dwell time + hysteresis
+# ---------------------------------------------------------------------------
+
+def _angular_distance(theta: np.ndarray, boundary: float) -> np.ndarray:
+    """Signed angular distance from boundary, wrapped to [-pi, pi]."""
+    return np.abs(np.mod(theta - boundary + math.pi, TAU) - math.pi)
+
+
+def _apply_boundary_hysteresis(
+    zone_labels: np.ndarray,
+    theta: np.ndarray,
+    open_angle_ranges: Sequence,
+    buffer_rad: float,
+) -> np.ndarray:
+    """Mark frames within buffer_rad of any open/closed boundary as ZONE_BUFFER."""
+    if buffer_rad <= 0:
+        return zone_labels
+    labels = zone_labels.copy()
+    for start, end in open_angle_ranges:
+        for boundary in (float(start), float(end)):
+            near = _angular_distance(theta, boundary) <= buffer_rad
+            # Only mark frames that were open or closed (don't override unknown/off_track)
+            definitive = (labels == ZONE_OPEN) | (labels == ZONE_CLOSED)
+            labels[near & definitive] = ZONE_BUFFER
+    return labels
+
+
+def _count_committed_transitions(
+    zone_labels: np.ndarray,
+    from_zone: int,
+    to_zone: int,
+    dwell_frames: int,
+    max_gap: int = 10,
+) -> int:
+    """Count committed transitions from from_zone to to_zone.
+
+    A transition is counted when the animal spends >= dwell_frames in to_zone
+    after being committed to from_zone. Non-definitive frames (unknown,
+    off_track, buffer) pause the dwell counter; gaps > max_gap reset it.
+    """
+    n = len(zone_labels)
+    committed = 0  # not yet committed
+    candidate = 0
+    cand_count = 0
+    gap_count = 0
+    count = 0
+
+    for i in range(n):
+        z = int(zone_labels[i])
+
+        if z == from_zone or z == to_zone:
+            gap_count = 0
+            if z == candidate:
+                cand_count += 1
+            else:
+                candidate = z
+                cand_count = 1
+
+            if committed == 0:
+                if cand_count >= dwell_frames:
+                    committed = candidate
+            elif cand_count >= dwell_frames and candidate != committed:
+                if committed == from_zone and candidate == to_zone:
+                    count += 1
+                committed = candidate
+        else:
+            gap_count += 1
+            if gap_count > max_gap:
+                cand_count = 0
+                candidate = 0
+
+    return count
+
+
+def _count_committed_transitions_gated(
+    zone_labels: np.ndarray,
+    from_zone: int,
+    to_zone: int,
+    dwell_frames: int,
+    theta: np.ndarray,
+    open_angle_ranges: Sequence,
+    boundary_corridor_deg: float = 5.0,
+    max_gap: int = 10,
+) -> tuple:
+    """Count committed transitions with boundary-crossing gate.
+
+    Like _count_committed_transitions, but each counted transition is also
+    checked for physical plausibility: the trajectory must pass within
+    ±boundary_corridor_deg of a sector boundary angle during the transition
+    window (from last committed from_zone frame to first committed to_zone
+    frame).
+
+    Returns:
+        (total_transitions, clean_transitions, artifact_transitions)
+        where clean = crossed a boundary, artifact = did not.
+    """
+    corridor_rad = math.radians(float(boundary_corridor_deg))
+    # Collect all boundary angles
+    boundaries = []
+    for start, end in open_angle_ranges:
+        boundaries.append(float(start))
+        boundaries.append(float(end))
+
+    n = len(zone_labels)
+    committed = 0
+    candidate = 0
+    cand_count = 0
+    gap_count = 0
+    total = 0
+    clean = 0
+    # Track the frame where commitment to from_zone was established
+    committed_from_frame = -1
+
+    for i in range(n):
+        z = int(zone_labels[i])
+
+        if z == from_zone or z == to_zone:
+            gap_count = 0
+            if z == candidate:
+                cand_count += 1
+            else:
+                candidate = z
+                cand_count = 1
+
+            if committed == 0:
+                if cand_count >= dwell_frames:
+                    committed = candidate
+                    if committed == from_zone:
+                        committed_from_frame = i
+            elif cand_count >= dwell_frames and candidate != committed:
+                if committed == from_zone and candidate == to_zone:
+                    total += 1
+                    # Check boundary crossing in the window
+                    # Window: from the last committed from_zone frame to current frame
+                    win_start = max(0, committed_from_frame)
+                    win_end = i + 1
+                    crossed = False
+                    for b in boundaries:
+                        window_dist = _angular_distance(theta[win_start:win_end], b)
+                        if len(window_dist) > 0 and float(np.nanmin(window_dist)) <= corridor_rad:
+                            crossed = True
+                            break
+                    if crossed:
+                        clean += 1
+                committed = candidate
+                if committed == from_zone:
+                    committed_from_frame = i
+        else:
+            gap_count += 1
+            if gap_count > max_gap:
+                cand_count = 0
+                candidate = 0
+
+    return total, clean, total - clean
+
+
+# ---------------------------------------------------------------------------
+# 1c: Latency-to-first-open and immobility
+# ---------------------------------------------------------------------------
+
+def _latency_to_first_open(zone_labels: np.ndarray, fps: float) -> float:
+    """Time in seconds from recording start to first ZONE_OPEN frame.
+
+    Returns NaN if the animal never enters an open arm.
+    """
+    open_indices = np.where(zone_labels == ZONE_OPEN)[0]
+    if len(open_indices) == 0:
+        return float("nan")
+    return float(open_indices[0]) / float(fps)
+
+
+def _compute_immobility(
+    speed_px_s: np.ndarray,
+    ok: np.ndarray,
+    px_to_mm: float,
+    threshold_mm_s: float = 20.0,
+) -> tuple:
+    """Classify frames as immobile (speed < threshold).
+
+    Args:
+        speed_px_s: per-frame speed in pixels/second
+        ok: boolean mask of valid frames
+        px_to_mm: conversion factor (mm per pixel)
+        threshold_mm_s: immobility threshold in mm/s (default 20 = 2 cm/s)
+
+    Returns (immobile_mask, immobile_fraction, immobile_time_s_would_need_fps).
+    """
+    speed_mm_s = np.abs(speed_px_s) * px_to_mm
+    immobile = ok & np.isfinite(speed_mm_s) & (speed_mm_s < threshold_mm_s)
+    valid = ok & np.isfinite(speed_mm_s)
+    n_valid = int(np.sum(valid))
+    frac = float(np.sum(immobile)) / n_valid if n_valid > 0 else float("nan")
+    return immobile, frac
+
+
+# ---------------------------------------------------------------------------
+# 1e: Head-corrected track (fallback to nearby high-LH bodyparts)
+# ---------------------------------------------------------------------------
+
+def _head_corrected_track(
+    df: pd.DataFrame,
+    likelihood_threshold: float,
+    max_interp_gap_frames: int,
+    primary_bp: str = "head",
+    fallback_bps: Sequence[str] = ("neck_base", "nose"),
+) -> tuple:
+    """Build a corrected head track using fallback bodyparts when head LH drops.
+
+    Head is the point of interest.  When head likelihood drops below threshold,
+    the highest-LH nearby bodypart is used as a position proxy for that frame.
+    Remaining gaps are interpolated.
+
+    Returns:
+        x, y: corrected position arrays (float64)
+        ok: boolean mask of valid frames
+        corrected: boolean mask of frames where a fallback bodypart was used
+        corrected_fraction: fraction of ok frames that used fallback
+        fallback_counts: dict {bodypart_name: n_frames_used}
+    """
+    bodyparts = sorted(set(df.columns.get_level_values(0)))
+    have = set(bodyparts)
+
+    if primary_bp not in have:
+        primary_bp = "head" if "head" in have else bodyparts[0]
+
+    n = int(len(df))
+
+    # Primary bodypart raw data
+    prim_x = _as_float_series(df[(primary_bp, "x")]).to_numpy(dtype=float)
+    prim_y = _as_float_series(df[(primary_bp, "y")]).to_numpy(dtype=float)
+    prim_lh = _as_float_series(df[(primary_bp, "likelihood")]).to_numpy(dtype=float)
+    prim_good = (prim_lh >= likelihood_threshold) & np.isfinite(prim_x) & np.isfinite(prim_y)
+
+    # Fallback bodypart raw data
+    fb_data = []
+    for bp in fallback_bps:
+        if bp not in have or bp == primary_bp:
+            continue
+        bx = _as_float_series(df[(bp, "x")]).to_numpy(dtype=float)
+        by = _as_float_series(df[(bp, "y")]).to_numpy(dtype=float)
+        blh = _as_float_series(df[(bp, "likelihood")]).to_numpy(dtype=float)
+        fb_data.append((bp, bx, by, blh))
+
+    # Build corrected track
+    x = prim_x.copy()
+    y = prim_y.copy()
+    corrected = np.zeros(n, dtype=bool)
+    fallback_counts: Dict[str, int] = {}
+
+    for i in range(n):
+        if prim_good[i]:
+            continue  # head is good, use directly
+
+        # Head LH is low — find best available fallback
+        best_bp_name = ""
+        best_lh = 0.0
+        best_x = np.nan
+        best_y = np.nan
+
+        for bp_name, bx, by, blh in fb_data:
+            if np.isfinite(blh[i]) and blh[i] >= likelihood_threshold and blh[i] > best_lh:
+                if np.isfinite(bx[i]) and np.isfinite(by[i]):
+                    best_bp_name = bp_name
+                    best_lh = blh[i]
+                    best_x = bx[i]
+                    best_y = by[i]
+
+        if best_bp_name:
+            x[i] = best_x
+            y[i] = best_y
+            corrected[i] = True
+            fallback_counts[best_bp_name] = fallback_counts.get(best_bp_name, 0) + 1
+        else:
+            x[i] = np.nan
+            y[i] = np.nan
+
+    # Interpolate remaining gaps
+    xs = pd.Series(x).interpolate(limit=max_interp_gap_frames, limit_direction="both")
+    ys = pd.Series(y).interpolate(limit=max_interp_gap_frames, limit_direction="both")
+    ok = (xs.notna() & ys.notna()).to_numpy(dtype=bool)
+
+    n_ok = int(np.sum(ok))
+    n_corrected = int(np.sum(corrected & ok))
+    corrected_fraction = float(n_corrected) / float(n_ok) if n_ok > 0 else 0.0
+
+    return (
+        xs.to_numpy(dtype=float),
+        ys.to_numpy(dtype=float),
+        ok,
+        corrected,
+        corrected_fraction,
+        fallback_counts,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Main per-video compute
 # ---------------------------------------------------------------------------
 
@@ -296,6 +710,21 @@ def compute_open_closed_metrics(
     invert_open_closed: bool = False,
     position_mode: str = "derived_body",
     nose_mode: str = "blend",
+    # 1a: context-aware zone fill
+    context_fill_closed: bool = False,
+    max_context_gap_frames: int = 30,
+    context_max_speed_px_s: float = 500.0,
+    # 1b: committed-transition entry counting
+    dwell_time_s: float = 0.5,
+    hysteresis_deg: float = 2.0,
+    # 1c: immobility
+    immobility_cm_s: float = 2.0,
+    outer_diameter_mm: float = 460.0,
+    # bodypart-bounded ghost rejection
+    bodypart_bound_px: float = 0.0,
+    bound_reference_bp: str = "",
+    # 1e: head-corrected track fallback bodyparts
+    consensus_voter_bps: Sequence[str] = ("neck_base", "nose"),
 ) -> Dict[str, float]:
     """Compute EZM open/closed time metrics for a single video."""
     n_frames = int(len(df))
@@ -317,6 +746,28 @@ def compute_open_closed_metrics(
         pos = body_t; bp_used = "derived_body"
     elif pos_mode == "derived_nose":
         pos = nose_t; bp_used = "derived_nose"
+    elif pos_mode == "bounded" and float(bodypart_bound_px) > 0 and str(bound_reference_bp):
+        # Bodypart-bounded: raw track with ghost-point rejection
+        ref_bp = str(bound_reference_bp)
+        if ref_bp in set(df.columns.get_level_values(0)):
+            ref_track = _bp_track(df, ref_bp, likelihood_threshold, max_interp_gap_frames)
+            pos = _apply_bodypart_bound(raw, ref_track, float(bodypart_bound_px), max_interp_gap_frames)
+            bp_used = f"bounded_{bp_raw}"
+        else:
+            pos = raw; bp_used = bp_raw
+    elif pos_mode == "consensus":
+        # 1e: Head-corrected track — fallback to high-LH nearby bodyparts
+        _corr_x, _corr_y, _corr_ok, _corr_mask, _corr_frac, _corr_fb_counts = \
+            _head_corrected_track(
+                df, float(likelihood_threshold), int(max_interp_gap_frames),
+                primary_bp=str(bodypart_preferred) or "head",
+                fallback_bps=tuple(consensus_voter_bps),
+            )
+        pos = {
+            "x": _corr_x, "y": _corr_y, "ok": _corr_ok,
+            "p_ok_mean": raw["p_ok_mean"], "above_frac": raw["above_frac"],
+        }
+        bp_used = "consensus"
     else:
         pos = raw; bp_used = bp_raw
 
@@ -395,11 +846,32 @@ def compute_open_closed_metrics(
             i = j
         return int(count)
 
+    # ── Build unified zone labels ─────────────────────────────────
+    zone_labels = _build_zone_labels(ok, in_open_sector, in_closed_sector, off_track)
+
+    # 1a: Context-aware closed-arm fill for low-LH gaps
+    body_speed = _speed_px_s(x_arr, y_arr, float(fps))
+    context_filled_frames = 0
+    if context_fill_closed:
+        zone_labels, context_filled_frames = _context_fill_closed(
+            zone_labels, ok, body_speed,
+            max_gap_frames=int(max_context_gap_frames),
+            max_speed_px_s=float(context_max_speed_px_s),
+        )
+
+    # 1b: Apply angular hysteresis buffer at zone boundaries
+    hysteresis_rad = math.radians(float(hysteresis_deg))
+    zone_labels_hyst = _apply_boundary_hysteresis(
+        zone_labels, theta, zones.open_angle_ranges, hysteresis_rad,
+    )
+
+    # Recount frames from zone labels (includes context-filled)
     open_frames_track = int(np.sum(in_open)); closed_frames_track = int(np.sum(in_closed))
     denom_track = open_frames_track + closed_frames_track
-    open_frames_sector = int(np.sum(in_open_sector)); closed_frames_sector = int(np.sum(in_closed_sector))
+    open_frames_sector = int(np.sum(zone_labels == ZONE_OPEN))
+    closed_frames_sector = int(np.sum(zone_labels == ZONE_CLOSED))
     denom_sector = open_frames_sector + closed_frames_sector
-    off_track_frames = int(np.sum(off_track))
+    off_track_frames = int(np.sum(zone_labels == ZONE_OFF_TRACK))
 
     open_time_s_track = open_frames_track / float(fps)
     closed_time_s_track = closed_frames_track / float(fps)
@@ -425,7 +897,53 @@ def compute_open_closed_metrics(
         open_fraction = float(open_fraction_track) if np.isfinite(open_fraction_track) else np.nan
         closed_fraction = float(closed_fraction_track) if np.isfinite(closed_fraction_track) else np.nan
 
-    return {
+    # 1b: Committed-transition entry counts (with hysteresis labels)
+    dwell_frames = max(1, int(round(float(dwell_time_s) * float(fps))))
+    committed_closed_to_open = _count_committed_transitions(
+        zone_labels_hyst, ZONE_CLOSED, ZONE_OPEN, dwell_frames,
+    )
+    committed_open_to_closed = _count_committed_transitions(
+        zone_labels_hyst, ZONE_OPEN, ZONE_CLOSED, dwell_frames,
+    )
+
+    # 1f: Boundary-crossing gated entry counts
+    _co_total, _co_clean, _co_artifact = _count_committed_transitions_gated(
+        zone_labels_hyst, ZONE_CLOSED, ZONE_OPEN, dwell_frames,
+        theta, zones.open_angle_ranges, boundary_corridor_deg=5.0,
+    )
+    _oc_total, _oc_clean, _oc_artifact = _count_committed_transitions_gated(
+        zone_labels_hyst, ZONE_OPEN, ZONE_CLOSED, dwell_frames,
+        theta, zones.open_angle_ranges, boundary_corridor_deg=5.0,
+    )
+    total_entries = _co_total + _oc_total
+    artifact_entries = _co_artifact + _oc_artifact
+    artifact_rate = float(artifact_entries) / float(total_entries) if total_entries > 0 else 0.0
+
+    # 1c: Latency to first open arm entry
+    latency_first_open_s = _latency_to_first_open(zone_labels, float(fps))
+
+    # 1c: Immobility (speed-based)
+    mean_diam_px = (float(zones.outer_ellipse.axes_xy[0])
+                    + float(zones.outer_ellipse.axes_xy[1])) / 2.0
+    px_to_mm = float(outer_diameter_mm) / mean_diam_px if mean_diam_px > 0 else 1.0
+    immobility_threshold_mm_s = float(immobility_cm_s) * 10.0  # cm/s -> mm/s
+    immobile_mask, immobile_fraction = _compute_immobility(
+        body_speed, ok, px_to_mm, immobility_threshold_mm_s,
+    )
+    immobile_frames = int(np.sum(immobile_mask))
+    immobile_time_s = float(immobile_frames) / float(fps)
+
+    # 1c: Total distance in mm
+    dx = np.diff(x_arr)
+    dy = np.diff(y_arr)
+    step_px = np.sqrt(dx * dx + dy * dy)
+    # Only count steps where both frames are ok
+    ok_steps = ok[:-1] & ok[1:]
+    total_distance_mm = float(np.nansum(step_px[ok_steps])) * px_to_mm
+    valid_ok = int(np.sum(ok))
+    mean_speed_mm_s = total_distance_mm / (float(valid_ok) / float(fps)) if valid_ok > 0 else float("nan")
+
+    out = {
         "n_frames": float(n_frames), "bodypart_used": bp_used,
         "position_mode": str(pos_mode), "nose_mode": str(nose_mode_s),
         "pct_frames_above_thr": float(raw["above_frac"]) if np.isfinite(raw["above_frac"]) else np.nan,
@@ -452,12 +970,36 @@ def compute_open_closed_metrics(
         "nose_closed_time_s_sector": float(nose_closed_time_s_sector),
         "nose_valid_time_s_sector": float(nose_valid_time_s_sector),
         "nose_open_fraction_sector": float(nose_open_fraction_sector) if np.isfinite(nose_open_fraction_sector) else np.nan,
+        # Legacy simple-debounce entries (preserved for comparison)
         "closed_to_open_entries": float(
             _count_transitions(in_closed_sector, in_open_sector, ok_mask=ok, min_prev_frames=3, min_next_frames=3)
         ),
         "closed_to_outside_open_entries": float(
             _count_transitions(in_closed_sector, outside_outer_open, ok_mask=ok, min_prev_frames=3, min_next_frames=3)
         ),
+        # 1b: Committed-transition entries (dwell-time state machine + hysteresis)
+        "committed_closed_to_open_entries": float(committed_closed_to_open),
+        "committed_open_to_closed_entries": float(committed_open_to_closed),
+        "entry_dwell_time_s": float(dwell_time_s),
+        "entry_hysteresis_deg": float(hysteresis_deg),
+        # 1f: Boundary-crossing gated entries
+        "gated_closed_to_open_entries": float(_co_clean),
+        "gated_open_to_closed_entries": float(_oc_clean),
+        "artifact_closed_to_open_entries": float(_co_artifact),
+        "artifact_open_to_closed_entries": float(_oc_artifact),
+        "artifact_rate": float(artifact_rate),
+        # 1a: Context-aware zone fill diagnostics
+        "context_filled_closed_frames": float(context_filled_frames),
+        "context_filled_closed_time_s": float(context_filled_frames) / float(fps),
+        # 1c: Latency, immobility, locomotion
+        "latency_first_open_s": float(latency_first_open_s) if np.isfinite(latency_first_open_s) else np.nan,
+        "immobile_time_s": float(immobile_time_s),
+        "immobile_fraction": float(immobile_fraction) if np.isfinite(immobile_fraction) else np.nan,
+        "immobility_threshold_cm_s": float(immobility_cm_s),
+        "total_distance_mm": float(total_distance_mm),
+        "mean_speed_mm_s": float(mean_speed_mm_s) if np.isfinite(mean_speed_mm_s) else np.nan,
+        "px_to_mm": float(px_to_mm),
+        # Track-based (unchanged)
         "open_time_s_track": float(open_time_s_track), "closed_time_s_track": float(closed_time_s_track),
         "valid_time_s_track": float(valid_time_s_track),
         "open_fraction_track": float(open_fraction_track) if np.isfinite(open_fraction_track) else np.nan,
@@ -467,3 +1009,8 @@ def compute_open_closed_metrics(
         "open_fraction_sector": float(open_fraction_sector) if np.isfinite(open_fraction_sector) else np.nan,
         "closed_fraction_sector": float(closed_fraction_sector) if np.isfinite(closed_fraction_sector) else np.nan,
     }
+    # 1e: Append head-corrected track metrics when in consensus mode
+    if pos_mode == "consensus":
+        out["corrected_fraction"] = float(_corr_frac)
+        out["fallback_counts"] = dict(_corr_fb_counts)
+    return out

@@ -391,8 +391,87 @@ def _draw_legend(img: np.ndarray, *, show_zones: bool = True) -> np.ndarray:
 
 
 # ---------------------------------------------------------------------------
+# Head-corrected track computation (for overlay — lightweight, no zone compute)
+# ---------------------------------------------------------------------------
+
+def compute_corrected_head_track(
+    tracks: Dict[str, Dict[str, np.ndarray]],
+    primary_bp: str = "head",
+    fallback_bps: Optional[List[str]] = None,
+    likelihood_threshold: float = 0.6,
+    raw_df: Optional[Any] = None,
+) -> Optional[Dict[str, Any]]:
+    """Build a corrected head track from loaded DLC tracks.
+
+    When primary_bp likelihood is below threshold, falls back to the
+    highest-LH nearby bodypart.  Returns a track dict with an extra
+    ``corrected`` boolean mask, or None if primary_bp is unavailable.
+
+    Requires ``raw_df`` (the DLC DataFrame) to access per-frame likelihoods.
+    If raw_df is not provided, returns the primary track without correction.
+    """
+    if primary_bp not in tracks:
+        return None
+    if fallback_bps is None:
+        fallback_bps = ["neck_base", "nose"]
+
+    prim = tracks[primary_bp]
+    n = len(prim["x"])
+    x = prim["x"].copy()
+    y = prim["y"].copy()
+    ok = prim["ok"].copy()
+    corrected = np.zeros(n, dtype=bool)
+
+    if raw_df is None:
+        # No likelihood data — return uncorrected
+        return {"x": x, "y": y, "ok": ok, "corrected": corrected}
+
+    import pandas as pd
+    prim_lh = pd.to_numeric(raw_df[(primary_bp, "likelihood")], errors="coerce").to_numpy(dtype=float)
+    prim_good = (prim_lh >= likelihood_threshold) & np.isfinite(x) & np.isfinite(y)
+
+    # For frames where primary LH is low, try fallbacks
+    fb_data = []
+    for bp in fallback_bps:
+        if bp not in tracks or bp == primary_bp:
+            continue
+        bx = tracks[bp]["x"]
+        by = tracks[bp]["y"]
+        try:
+            blh = pd.to_numeric(raw_df[(bp, "likelihood")], errors="coerce").to_numpy(dtype=float)
+        except KeyError:
+            continue
+        fb_data.append((bp, bx, by, blh))
+
+    for i in range(n):
+        if prim_good[i]:
+            continue
+        best_lh = 0.0
+        best_x, best_y = np.nan, np.nan
+        for _, bx, by, blh in fb_data:
+            if np.isfinite(blh[i]) and blh[i] >= likelihood_threshold and blh[i] > best_lh:
+                if np.isfinite(bx[i]) and np.isfinite(by[i]):
+                    best_lh = blh[i]
+                    best_x, best_y = bx[i], by[i]
+        if np.isfinite(best_x):
+            x[i] = best_x
+            y[i] = best_y
+            corrected[i] = True
+            ok[i] = True
+        else:
+            x[i] = np.nan
+            y[i] = np.nan
+            ok[i] = False
+
+    return {"x": x, "y": y, "ok": ok, "corrected": corrected}
+
+
+# ---------------------------------------------------------------------------
 # Main entry point
 # ---------------------------------------------------------------------------
+
+_CORRECTED_COLOR = (255, 80, 255)  # magenta for corrected frames
+
 
 def draw_ezm_qc_overlay(
     frame_rgb: np.ndarray,
@@ -404,6 +483,9 @@ def draw_ezm_qc_overlay(
     show_legend: bool = True,
     subsample: int = 3,
     invert_open_closed: bool = False,
+    highlight_frame: int = -1,
+    consensus_mode: bool = False,
+    corrected_track: Optional[Dict[str, Any]] = None,
 ) -> np.ndarray:
     """Draw zone sectors + trajectory overlay on a video frame.
 
@@ -417,6 +499,9 @@ def draw_ezm_qc_overlay(
     show_legend : Include color legend.
     subsample : Frame subsampling for transition dot detection.
     invert_open_closed : Flip open/closed classification (zone JSON ranges become closed).
+    highlight_frame : Frame index to mark with a crosshair on the trajectory (-1 = none).
+    consensus_mode : If True, use corrected_track for drawing with color-coded corrections.
+    corrected_track : Output of compute_corrected_head_track() — has x, y, ok, corrected mask.
     """
     z = _parse_zone(zone_payload)
     if z is None:
@@ -426,11 +511,71 @@ def draw_ezm_qc_overlay(
     img = _draw_zone_sectors(img, z, invert_open_closed=invert_open_closed)
     img = _draw_zone_outlines(img, z, invert_open_closed=invert_open_closed)
 
-    if show_trajectory and bodypart in tracks:
-        img = _draw_trajectory(img, tracks[bodypart], z, subsample=subsample,
-                               invert_open_closed=invert_open_closed)
+    if show_trajectory:
+        if consensus_mode and corrected_track is not None:
+            # Draw corrected head track: normal temporal coloring for direct
+            # head frames, magenta for frames using fallback bodyparts
+            img = _draw_trajectory(img, corrected_track, z, subsample=subsample,
+                                   invert_open_closed=invert_open_closed)
+            # Overdraw corrected segments in magenta
+            corr_mask = corrected_track.get("corrected")
+            if corr_mask is not None:
+                cx_arr = corrected_track["x"]
+                cy_arr = corrected_track["y"]
+                ok_arr = corrected_track["ok"]
+                total = len(ok_arr)
+                # Find runs of corrected frames and draw them
+                in_run = False
+                run_start = 0
+                for i in range(total):
+                    if corr_mask[i] and ok_arr[i]:
+                        if not in_run:
+                            run_start = max(0, i - 1)  # include one frame before for continuity
+                            in_run = True
+                    else:
+                        if in_run and i - run_start >= 2:
+                            run_end = min(total, i + 1)
+                            pts = np.column_stack([cx_arr[run_start:run_end],
+                                                   cy_arr[run_start:run_end]]).astype(np.int32).reshape((-1, 1, 2))
+                            cv2.polylines(img, [pts], isClosed=False,
+                                          color=_CORRECTED_COLOR, thickness=2, lineType=cv2.LINE_AA)
+                        in_run = False
+                if in_run and total - run_start >= 2:
+                    pts = np.column_stack([cx_arr[run_start:total],
+                                           cy_arr[run_start:total]]).astype(np.int32).reshape((-1, 1, 2))
+                    cv2.polylines(img, [pts], isClosed=False,
+                                  color=_CORRECTED_COLOR, thickness=2, lineType=cv2.LINE_AA)
+        elif bodypart in tracks:
+            img = _draw_trajectory(img, tracks[bodypart], z, subsample=subsample,
+                                   invert_open_closed=invert_open_closed)
+
+    # Draw crosshair at current frame position
+    hlight_track = corrected_track if (consensus_mode and corrected_track) else (
+        tracks.get(bodypart)
+    )
+    if highlight_frame >= 0 and hlight_track is not None:
+        if highlight_frame < len(hlight_track["x"]) and hlight_track["ok"][highlight_frame]:
+            hx = int(round(hlight_track["x"][highlight_frame]))
+            hy = int(round(hlight_track["y"][highlight_frame]))
+            for color, thickness in [((0, 0, 0), 3), ((255, 255, 255), 1)]:
+                cv2.drawMarker(img, (hx, hy), color, cv2.MARKER_CROSS,
+                               markerSize=20, thickness=thickness, line_type=cv2.LINE_AA)
+            # Red dot if direct head, magenta if corrected
+            corr = hlight_track.get("corrected")
+            dot_color = _CORRECTED_COLOR if (corr is not None and corr[highlight_frame]) else (255, 60, 60)
+            cv2.circle(img, (hx, hy), 4, dot_color, -1, cv2.LINE_AA)
 
     if show_legend:
-        img = _draw_legend(img, show_zones=True)
+        if consensus_mode:
+            img = _draw_legend(img, show_zones=True)
+            # Add corrected-frame legend entry
+            h, w = img.shape[:2]
+            lx = w - 190
+            ly = h - 90 - 18  # above the standard legend
+            cv2.rectangle(img, (lx, ly), (lx + 20, ly + 10), _CORRECTED_COLOR, -1)
+            cv2.putText(img, "corrected", (lx + 25, ly + 10),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.35, (255, 80, 255), 1, cv2.LINE_AA)
+        else:
+            img = _draw_legend(img, show_zones=True)
 
     return img

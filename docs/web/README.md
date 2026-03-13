@@ -81,7 +81,7 @@ That script:
 4. Save v2 JSONs into `workspace/arena_zones/nor_nof_per_video_v2/`
 5. Back in NOR/NOF ROI, click **Run: `mus1 import arena-zones`** to index into DB
 
-NOR/NOF model training is the next build target. The annotation and QC web flows are in place.
+NOR/NOF object marking is **COMPLETE** — all 339 sessions marked with arena_boundary geometric circle fit. QC flags seeded on all 339 experiments. Publication cohort: 324 sessions (`data/cohorts/nor_nof_publication.json`).
 
 ## Training run monitoring
 
@@ -177,7 +177,25 @@ It is built by scripts in `ml_workspace/ml_tracking_metadata_model/` and must be
 MUS1 uses `streamlit-drawable-canvas-fix` (the original `streamlit-drawable-canvas` is archived and breaks on Streamlit >= 1.41).
 
 
-### To Do:
+### To Do: -lp
 - the workprocesses that create outputs that would be included in data/experiment_data experiment jsons need to write their output paths to that json. We need a mechanism to trigger this and accept the input be written to the json. this should be resolved before reindexing. the app should not auto update the db on its own unless we trigger it and jsons are updated.
 
-See `data/DATA_ARCHITECTURE.md` for the full data flow rules and migration roadmap (items M-1 through M-15). 
+See `data/DATA_ARCHITECTURE.md` for the full data flow rules and migration roadmap (items M-1 through M-15).
+
+### Current Next Steps (2026-03-12)
+
+**Manuscript-driven priorities** (see `docs/web/ROADMAP.md` for full context):
+
+1. **EZM tracking QC Phase 3**: Visual review of 155 experiments sorted by artifact_rate — mark QC status in JSONs via app
+2. **NOR/NOF QC flags in views**: Wire `qc_flags` into NOR/NOF app views (Phase 2c-app)
+3. **5 partner experiments**: Need arena marking in app (NOR/NOF)
+4. **Figure viewer**: Display generated figures from `statistics_workspace/output/*/figures/` — enables fast visual QC iteration
+5. **Stats re-run integration**: Cohort management + one-click stats script re-run for iteration
+
+**Blocked (waiting on compute):**
+- KPMS no-trim syllable extraction → regenerate EZM + NOR/NOF stats + figures
+- OF MoSeq2 kappa scan → production fit → OF publication stats
+- Cross-task phenotypic fingerprint (all per-task stats must be current)
+- ML tracking model update (needs no-trim syllables)
+
+**Figure/table workflow**: See `reports_workspace/FIGURE_TABLE_WORKFLOW.md` for standard iteration process.

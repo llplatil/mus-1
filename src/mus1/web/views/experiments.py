@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import re
 import sqlite3
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
@@ -16,13 +15,9 @@ from ..session_index import load_session_index_map
 
 try:
     from ..cohorts import (
-        add_member,
         cohort_member_ids,
-        create_cohort,
         list_cohorts,
         load_cohort,
-        remove_member,
-        save_cohort,
     )
     _HAS_COHORTS = True
 except ImportError:
@@ -325,246 +320,71 @@ def render_experiments(
             else:
                 st.caption("No relink suggestions available for the remaining rows.")
 
-    # -- Main content tabs -----------------------------------------------------
-    tab_names = ["Experiments"]
-    if _HAS_COHORTS and cohorts_dir is not None:
-        tab_names.append("Cohorts")
-    tabs = st.tabs(tab_names)
+    # -- Main content -----------------------------------------------------------
+    exp_ids = [e.experiment_id for e in exps]
+    selected_exp = st.selectbox("Select experiment", options=exp_ids) if exp_ids else None
 
-    # === Experiments tab ======================================================
-    with tabs[0]:
-        exp_ids = [e.experiment_id for e in exps]
-        selected_exp = st.selectbox("Select experiment", options=exp_ids) if exp_ids else None
-
-        st.dataframe(
-            [
-                {
-                    "experiment_id": e.experiment_id,
-                    "task": e.experiment_type,
-                    "date_recorded": e.date_recorded,
-                    "stage": e.processing_stage,
-                    "subject_id": e.subject_id,
-                    "sex": e.sex,
-                    "genotype": e.genotype,
-                    "treatment": e.treatment,
-                    "artifacts": e.artifacts_count,
-                    "qc": e.qc_count,
-                    "ezm_zone": e.has_ezm_zone,
-                    "nor_nof_roi": e.has_nor_nof_roi,
-                }
-                for e in exps
-            ],
-            width="stretch",
-            hide_index=True,
-        )
-
-        if selected_exp:
-            st.subheader(f"Experiment detail: {selected_exp}")
-            artifacts = get_experiment_artifacts(con, selected_exp)
-            qc = get_experiment_qc(con, selected_exp)
-
-            col1, col2 = st.columns(2)
-
-            with col1:
-                st.markdown("#### External artifacts")
-                if not artifacts:
-                    st.info("No external artifacts linked to this experiment.")
-                else:
-                    by_kind: Dict[str, List[sqlite3.Row]] = {}
-                    for r in artifacts:
-                        by_kind.setdefault(str(r["kind"]), []).append(r)
-
-                    for kind, items in by_kind.items():
-                        with st.expander(
-                            f"{kind} ({len(items)})",
-                            expanded=(kind in {"ezm_zone_json_v2", "nor_nof_objects_json_v2"}),
-                        ):
-                            for it in items[:200]:
-                                st.code(str(it["path"]), language=None)
-                                meta = parse_meta(it["meta_json"])
-                                if meta:
-                                    st.json(meta, expanded=False)
-
-            with col2:
-                st.markdown("#### QC events")
-                if not qc:
-                    st.info("No QC events linked to this experiment.")
-                else:
-                    for r in qc[:200]:
-                        title = f"{r['scope']}::{r['code']} (id={r['id']})"
-                        with st.expander(title, expanded=False):
-                            st.code(str(r["created_at"]), language=None)
-                            try:
-                                st.json(json.loads(r["details_json"] or "{}"), expanded=False)
-                            except Exception:
-                                st.code(str(r["details_json"]), language=None)
-
-            # -- Add to cohort (per-experiment) --------------------------------
-            if _HAS_COHORTS and cohorts_dir is not None:
-                st.markdown("---")
-                cohort_summaries_current = list_cohorts(cohorts_dir)
-                if cohort_summaries_current:
-                    col_add, col_btn = st.columns([3, 1])
-                    with col_add:
-                        add_target = st.selectbox(
-                            "Add this experiment to cohort",
-                            options=[c["name"] for c in cohort_summaries_current],
-                            key=f"exp_add_cohort_{selected_exp}",
-                        )
-                    with col_btn:
-                        st.write("")
-                        if st.button("Add", key=f"exp_add_btn_{selected_exp}"):
-                            match = [c for c in cohort_summaries_current if c["name"] == add_target]
-                            if match:
-                                coh_path = Path(match[0]["path"])
-                                coh = load_cohort(coh_path)
-                                add_member(coh, selected_exp)
-                                save_cohort(coh_path, coh)
-                                st.success(f"Added {selected_exp} to '{add_target}'")
-                                st.rerun()
-
-    # === Cohorts tab ==========================================================
-    if _HAS_COHORTS and cohorts_dir is not None and len(tabs) > 1:
-        with tabs[1]:
-            _render_cohort_management(cohorts_dir, exps, cohort_filter_ids)
-
-
-def _render_cohort_management(
-    cohorts_dir: Path,
-    experiments: List[ExperimentRow],
-    active_filter_ids: Optional[Set[str]],
-) -> None:
-    """Render the cohort management sub-section."""
-    cohort_summaries = list_cohorts(cohorts_dir)
-
-    # -- Create new cohort -----------------------------------------------------
-    with st.expander("Create new cohort", expanded=not bool(cohort_summaries)):
-        new_name = st.text_input("Cohort name", key="cohort_create_name")
-        new_desc = st.text_input("Description (optional)", key="cohort_create_desc")
-        new_tasks = st.multiselect(
-            "Task types", options=["EZM", "NOR", "NOF", "OF", "RR"],
-            default=["EZM"], key="cohort_create_tasks",
-        )
-        if st.button("Create cohort", key="cohort_create_btn"):
-            if not new_name.strip():
-                st.error("Cohort name is required.")
-            else:
-                slug = re.sub(r"[^a-z0-9]+", "_", new_name.lower().strip()).strip("_")
-                coh_path = cohorts_dir / f"{slug}.json"
-                if coh_path.exists():
-                    st.error(f"A cohort file already exists at: {coh_path.name}")
-                else:
-                    coh = create_cohort(new_name.strip(), task_types=new_tasks, description=new_desc.strip())
-                    save_cohort(coh_path, coh)
-                    st.success(f"Created cohort '{new_name}' at {coh_path.name}")
-                    st.rerun()
-
-    if not cohort_summaries:
-        st.info("No cohorts found. Create one above.")
-        return
-
-    # -- Select cohort ---------------------------------------------------------
-    cohort_names = [f"{c['name']}  ({c['n_members']} members, {', '.join(c['task_types']) or 'any task'})"
-                    for c in cohort_summaries]
-    selected_idx = st.selectbox(
-        "Select cohort to manage", options=range(len(cohort_names)),
-        format_func=lambda i: cohort_names[i],
-        key="cohort_manage_select",
+    st.dataframe(
+        [
+            {
+                "experiment_id": e.experiment_id,
+                "task": e.experiment_type,
+                "date_recorded": e.date_recorded,
+                "stage": e.processing_stage,
+                "subject_id": e.subject_id,
+                "sex": e.sex,
+                "genotype": e.genotype,
+                "treatment": e.treatment,
+                "artifacts": e.artifacts_count,
+                "qc": e.qc_count,
+                "ezm_zone": e.has_ezm_zone,
+                "nor_nof_roi": e.has_nor_nof_roi,
+            }
+            for e in exps
+        ],
+        width="stretch",
+        hide_index=True,
     )
-    selected_summary = cohort_summaries[selected_idx]
-    coh_path = Path(selected_summary["path"])
-    coh = load_cohort(coh_path)
-    member_ids = cohort_member_ids(coh)
 
-    # -- Cohort details --------------------------------------------------------
-    st.markdown(f"### {coh.get('name', coh_path.stem)}")
-    col_info, col_edit = st.columns([2, 1])
-    with col_info:
-        st.caption(f"File: `{coh_path.name}`")
-        st.caption(f"Members: {len(member_ids)} | Task types: {', '.join(coh.get('task_types', []))}")
-        st.caption(f"Created: {coh.get('created_at', '?')} | Updated: {coh.get('updated_at', '?')}")
-    with col_edit:
-        new_desc_val = st.text_area(
-            "Description", value=coh.get("description", ""),
-            key="cohort_edit_desc", height=68,
-        )
-        if st.button("Save description", key="cohort_save_desc"):
-            coh["description"] = new_desc_val
-            save_cohort(coh_path, coh)
-            st.success("Description updated.")
-            st.rerun()
+    if selected_exp:
+        st.subheader(f"Experiment detail: {selected_exp}")
+        artifacts = get_experiment_artifacts(con, selected_exp)
+        qc = get_experiment_qc(con, selected_exp)
 
-    # -- Members table ---------------------------------------------------------
-    st.markdown("#### Members")
-    members_list = coh.get("members") or []
-    # Build lookup for experiment metadata
-    exp_lookup: Dict[str, ExperimentRow] = {e.experiment_id: e for e in experiments}
+        col1, col2 = st.columns(2)
 
-    if not members_list:
-        st.info("This cohort has no members yet.")
-    else:
-        member_rows = []
-        for m in members_list:
-            eid = m.get("experiment_id", "")
-            exp = exp_lookup.get(eid)
-            member_rows.append({
-                "experiment_id": eid,
-                "task": exp.experiment_type if exp else "?",
-                "subject_id": exp.subject_id if exp else "?",
-                "sex": exp.sex if exp else "",
-                "genotype": exp.genotype if exp else "",
-                "treatment": exp.treatment if exp else "",
-                "date": exp.date_recorded if exp else "",
-                "ezm_zone": exp.has_ezm_zone if exp else False,
-                "added_at": m.get("added_at", ""),
-                "notes": m.get("notes", ""),
-            })
-        st.dataframe(member_rows, width="stretch", hide_index=True)
+        with col1:
+            st.markdown("#### External artifacts")
+            if not artifacts:
+                st.info("No external artifacts linked to this experiment.")
+            else:
+                by_kind: Dict[str, List[sqlite3.Row]] = {}
+                for r in artifacts:
+                    by_kind.setdefault(str(r["kind"]), []).append(r)
 
-        # Remove members
-        remove_targets = st.multiselect(
-            "Select members to remove",
-            options=[m["experiment_id"] for m in members_list],
-            key="cohort_remove_select",
-        )
-        if remove_targets and st.button(
-            f"Remove {len(remove_targets)} member(s)", key="cohort_remove_btn",
-        ):
-            for eid in remove_targets:
-                remove_member(coh, eid)
-            save_cohort(coh_path, coh)
-            st.success(f"Removed {len(remove_targets)} member(s).")
-            st.rerun()
+                for kind, items in by_kind.items():
+                    with st.expander(
+                        f"{kind} ({len(items)})",
+                        expanded=(kind in {"ezm_zone_json_v2", "nor_nof_objects_json_v2"}),
+                    ):
+                        for it in items[:200]:
+                            st.code(str(it["path"]), language=None)
+                            meta = parse_meta(it["meta_json"])
+                            if meta:
+                                st.json(meta, expanded=False)
 
-    # -- Bulk add --------------------------------------------------------------
-    st.markdown("#### Add experiments")
-    non_members = [e for e in experiments if e.experiment_id not in member_ids]
-    if not non_members:
-        st.caption("All filtered experiments are already in this cohort.")
-    else:
-        add_targets = st.multiselect(
-            f"Select experiments to add ({len(non_members)} available)",
-            options=[e.experiment_id for e in non_members],
-            key="cohort_add_select",
-        )
-        col_add_sel, col_add_all = st.columns(2)
-        with col_add_sel:
-            if add_targets and st.button(
-                f"Add {len(add_targets)} selected", key="cohort_add_selected_btn",
-            ):
-                for eid in add_targets:
-                    add_member(coh, eid)
-                save_cohort(coh_path, coh)
-                st.success(f"Added {len(add_targets)} experiment(s).")
-                st.rerun()
-        with col_add_all:
-            if st.button(
-                f"Add all {len(non_members)} filtered experiments",
-                key="cohort_add_all_btn",
-            ):
-                for e in non_members:
-                    add_member(coh, e.experiment_id)
-                save_cohort(coh_path, coh)
-                st.success(f"Added {len(non_members)} experiment(s).")
-                st.rerun()
+        with col2:
+            st.markdown("#### QC events")
+            if not qc:
+                st.info("No QC events linked to this experiment.")
+            else:
+                for r in qc[:200]:
+                    title = f"{r['scope']}::{r['code']} (id={r['id']})"
+                    with st.expander(title, expanded=False):
+                        st.code(str(r["created_at"]), language=None)
+                        try:
+                            st.json(json.loads(r["details_json"] or "{}"), expanded=False)
+                        except Exception:
+                            st.code(str(r["details_json"]), language=None)
+
 

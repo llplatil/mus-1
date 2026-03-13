@@ -57,4 +57,11 @@ mus1 import ml-tracking-runs       # index ML tracking training runs
 
 ## Documentation
 
-Operational reference for all workflows: `docs/web/README.md`
+- Operational reference: `docs/web/README.md`
+- Architecture: `docs/web/ARCHITECTURE_CURRENT.md`
+- Roadmap & next steps: `docs/web/ROADMAP.md`
+- Figure/table workflow: `reports_workspace/FIGURE_TABLE_WORKFLOW.md`
+
+## Current project context (2026-03-12)
+
+The project is assembling a single unified manuscript covering all 4 behavioral tasks. Publication cohort JSONs for all tasks are built (`data/cohorts/`). Stats scripts for EZM, NOR/NOF, and RR are complete; OF is blocked on the MoSeq2 pipeline. The app's near-term priority is shifting toward figure QC, stats iteration, and cohort management rather than new annotation features. See `docs/web/ROADMAP.md` for details.
