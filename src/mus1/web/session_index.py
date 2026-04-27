@@ -1,6 +1,21 @@
+"""DEPRECATED — session_index.py
+
+This module reads session_index_filtered.csv, a CSV contract that was the
+original source of experiment metadata. As of 2026-03-27, experiment JSONs
+are the sole source of truth and ExperimentService
+(``mus1.server.services.experiment_service``) replaces this module.
+
+Existing Streamlit views still import these functions. They should be
+migrated to ExperimentService during the React rewrite (Phase 4).
+
+Migration path:
+    Old: load_session_index_map(workspace_root)
+    New: ExperimentService(data_root, task_registry).list_experiments()
+"""
 from __future__ import annotations
 
 import csv
+import warnings
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 

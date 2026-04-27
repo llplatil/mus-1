@@ -21,12 +21,37 @@ TRACKING_ARTIFACT_KINDS = {
 }
 
 
-@st.cache_data(ttl=300, show_spinner=False)
+from mus1.web.discovery import CACHE_TTL_SECONDS  # noqa: E402
+
+
+@st.cache_data(ttl=CACHE_TTL_SECONDS, show_spinner=False)
 def _load_experiment_data_index(
     experiment_data_root: str,
 ) -> Dict[str, Dict[str, Any]]:
-    """Scan experiment_data JSONs into a dict keyed by experiment_id."""
+    """Scan experiment JSONs across every configured data root into a dict.
+
+    *experiment_data_root* is retained as a project-path anchor; its parent
+    is the project_path used for multi-root discovery.
+    """
+    from mus1.web.discovery import iter_experiment_dirs, find_experiment_json
+
     index: Dict[str, Dict[str, Any]] = {}
+    project_path = Path(experiment_data_root).parent
+    found_any = False
+    for _, _, exp_dir in iter_experiment_dirs(project_path):
+        found_any = True
+        jp = find_experiment_json(exp_dir)
+        if jp is None:
+            continue
+        try:
+            data = json.loads(jp.read_text())
+            eid = data.get("experiment_id", exp_dir.name)
+            index[eid] = data
+        except Exception:
+            continue
+    if found_any:
+        return index
+    # Fallback: legacy single-root scan
     root = Path(experiment_data_root)
     if not root.is_dir():
         return index

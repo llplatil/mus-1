@@ -8,24 +8,41 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import streamlit as st
 
 from ..db import fetchall
 from ..io import parse_meta, read_csv_rows
-from ..ezm_masks import blend_mask_overlay, make_ezm_open_closed_mask
+from ..ezm_masks import blend_mask_overlay
 from ..ml_tables import ensure_ml_tables
+
+# ---------------------------------------------------------------------------
+# Lazy import: experiment_dataset_builder lives in the workspace torch_ml dir.
+# ---------------------------------------------------------------------------
+_TORCH_ML_DIR = None
+
+
+def _get_torch_ml_dir() -> Path:
+    global _TORCH_ML_DIR
+    if _TORCH_ML_DIR is None:
+        _TORCH_ML_DIR = Path(__file__).resolve().parents[4] / "workspace" / "dlc_ezm_open_closed" / "torch_ml"
+    return _TORCH_ML_DIR
+
+
+def _ensure_builder_importable():
+    d = str(_get_torch_ml_dir())
+    if d not in sys.path:
+        sys.path.insert(0, d)
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
 
 @st.cache_data(show_spinner=False)
 def list_ezm_unet_runs_from_db(db_path: str) -> List[Dict[str, Any]]:
-    """
-    List indexed EZM U-Net training runs from the MUS1 DB.
-
-    Runs are stored as external_artifacts with kind='ezm_unet_run_dir' by the CLI importer:
-      mus1 import ezm-unet-runs --project-path ... --workspace-root ...
-    """
     try:
         con = sqlite3.connect(str(db_path))
         con.row_factory = sqlite3.Row
@@ -46,33 +63,182 @@ def list_ezm_unet_runs_from_db(db_path: str) -> List[Dict[str, Any]]:
             con.close()
         except Exception:
             pass
-
     out: List[Dict[str, Any]] = []
     for r in rows:
         p = Path(str(r["path"]))
         meta = parse_meta(r["meta_json"])
-        out.append(
-            {
-                "run_path": str(p),
-                "name": p.name,
-                "created_at": str(r["created_at"]),
-                "indexed_meta": meta,
-            }
-        )
+        out.append({"run_path": str(p), "name": p.name, "created_at": str(r["created_at"]), "indexed_meta": meta})
     return out
 
 
+@st.cache_data(show_spinner="Loading EZM training sources...", ttl=120)
+def _load_train_val_split(cohort_name: str) -> Dict[str, Any]:
+    """Load train/val split from experiment_data (cached)."""
+    _ensure_builder_importable()
+    from experiment_dataset_builder import build_training_sources
+    split = build_training_sources(cohort_name=cohort_name)
+    # Convert to serializable dicts for Streamlit caching.
+    def _src_to_dict(s):
+        return {
+            "experiment_id": s.experiment_id,
+            "video_path": str(s.video_path),
+            "zone_payload": s.zone_payload,
+            "frame_shape": s.frame_shape,
+        }
+    return {
+        "train": [_src_to_dict(s) for s in split.train],
+        "val": [_src_to_dict(s) for s in split.val],
+        "skipped": split.skipped,
+        "cohort_name": split.cohort_name,
+    }
+
+
+def _load_frame_rgb(video_path: str, frame_idx: int):
+    import cv2
+    import numpy as np
+    cap = cv2.VideoCapture(str(video_path))
+    if not cap.isOpened():
+        return None
+    cap.set(cv2.CAP_PROP_POS_FRAMES, int(frame_idx))
+    ok, frame_bgr = cap.read()
+    cap.release()
+    if not ok or frame_bgr is None:
+        return None
+    return cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB).astype(np.uint8, copy=False)
+
+
+def _make_mask_from_payload(payload: Dict[str, Any], out_hw: Tuple[int, int]):
+    """Render zone mask from a payload dict (no file IO)."""
+    _ensure_builder_importable()
+    sys.path.insert(0, str(_get_torch_ml_dir().parent))
+    from ezm_open_closed_zones import EllipseParams, ZoneDefinition, compute_r_theta, angle_in_any_open_range
+    import numpy as np
+
+    outer = payload["outer_ellipse"]
+    z = ZoneDefinition(
+        outer_ellipse=EllipseParams(
+            center_xy=(float(outer["center"][0]), float(outer["center"][1])),
+            axes_xy=(float(outer["axes"][0]), float(outer["axes"][1])),
+            angle_deg=float(outer.get("angle_deg", 0.0)),
+        ),
+        r_inner=float(payload["r_inner"]),
+        open_angle_ranges=(
+            (float(payload["open_angle_ranges"][0][0]), float(payload["open_angle_ranges"][0][1])),
+            (float(payload["open_angle_ranges"][1][0]), float(payload["open_angle_ranges"][1][1])),
+        ),
+        version=str(payload.get("version", "ezm_open_closed_v2")),
+    )
+    h, w = int(out_hw[0]), int(out_hw[1])
+    yy, xx = np.mgrid[0:h, 0:w]
+    r, theta = compute_r_theta(xx.reshape(-1), yy.reshape(-1), z.outer_ellipse)
+    r = r.reshape(h, w)
+    theta = theta.reshape(h, w)
+    in_track = (r >= float(z.r_inner)) & (r <= 1.0)
+    is_open = in_track & angle_in_any_open_range(theta, z.open_angle_ranges)
+    is_closed = in_track & (~is_open)
+    mask = np.zeros((h, w), dtype=np.uint8)
+    mask[is_open] = 1
+    mask[is_closed] = 2
+    return mask
+
+
+def _safe_bg_mask_from_payload(payload: Dict[str, Any], out_hw: Tuple[int, int]):
+    """Render safe_bg weak-label mask from a payload dict."""
+    sys.path.insert(0, str(_get_torch_ml_dir().parent))
+    from ezm_open_closed_zones import EllipseParams, ZoneDefinition, compute_r_theta
+    import numpy as np
+
+    outer = payload["outer_ellipse"]
+    z = ZoneDefinition(
+        outer_ellipse=EllipseParams(
+            center_xy=(float(outer["center"][0]), float(outer["center"][1])),
+            axes_xy=(float(outer["axes"][0]), float(outer["axes"][1])),
+            angle_deg=float(outer.get("angle_deg", 0.0)),
+        ),
+        r_inner=float(payload["r_inner"]),
+        open_angle_ranges=(
+            (float(payload["open_angle_ranges"][0][0]), float(payload["open_angle_ranges"][0][1])),
+            (float(payload["open_angle_ranges"][1][0]), float(payload["open_angle_ranges"][1][1])),
+        ),
+        version="ezm_open_closed_v2",
+    )
+    h, w = int(out_hw[0]), int(out_hw[1])
+    yy, xx = np.mgrid[0:h, 0:w]
+    r, _ = compute_r_theta(xx.reshape(-1), yy.reshape(-1), z.outer_ellipse)
+    r = r.reshape(h, w).astype(np.float64, copy=False)
+    IGNORE = 255
+    safe_center = r <= (float(z.r_inner) * 0.85)
+    safe_outside = r >= 1.12
+    mask = np.full((h, w), IGNORE, dtype=np.uint8)
+    mask[safe_center | safe_outside] = 0
+    return mask
+
+
+# ---------------------------------------------------------------------------
+# In-memory inference (no disk writes)
+# ---------------------------------------------------------------------------
+
+@st.cache_resource(show_spinner="Loading model weights...")
+def _load_unet_model(model_path: str):
+    """Load TinyUNet weights into eval mode. Cached per model path."""
+    import torch
+    _ensure_builder_importable()
+    sys.path.insert(0, str(_get_torch_ml_dir()))
+    from train_unet_open_closed import TinyUNet
+    model = TinyUNet(in_ch=1, n_classes=3, base=16)
+    state = torch.load(str(model_path), map_location="cpu")
+    # model_best.pt is saved as a raw state_dict(); checkpoints wrap it under "model_state"
+    if isinstance(state, dict) and "model_state" in state:
+        model.load_state_dict(state["model_state"])
+    else:
+        model.load_state_dict(state)
+    model.eval()
+    return model
+
+
+def _run_inference(model_path, frame_rgb):
+    """Run TinyUNet on a single RGB frame; return blended overlay (numpy RGB) or None."""
+    try:
+        import torch
+        import numpy as np
+        import cv2
+
+        model = _load_unet_model(str(model_path))
+
+        # Preprocess: match training pipeline (grayscale, resize to 256, normalize)
+        gray = cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2GRAY)
+        orig_h, orig_w = gray.shape[:2]
+        resized = cv2.resize(gray, (256, 256), interpolation=cv2.INTER_AREA)
+        x = resized.astype(np.float32) / 255.0
+        x = torch.from_numpy(x).unsqueeze(0).unsqueeze(0)  # (1, 1, 256, 256)
+
+        with torch.no_grad():
+            logits = model(x)  # (1, 3, 256, 256)
+        pred = logits.squeeze(0).argmax(0).numpy().astype(np.uint8)  # (256, 256)
+
+        # Resize prediction back to original frame size
+        pred_full = cv2.resize(pred, (orig_w, orig_h), interpolation=cv2.INTER_NEAREST)
+        return blend_mask_overlay(frame_rgb, pred_full)
+    except Exception as e:
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Main render function
+# ---------------------------------------------------------------------------
+
+
 def render_ezm_ml(con: sqlite3.Connection, *, workspace_root: Optional[str], db_path: Path) -> None:
-    st.header("EZM → open/closed U-Net (active review)")
+    st.header("EZM U-Net: Open/Closed Segmentation")
     if not workspace_root:
-        st.error("This view requires `--workspace-root` so we can find training runs.")
+        st.error("This view requires `--workspace-root`.")
         st.stop()
 
     ensure_ml_tables(con)
 
-    ws_root = Path(str(workspace_root)).expanduser().resolve()
     repo_root = Path(__file__).resolve().parents[4]
     project_path = Path(db_path).parent
+    ws_root = Path(str(workspace_root)).expanduser().resolve()
 
     def _utc_now_iso() -> str:
         return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
@@ -81,599 +247,305 @@ def render_ezm_ml(con: sqlite3.Connection, *, workspace_root: Optional[str], db_
         status_path = run_dir / "run_status.json"
         cur: Dict[str, Any] = {}
         try:
-            cur_obj = json.loads(status_path.read_text())
-            if isinstance(cur_obj, dict):
-                cur = cur_obj
+            cur = json.loads(status_path.read_text())
         except Exception:
             cur = {}
         cur.update(patch)
-        status_path.write_text(json.dumps(cur, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        status_path.write_text(json.dumps(cur, indent=2, sort_keys=True) + "\n")
 
     def _create_project_run(kind: str, name: str) -> Optional[Dict[str, Any]]:
         env = dict(os.environ)
         src_path = str((repo_root / "src").resolve())
         py_path = str(env.get("PYTHONPATH") or "").strip()
         env["PYTHONPATH"] = src_path if not py_path else f"{src_path}:{py_path}"
-        cmd = [
-            sys.executable,
-            "-m",
-            "mus1.core.simple_cli",
-            "runs",
-            "new",
-            kind,
-            "--project-path",
-            str(project_path),
-            "--name",
-            name,
-            "--json",
-        ]
+        cmd = [sys.executable, "-m", "mus1.core.simple_cli", "runs", "new", kind, "--project-path", str(project_path), "--name", name, "--json"]
         r = subprocess.run(cmd, check=False, capture_output=True, text=True, env=env)
         if r.returncode != 0:
-            st.error("Could not create MUS1 run record for retrain submission.")
+            st.error("Could not create MUS1 run record.")
             st.code((r.stderr or r.stdout or "").strip() or "(no output)", language=None)
             return None
         try:
             payload = json.loads((r.stdout or "").strip())
         except Exception:
             st.error("Run creation output was not valid JSON.")
-            st.code((r.stdout or "").strip() or "(no output)", language=None)
             return None
-        if not isinstance(payload, dict):
-            st.error("Run creation output had unexpected shape.")
-            return None
-        if not payload.get("run_dir") or not payload.get("run_id"):
+        if not isinstance(payload, dict) or not payload.get("run_dir") or not payload.get("run_id"):
             st.error("Run creation output missing run_dir/run_id.")
-            st.code(json.dumps(payload, indent=2), language=None)
             return None
         return payload
 
-    def _resolve_video_path(vp: str) -> Path:
-        p = Path(str(vp).strip())
-        if p.is_absolute():
-            return p
-        # training_index_from_zones.csv commonly uses workspace-relative video paths like "data/..."
-        return (ws_root / p).resolve()
-
-    def _resolve_zone_json_path(zp: str) -> Path:
-        p = Path(str(zp).strip())
-        if p.is_absolute():
-            return p
-        # If someone wrote "workspace/arena_zones/..." into a CSV, anchor it at repo root.
-        if str(p).startswith("workspace/"):
-            return (repo_root / p).resolve()
-        return (ws_root / p).resolve()
-
-    st.subheader("Training run")
-    runs_db = list_ezm_unet_runs_from_db(str(db_path))
-    if runs_db:
-        st.caption("Using DB-indexed runs (recommended; avoids manual path pasting).")
-        run_labels = [f"{r['name']}  (DB)  {r['run_path']}" for r in runs_db]
-        run_choice = st.selectbox("Select run", options=run_labels, index=0)
-        run = next(r for r in runs_db if f"{r['name']}  (DB)  {r['run_path']}" == run_choice)
-        run_dir = Path(str(run["run_path"]))
-    else:
-        # Option A: DB is authoritative; no fallback scanning.
-        expected = project_path / "runs" / "ezm_unet"
-        st.info("No EZM U-Net runs indexed in this project DB yet.")
-        st.code(
-            "\n".join(
-                [
-                    "# Index project-scoped runs into the DB",
-                    f"mus1 import ezm-unet-runs --project-path \"{project_path}\" --workspace-root \"{workspace_root}\"",
-                    "",
-                    "# Expected runs root:",
-                    str(expected),
-                ]
-            ),
-            language=None,
-        )
+    # ======================================================================
+    # SECTION 1: Cohort Overview
+    # ======================================================================
+    st.subheader("Cohort Overview")
+    cohort_name = "ezm_publication"
+    try:
+        split = _load_train_val_split(cohort_name)
+    except Exception as e:
+        st.error(f"Could not load cohort: {e}")
         st.stop()
 
-    st.caption(f"Run dir: `{run_dir}`")
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Training", f"{len(split['train'])} experiments")
+    with col2:
+        st.metric("Validation", f"{len(split['val'])} experiments")
+    with col3:
+        st.metric("Skipped", f"{len(split['skipped'])}")
 
-    # Labeled dataset == zone-derived training index for now.
-    st.subheader("Labeled dataset")
-    labeled_index = run_dir / "training_index_from_zones.csv"
-    if labeled_index.exists():
-        st.caption(f"Index: `{labeled_index}`")
-        with st.expander("Preview labeled index (first 20 rows)", expanded=False):
-            rows = read_csv_rows(labeled_index, limit=20)
-            st.dataframe(rows, width="stretch", hide_index=True)
+    st.caption(f"Cohort: `{cohort_name}` — Training = publication members, Validation = excluded experiments with QC-approved wedge points")
 
-        with st.expander("Dataset inspector (pre-train)", expanded=False):
-            # Read more rows for summary (still lightweight).
-            all_rows = read_csv_rows(labeled_index, limit=5000)
-            if not all_rows:
-                st.info("Index is empty.")
-            else:
-                # Heuristic column detection.
-                cols = set().union(*(set(r.keys()) for r in all_rows))
-                video_col = "video_path" if "video_path" in cols else ("video" if "video" in cols else "")
-                frame_col = "frame_idx" if "frame_idx" in cols else ("frame" if "frame" in cols else "")
-                zone_col = "zone_json" if "zone_json" in cols else ("zone_path" if "zone_path" in cols else "")
+    with st.expander("Training set details", expanded=False):
+        import pandas as pd
+        train_df = pd.DataFrame([{"experiment_id": s["experiment_id"]} for s in split["train"]])
+        st.dataframe(train_df, hide_index=True, use_container_width=True)
 
-                st.caption(f"Columns: {', '.join(sorted(list(cols))[:60])}{' …' if len(cols) > 60 else ''}")
-                if not video_col:
-                    st.warning("Could not find a video path column (expected `video_path`). Showing raw table only.")
-                    st.dataframe(all_rows[:200], width="stretch", hide_index=True)
-                else:
-                    # Build per-video counts and missingness.
-                    by_video: Dict[str, List[Dict[str, Any]]] = {}
-                    missing_videos = 0
-                    missing_zones = 0
-                    for r in all_rows:
-                        vp = str(r.get(video_col) or "").strip()
-                        if not vp:
-                            continue
-                        by_video.setdefault(vp, []).append(r)
-                    for vp, rs in by_video.items():
-                        if not _resolve_video_path(vp).exists():
-                            missing_videos += 1
-                        if zone_col:
-                            z = str(rs[0].get(zone_col) or "").strip()
-                            if z and not _resolve_zone_json_path(z).exists():
-                                missing_zones += 1
+    with st.expander("Validation set details", expanded=False):
+        val_df = pd.DataFrame([
+            {"experiment_id": s["experiment_id"], "video_exists": Path(s["video_path"]).exists()}
+            for s in split["val"]
+        ])
+        st.dataframe(val_df, hide_index=True, use_container_width=True)
+        if split["skipped"]:
+            st.caption("Skipped experiments:")
+            st.dataframe(pd.DataFrame(split["skipped"]), hide_index=True, use_container_width=True)
 
-                    st.write(
-                        {
-                            "rows_loaded": len(all_rows),
-                            "unique_videos": len(by_video),
-                            "videos_missing_on_disk": int(missing_videos),
-                            "zone_json_missing_on_disk": int(missing_zones),
-                        }
-                    )
+    # ======================================================================
+    # SECTION 2: Inference Preview on Validation Set
+    # ======================================================================
+    show_val_inference = st.checkbox("Validation set inference preview", value=True)
+    if show_val_inference and split["val"]:
+        st.subheader("Validation Inference Preview")
 
-                    preview_rows = []
-                    for vp, rs in list(by_video.items())[:300]:
-                        z0 = (str(rs[0].get(zone_col) or "") if zone_col else "")
-                        vp_abs = _resolve_video_path(vp)
-                        z_abs = _resolve_zone_json_path(z0) if z0 else None
-                        preview_rows.append(
-                            {
-                                "video_path": vp,
-                                "n_frames_listed": len(rs),
-                                "video_exists": vp_abs.exists(),
-                                "video_abs": str(vp_abs),
-                                "zone_json": z0,
-                                "zone_exists": (z_abs.exists() if z_abs else None),
-                                "zone_abs": (str(z_abs) if z_abs else ""),
-                            }
-                        )
-                    st.dataframe(preview_rows, width="stretch", hide_index=True)
+        val_ids = [s["experiment_id"] for s in split["val"]]
+        chosen_val = st.selectbox("Validation experiment", options=val_ids, index=0, key="ezm_ml_val_exp")
+        val_src = next(s for s in split["val"] if s["experiment_id"] == chosen_val)
 
-                    st.markdown("#### Quick preview (frame + zone overlay when available)")
-                    vp_list = list(by_video.keys())
-                    chosen_vp = st.selectbox("Video", options=vp_list, index=0)
-                    rows_for_vp = by_video.get(str(chosen_vp), [])
+        frame_idx = st.number_input("Frame index", min_value=0, value=1200, step=300, key="ezm_ml_val_frame")
 
-                    # Pick a few candidate frames.
-                    frame_opts: List[int] = []
-                    if frame_col:
-                        for rr in rows_for_vp[:2000]:
-                            try:
-                                frame_opts.append(int(float(rr.get(frame_col) or 0)))
-                            except Exception:
-                                continue
-                    frame_opts = sorted(set(frame_opts)) or [0]
-                    chosen_frame = st.selectbox("Frame idx", options=frame_opts[:500], index=0)
+        frame_rgb = _load_frame_rgb(val_src["video_path"], int(frame_idx))
+        if frame_rgb is None:
+            st.error(f"Could not read frame {frame_idx} from {val_src['video_path']}")
+        else:
+            gt_mask = _make_mask_from_payload(val_src["zone_payload"], out_hw=frame_rgb.shape[:2])
+            gt_overlay = blend_mask_overlay(frame_rgb, gt_mask)
 
-                    zone_path = str(rows_for_vp[0].get(zone_col) or "").strip() if zone_col and rows_for_vp else ""
-                    vp_abs = _resolve_video_path(str(chosen_vp))
-                    zone_abs = _resolve_zone_json_path(zone_path) if zone_path else None
+            # Check for active model
+            active_model_path = repo_root.parents[1] / "ml_workspace" / "ezm_arena_unet" / "active_model" / "model_best.pt"
+            has_model = active_model_path.exists()
 
-                    label_source = st.selectbox(
-                        "Mask fit / label source",
-                        options=["auto", "derived", "annotations"],
-                        index=0,
-                        help=(
-                            "Controls how GT masks are rasterized from the zone JSON. "
-                            "`derived` uses stored outer_ellipse + r_inner + open_angle_ranges. "
-                            "`annotations` fits outer/inner ellipses and border rays from saved clicks/lines (requires zone JSON to include them). "
-                            "`auto` uses annotations when present, else derived."
-                        ),
-                        key="mus1_ezm_mask_label_source",
-                    )
-
-                    try:
-                        import cv2  # type: ignore
-                        import numpy as np  # type: ignore
-                    except Exception:
-                        st.warning("opencv/numpy missing in env; cannot preview frames.")
-                        st.stop()
-
-                    cap = cv2.VideoCapture(str(vp_abs))
-                    if not cap.isOpened():
-                        st.error(f"Could not open video: {vp_abs}")
-                        st.stop()
-                    cap.set(cv2.CAP_PROP_POS_FRAMES, int(chosen_frame))
-                    ok, frame_bgr = cap.read()
-                    cap.release()
-                    if not ok:
-                        st.error(f"Could not read frame {chosen_frame}")
-                        st.stop()
-                    frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
-
-                    # If zone json exists, draw minimal overlay: outer ellipse + inner ellipse + 4 boundary rays.
-                    if zone_abs is not None and zone_abs.exists():
-                        try:
-                            payload = json.loads(Path(zone_abs).read_text())
-                        except Exception:
-                            payload = {}
-                        try:
-                            outer = payload.get("outer_ellipse") or {}
-                            (cx, cy) = outer.get("center") or [None, None]
-                            (ax, by) = outer.get("axes") or [None, None]
-                            ang = outer.get("angle_deg")
-                            r_inner = float(payload.get("r_inner") or 0.0)
-                            b_angles = payload.get("boundary_angles") or []
-                            if cx is not None and cy is not None and ax is not None and by is not None and ang is not None:
-                                cv2.ellipse(
-                                    frame_rgb,
-                                    (int(round(cx)), int(round(cy))),
-                                    (int(round(float(ax) / 2.0)), int(round(float(by) / 2.0))),
-                                    float(ang),
-                                    0.0,
-                                    360.0,
-                                    (0, 255, 255),
-                                    2,
-                                )
-                                if r_inner and r_inner > 0:
-                                    cv2.ellipse(
-                                        frame_rgb,
-                                        (int(round(cx)), int(round(cy))),
-                                        (int(round((float(ax) / 2.0) * r_inner)), int(round((float(by) / 2.0) * r_inner))),
-                                        float(ang),
-                                        0.0,
-                                        360.0,
-                                        (255, 0, 255),
-                                        2,
-                                    )
-                                if isinstance(b_angles, list) and len(b_angles) == 4:
-                                    theta = np.array([float(t) for t in b_angles], dtype=float)
-                                    ca = math.radians(float(ang))
-                                    c = float(math.cos(ca))
-                                    s = float(math.sin(ca))
-                                    R = np.array([[c, -s], [s, c]], dtype=float)
-                                    pts = np.stack([np.cos(theta) * (float(ax) / 2.0), np.sin(theta) * (float(by) / 2.0)], axis=0)
-                                    rot = R @ pts
-                                    for i in range(rot.shape[1]):
-                                        x = float(rot[0, i] + float(cx))
-                                        y = float(rot[1, i] + float(cy))
-                                        cv2.line(
-                                            frame_rgb,
-                                            (int(round(cx)), int(round(cy))),
-                                            (int(round(x)), int(round(y))),
-                                            (255, 255, 255),
-                                            2,
-                                        )
-                        except Exception:
-                            pass
-
-                    if zone_abs is not None and zone_abs.exists():
-                        st.markdown("#### Rasterized GT mask preview")
-                        try:
-                            mask = make_ezm_open_closed_mask(
-                                Path(zone_abs),
-                                out_hw=(int(frame_rgb.shape[0]), int(frame_rgb.shape[1])),
-                                label_source=str(label_source),  # type: ignore[arg-type]
-                            )
-                            overlay = blend_mask_overlay(frame_rgb, mask)
-                            cols2 = st.columns(2)
-                            with cols2[0]:
-                                st.image(frame_rgb, caption=f"frame: {vp_abs.name}  idx={chosen_frame}", width="stretch")
-                            with cols2[1]:
-                                st.image(overlay, caption=f"GT mask overlay (source={label_source})", width="stretch")
-                            st.caption(
-                                f"mask pixels: open={(mask == 1).sum()}  closed={(mask == 2).sum()}  bg={(mask == 0).sum()}"
-                            )
-                        except Exception as e:
-                            st.error(f"Could not rasterize GT mask from zone JSON ({label_source}): {e}")
-                            st.image(frame_rgb, caption=f"{vp_abs.name} frame={chosen_frame}", width="stretch")
+            if has_model:
+                st.caption("Showing GT mask (left) vs model prediction (right)")
+                pred_overlay = _run_inference(active_model_path, frame_rgb)
+                cols = st.columns(2)
+                with cols[0]:
+                    st.image(gt_overlay, caption=f"GT mask — {chosen_val} frame={frame_idx}")
+                with cols[1]:
+                    if pred_overlay is not None:
+                        st.image(pred_overlay, caption=f"Model prediction — {chosen_val} frame={frame_idx}")
                     else:
-                        if zone_path.strip():
-                            st.warning(f"Zone JSON not found at: {zone_abs}")
-                        st.image(frame_rgb, caption=f"{vp_abs.name} frame={chosen_frame}", width="stretch")
-    else:
-        st.warning("Missing `training_index_from_zones.csv` in this run dir.")
-
-    st.subheader("Review worst frames")
-    n = int(st.number_input("N worst frames", min_value=1, max_value=100, value=5, step=1))
-
-    worst_csv = run_dir / "labeled_eval" / "worst_frames.csv"
-    if not worst_csv.exists():
-        st.warning(
-            "Missing `labeled_eval/worst_frames.csv` for this run. "
-            "Run inference to generate it (outside the app) or rerun the inference step for this run."
-        )
-        st.stop()
-
-    worst_rows = read_csv_rows(worst_csv, limit=max(200, n))
-
-    def _as_float(v: Any) -> float:
-        try:
-            return float(v)
-        except Exception:
-            return float("nan")
-
-    worst_rows.sort(key=lambda r: _as_float(r.get("miou_open_closed")), reverse=False)
-    worst_rows = worst_rows[:n]
-
-    st.dataframe(worst_rows, width="stretch", hide_index=True)
-
-    if not worst_rows:
-        st.stop()
-
-    # Reset navigation index when the selected run or N changes.
-    nav_sig = (str(run_dir), int(n))
-    if st.session_state.get("ezm_ml_nav_sig") != nav_sig:
-        st.session_state["ezm_ml_nav_sig"] = nav_sig
-        st.session_state["ezm_ml_idx"] = 0
-    if "ezm_ml_idx" not in st.session_state:
-        st.session_state["ezm_ml_idx"] = 0
-    try:
-        cur_idx = int(st.session_state["ezm_ml_idx"])
-    except Exception:
-        cur_idx = 0
-    st.session_state["ezm_ml_idx"] = int(max(0, min(cur_idx, max(0, len(worst_rows) - 1))))
-
-    nav1, nav2, nav3 = st.columns([1, 1, 3])
-    with nav1:
-        if st.button("Prev", disabled=int(st.session_state["ezm_ml_idx"]) <= 0):
-            st.session_state["ezm_ml_idx"] = int(st.session_state["ezm_ml_idx"]) - 1
-    with nav2:
-        if st.button("Next", disabled=int(st.session_state["ezm_ml_idx"]) >= len(worst_rows) - 1):
-            st.session_state["ezm_ml_idx"] = int(st.session_state["ezm_ml_idx"]) + 1
-    with nav3:
-        st.write(f"Item {int(st.session_state['ezm_ml_idx']) + 1} / {len(worst_rows)}")
-
-    st.session_state["ezm_ml_idx"] = int(max(0, min(int(st.session_state["ezm_ml_idx"]), max(0, len(worst_rows) - 1))))
-    row = worst_rows[int(st.session_state["ezm_ml_idx"])]
-
-    overlay_path = Path(str(row.get("overlay_path") or "")).expanduser()
-    if not overlay_path.is_absolute():
-        overlay_path = (Path(workspace_root) / overlay_path).resolve()
-
-    st.markdown("#### Overlay (GT vs pred)")
-    st.caption(f"video: `{row.get('video_path')}`  frame_idx: `{row.get('frame_idx')}`")
-    if row.get("zone_json"):
-        st.caption(f"zone_json: `{row.get('zone_json')}`")
-    st.caption(f"miou_open_closed: `{row.get('miou_open_closed')}`")
-
-    if overlay_path.exists():
-        st.image(str(overlay_path), width="stretch")
-    else:
-        st.error(f"Overlay image not found: {overlay_path}")
-
-    st.markdown("#### Label arena markings (recommended workflow)")
-    st.caption(
-        "Export a QC CSV list and open the embedded annotator in MUS1 (Mode → Annotator). "
-        "This path will be fully wired once the annotator embed module is ported into MUS1."
-    )
-
-    # Export a QC CSV list the annotator can consume.
-    qc_outdir = Path(db_path).parent / "ml_review" / "ezm_unet_open_closed" / str(run_dir.name)
-    qc_outdir.mkdir(parents=True, exist_ok=True)
-    qc_csv_path = qc_outdir / f"worst_{n}_frames_for_labeling.csv"
-
-    if st.button("Export QC CSV list for arena annotator", key="ezm_ml_export_qc_csv"):
-        import csv
-
-        rows_out = []
-        for r in worst_rows:
-            vp_rel = str(r.get("video_path") or "")
-            fi = int(float(r.get("frame_idx") or 0))
-            op = str(r.get("overlay_path") or "")
-
-            vp_abs = Path(vp_rel)
-            if not vp_abs.is_absolute():
-                vp_abs = (Path(workspace_root) / vp_rel).resolve()
-
-            op_abs = Path(op)
-            if op_abs and not op_abs.is_absolute():
-                op_abs = (Path(workspace_root) / op).resolve()
-
-            rows_out.append(
-                {
-                    "video_path": str(vp_abs),
-                    "frame_idx": fi,
-                    "overlay_path": str(op_abs) if op_abs else "",
-                    "zone_json": str(r.get("zone_json") or ""),
-                    "miou_open_closed": str(r.get("miou_open_closed") or ""),
-                }
-            )
-
-        with qc_csv_path.open("w", newline="") as f:
-            w = csv.DictWriter(
-                f,
-                fieldnames=["video_path", "frame_idx", "overlay_path", "zone_json", "miou_open_closed"],
-            )
-            w.writeheader()
-            for rr in rows_out:
-                w.writerow(rr)
-
-        st.success(f"Wrote: {qc_csv_path}")
-
-    st.code(str(qc_csv_path), language=None)
-
-    st.markdown("#### Add this frame to the next training run")
-    st.caption("This adds the frame index to the next training run’s `--frames` list (it does not mean “label 1200 frames”).")
-
-    if st.button("Queue this frame for retraining", key="ezm_ml_queue"):
-        con.execute("BEGIN")
-        con.execute(
-            """
-            INSERT INTO ml_training_frame_queue (kind, run_path, video_path, frame_idx, overlay_path, zone_json, score, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, 'queued')
-            ON CONFLICT(kind, run_path, video_path, frame_idx) DO UPDATE SET
-              overlay_path=excluded.overlay_path,
-              zone_json=excluded.zone_json,
-              score=excluded.score,
-              status='queued'
-            """,
-            (
-                "ezm_unet_open_closed",
-                str(run_dir),
-                str(row.get("video_path") or ""),
-                int(float(row.get("frame_idx") or 0)),
-                str(overlay_path),
-                str(row.get("zone_json") or ""),
-                _as_float(row.get("miou_open_closed")),
-            ),
-        )
-        con.commit()
-        st.success("Queued.")
-
-    queued = fetchall(
-        con,
-        """
-        SELECT video_path, frame_idx, score, zone_json, created_at
-        FROM ml_training_frame_queue
-        WHERE kind = ? AND run_path = ? AND status = 'queued'
-        ORDER BY score ASC, created_at DESC
-        LIMIT 200
-        """,
-        ("ezm_unet_open_closed", str(run_dir)),
-    )
-    with st.expander(f"Queued frames for this run ({len(queued)})", expanded=False):
-        st.dataframe([dict(r) for r in queued], width="stretch", hide_index=True)
-
-    st.subheader("Retrain (Slurm)")
-    repo_root = Path(__file__).resolve().parents[4]
-    slurm_script = repo_root / "workspace" / "dlc_ezm_open_closed" / "torch_ml" / "run_train_unet_open_closed_from_zones_augfix_sched_and_qc.slurm"
-    st.caption(f"Training script: `{slurm_script}`")
-    if not slurm_script.exists():
-        st.warning("Slurm script not found; cannot submit retrain from the UI.")
-        st.stop()
-
-    part = ""
-    try:
-        for line in slurm_script.read_text().splitlines():
-            if line.startswith("#SBATCH --partition="):
-                part = line.split("=", 1)[1].strip()
-                break
-    except Exception:
-        part = ""
-    if part:
-        st.caption(f"Detected partition: `{part}`")
-
-    # Build a frames list for training: default base frames + any queued frames.
-    base_frames = []
-    try:
-        cfg = json.loads((run_dir / "train_config.json").read_text())
-        if isinstance(cfg, dict) and isinstance(cfg.get("frames"), list):
-            base_frames = [int(x) for x in cfg["frames"]]
-    except Exception:
-        base_frames = []
-    queued_frames = sorted({int(r["frame_idx"]) for r in queued}) if queued else []
-    frames_union = sorted(set(base_frames).union(set(queued_frames)))
-    frames_str = ",".join(str(x) for x in frames_union) if frames_union else "0,1200,2400"
-    st.caption(f"Training frames to use: `{frames_str}`")
-
-    check = st.button("Check for idle nodes", key="ezm_ml_check_idle")
-    idle_ok = False
-    if check:
-        try:
-            cmd = ["sinfo", "-h", "-t", "idle,mix", "-o", "%P %D %N"]
-            r = subprocess.run(cmd, check=False, capture_output=True, text=True)
-            out = (r.stdout or "").strip()
-            err = (r.stderr or "").strip()
-            if err:
-                st.caption(err)
-            st.code(out or "(no output)")
-            if part:
-                idle_ok = any(line.strip().startswith(part) for line in out.splitlines())
+                        st.warning("Inference failed — check that model weights are compatible.")
             else:
-                idle_ok = bool(out)
-        except Exception as e:
-            st.error(f"sinfo failed: {e}")
+                st.caption("No active model found — showing GT mask only. Train a model first.")
+                st.image(gt_overlay, caption=f"GT mask — {chosen_val} frame={frame_idx}")
 
-    submit = st.button("Submit retrain job", key="ezm_ml_submit", disabled=not check)
-    if submit:
-        if part and not idle_ok:
-            st.error(f"No idle/mix nodes detected for partition `{part}`. Not submitting.")
+    # ======================================================================
+    # SECTION 3: Training Set Mask Preview
+    # ======================================================================
+    show_train_preview = st.checkbox("Training set mask preview", value=False)
+    if show_train_preview and split["train"]:
+        st.subheader("Training Set Mask Preview")
+
+        train_ids = [s["experiment_id"] for s in split["train"]]
+        chosen_train = st.selectbox("Training experiment", options=train_ids, index=0, key="ezm_ml_train_exp")
+        train_src = next(s for s in split["train"] if s["experiment_id"] == chosen_train)
+
+        frame_idx_train = st.number_input("Frame index", min_value=0, value=1200, step=300, key="ezm_ml_train_frame")
+        mask_mode = st.selectbox("Mask mode", options=["full (derived)", "safe_bg (weak label)"], index=0, key="ezm_ml_mask_mode")
+
+        frame_rgb = _load_frame_rgb(train_src["video_path"], int(frame_idx_train))
+        if frame_rgb is None:
+            st.error(f"Could not read frame from {train_src['video_path']}")
+        else:
+            if "safe_bg" in mask_mode:
+                mask = _safe_bg_mask_from_payload(train_src["zone_payload"], out_hw=frame_rgb.shape[:2])
+            else:
+                mask = _make_mask_from_payload(train_src["zone_payload"], out_hw=frame_rgb.shape[:2])
+            overlay = blend_mask_overlay(frame_rgb, mask)
+
+            cols = st.columns(2)
+            with cols[0]:
+                st.image(frame_rgb, caption=f"Raw frame — {chosen_train} frame={frame_idx_train}")
+            with cols[1]:
+                st.image(overlay, caption=f"Mask overlay ({mask_mode})")
+
+            import numpy as np
+            st.caption(f"Mask pixels: open={(mask == 1).sum()}, closed={(mask == 2).sum()}, bg={(mask == 0).sum()}, ignore={(mask == 255).sum()}")
+
+    # ======================================================================
+    # SECTION 4: Retrain Submission
+    # ======================================================================
+    show_retrain = st.checkbox("Retrain (Slurm)", value=False)
+    if show_retrain:
+        st.subheader("Submit Training Job")
+
+        slurm_script = repo_root / "workspace" / "dlc_ezm_open_closed" / "torch_ml" / "run_train_unet_from_cohort.slurm"
+        st.caption(f"Script: `{slurm_script}`")
+        if not slurm_script.exists():
+            st.warning("Slurm script not found.")
             st.stop()
-        run_payload = _create_project_run("ezm_unet", "retrain_from_ezm_ml")
-        if run_payload is None:
-            st.stop()
-        submit_run_dir = Path(str(run_payload.get("run_dir")))
-        submit_run_id = str(run_payload.get("run_id"))
-        st.caption(f"MUS1 run: `{submit_run_id}`")
-        st.caption(f"MUS1 run dir: `{submit_run_dir}`")
-        _upsert_run_status(
-            submit_run_dir,
-            {
+
+        part = ""
+        try:
+            for line in slurm_script.read_text().splitlines():
+                if line.startswith("#SBATCH --partition="):
+                    part = line.split("=", 1)[1].strip()
+                    break
+        except Exception:
+            pass
+        if part:
+            st.caption(f"Partition: `{part}`")
+
+        check = st.button("Check for idle nodes", key="ezm_ml_check_idle")
+        idle_ok = False
+        if check:
+            try:
+                r = subprocess.run(["sinfo", "-h", "-t", "idle,mix", "-o", "%P %D %N"], check=False, capture_output=True, text=True)
+                out = (r.stdout or "").strip()
+                st.code(out or "(no output)")
+                if part:
+                    idle_ok = any(line.strip().startswith(part) for line in out.splitlines())
+                else:
+                    idle_ok = bool(out)
+            except Exception as e:
+                st.error(f"sinfo failed: {e}")
+
+        submit = st.button("Submit retrain job", key="ezm_ml_submit", disabled=not check)
+        if submit:
+            if part and not idle_ok:
+                st.error(f"No idle/mix nodes for partition `{part}`.")
+                st.stop()
+            run_payload = _create_project_run("ezm_unet", "retrain_cohort")
+            if run_payload is None:
+                st.stop()
+            submit_run_dir = Path(str(run_payload.get("run_dir")))
+            submit_run_id = str(run_payload.get("run_id"))
+            st.caption(f"Run: `{submit_run_id}` → `{submit_run_dir}`")
+            _upsert_run_status(submit_run_dir, {
                 "state": "submitting",
                 "submitted_at": _utc_now_iso(),
-                "slurm_script": str(slurm_script),
-                "workspace_root": str(ws_root),
-                "frames": [int(x) for x in frames_str.split(",") if str(x).strip()],
-            },
-        )
-        try:
-            export_vars = ",".join(
-                [
+                "cohort": cohort_name,
+            })
+            try:
+                export_vars = ",".join([
                     "ALL",
-                    f"EZM_UNET_TRAIN_FRAMES={frames_str}",
                     f"MUS1_RUN_DIR={str(submit_run_dir)}",
-                    f"MUS1_RUN_ID={submit_run_id}",
-                    f"MOSEQ2_WORKSPACE_ROOT={str(ws_root)}",
-                ]
-            )
-            r = subprocess.run(
-                ["sbatch", "--export", export_vars, str(slurm_script)],
-                check=False,
-                capture_output=True,
-                text=True,
-            )
-            if r.returncode != 0:
-                _upsert_run_status(
-                    submit_run_dir,
-                    {
-                        "state": "submit_failed",
-                        "submit_failed_at": _utc_now_iso(),
-                        "submit_error": (r.stderr or r.stdout or "sbatch failed.").strip(),
-                    },
+                    f"EZM_UNET_COHORT={cohort_name}",
+                ])
+                r = subprocess.run(
+                    ["sbatch", "--export", export_vars, str(slurm_script)],
+                    check=False, capture_output=True, text=True,
                 )
-                st.error(r.stderr or r.stdout or "sbatch failed.")
-            else:
-                msg = (r.stdout or "").strip()
-                st.success(msg or "Submitted.")
-                jobid = msg.split()[-1] if msg else ""
-                if jobid.isdigit():
-                    _upsert_run_status(
-                        submit_run_dir,
-                        {
-                            "state": "submitted",
-                            "job_id": jobid,
-                            "submitted_at": _utc_now_iso(),
-                            "submit_stdout": msg,
-                        },
-                    )
-                    st.code(
-                        "\n".join(
-                            [
-                                f"squeue -j {jobid}",
-                                f"sacct -j {jobid} --format=JobID,JobName%25,State,Elapsed,MaxRSS,AllocCPUS,NodeList%25",
-                            ]
-                        )
-                    )
+                if r.returncode != 0:
+                    _upsert_run_status(submit_run_dir, {"state": "submit_failed", "submit_error": (r.stderr or r.stdout or "").strip()})
+                    st.error(r.stderr or r.stdout or "sbatch failed.")
                 else:
-                    _upsert_run_status(
-                        submit_run_dir,
-                        {
-                            "state": "submitted",
-                            "submitted_at": _utc_now_iso(),
-                            "submit_stdout": msg,
-                        },
-                    )
-        except Exception as e:
-            _upsert_run_status(
-                submit_run_dir,
-                {
-                    "state": "submit_failed",
-                    "submit_failed_at": _utc_now_iso(),
-                    "submit_error": str(e),
-                },
-            )
-            st.error(f"sbatch failed: {e}")
+                    msg = (r.stdout or "").strip()
+                    st.success(msg or "Submitted.")
+                    jobid = msg.split()[-1] if msg else ""
+                    _upsert_run_status(submit_run_dir, {"state": "submitted", "job_id": jobid, "submitted_at": _utc_now_iso()})
+                    if jobid.isdigit():
+                        st.code(f"squeue -j {jobid}\nsacct -j {jobid} --format=JobID,State,Elapsed,MaxRSS")
+            except Exception as e:
+                _upsert_run_status(submit_run_dir, {"state": "submit_failed", "submit_error": str(e)})
+                st.error(f"sbatch failed: {e}")
 
+    # ======================================================================
+    # SECTION 5: Post-Training QC (worst frames from existing runs)
+    # ======================================================================
+    show_qc = st.checkbox("Post-training QC (worst frames)", value=False)
+    if show_qc:
+        st.subheader("Post-Training QC")
+
+        runs_db = list_ezm_unet_runs_from_db(str(db_path))
+        if not runs_db:
+            st.info("No EZM U-Net runs indexed in DB.")
+            st.stop()
+
+        run_labels = [f"{r['name']}  ({r['run_path']})" for r in runs_db]
+        run_choice = st.selectbox("Select run", options=run_labels, index=0, key="ezm_ml_qc_run")
+        run = next(r for r in runs_db if f"{r['name']}  ({r['run_path']})" == run_choice)
+        run_dir = Path(str(run["run_path"]))
+        st.caption(f"Run dir: `{run_dir}`")
+
+        # Show manifest if available
+        manifest_path = run_dir / "training_manifest.json"
+        if manifest_path.exists():
+            with st.expander("Training manifest", expanded=False):
+                manifest = json.loads(manifest_path.read_text())
+                st.json(manifest)
+
+        worst_csv = run_dir / "labeled_eval" / "worst_frames.csv"
+        if not worst_csv.exists():
+            st.warning("No `labeled_eval/worst_frames.csv` in this run.")
+        else:
+            n = int(st.number_input("N worst", min_value=1, max_value=100, value=5, step=1, key="ezm_ml_qc_n"))
+            worst_rows = read_csv_rows(worst_csv, limit=max(200, n))
+
+            def _as_float(v):
+                try:
+                    return float(v)
+                except Exception:
+                    return float("nan")
+
+            worst_rows.sort(key=lambda r: _as_float(r.get("miou_open_closed")), reverse=False)
+            worst_rows = worst_rows[:n]
+            st.dataframe(worst_rows, use_container_width=True, hide_index=True)
+
+            if worst_rows:
+                nav_sig = (str(run_dir), n)
+                if st.session_state.get("ezm_ml_nav_sig") != nav_sig:
+                    st.session_state["ezm_ml_nav_sig"] = nav_sig
+                    st.session_state["ezm_ml_idx"] = 0
+                cur_idx = int(st.session_state.get("ezm_ml_idx", 0))
+                cur_idx = max(0, min(cur_idx, len(worst_rows) - 1))
+
+                c1, c2, c3 = st.columns([1, 1, 3])
+                with c1:
+                    if st.button("Prev", disabled=cur_idx <= 0, key="ezm_ml_prev"):
+                        cur_idx -= 1
+                with c2:
+                    if st.button("Next", disabled=cur_idx >= len(worst_rows) - 1, key="ezm_ml_next"):
+                        cur_idx += 1
+                with c3:
+                    st.write(f"Item {cur_idx + 1} / {len(worst_rows)}")
+                st.session_state["ezm_ml_idx"] = cur_idx
+
+                row = worst_rows[cur_idx]
+                overlay_path = Path(str(row.get("overlay_path") or "")).expanduser()
+                if not overlay_path.is_absolute():
+                    overlay_path = (ws_root / overlay_path).resolve()
+
+                st.caption(f"video: `{row.get('video_path')}`  frame: `{row.get('frame_idx')}`  miou: `{row.get('miou_open_closed')}`")
+                if overlay_path.exists():
+                    st.image(str(overlay_path), use_container_width=True)
+                else:
+                    st.error(f"Overlay not found: {overlay_path}")
+
+                if st.button("Queue frame for retraining", key="ezm_ml_queue"):
+                    con.execute("BEGIN")
+                    con.execute(
+                        """
+                        INSERT INTO ml_training_frame_queue (kind, run_path, video_path, frame_idx, overlay_path, zone_json, score, status)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, 'queued')
+                        ON CONFLICT(kind, run_path, video_path, frame_idx) DO UPDATE SET score=excluded.score, status='queued'
+                        """,
+                        (
+                            "ezm_unet_open_closed", str(run_dir),
+                            str(row.get("video_path") or ""), int(float(row.get("frame_idx") or 0)),
+                            str(overlay_path), str(row.get("zone_json") or ""),
+                            _as_float(row.get("miou_open_closed")),
+                        ),
+                    )
+                    con.commit()
+                    st.success("Queued.")

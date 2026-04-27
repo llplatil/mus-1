@@ -74,8 +74,14 @@ def _infer_log_path(*, repo_root: Path, job_id: str, kind: str) -> Optional[Path
     if not jid.isdigit():
         return None
     if kind == "ezm_unet":
-        p = repo_root / "logs" / f"ezm_unet_augfix_{jid}.out"
-        return p if p.exists() else None
+        # New job name (ezm_unet_cohort_*.out in ml_workspace logs)
+        ws_logs = repo_root.parents[1] / "ml_workspace" / "ezm_arena_unet" / "logs"
+        p_new = ws_logs / f"ezm_unet_cohort_{jid}.out"
+        if p_new.exists():
+            return p_new
+        # Legacy job name fallback
+        p_old = repo_root / "logs" / f"ezm_unet_augfix_{jid}.out"
+        return p_old if p_old.exists() else None
     if kind == "ml_tracking":
         p = repo_root / "logs" / f"train_sess_eval_long_{jid}.out"
         return p if p.exists() else None
@@ -98,13 +104,15 @@ def _log_candidates_for_job(*, repo_root: Path, job_id: str) -> List[Path]:
         if p is not None and p.exists():
             out.append(p)
 
-    # Generic fallbacks within repo_root/logs only (safe, small).
+    # Generic fallbacks: repo_root/logs + ml_workspace/ezm_arena_unet/logs
+    search_dirs = [logs_dir, repo_root.parents[1] / "ml_workspace" / "ezm_arena_unet" / "logs"]
     try:
-        if logs_dir.exists():
-            for pat in (f"*_{jid}.out", f"*_{jid}.err"):
-                for p in sorted(list(logs_dir.glob(pat))):
-                    if p.exists() and p not in out:
-                        out.append(p)
+        for sd in search_dirs:
+            if sd.exists():
+                for pat in (f"*_{jid}.out", f"*_{jid}.err"):
+                    for p in sorted(list(sd.glob(pat))):
+                        if p.exists() and p not in out:
+                            out.append(p)
     except Exception:
         pass
 
@@ -357,13 +365,42 @@ def render_training_monitor(*, project_path: Path, workspace_root: Optional[str]
         else:
             st.info("Could not infer log path yet (run_status.json missing job_id, or log not written yet).")
 
+    # Full training curve from history.csv (more reliable than log tail)
+    history_csv = ezm_dir / "history.csv"
+    if history_csv.exists():
+        with st.expander("Full training curve (history.csv)", expanded=True):
+            try:
+                hdf = pd.read_csv(history_csv)
+                hdf["epoch"] = pd.to_numeric(hdf["epoch"], errors="coerce")
+                hcols = st.columns(2)
+                with hcols[0]:
+                    st.line_chart(hdf.set_index("epoch")[["val_acc", "val_miou_open_closed"]], height=200)
+                with hcols[1]:
+                    st.line_chart(hdf.set_index("epoch")[["train_loss", "val_loss"]], height=200)
+                best = hdf.loc[hdf["val_miou_open_closed"].idxmax()]
+                st.caption(
+                    f"Best epoch {int(best['epoch'])}: "
+                    f"val_acc={best['val_acc']:.4f}  "
+                    f"mIoU(open/closed)={best['val_miou_open_closed']:.4f}  "
+                    f"IoU_open={best['val_iou_open']:.4f}  "
+                    f"IoU_closed={best['val_iou_closed']:.4f}"
+                )
+            except Exception as e:
+                st.warning(f"Could not parse history.csv: {e}")
+
     qc_dir = ezm_dir / "qc_overlays"
     if qc_dir.exists():
         pngs = sorted(list(qc_dir.glob("*.png")))
-        st.caption(f"QC overlays: `{qc_dir}`  (pngs={len(pngs)})")
+        st.caption(f"QC overlays: `{qc_dir}`  ({len(pngs)} frames)")
         if pngs:
-            with st.expander("QC overlay quick peek (first 6)", expanded=False):
-                st.image([str(p) for p in pngs[:6]], width="stretch")
+            with st.expander("QC overlays (GT vs pred, all val frames)", expanded=False):
+                n_per_row = 2
+                for i in range(0, len(pngs), n_per_row):
+                    chunk = pngs[i:i + n_per_row]
+                    row_cols = st.columns(len(chunk))
+                    for col, png in zip(row_cols, chunk):
+                        with col:
+                            st.image(str(png), caption=png.stem, use_container_width=True)
 
     st.divider()
     st.subheader("ML tracking runs (what it learned)")

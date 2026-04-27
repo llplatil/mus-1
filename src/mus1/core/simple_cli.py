@@ -55,6 +55,54 @@ app.add_typer(web_app, name="web")
 runs_app = typer.Typer(help="Run registry and run directory helpers")
 app.add_typer(runs_app, name="runs")
 
+# Experiment + cohort subcommand groups (defined in experiment_cli.py to keep
+# this file from growing further).
+from .experiment_cli import register_commands as _register_experiment_cohort_commands
+_register_experiment_cohort_commands(app)
+
+
+@app.command("serve")
+def serve_api(
+    data_root: Optional[Path] = typer.Option(
+        None, "--data-root", "-d",
+        help="Path to experiment_data/ directory. Default: auto-detect from project.",
+    ),
+    cohorts_dir: Optional[Path] = typer.Option(
+        None, "--cohorts-dir",
+        help="Path to cohorts/ directory. Default: sibling of data_root parent.",
+    ),
+    host: str = typer.Option("127.0.0.1", "--host", "-h", help="Bind address."),
+    port: int = typer.Option(8100, "--port", "-p", help="Bind port."),
+    reload: bool = typer.Option(False, "--reload", help="Auto-reload on code changes."),
+):
+    """Start the mus1 REST API server (FastAPI + uvicorn)."""
+    import uvicorn
+    from mus1.server.app import create_app
+
+    if data_root is None:
+        # Try to auto-detect from common project layout
+        candidates = [
+            Path.cwd() / "data" / "experiment_data",
+            Path.cwd() / "experiment_data",
+        ]
+        for c in candidates:
+            if c.is_dir():
+                data_root = c
+                break
+        if data_root is None:
+            rich_print("[red]Cannot auto-detect data_root. Use --data-root.[/red]")
+            raise typer.Exit(1)
+
+    rich_print(f"[bold]mus1 API server[/bold]")
+    rich_print(f"  data_root:   {data_root}")
+    rich_print(f"  cohorts_dir: {cohorts_dir or '(auto)'}")
+    rich_print(f"  address:     http://{host}:{port}")
+    rich_print(f"  docs:        http://{host}:{port}/docs")
+    rich_print()
+
+    fastapi_app = create_app(data_root=data_root, cohorts_dir=cohorts_dir)
+    uvicorn.run(fastapi_app, host=host, port=port, log_level="info")
+
 # ===========================================
 # CORE COMMANDS
 # ===========================================

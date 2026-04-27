@@ -29,38 +29,50 @@ _TASK_TYPES = ["EZM", "NOR", "NOF", "OF", "RR"]
 # Experiment scanning (lightweight, all task types)
 # ---------------------------------------------------------------------------
 
-@st.cache_data(show_spinner="Loading experiments...", ttl=120)
+from mus1.web.discovery import CACHE_TTL_SECONDS  # noqa: E402
+
+
+@st.cache_data(show_spinner="Loading experiments...", ttl=CACHE_TTL_SECONDS)
 def _load_all_experiments(experiment_data_root: str) -> List[Dict[str, Any]]:
-    """Scan all task-type folders and return basic experiment metadata."""
-    rows: List[Dict[str, Any]] = []
-    root = Path(experiment_data_root)
-    if not root.is_dir():
-        return rows
-    for task_dir in sorted(root.iterdir()):
-        if not task_dir.is_dir():
-            continue
-        task_type = task_dir.name
-        for exp_dir in sorted(task_dir.iterdir()):
-            if not exp_dir.is_dir():
-                continue
-            jsons = [f for f in exp_dir.iterdir() if f.suffix == ".json"]
-            if not jsons:
-                continue
-            jf = jsons[0]
-            try:
-                data = json.loads(jf.read_text())
-            except Exception:
-                continue
-            md = data.get("metadata", {})
-            rows.append({
-                "experiment_id": data.get("experiment_id", exp_dir.name),
-                "task_type": task_type,
-                "subject_id": str(md.get("subject_id", "")),
-                "date_recorded": str(md.get("date_recorded", "")),
-                "genotype": str(md.get("genotype", "")),
-                "sex": str(md.get("sex", "")),
-            })
-    return rows
+    """Scan every configured data root and return basic experiment metadata.
+
+    The argument is retained for back-compat; its parent is treated as the
+    project_path and additional roots come from ``[paths] data_roots`` in
+    ``mus1.toml`` (default: ``experiment_data``, ``validation_data``).
+    """
+    from mus1.web.discovery import discover_experiments
+
+    project_path = Path(experiment_data_root).parent
+    rows = discover_experiments(project_path)
+    if not rows:
+        # Fallback to the supplied root only (older projects without mus1.toml
+        # whose only on-disk root is the legacy experiment_data/).
+        from mus1.web.discovery import iter_experiment_dirs
+
+        legacy_root = Path(experiment_data_root)
+        if legacy_root.is_dir():
+            rows = discover_experiments(project_path, data_roots=[legacy_root])
+    # Project the full discovery dict down to the columns this pane uses.
+    return [
+        {
+            "experiment_id": r["experiment_id"],
+            "task_type": r["task_type"],
+            "subject_id": r["subject_id"],
+            "date_recorded": r["date_recorded"],
+            "genotype": r["genotype"],
+            "sex": r["sex"],
+            "data_root": r["data_root"],  # surfaced so the UI can show source
+            "cohort_assigned": r["cohort"],
+        }
+        for r in rows
+    ]
+
+
+def _build_experiment_lookup(
+    all_experiments: List[Dict[str, Any]],
+) -> Dict[str, Dict[str, str]]:
+    """Build experiment_id -> metadata dict for passing to save_cohort."""
+    return {e["experiment_id"]: e for e in all_experiments}
 
 
 # ---------------------------------------------------------------------------
@@ -80,6 +92,7 @@ def render_cohort_management(*, project_path: Path) -> None:
     cohorts_dir.mkdir(parents=True, exist_ok=True)
 
     all_experiments = _load_all_experiments(str(experiment_data_root))
+    exp_lookup = _build_experiment_lookup(all_experiments)
 
     # ── Sidebar ───────────────────────────────────────────────────────
     st.sidebar.header("Cohort Management")
@@ -111,7 +124,7 @@ def render_cohort_management(*, project_path: Path) -> None:
             coh = create_cohort(
                 new_name.strip(), task_types=new_tasks, description=new_desc.strip(),
             )
-            save_cohort(coh_path, coh)
+            save_cohort(coh_path, coh, experiment_lookup=exp_lookup)
             st.sidebar.success(f"Created: {new_name}")
             st.cache_data.clear()
             st.rerun()
@@ -121,11 +134,15 @@ def render_cohort_management(*, project_path: Path) -> None:
         st.info("No cohorts found. Create one in the sidebar.")
         return
 
-    # Select cohort
-    cohort_labels = [
-        f"{c['name']}  ({c['n_members']} members, {', '.join(c['task_types']) or 'any'})"
-        for c in cohort_summaries
-    ]
+    # Select cohort — include subject count when available
+    cohort_labels = []
+    for c in cohort_summaries:
+        n_subj = c.get("n_subjects")
+        subj_str = f", {n_subj} subjects" if n_subj is not None else ""
+        tasks_str = ", ".join(c["task_types"]) or "any"
+        cohort_labels.append(
+            f"{c['name']}  ({c['n_members']} experiments{subj_str}, {tasks_str})"
+        )
     selected_idx = st.selectbox(
         "Select cohort", options=range(len(cohort_labels)),
         format_func=lambda i: cohort_labels[i],
@@ -138,11 +155,16 @@ def render_cohort_management(*, project_path: Path) -> None:
 
     # ── Cohort details ────────────────────────────────────────────────
     st.subheader(coh.get("name", coh_path.stem))
+    summary = coh.get("summary") or {}
+
     col_info, col_edit = st.columns([2, 1])
     with col_info:
         st.caption(f"File: `{coh_path.name}`")
-        st.caption(
-            f"Members: {len(member_ids)} | "
+        n_exp = summary.get("n_experiments", len(member_ids))
+        n_subj = summary.get("n_subjects")
+        subj_part = f" | Subjects: **{n_subj}**" if n_subj is not None else ""
+        st.markdown(
+            f"Experiments: **{n_exp}**{subj_part} | "
             f"Task types: {', '.join(coh.get('task_types', []))}"
         )
         st.caption(
@@ -156,14 +178,34 @@ def render_cohort_management(*, project_path: Path) -> None:
         )
         if st.button("Save description", key="cm_save_desc"):
             coh["description"] = new_desc_val
-            save_cohort(coh_path, coh)
+            save_cohort(coh_path, coh, experiment_lookup=exp_lookup)
             st.success("Description updated.")
             st.rerun()
+
+    # ── Summary: group breakdown ──────────────────────────────────────
+    groups = summary.get("groups")
+    subjects_by_group = summary.get("subjects_by_group")
+    if groups:
+        st.markdown("#### Group breakdown")
+        group_rows = []
+        for grp, n_exp_grp in sorted(groups.items()):
+            n_subj_grp = len(subjects_by_group.get(grp, [])) if subjects_by_group else "?"
+            group_rows.append({
+                "group": grp,
+                "experiments": n_exp_grp,
+                "subjects": n_subj_grp,
+            })
+        st.dataframe(group_rows, use_container_width=True, hide_index=True)
+
+    warnings = summary.get("warnings", [])
+    if warnings:
+        with st.expander(f"Summary warnings ({len(warnings)})", expanded=False):
+            for w in warnings:
+                st.warning(w)
 
     # ── Members table ─────────────────────────────────────────────────
     st.markdown("#### Members")
     members_list = coh.get("members") or []
-    exp_lookup = {e["experiment_id"]: e for e in all_experiments}
 
     if not members_list:
         st.info("This cohort has no members yet.")
@@ -194,7 +236,7 @@ def render_cohort_management(*, project_path: Path) -> None:
         ):
             for eid in remove_targets:
                 remove_member(coh, eid)
-            save_cohort(coh_path, coh)
+            save_cohort(coh_path, coh, experiment_lookup=exp_lookup)
             st.success(f"Removed {len(remove_targets)} member(s).")
             st.rerun()
 
@@ -209,12 +251,42 @@ def render_cohort_management(*, project_path: Path) -> None:
         and (not coh_tasks or e["task_type"] in coh_tasks)
     ]
 
+    # Optional filter: by source data root and by current cohort assignment
+    src_options = sorted({Path(e.get("data_root", "")).name for e in available if e.get("data_root")})
+    col_src, col_unassigned = st.columns([2, 1])
+    with col_src:
+        sel_sources = st.multiselect(
+            "Filter by data source",
+            options=src_options,
+            default=src_options,
+            key="cm_add_src_filter",
+            help="Roots scanned per `mus1.toml [paths] data_roots` (default: experiment_data + validation_data).",
+        )
+    with col_unassigned:
+        only_unassigned = st.checkbox(
+            "Unassigned only",
+            value=False,
+            key="cm_add_unassigned_only",
+            help="Show only experiments whose JSON has no `metadata.experiment_level.cohort` set.",
+        )
+    available = [
+        e for e in available
+        if (not sel_sources or Path(e.get("data_root", "")).name in sel_sources)
+        and (not only_unassigned or not e.get("cohort_assigned"))
+    ]
+
     if not available:
-        st.caption("All matching experiments are already in this cohort.")
+        st.caption("No experiments match the current filters (or all are already in this cohort).")
     else:
+        def _label(e: Dict[str, Any]) -> str:
+            src = Path(e.get("data_root", "")).name or "?"
+            asn = f"  · cohort: {e['cohort_assigned']}" if e.get("cohort_assigned") else ""
+            return f"{e['experiment_id']}  ·  {e.get('genotype','?')}/{e.get('sex','?')}  ·  {src}{asn}"
+
         add_targets = st.multiselect(
             f"Select experiments to add ({len(available)} available)",
             options=[e["experiment_id"] for e in available],
+            format_func=lambda eid: next((_label(e) for e in available if e["experiment_id"] == eid), eid),
             key="cm_add_select",
         )
         col_add_sel, col_add_all = st.columns(2)
@@ -224,7 +296,7 @@ def render_cohort_management(*, project_path: Path) -> None:
             ):
                 for eid in add_targets:
                     add_member(coh, eid)
-                save_cohort(coh_path, coh)
+                save_cohort(coh_path, coh, experiment_lookup=exp_lookup)
                 st.success(f"Added {len(add_targets)} experiment(s).")
                 st.rerun()
         with col_add_all:
@@ -233,7 +305,7 @@ def render_cohort_management(*, project_path: Path) -> None:
             ):
                 for e in available:
                     add_member(coh, e["experiment_id"])
-                save_cohort(coh_path, coh)
+                save_cohort(coh_path, coh, experiment_lookup=exp_lookup)
                 st.success(f"Added {len(available)} experiment(s).")
                 st.rerun()
 

@@ -21,6 +21,7 @@ from .views.nor_nof_qc import render_nor_nof_qc
 from .views.nor_nof_roi import render_nor_nof_roi
 from .views.subjects import render_subject_explorer
 from .views.training_monitor import render_training_monitor
+from .views.ml_genotype import render_ml_genotype
 
 
 def parse_args() -> argparse.Namespace:
@@ -60,7 +61,7 @@ def main() -> None:
         st.session_state["mus1_view_mode"] = str(next_view)
     view = st.sidebar.radio(
         "Mode",
-        options=["Subjects", "Experiments", "EZM Zones QC", "EZM Tracking QC", "EZM ML", "NOR/NOF ROI", "NOR/NOF QC", "NOR/NOF Object QC", "NOR/NOF Object Marking", "NOR/NOF Interaction QC", "Cohort Management", "Annotator", "Training Monitor"],
+        options=["Subjects", "Experiments", "EZM Zones QC", "EZM Tracking QC", "EZM ML", "NOR/NOF ROI", "NOR/NOF QC", "NOR/NOF Object QC", "NOR/NOF Object Marking", "NOR/NOF Interaction QC", "Cohort Management", "Annotator", "Training Monitor", "ML Genotype"],
         index=0,
         key="mus1_view_mode",
     )
@@ -100,6 +101,9 @@ def main() -> None:
         st.stop()
     if view == "Training Monitor":
         render_training_monitor(project_path=project_path, workspace_root=workspace_root)
+        st.stop()
+    if view == "ML Genotype":
+        render_ml_genotype(project_path=project_path, workspace_root=workspace_root)
         st.stop()
 
     render_experiments(con, db_path=db_path, workspace_root=workspace_root, project_path=project_path)

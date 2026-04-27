@@ -25,6 +25,12 @@ web = [
   # Use a maintained drop-in fix.
   "streamlit-drawable-canvas-fix>=0.9.8",
 ]
+api = [
+  "fastapi>=0.110.0",
+  "uvicorn[standard]>=0.27.0",
+  "pillow",
+  "opencv-python-headless",
+]
 
 [project.scripts]
 mus1 = "mus1.core.simple_cli:app"

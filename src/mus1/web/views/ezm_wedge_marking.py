@@ -70,14 +70,22 @@ def _get_pil_image(video_path: str, frame_count: Optional[int]):
 # Experiment discovery
 # ---------------------------------------------------------------------------
 
-@st.cache_data(show_spinner="Loading EZM experiments...", ttl=120)
+from mus1.web.discovery import CACHE_TTL_SECONDS  # noqa: E402
+
+
+@st.cache_data(show_spinner="Loading EZM experiments...", ttl=CACHE_TTL_SECONDS)
 def _load_ezm_experiments(experiment_data_root: str) -> List[Dict[str, Any]]:
-    """Scan EZM experiment folders and return row dicts."""
+    """Scan EZM experiment folders across all configured data roots."""
+    from mus1.web.discovery import task_dirs_across_roots
+
     rows: List[Dict[str, Any]] = []
-    ezm_dir = Path(experiment_data_root) / "EZM"
-    if not ezm_dir.is_dir():
-        return rows
-    for exp_dir in sorted(ezm_dir.iterdir()):
+    project_path = Path(experiment_data_root).parent
+    exp_dirs = task_dirs_across_roots(project_path, "EZM")
+    if not exp_dirs:
+        ezm_dir = Path(experiment_data_root) / "EZM"
+        if ezm_dir.is_dir():
+            exp_dirs = sorted(p for p in ezm_dir.iterdir() if p.is_dir())
+    for exp_dir in exp_dirs:
         if not exp_dir.is_dir():
             continue
         jsons = [f for f in exp_dir.iterdir() if f.suffix == ".json"]

@@ -155,4 +155,73 @@ This code is not actively used. The web app replaced it for the Chinook workflow
 - Python environment: `mus1-dev` conda env
 - Runs on Chinook via SSH port-forwarding for Streamlit
 - Slurm jobs submitted to `bio` partition (or idle nodes via `sbatch_on_idle_node.sh`)
-- DB: SQLite (local file); future option for Postgres
+- DB: SQLite (local file, rebuildable from experiment JSONs); future option for Postgres
+
+### Data architecture decision (2026-03-27)
+
+**Experiment JSONs are the sole source of truth.** The mus1.db and
+session_index CSV are deprecated as primary data sources. All
+experiment metadata, QC flags, arena markings, computed metrics, and
+provenance live in the per-experiment JSON files.
+
+| Data | Source of truth | Old source | Status |
+|------|----------------|-----------|--------|
+| Subject metadata | experiment JSON `metadata.*` | mus1.db `subjects` table | JSON authoritative |
+| QC flags | experiment JSON `qc_flags.*` | mus1.db `qc_events` | JSON authoritative |
+| Arena markings | experiment JSON `arena_markings.*` | zone JSONs on disk | JSON authoritative |
+| Computed metrics | experiment JSON `computed_metrics.*` | CSV outputs | JSON authoritative |
+| Cohort membership | `data/cohorts/*.json` | manual lists | Cohort JSONs authoritative |
+| DLC artifact paths | experiment JSON `extraction.*` | session_index CSV | JSON authoritative |
+| RR assay data | experiment JSON `metadata.experiment_level.attempts` | mus1.db `assay_sessions` | JSON authoritative |
+| Session index CSV | **DEPRECATED** | Was primary | Replaced by ExperimentService |
+
+The DB will be rebuilt from JSONs on demand (`mus1 index rebuild`)
+rather than being synced incrementally via importers.
+### My points for app improvement -lp (3/14/26)
+- Eventually I want to build the app to be essentially an LLM wrapped, or I don't really know what's meant by MCP wrapped, or to have an MCP. Each lab is going to be storing and have different compute in different places, right, and it doesn't really make sense to support all of it. What does make sense is to integrate the consistently used stats and some of the actually good layouts that we have, etc., and usable tools in a way that should stay. I leave the deterministic stuff that really needs to be deterministic, and build the app around an easy stochastic implementation around things that are going to need to be modulable per lab. I think that makes sense for current era design.
+- I also want to be able to support saving annotated frames from final QC images for things that are relevant to a publication, right? Like, if we want to say, "Hey, we verified this," it should be easy to save the frame that I verified on and have that included in a supplement link when somebody provides their data for review.
+
+## New architecture (in progress, 2026-03-27)
+
+The rewrite adds three new packages alongside the existing Streamlit web app:
+
+### Task definition system (`src/mus1/tasks/`)
+Replaces all hardcoded task types with a configurable registry:
+- `base.py`: `TaskDefinition` ABC — annotation fields, arena geometry, QC flags, calculation variants, physical dimensions
+- `builtins/`: 5 built-in tasks (EZM, NOR, NOF, OF, RR) with full variant specs
+- `registry.py`: `TaskRegistry` — loads builtins + user-defined YAML tasks
+
+### Service layer (`src/mus1/server/services/`)
+Framework-agnostic business logic (no Streamlit or FastAPI imports):
+- `ExperimentService`: consolidated discovery of all experiments from JSONs on disk (replaces 6+ duplicate patterns in views)
+- `CohortService`: wraps existing `cohorts.py` with service-backed metadata resolution
+- `QCService`: task-aware auto-flag computation (delegates to task definitions)
+- `AnnotationService`: arena marking CRUD + provenance frame export (PNG overlay)
+
+### Compute library (`src/mus1/compute/`)
+Deterministic scientific calculations — pure-functional, no side effects:
+- All code produces identical outputs given identical inputs
+- See `compute/README.md` for the deterministic-vs-stochastic boundary
+- Modules planned: `arena_geometry.py`, `ezm_zones.py`, `nor_nof_interaction.py`, `tracking_utils.py`, `overlay.py`
+
+### Project config (`src/mus1/server/config.py`)
+`ProjectConfig` loaded from `mus1.yaml` — replaces all hardcoded paths in `paths.py`.
+
+### Data flow (new)
+```
+Experiment JSONs on disk (source of truth)
+    |
+    v
+ExperimentService (scans, caches in memory, serves queries)
+    |
+    +-> CohortService (membership, summaries)
+    +-> QCService (flags, auto-computation via TaskDefinition)
+    +-> AnnotationService (marking CRUD, provenance export)
+    +-> ComputeService (planned: deterministic metric computation)
+    |
+    v
+FastAPI routers (planned Phase 3)  <-->  React UI (planned Phase 4)
+    |
+    v
+OpenAPI / MCP (for agent consumption)
+```

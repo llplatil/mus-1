@@ -97,12 +97,18 @@ class _ExperimentRow:
 # ---------------------------------------------------------------------------
 
 def _load_nor_nof_experiments(experiment_data_root: Path) -> List[_ExperimentRow]:
+    """Scan NOR + NOF folders across all configured data roots."""
+    from mus1.web.discovery import task_dirs_across_roots
+
     rows: List[_ExperimentRow] = []
+    project_path = Path(experiment_data_root).parent
     for task in ("NOR", "NOF"):
-        task_dir = experiment_data_root / task
-        if not task_dir.is_dir():
-            continue
-        for exp_dir in sorted(task_dir.iterdir()):
+        exp_dirs = task_dirs_across_roots(project_path, task)
+        if not exp_dirs:
+            task_dir = experiment_data_root / task
+            if task_dir.is_dir():
+                exp_dirs = sorted(p for p in task_dir.iterdir() if p.is_dir())
+        for exp_dir in exp_dirs:
             if not exp_dir.is_dir():
                 continue
             jsons = [f for f in exp_dir.iterdir() if f.suffix == ".json"]

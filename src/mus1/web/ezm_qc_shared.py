@@ -51,14 +51,31 @@ LOCKED_LH_THRESHOLD = 0.6
 # Experiment JSON discovery
 # ---------------------------------------------------------------------------
 
-@st.cache_data(show_spinner="Loading EZM experiments...", ttl=120)
+from .discovery import CACHE_TTL_SECONDS  # noqa: E402  (after stdlib block above)
+
+
+@st.cache_data(show_spinner="Loading EZM experiments...", ttl=CACHE_TTL_SECONDS)
 def load_ezm_experiments(experiment_data_root: str) -> List[Dict[str, Any]]:
-    """Scan ``data/experiment_data/EZM/`` and return one row per experiment."""
+    """Scan ``EZM/`` under every configured data root and return one row per experiment.
+
+    *experiment_data_root* is retained for back-compat; it is treated as a
+    project-path anchor (its parent is the project_path used to discover
+    additional roots like ``validation_data/``). Configure additional roots
+    via ``[paths] data_roots`` in ``mus1.toml`` at the project_path.
+    """
+    from .discovery import task_dirs_across_roots
+
     rows: List[Dict[str, Any]] = []
-    ezm_dir = Path(experiment_data_root) / "EZM"
-    if not ezm_dir.is_dir():
-        return rows
-    for exp_dir in sorted(ezm_dir.iterdir()):
+    project_path = Path(experiment_data_root).parent
+    exp_dirs = task_dirs_across_roots(project_path, "EZM")
+    # Fallback: if discovery returned nothing (e.g. mus1.toml says no roots
+    # but the caller passed a real experiment_data_root), still scan it.
+    if not exp_dirs:
+        ezm_dir = Path(experiment_data_root) / "EZM"
+        if ezm_dir.is_dir():
+            exp_dirs = sorted(p for p in ezm_dir.iterdir() if p.is_dir())
+
+    for exp_dir in exp_dirs:
         if not exp_dir.is_dir():
             continue
         jsons = [f for f in exp_dir.iterdir() if f.suffix == ".json"]

@@ -489,7 +489,12 @@ def render_nor_nof_interaction_qc(
     st.caption("Visual overlay of object interaction zones and nose trajectory on arena frame.")
 
     # --- Load experiments ---
-    experiments = _load_nor_nof_experiments(EXPERIMENT_DATA_ROOT)
+    experiment_data_root = project_path / "experiment_data"
+    if not experiment_data_root.is_dir():
+        # Tolerate projects whose only data root is e.g. validation_data;
+        # the loader scans every configured root via mus1.toml anyway.
+        experiment_data_root = EXPERIMENT_DATA_ROOT
+    experiments = _load_nor_nof_experiments(experiment_data_root)
     if not experiments:
         st.error("No NOR/NOF experiments found.")
         return
