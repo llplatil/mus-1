@@ -8,17 +8,15 @@ import streamlit as st
 
 from .db import connect
 from .paths import resolve_db_path
-from .views.annotator_embed import render_annotator
 from .views.cohort_management import render_cohort_management
 from .views.ezm_ml import render_ezm_ml
 from .views.ezm_tracking_qc import render_ezm_tracking_qc
+from .views.ezm_wedge_marking import render_ezm_wedge_marking
 from .views.ezm_zones_qc import render_ezm_zones_qc
 from .views.experiments import render_experiments
 from .views.nor_nof_interaction_qc import render_nor_nof_interaction_qc
 from .views.nor_nof_object_marking import render_nor_nof_object_marking
 from .views.nor_nof_object_qc import render_nor_nof_object_qc
-from .views.nor_nof_qc import render_nor_nof_qc
-from .views.nor_nof_roi import render_nor_nof_roi
 from .views.subjects import render_subject_explorer
 from .views.training_monitor import render_training_monitor
 from .views.ml_genotype import render_ml_genotype
@@ -59,9 +57,30 @@ def main() -> None:
     next_view = st.session_state.pop("mus1_view_mode_next", None)
     if next_view:
         st.session_state["mus1_view_mode"] = str(next_view)
+    # Sidebar groups panes by lifecycle: Browse / Mark / QC / Cohort / Train.
+    # Marking panes write to JSONs; QC panes review what marking produced.
+    # See docs/web/ROADMAP.md "What work happens where" for the canonical map.
     view = st.sidebar.radio(
         "Mode",
-        options=["Subjects", "Experiments", "EZM Zones QC", "EZM Tracking QC", "EZM ML", "NOR/NOF ROI", "NOR/NOF QC", "NOR/NOF Object QC", "NOR/NOF Object Marking", "NOR/NOF Interaction QC", "Cohort Management", "Annotator", "Training Monitor", "ML Genotype"],
+        options=[
+            # Browse
+            "Subjects",
+            "Experiments",
+            # Mark (input)
+            "EZM Wedge Marking",
+            "NOR/NOF Object Marking",
+            # QC (review)
+            "EZM Zones QC",
+            "EZM Tracking QC",
+            "NOR/NOF Object QC",
+            "NOR/NOF Interaction QC",
+            # Cohort
+            "Cohort Management",
+            # Train / Monitor
+            "EZM ML",
+            "ML Genotype",
+            "Training Monitor",
+        ],
         index=0,
         key="mus1_view_mode",
     )
@@ -69,26 +88,20 @@ def main() -> None:
     if view == "Subjects":
         render_subject_explorer(con, db_path=db_path, workspace_root=workspace_root, project_path=project_path)
         st.stop()
+    if view == "EZM Wedge Marking":
+        render_ezm_wedge_marking(project_path=project_path, workspace_root=workspace_root, db_path=db_path)
+        st.stop()
+    if view == "NOR/NOF Object Marking":
+        render_nor_nof_object_marking(project_path=project_path, workspace_root=workspace_root, db_path=db_path)
+        st.stop()
     if view == "EZM Zones QC":
         render_ezm_zones_qc(workspace_root=workspace_root, project_path=project_path)
         st.stop()
     if view == "EZM Tracking QC":
         render_ezm_tracking_qc(workspace_root=workspace_root, project_path=project_path)
         st.stop()
-    if view == "EZM ML":
-        render_ezm_ml(con, workspace_root=workspace_root, db_path=db_path)
-        st.stop()
-    if view == "NOR/NOF ROI":
-        render_nor_nof_roi(con, project_path=project_path, workspace_root=workspace_root, db_path=db_path)
-        st.stop()
-    if view == "NOR/NOF QC":
-        render_nor_nof_qc(project_path=project_path, workspace_root=workspace_root)
-        st.stop()
     if view == "NOR/NOF Object QC":
         render_nor_nof_object_qc(project_path=project_path, workspace_root=workspace_root, db_path=db_path)
-        st.stop()
-    if view == "NOR/NOF Object Marking":
-        render_nor_nof_object_marking(project_path=project_path, workspace_root=workspace_root, db_path=db_path)
         st.stop()
     if view == "NOR/NOF Interaction QC":
         render_nor_nof_interaction_qc(project_path=project_path, workspace_root=workspace_root)
@@ -96,14 +109,14 @@ def main() -> None:
     if view == "Cohort Management":
         render_cohort_management(project_path=project_path)
         st.stop()
-    if view == "Annotator":
-        render_annotator(workspace_root=workspace_root, project_path=project_path, db_path=db_path)
-        st.stop()
-    if view == "Training Monitor":
-        render_training_monitor(project_path=project_path, workspace_root=workspace_root)
+    if view == "EZM ML":
+        render_ezm_ml(con, workspace_root=workspace_root, db_path=db_path)
         st.stop()
     if view == "ML Genotype":
         render_ml_genotype(project_path=project_path, workspace_root=workspace_root)
+        st.stop()
+    if view == "Training Monitor":
+        render_training_monitor(project_path=project_path, workspace_root=workspace_root)
         st.stop()
 
     render_experiments(con, db_path=db_path, workspace_root=workspace_root, project_path=project_path)

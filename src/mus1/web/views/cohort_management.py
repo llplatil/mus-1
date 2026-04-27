@@ -309,6 +309,74 @@ def render_cohort_management(*, project_path: Path) -> None:
                 st.success(f"Added {len(available)} experiment(s).")
                 st.rerun()
 
+    # ── NOR↔NOF pair linking ──────────────────────────────────────────
+    coh_tasks_set = set(coh.get("task_types") or [])
+    if not coh_tasks_set or {"NOR", "NOF"} & coh_tasks_set:
+        from mus1.web.cohorts import link_nor_nof_pairs
+
+        st.markdown("#### NOR↔NOF pair linking")
+        st.caption(
+            "Pair NOR and NOF experiments by `(subject_id, date_recorded)`. "
+            "Existing-but-conflicting links are flagged, never overwritten."
+        )
+        scope_label = "this cohort only" if member_ids else "this cohort"
+        scope_only = st.checkbox(
+            f"Restrict to {scope_label}",
+            value=True,
+            key="cm_pair_scope_only",
+            help="Untick to link every unpaired NOR/NOF on disk (across all cohorts).",
+        )
+        col_dry, col_apply = st.columns(2)
+        with col_dry:
+            if st.button("Preview pairs (dry-run)", key="cm_pair_dry"):
+                report = link_nor_nof_pairs(
+                    project_path,
+                    cohort_member_ids=(member_ids if scope_only else None),
+                    dry_run=True,
+                )
+                st.session_state["cm_pair_report"] = report
+        with col_apply:
+            if st.button(
+                "Apply pair links",
+                key="cm_pair_apply",
+                type="primary",
+            ):
+                report = link_nor_nof_pairs(
+                    project_path,
+                    cohort_member_ids=(member_ids if scope_only else None),
+                    dry_run=False,
+                )
+                st.session_state["cm_pair_report"] = report
+                st.cache_data.clear()
+                st.success(
+                    f"Linked {len(report['newly_linked'])} new pair(s); "
+                    f"{len(report['already_linked'])} already linked."
+                )
+
+        # Surface the most-recent report inline
+        rpt = st.session_state.get("cm_pair_report")
+        if rpt:
+            mode_tag = "[dry-run] " if rpt.get("dry_run") else ""
+            st.markdown(
+                f"**{mode_tag}Checked:** {rpt['checked']}  ·  "
+                f"**Newly linked:** {len(rpt['newly_linked'])}  ·  "
+                f"**Already linked:** {len(rpt['already_linked'])}  ·  "
+                f"**Conflicts:** {len(rpt['conflicts'])}  ·  "
+                f"**Unmatched:** {len(rpt['unmatched'])}"
+            )
+            if rpt["newly_linked"]:
+                st.markdown("**New links:**")
+                st.dataframe(
+                    [{"NOR": n, "NOF": f} for (n, f) in rpt["newly_linked"]],
+                    use_container_width=True, hide_index=True,
+                )
+            if rpt["conflicts"]:
+                st.warning("Conflicts (not overwritten — fix manually):")
+                st.dataframe(rpt["conflicts"], use_container_width=True, hide_index=True)
+            if rpt["unmatched"]:
+                with st.expander(f"Unmatched ({len(rpt['unmatched'])}) — no partner on disk"):
+                    st.write(rpt["unmatched"])
+
     # ── Export ────────────────────────────────────────────────────────
     st.markdown("#### Export")
     default_csv = project_path / "exports" / f"{coh.get('name', 'cohort')}_training.csv"

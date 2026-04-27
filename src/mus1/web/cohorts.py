@@ -202,11 +202,26 @@ def save_cohort(
     project_path = cohort_path.parent.parent
     roots = get_data_roots(project_path) if experiment_lookup is None else None
 
-    cohort["summary"] = compute_cohort_summary(
+    summary = compute_cohort_summary(
         cohort,
         experiment_lookup=experiment_lookup,
         data_roots=roots,
     )
+    cohort["summary"] = summary
+
+    # Auto-populate top-level ``task_types`` from the computed summary
+    # whenever the cohort author left it empty/unset. This lets QC panes
+    # (which filter cohorts by task via ``list_cohorts(task_type=...)``)
+    # surface validation cohorts without requiring the user to maintain a
+    # parallel field. Users who explicitly want to *restrict* a cohort to a
+    # subset of its observed task types can edit the field by hand — the
+    # auto-fill only fires when the field is empty.
+    declared = cohort.get("task_types") or []
+    if not declared:
+        observed = list(summary.get("task_type_counts", {}).keys())
+        if observed:
+            cohort["task_types"] = sorted(observed)
+
     cohort["updated_at"] = _now_iso()
     cohort_path.parent.mkdir(parents=True, exist_ok=True)
     cohort_path.write_text(json.dumps(cohort, indent=2) + "\n", encoding="utf-8")
@@ -275,6 +290,168 @@ def remove_member(cohort: Dict[str, Any], experiment_id: str) -> Dict[str, Any]:
         if m.get("experiment_id") != experiment_id
     ]
     return cohort
+
+
+# ---------------------------------------------------------------------------
+# NOR↔NOF pair linking
+# ---------------------------------------------------------------------------
+
+def _read_experiment_json(json_path: Path) -> Optional[Dict[str, Any]]:
+    try:
+        return json.loads(json_path.read_text())
+    except Exception:
+        return None
+
+
+def _write_experiment_json(json_path: Path, data: Dict[str, Any]) -> None:
+    json_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+
+
+def link_nor_nof_pairs(
+    project_path: Path,
+    *,
+    cohort_member_ids: Optional[Set[str]] = None,
+    dry_run: bool = False,
+) -> Dict[str, Any]:
+    """Auto-link NOR↔NOF experiments by ``(subject_id, date_recorded)``.
+
+    A NOR and a NOF experiment that share the same subject and the same
+    recording date are deemed a pair. For each match, both experiment
+    JSONs are updated with::
+
+        nor_nof_pair = {
+            "paired_experiment_id":   "<other experiment_id>",
+            "paired_experiment_type": "NOR" | "NOF",
+            "linked_at":              "<utc iso>",
+            "linked_by":              "auto_pair_v1",
+        }
+
+    Linking is idempotent: experiments that already declare the same
+    paired_experiment_id are left untouched. Existing-but-conflicting
+    links (a NOR pointing at a different NOF, etc.) are reported as
+    warnings and not overwritten — fixing those is a manual call.
+
+    Args:
+        project_path: Project root (the directory containing ``cohorts/``,
+            ``experiment_data/``, ``validation_data/``).
+        cohort_member_ids: Optional restriction — only consider linking
+            experiments whose ID is in this set. Used for "link pairs in
+            this cohort only" workflows. ``None`` = all NOR/NOF on disk.
+        dry_run: When ``True``, return the report but do not write.
+
+    Returns:
+        ``{
+            "checked": int,                       # NOR + NOF experiments scanned
+            "newly_linked": [(nor_id, nof_id)],   # pairs written this call
+            "already_linked": [(nor_id, nof_id)], # pairs that were already symmetric
+            "conflicts": [
+                {"experiment_id": str,
+                 "current_pair": str,
+                 "expected_pair": str,
+                 "reason": str},
+            ],
+            "unmatched": [str],                   # NOR/NOF without a partner
+        }``
+    """
+    from .discovery import iter_experiment_dirs
+
+    by_subject_date: Dict[tuple, Dict[str, Path]] = defaultdict(dict)
+    checked = 0
+
+    for _, task, exp_dir in iter_experiment_dirs(project_path, task=None):
+        if task not in ("NOR", "NOF"):
+            continue
+        if cohort_member_ids is not None and exp_dir.name not in cohort_member_ids:
+            continue
+        jp = find_experiment_json(exp_dir)
+        if jp is None:
+            continue
+        data = _read_experiment_json(jp)
+        if not data:
+            continue
+        md = data.get("metadata", {}) or {}
+        subj = str(md.get("subject_id", ""))
+        date = str(md.get("date_recorded", ""))
+        if not subj or not date:
+            continue
+        checked += 1
+        by_subject_date[(subj, date)][task] = jp
+
+    newly_linked: List[tuple] = []
+    already_linked: List[tuple] = []
+    conflicts: List[Dict[str, str]] = []
+    unmatched: List[str] = []
+    now = _now_iso()
+
+    for (subj, date), pair in by_subject_date.items():
+        nor_jp = pair.get("NOR")
+        nof_jp = pair.get("NOF")
+        if not (nor_jp and nof_jp):
+            for present_jp in pair.values():
+                unmatched.append(present_jp.parent.name)
+            continue
+
+        nor_id = nor_jp.parent.name
+        nof_id = nof_jp.parent.name
+
+        # Read both, check existing pair declarations
+        nor_data = _read_experiment_json(nor_jp) or {}
+        nof_data = _read_experiment_json(nof_jp) or {}
+        nor_pair = (nor_data.get("nor_nof_pair") or {})
+        nof_pair = (nof_data.get("nor_nof_pair") or {})
+
+        nor_curr = nor_pair.get("paired_experiment_id")
+        nof_curr = nof_pair.get("paired_experiment_id")
+
+        # Symmetric, already linked correctly
+        if nor_curr == nof_id and nof_curr == nor_id:
+            already_linked.append((nor_id, nof_id))
+            continue
+
+        # One side already points elsewhere — flag, don't overwrite
+        if nor_curr and nor_curr != nof_id:
+            conflicts.append({
+                "experiment_id": nor_id,
+                "current_pair": nor_curr,
+                "expected_pair": nof_id,
+                "reason": "NOR already linked to a different NOF",
+            })
+            continue
+        if nof_curr and nof_curr != nor_id:
+            conflicts.append({
+                "experiment_id": nof_id,
+                "current_pair": nof_curr,
+                "expected_pair": nor_id,
+                "reason": "NOF already linked to a different NOR",
+            })
+            continue
+
+        # Apply the link
+        nor_data["nor_nof_pair"] = {
+            "paired_experiment_id": nof_id,
+            "paired_experiment_type": "NOF",
+            "linked_at": now,
+            "linked_by": "auto_pair_v1",
+        }
+        nof_data["nor_nof_pair"] = {
+            "paired_experiment_id": nor_id,
+            "paired_experiment_type": "NOR",
+            "linked_at": now,
+            "linked_by": "auto_pair_v1",
+        }
+        if not dry_run:
+            _write_experiment_json(nor_jp, nor_data)
+            _write_experiment_json(nof_jp, nof_data)
+        newly_linked.append((nor_id, nof_id))
+
+    return {
+        "checked": checked,
+        "newly_linked": newly_linked,
+        "already_linked": already_linked,
+        "conflicts": conflicts,
+        "unmatched": unmatched,
+        "dry_run": dry_run,
+    }
 
 
 # ---------------------------------------------------------------------------

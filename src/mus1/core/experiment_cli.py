@@ -287,6 +287,53 @@ def register_commands(app: typer.Typer) -> None:
         else:
             rich_print(f"[yellow]·[/yellow] {experiment_id} was not in {name}")
 
+    @cohort_app.command("link-nor-nof")
+    def cohort_link_nor_nof(
+        name: Optional[str] = typer.Argument(None, help="Cohort name. Omit to link all NOR/NOF experiments project-wide."),
+        project_path: Optional[Path] = typer.Option(None, "--project-path", "-p"),
+        dry_run: bool = typer.Option(False, "--dry-run", help="Print what would change without writing."),
+    ):
+        """Auto-link NOR↔NOF pairs by (subject_id, date_recorded).
+
+        Updates each matching pair's experiment JSONs with a symmetric
+        ``nor_nof_pair`` block. Existing-but-conflicting links are flagged
+        and not overwritten — fix those by hand.
+        """
+        from mus1.web.cohorts import link_nor_nof_pairs, load_cohort, cohort_member_ids
+
+        proj = _resolve_project_path(project_path)
+        member_ids: Optional[set] = None
+        if name:
+            path = _resolve_cohort_path(_cohorts_dir_for(proj), name)
+            if not path.is_file():
+                rich_print(f"[red]Cohort not found: {path}[/red]")
+                raise typer.Exit(1)
+            member_ids = cohort_member_ids(load_cohort(path))
+
+        report = link_nor_nof_pairs(
+            proj, cohort_member_ids=member_ids, dry_run=dry_run
+        )
+
+        scope = f"cohort '{name}'" if name else "all NOR/NOF on disk"
+        suffix = " (dry-run)" if dry_run else ""
+        rich_print(f"[bold]NOR↔NOF pair linking — {scope}{suffix}[/bold]")
+        rich_print(f"  checked:        {report['checked']}")
+        rich_print(f"  newly linked:   {len(report['newly_linked'])}")
+        for nor_id, nof_id in report["newly_linked"]:
+            rich_print(f"    + {nor_id}  ↔  {nof_id}")
+        rich_print(f"  already linked: {len(report['already_linked'])}")
+        if report["conflicts"]:
+            rich_print(f"  [yellow]conflicts ({len(report['conflicts'])}) — not overwritten:[/yellow]")
+            for c in report["conflicts"]:
+                rich_print(
+                    f"    ! {c['experiment_id']}: currently → {c['current_pair']} "
+                    f"(expected {c['expected_pair']}; {c['reason']})"
+                )
+        if report["unmatched"]:
+            rich_print(f"  [dim]unmatched (no partner found): {len(report['unmatched'])}[/dim]")
+            for eid in report["unmatched"]:
+                rich_print(f"    · {eid}")
+
     @cohort_app.command("add-where")
     def cohort_add_where(
         name: str = typer.Argument(..., help="Cohort name."),

@@ -20,22 +20,22 @@ writes back. All panes scan the canonical data roots
 (`experiment_data/` + `validation_data/`) — see
 [`AGENT_RUNBOOK.md`](AGENT_RUNBOOK.md) for the discovery rules.
 
-| Pane | Use it for | Reads | Writes |
-|---|---|---|---|
-| **Subjects** | Per-subject summary across all task types | `subjects` SQLite table + experiment JSONs (for timepoint enrichment) | — |
-| **Experiments** | Browse all experiments, filter by task/cohort/QC | `experiments` SQLite table | — |
-| **Cohort Management** | Add/remove members, create cohorts, export training CSVs | All experiment JSONs across both data roots; `data/cohorts/*.json` | `data/cohorts/*.json` (members[], description, summary block recomputed on save) |
-| **EZM Wedge Marking** | Click 4 wedge points on a frame to define EZM arena | EZM experiment JSONs (`arena_markings.ezm_wedge_points` empty) | EZM JSON: `arena_markings.ezm_wedge_points.points[]` + provenance |
-| **EZM Zones QC** | Visually approve/reject the wedge-fit circle overlay | EZM JSON `arena_markings.ezm_wedge_points` + computed circle fit | EZM JSON: `arena_markings.ezm_wedge_points.qc.{status,notes,reviewed_at}` |
-| **EZM Tracking QC** | Approve DLC tracks against marked arena (per-experiment) | EZM JSON + DLC CSV + 8-variant computed metrics | EZM JSON: `computed_metrics.ezm_open_closed.qc_review.{status,notes}` |
-| **EZM ML** | Submit U-Net training jobs, review predicted-mask QC | Cohort JSON + EZM masks (`mus1.compute.ezm_masks`) | Slurm job submission via `mus1_runs/` registry |
-| **NOR/NOF ROI** | Select arena ROI for one experiment (legacy alias) | NOR/NOF JSON `arena_markings.arena_boundary` | Same field |
-| **NOR/NOF Object Marking** | Click left + right object centers on a frame | NOR/NOF JSON without `arena_markings.object_left_xy` | NOR/NOF JSON: `arena_markings.object_left_xy`, `object_right_xy`, optional task-type fix |
-| **NOR/NOF Object QC** | Visually approve object marks + arena ROI | NOR/NOF JSON + paired-experiment lookup | NOR/NOF JSON: `object_qc.{status,notes,reviewed_at}` |
-| **NOR/NOF Interaction QC** | Approve interaction zones (radius around objects) + nose trajectory | NOR/NOF JSON + DLC CSV | NOR/NOF JSON: `computed_metrics.nor_nof.qc_review` |
-| **Annotator** | Generic launcher; hands off to the right marking pane based on task type | — | — |
-| **ML Genotype** | Build datasets, submit training, monitor learning curves | Cohort JSON + per-experiment KPMS labels | Dataset YAML + Slurm submission via `mus1_runs/` |
-| **Training Monitor** | Slurm job status + metric trend plots for U-Net + ML tracking | `mus1_runs/` registry, log files in `ml_workspace/*/logs/` | — |
+| Group | Pane | Use it for | Reads | Writes |
+|---|---|---|---|---|
+| Browse | **Subjects** | Per-subject summary across all task types | `subjects` SQLite table + experiment JSONs (for timepoint enrichment) | — |
+| Browse | **Experiments** | Browse all experiments, filter by task/cohort/QC | `experiments` SQLite table | — |
+| Mark | **EZM Wedge Marking** | Click 4 wedge points on a frame to define EZM arena | EZM experiment JSONs (`arena_markings.ezm_wedge_points` empty) | EZM JSON: `arena_markings.ezm_wedge_points.points[]` + provenance |
+| Mark | **NOR/NOF Object Marking** | Click left + right object centers on a frame | NOR/NOF JSON without `arena_markings.object_left_xy` | NOR/NOF JSON: `arena_markings.{object_left_xy,object_right_xy,arena_boundary}`, optional task-type fix |
+| QC | **EZM Zones QC** | Visually approve/reject the wedge-fit circle overlay | EZM JSON `arena_markings.ezm_wedge_points` + computed circle fit | EZM JSON: `arena_markings.ezm_wedge_points.qc.{status,notes,reviewed_at}` |
+| QC | **EZM Tracking QC** | Approve DLC tracks against marked arena (per-experiment) | EZM JSON + DLC CSV + 8-variant computed metrics | EZM JSON: `computed_metrics.ezm_open_closed.qc_review.{status,notes}` |
+| QC | **NOR/NOF Object QC** | Visually approve object marks + arena ROI | NOR/NOF JSON + paired-experiment lookup | NOR/NOF JSON: `object_qc.{status,notes,reviewed_at}` |
+| QC | **NOR/NOF Interaction QC** | Approve interaction zones (radius around objects) + nose trajectory | NOR/NOF JSON + DLC CSV | NOR/NOF JSON: `computed_metrics.nor_nof.qc_review` |
+| Cohort | **Cohort Management** | Add/remove members, auto-link NOR↔NOF pairs, export training CSVs | All experiment JSONs across both data roots; `data/cohorts/*.json` | `data/cohorts/*.json` (members[], description, summary block recomputed on save); per-experiment `nor_nof_pair` blocks |
+| Train | **EZM ML** | Submit U-Net training jobs, review predicted-mask QC | Cohort JSON + EZM masks (`mus1.compute.ezm_masks`) | Slurm job submission via `mus1_runs/` registry |
+| Train | **ML Genotype** | Build datasets, submit training, monitor learning curves | Cohort JSON + per-experiment KPMS labels | Dataset YAML + Slurm submission via `mus1_runs/` |
+| Train | **Training Monitor** | Slurm job status + metric trend plots for U-Net + ML tracking | `mus1_runs/` registry, log files in `ml_workspace/*/logs/` | — |
+
+Removed in 2026-04-27 cleanup: `Annotator` (legacy embed of arena_annotation app, separate discovery), `NOR/NOF QC` aka "Paired QC Review" (CSV-driven), `NOR/NOF ROI` (CSV-driven). All three were superseded by the per-task Mark/QC panes above.
 
 **Conventions:**
 - "Reads" and "Writes" are about per-experiment JSONs; the `mus1.db` SQLite is a rebuildable index, not a source of truth.
@@ -83,6 +83,86 @@ sidebar refresh.
 - Fabric.js/Konva.js annotation canvas (replaces streamlit-drawable-canvas)
 - Pages: ExperimentBrowser, AnnotationWorkflow, QCReview, VariantComparison, CohortManagement
 - Static build bundled in pip package (no Node.js on HPC at runtime)
+
+## Streamlit UI overhaul plan (2026-04-27)
+
+The current Streamlit app accumulated multiple generations of marking/QC
+flows over the manuscript push: a mix of "good" per-task panes, "legacy"
+CSV-driven panes, and an embedded `Annotator` that duplicated discovery
+logic. The roadmap below cuts that surface area down so each lifecycle
+stage has exactly one pane, every loader uses the multi-root discovery
+layer, and cohort affordances cover the gaps that previously required
+shell scripts (NOR↔NOF pairing, cohort task-type filters).
+
+### Iteration 1 — Pane consolidation (DONE 2026-04-27)
+- **Removed (file deleted + sidebar entry dropped):**
+  `Annotator` (`views/annotator_embed.py`), `NOR/NOF QC` aka "Paired QC
+  Review" (`views/nor_nof_qc.py`, CSV-driven), `NOR/NOF ROI`
+  (`views/nor_nof_roi.py`, CSV-driven). Each was superseded by a per-task
+  pane that uses the canonical experiment-JSON discovery.
+- **Promoted to top-level pane:** `EZM Wedge Marking`. Previously only
+  reachable through the deleted Annotator embed; now first-class.
+- **Sidebar ordering:** grouped by lifecycle (Browse → Mark → QC →
+  Cohort → Train) for cognitive load reduction. Mark panes immediately
+  precede their QC pane.
+- **Cohort task_types auto-fill:** `cohorts.save_cohort()` now derives
+  `task_types` from `summary.task_type_counts` whenever the field is
+  empty. Fixes the EZM Tracking/Zones QC cohort dropdown silently
+  hiding cohorts (e.g. `validation_2026` had no `task_types` so
+  `list_cohorts(task_type="EZM")` filtered it out).
+- **NOR↔NOF auto-pair:** new `link_nor_nof_pairs()` in `cohorts.py`
+  joins by `(subject_id, date_recorded)`; surfaced as
+  `mus1 cohort link-nor-nof [<cohort>]` and a button in the Cohort
+  Management pane. Idempotent; flags conflicts; never overwrites an
+  existing-but-different link.
+
+### Iteration 2 — One-stop "Marking Dashboard" landing pane (NEXT)
+Replace the current "Subjects/Experiments" landing with a dashboard that
+shows, at a glance, what work is owed across every cohort:
+
+  EZM       │ N experiments need wedge points  · click → Wedge Marking
+  EZM       │ N experiments need zone QC       · click → Zones QC
+  NOR/NOF   │ N experiments need object marks  · click → Object Marking
+  NOR/NOF   │ N experiments need object QC     · click → Object QC
+  NOR/NOF   │ N experiments unpaired           · click → "Auto-link" flow
+  …
+
+Each row is one filter applied to the canonical discovery scan. The
+target pane opens with the filter pre-applied (Streamlit query params).
+Implementation: ~150 LOC in a new `views/marking_dashboard.py`; reuses
+the existing per-pane filter predicates verbatim.
+
+### Iteration 3 — Surface QC gaps, not just marking gaps
+Today the marking dashboards count "missing arena_markings.X." Add the
+mirror counts for QC: "marked but not yet QC-approved/rejected." Wire
+this through the same dashboard.
+
+### Iteration 4 — Cohort templates
+Half the cohort JSONs in `data/cohorts/` are minor variants of one
+another (publication cohorts per task, validation cohort, pilots).
+Add a "Clone cohort with filter" UI and corresponding `mus1 cohort
+clone <src> <dst> --add-where ...` so common operations (e.g. "make a
+QC-only subset of the publication cohort") don't require hand-editing
+JSON.
+
+### Iteration 5 — Phase 4 React rewrite
+Existing roadmap goal. The work above intentionally minimises
+"Streamlit-shaped" features so the React port can lift each pane
+1:1 against the FastAPI service layer (`server/services/`) without
+inheriting Streamlit-specific affordances (caching contracts,
+session_state hacks, etc.).
+
+### Loose ends for future iterations
+- `views/ezm_ml.py` still uses `sys.path.insert()` to reach
+  `workspace/torch_ml/`; should move into `mus1.compute.ezm_zones_model`.
+- `views/experiments.py` still uses the legacy `has_nor_nof_roi` artifact
+  flag in its filter; that flag was meaningful when the v2 ROI pane
+  produced its own JSONs but is now redundant with `arena_markings`.
+- `mus1.db` is a rebuildable index but several views still query it
+  directly (`Subjects`, `Experiments`); migrating those to
+  `ExperimentService` keeps a single discovery contract.
+
+---
 
 ## Manuscript-related work (continuing in parallel)
 
