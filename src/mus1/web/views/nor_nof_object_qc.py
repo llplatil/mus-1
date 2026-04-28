@@ -17,6 +17,10 @@ import cv2
 import numpy as np
 import streamlit as st
 
+from ..filters import SCOPE_KEY, _cohort_member_ids, invalidate_after_write, pkey
+
+PANE = "nor_nof_oqc"
+
 # ---------------------------------------------------------------------------
 # Canonical object vocabulary
 # ---------------------------------------------------------------------------
@@ -368,15 +372,33 @@ def render_nor_nof_object_qc(
         st.stop()
 
     # --- Filters ---
+    # Cohort scope is read from the universal scope picker in the sidebar
+    # (see web/filters.py). Task / un-QC'd / sort are pane-specific
+    # primary controls and stay in the main area for ergonomics.
     fcol1, fcol2, fcol3 = st.columns([1, 1, 2])
     with fcol1:
-        task_filter = st.radio("Task", ["Both", "NOR", "NOF"], horizontal=True, key="oqc_task")
+        task_filter = st.radio(
+            "Task", ["Both", "NOR", "NOF"], horizontal=True,
+            key=pkey(PANE, "task"),
+        )
     with fcol2:
-        only_unreviewed = st.checkbox("Only un-QC'd", value=True, key="oqc_unreviewed")
+        only_unreviewed = st.checkbox(
+            "Only un-QC'd", value=True, key=pkey(PANE, "unreviewed"),
+        )
     with fcol3:
-        sort_by = st.selectbox("Sort by", ["subject_id", "date_recorded", "experiment_id"], key="oqc_sort")
+        sort_by = st.selectbox(
+            "Sort by",
+            ["subject_id", "date_recorded", "experiment_id"],
+            key=pkey(PANE, "sort"),
+        )
 
     filtered = all_rows
+    # Apply universal cohort scope
+    scope_cohort = st.session_state.get(SCOPE_KEY)
+    if scope_cohort:
+        member_ids = _cohort_member_ids(project_path, scope_cohort)
+        filtered = [r for r in filtered if r.experiment_id in member_ids]
+
     if task_filter != "Both":
         filtered = [r for r in filtered if r.experiment_type == task_filter]
     if only_unreviewed:

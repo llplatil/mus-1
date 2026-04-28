@@ -243,7 +243,8 @@ def render_cohort_management(*, project_path: Path) -> None:
     # ── Add experiments ───────────────────────────────────────────────
     st.markdown("#### Add experiments")
 
-    # Filter available experiments by task type of cohort
+    # Pool starts as everything not already in this cohort, restricted by
+    # the cohort's declared task_types (if any).
     coh_tasks = set(coh.get("task_types") or [])
     available = [
         e for e in all_experiments
@@ -251,7 +252,21 @@ def render_cohort_management(*, project_path: Path) -> None:
         and (not coh_tasks or e["task_type"] in coh_tasks)
     ]
 
-    # Optional filter: by source data root and by current cohort assignment
+    # The universal scope picker (sidebar) further narrows the candidate
+    # pool to members of another cohort, if one is selected. Useful for
+    # transferring experiments between cohorts ("scope = pub, edit = val").
+    from mus1.web.filters import SCOPE_KEY, _cohort_member_ids
+    scope_cohort = st.session_state.get(SCOPE_KEY)
+    if scope_cohort and scope_cohort != coh.get("name"):
+        scope_member_ids = _cohort_member_ids(project_path, scope_cohort)
+        available = [e for e in available if e["experiment_id"] in scope_member_ids]
+        if scope_member_ids:
+            st.caption(
+                f"Scope active: only showing experiments from cohort "
+                f"`{scope_cohort}` ({len(scope_member_ids)} members)."
+            )
+
+    # Local filters specific to cohort-add (data source + unassigned).
     src_options = sorted({Path(e.get("data_root", "")).name for e in available if e.get("data_root")})
     col_src, col_unassigned = st.columns([2, 1])
     with col_src:
@@ -260,7 +275,7 @@ def render_cohort_management(*, project_path: Path) -> None:
             options=src_options,
             default=src_options,
             key="cm_add_src_filter",
-            help="Roots scanned per `mus1.toml [paths] data_roots` (default: experiment_data + validation_data).",
+            help="Canonical roots: experiment_data + validation_data. See discovery module.",
         )
     with col_unassigned:
         only_unassigned = st.checkbox(

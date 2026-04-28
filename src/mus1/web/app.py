@@ -7,6 +7,7 @@ from typing import Optional
 import streamlit as st
 
 from .db import connect
+from .filters import render_scope_picker
 from .paths import resolve_db_path
 from .views.cohort_management import render_cohort_management
 from .views.ezm_ml import render_ezm_ml
@@ -51,6 +52,11 @@ def main() -> None:
         st.stop()
 
     con = connect(db_path)
+
+    # Universal scope picker (cohort) — sits above the View radio so every
+    # pane sees the same selection. See web/filters.py and ROADMAP.md
+    # ("UI standardization") for the three-tier model.
+    render_scope_picker(project_path)
 
     st.sidebar.header("View")
     # Apply any requested mode switch BEFORE creating the radio widget.

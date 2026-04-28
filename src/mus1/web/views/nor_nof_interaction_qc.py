@@ -17,6 +17,10 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
+from ..filters import SCOPE_KEY, _cohort_member_ids, mode_settings, pkey
+
+PANE = "nor_nof_iqc"
+
 from .nor_nof_object_qc import _ExperimentRow, _load_nor_nof_experiments
 
 # ---------------------------------------------------------------------------
@@ -500,28 +504,16 @@ def render_nor_nof_interaction_qc(
         return
 
     # --- Sidebar controls ---
-    st.sidebar.header("Interaction QC Settings")
-
-    radius_cm = st.sidebar.radio(
-        "Zone radius",
-        options=[2.0, 3.0, 4.0],
-        index=2,
-        format_func=lambda x: f"{x:.0f} cm",
-        key="iqc_radius",
-    )
-    radius_key = f"r{int(radius_cm)}cm"
-
-    show_trajectory = st.sidebar.checkbox("Show trajectory", value=True, key="iqc_show_traj")
-    show_divider = st.sidebar.checkbox("Show hemisphere divider", value=False, key="iqc_show_div")
-    show_dim_zone = st.sidebar.checkbox("Show dim zone", value=False, key="iqc_show_dim")
-    use_clean_dim = st.sidebar.checkbox("Clean dim zone (morph filter)", value=True, key="iqc_clean_dim")
-    show_arena_fit = st.sidebar.checkbox("Show arena fit", value=False, key="iqc_show_arena_fit")
+    # Universal cohort scope from web/filters.py:render_scope_picker.
+    # Filters / Display split per the three-tier model documented in
+    # docs/web/ROADMAP.md ("UI standardization").
+    st.sidebar.subheader("Filters")
 
     exp_type_filter = st.sidebar.selectbox(
         "Experiment type",
         options=["All", "NOR", "NOF"],
         index=0,
-        key="iqc_exp_type",
+        key=pkey(PANE, "exp_type"),
     )
 
     # Build genotype lookup from experiment JSONs (cached via _load_nor_nof_experiments)
@@ -536,18 +528,38 @@ def render_nor_nof_interaction_qc(
         "Genotype",
         options=["All"] + all_genotypes,
         index=0,
-        key="iqc_genotype",
+        key=pkey(PANE, "genotype"),
     )
 
     qc_filter = st.sidebar.selectbox(
         "QC status",
         options=["All", "Unreviewed only", "Reviewed only", "Flagged tracking"],
         index=0,
-        key="iqc_qc_filter",
+        key=pkey(PANE, "qc_filter"),
     )
+
+    with mode_settings("Display", key_prefix=PANE):
+        radius_cm = st.radio(
+            "Zone radius",
+            options=[2.0, 3.0, 4.0],
+            index=2,
+            format_func=lambda x: f"{x:.0f} cm",
+            key=pkey(PANE, "radius"),
+        )
+        show_trajectory = st.checkbox("Show trajectory", value=True, key=pkey(PANE, "show_traj"))
+        show_divider = st.checkbox("Show hemisphere divider", value=False, key=pkey(PANE, "show_div"))
+        show_dim_zone = st.checkbox("Show dim zone", value=False, key=pkey(PANE, "show_dim"))
+        use_clean_dim = st.checkbox("Clean dim zone (morph filter)", value=True, key=pkey(PANE, "clean_dim"))
+        show_arena_fit = st.checkbox("Show arena fit", value=False, key=pkey(PANE, "show_arena_fit"))
+    radius_key = f"r{int(radius_cm)}cm"
 
     # --- Filter experiments ---
     filtered = experiments
+    # Apply universal cohort scope
+    scope_cohort = st.session_state.get(SCOPE_KEY)
+    if scope_cohort:
+        member_ids = _cohort_member_ids(project_path, scope_cohort)
+        filtered = [e for e in filtered if e.experiment_id in member_ids]
     if exp_type_filter != "All":
         filtered = [e for e in filtered if e.experiment_type == exp_type_filter]
     if genotype_filter != "All":

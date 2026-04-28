@@ -17,7 +17,10 @@ import numpy as np
 import streamlit as st
 from streamlit_drawable_canvas import st_canvas
 
-from ..cohorts import list_cohorts, load_cohort, cohort_member_ids
+from ..cohorts import cohort_member_ids, list_cohorts, load_cohort
+from ..filters import SCOPE_KEY, _cohort_member_ids, invalidate_after_write, pkey
+
+PANE = "ezm_wedge"
 
 # ---------------------------------------------------------------------------
 # Experiment row
@@ -377,33 +380,28 @@ def render_ezm_wedge_marking(
         st.stop()
 
     # --- Filters ---
-    cohorts_dir = project_path / "cohorts"
-    ezm_cohorts = list_cohorts(cohorts_dir, task_type="EZM")
-
-    # Build cohort name -> file path lookup
-    cohort_by_name: Dict[str, str] = {c["name"]: c["path"] for c in ezm_cohorts}
-
-    fc1, fc2, fc3 = st.columns([2, 1, 2])
+    # Cohort scope is read from the universal scope picker in the sidebar
+    # (see web/filters.py:render_scope_picker, wired in web/app.py).
+    # Marking-status and sort are pane-specific primary controls and live
+    # in the main area for ergonomics during the marking workflow.
+    fc1, fc2 = st.columns([1, 2])
     with fc1:
-        scope_options = ["All"] + list(cohort_by_name.keys())
-        scope = st.selectbox("Scope", scope_options, key="ewm_scope")
-    with fc2:
         marking_filter = st.radio(
             "Status", ["Unmarked", "Marked", "All"],
-            horizontal=True, key="ewm_status",
+            horizontal=True, key=pkey(PANE, "status"),
         )
-    with fc3:
+    with fc2:
         sort_by = st.selectbox(
             "Sort by",
             ["subject_id", "date_recorded", "experiment_id"],
-            key="ewm_sort",
+            key=pkey(PANE, "sort"),
         )
 
-    # Apply cohort filter
+    # Apply cohort scope (universal)
     filtered: List[_EZMRow] = list(all_rows)
-    if scope != "All" and scope in cohort_by_name:
-        cohort = load_cohort(Path(cohort_by_name[scope]))
-        member_ids = cohort_member_ids(cohort)
+    scope_cohort = st.session_state.get(SCOPE_KEY)
+    if scope_cohort:
+        member_ids = _cohort_member_ids(project_path, scope_cohort)
         filtered = [r for r in filtered if r.experiment_id in member_ids]
 
     # Apply marking status filter

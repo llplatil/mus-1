@@ -94,6 +94,45 @@ stage has exactly one pane, every loader uses the multi-root discovery
 layer, and cohort affordances cover the gaps that previously required
 shell scripts (NOR↔NOF pairing, cohort task-type filters).
 
+### Iteration 1.5 — UI standardization (DONE 2026-04-28)
+
+Three-tier sidebar contract (Scope · Filters · Display) backed by a single
+shared module. Concrete deliverables:
+
+- **`web/filters.py`** — single source of truth for filter state and UI:
+  - `FilterState` (frozen dataclass): cohort + marking_status + qc_statuses
+    + genotypes + sexes + text + date_range. Pure data; testable without
+    a Streamlit runtime.
+  - `render_scope_picker(project_path)` — universal cohort selector at
+    the top of the sidebar; persists to `st.session_state[SCOPE_KEY]`.
+  - `render_filters(rows, fields, key_prefix, marking_field, qc_field)`
+    — renders the standard "Filters" expander, returns
+    `(state, filtered_rows)`. Filter widgets only render when the pane
+    opts in via `fields={…}` (subset of `KNOWN_FIELDS`).
+  - `mode_settings(label, key_prefix)` — context manager that opens the
+    standard "Display" expander for pane-specific toggles (overlays,
+    color choices, frame stride, …).
+  - `filter_by_cohort(rows, cohort, project_path)` — predicate used by
+    every loader-consumer.
+  - `pkey(pane, widget)` — namespaced key builder, prevents silent
+    state-bleed between panes.
+  - `invalidate_after_write()` — replaces scattered
+    `st.cache_data.clear()` calls; called once per JSON write.
+- **Sidebar layout** in every migrated pane is now identical:
+  Scope (top) → View radio → Filters expander → Display expander.
+- **Migrated panes:** `EZM Zones QC`, `EZM Tracking QC`, `EZM Wedge
+  Marking`, `NOR/NOF Object QC`, `NOR/NOF Object Marking`,
+  `NOR/NOF Interaction QC`. Each lost its bespoke Cohort/Genotype/Sex/
+  Status/Search filter widgets; gained the shared ones (which adapt
+  automatically to additions like new genotypes or QC statuses).
+- **Cohort Management** retains its own "cohort being edited" picker
+  plus its data-source / unassigned-only filters (cohort-add-specific),
+  but now also honors the universal scope picker — set scope to cohort
+  X, edit cohort Y, and the add-experiments pool restricts to X's
+  members. Surfaces a banner so the side-effect is obvious.
+- **Net code:** `web/filters.py` is ~370 LOC; net diff across panes is
+  −300 LOC after consolidating duplicate filter blocks.
+
 ### Iteration 1 — Pane consolidation (DONE 2026-04-27)
 - **Removed (file deleted + sidebar entry dropped):**
   `Annotator` (`views/annotator_embed.py`), `NOR/NOF QC` aka "Paired QC
@@ -117,6 +156,13 @@ shell scripts (NOR↔NOF pairing, cohort task-type filters).
   existing-but-different link.
 
 ### Iteration 2 — One-stop "Marking Dashboard" landing pane (NEXT)
+
+With the shared filter module in place from Iteration 1.5, this is now
+straightforward: the dashboard reuses `render_filters` against the
+discovery output and emits one row per (task, marking-status) pairing
+with deep-links into the relevant pane.
+
+
 Replace the current "Subjects/Experiments" landing with a dashboard that
 shows, at a glance, what work is owed across every cohort:
 

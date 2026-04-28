@@ -16,6 +16,10 @@ import numpy as np
 import streamlit as st
 from streamlit_drawable_canvas import st_canvas
 
+from ..filters import SCOPE_KEY, _cohort_member_ids, invalidate_after_write, pkey
+
+PANE = "nor_nof_om"
+
 from .nor_nof_object_qc import (
     _ExperimentRow,
     _load_nor_nof_experiments,
@@ -131,17 +135,36 @@ def render_nor_nof_object_marking(
         st.stop()
 
     # --- Filters ---
+    # Cohort scope is read from the universal scope picker in the sidebar
+    # (see web/filters.py). Task / unmarked / flagged / sort are
+    # pane-specific primary controls and stay in the main area.
     fc1, fc2, fc3, fc4 = st.columns([1, 1, 1, 2])
     with fc1:
-        task_filter = st.radio("Task", ["Both", "NOR", "NOF"], horizontal=True, key="om_task")
+        task_filter = st.radio(
+            "Task", ["Both", "NOR", "NOF"], horizontal=True,
+            key=pkey(PANE, "task"),
+        )
     with fc2:
-        only_unmarked = st.checkbox("Only unmarked", value=True, key="om_unmarked")
+        only_unmarked = st.checkbox(
+            "Only unmarked", value=True, key=pkey(PANE, "unmarked"),
+        )
     with fc3:
-        only_flagged = st.checkbox("Only flagged", value=False, key="om_flagged")
+        only_flagged = st.checkbox(
+            "Only flagged", value=False, key=pkey(PANE, "flagged"),
+        )
     with fc4:
-        sort_by = st.selectbox("Sort by", ["subject_id", "date_recorded", "experiment_id"], key="om_sort")
+        sort_by = st.selectbox(
+            "Sort by",
+            ["subject_id", "date_recorded", "experiment_id"],
+            key=pkey(PANE, "sort"),
+        )
 
     filtered: List[_ExperimentRow] = list(all_rows)
+    # Apply universal cohort scope
+    scope_cohort = st.session_state.get(SCOPE_KEY)
+    if scope_cohort:
+        member_ids = _cohort_member_ids(project_path, scope_cohort)
+        filtered = [r for r in filtered if r.experiment_id in member_ids]
     if task_filter != "Both":
         filtered = [r for r in filtered if r.experiment_type == task_filter]
     if only_unmarked:

@@ -22,18 +22,10 @@ from ..ezm_qc_shared import (
     LOCKED_LH_THRESHOLD,
 )
 from ..ezm_trajectory_overlay import draw_ezm_qc_overlay, load_dlc_tracks
-
-try:
-    from ..cohorts import (
-        cohort_member_ids,
-        list_cohorts,
-        load_cohort,
-    )
-    _HAS_COHORTS = True
-except ImportError:
-    _HAS_COHORTS = False
+from ..filters import invalidate_after_write, mode_settings, pkey, render_filters
 
 
+PANE = "ezm_zones"
 _STATUS_OPTIONS = ["(not reviewed)", "keep", "re_mark", "exclude"]
 
 
@@ -41,16 +33,14 @@ def render_ezm_zones_qc(*, workspace_root: Optional[str], project_path: Path) ->
     st.header("EZM Zones QC")
     st.caption("Review arena circle fit from wedge point markings.")
 
-    if st.button("Refresh (clear cache)", key="ezm_zqc_refresh"):
-        st.cache_data.clear()
+    if st.button("Refresh (clear cache)", key=pkey(PANE, "refresh")):
+        invalidate_after_write()
         st.rerun()
 
     if not workspace_root:
         st.error("This view requires `--workspace-root`.")
         st.stop()
-    project_root = project_path.parent  # WDMOSEQ2 root
     experiment_data_root = project_path / "experiment_data"
-    cohorts_dir = project_path / "cohorts"
 
     # ── Discover experiments ──────────────────────────────────────────
     all_rows = load_ezm_experiments(str(experiment_data_root))
@@ -61,62 +51,23 @@ def render_ezm_zones_qc(*, workspace_root: Optional[str], project_path: Path) ->
         st.info(f"No EZM experiment folders found under `{experiment_data_root / 'EZM'}`.")
         st.stop()
 
-    # ── Sidebar ───────────────────────────────────────────────────────
-    st.sidebar.header("Filters")
-
-    show_trajectory = st.sidebar.checkbox("Show trajectory", value=True, key="ezm_zqc_show_traj")
-
-    marking_filter = st.sidebar.selectbox(
-        "Marking status", options=["has markings", "needs markings", "all"],
-        index=0, key="ezm_zqc_marking_filter",
-    )
-    qc_filter = st.sidebar.selectbox(
-        "Arena QC status", options=["All", "Unreviewed", "Reviewed", "Flagged"],
-        index=0, key="ezm_zqc_qc_filter",
-    )
-    genotypes = sorted({r["genotype"] for r in all_rows if r["genotype"]})
-    genotype_filter = st.sidebar.selectbox(
-        "Genotype", options=["All"] + genotypes, index=0, key="ezm_zqc_genotype",
+    # ── Universal Filters block (cohort scope read from session_state) ──
+    state, filtered = render_filters(
+        rows=all_rows,
+        fields={"marking_status", "qc_statuses", "genotypes", "sexes", "text"},
+        key_prefix=PANE,
+        marking_field="has_wedge_points",
+        qc_field="arena_qc_status",
+        project_path=project_path,
     )
 
-    # Cohort filter (read-only)
-    cohort_filter_ids: Optional[set] = None
-    if _HAS_COHORTS:
-        cohort_summaries = list_cohorts(cohorts_dir, task_type="EZM")
-        cohort_names = ["(none)"] + [c["name"] for c in cohort_summaries]
-        cohort_filter = st.sidebar.selectbox(
-            "Cohort", options=cohort_names, index=0, key="ezm_zqc_cohort_filter",
+    # ── Pane-specific Display settings ───────────────────────────────
+    with mode_settings("Display", key_prefix=PANE):
+        show_trajectory = st.checkbox(
+            "Show trajectory", value=True, key=pkey(PANE, "show_traj"),
         )
-        if cohort_filter != "(none)":
-            match = [c for c in cohort_summaries if c["name"] == cohort_filter]
-            if match:
-                active_cohort = load_cohort(Path(match[0]["path"]))
-                cohort_filter_ids = cohort_member_ids(active_cohort)
-
-    name_filter = st.sidebar.text_input("Filter (substring)", value="", key="ezm_zqc_name_filter")
 
     st.caption(f"{n_with_wedge} of {n_total} EZM experiments have wedge points marked.")
-
-    # ── Filter experiments ────────────────────────────────────────────
-    filtered = []
-    for r in all_rows:
-        if marking_filter == "has markings" and not r["has_wedge_points"]:
-            continue
-        if marking_filter == "needs markings" and r["has_wedge_points"]:
-            continue
-        if qc_filter == "Unreviewed" and r["arena_qc_status"]:
-            continue
-        if qc_filter == "Reviewed" and not r["arena_qc_status"]:
-            continue
-        if qc_filter == "Flagged" and r["arena_qc_status"] not in ("re_mark", "exclude"):
-            continue
-        if genotype_filter != "All" and r["genotype"] != genotype_filter:
-            continue
-        if cohort_filter_ids is not None and r["experiment_id"] not in cohort_filter_ids:
-            continue
-        if name_filter.strip() and name_filter.strip().lower() not in r["experiment_id"].lower():
-            continue
-        filtered.append(r)
 
     if not filtered:
         st.info("No experiments match current filters.")
@@ -124,27 +75,28 @@ def render_ezm_zones_qc(*, workspace_root: Optional[str], project_path: Path) ->
 
     # ── Navigation ────────────────────────────────────────────────────
     n = len(filtered)
-    if "ezm_zqc_idx" not in st.session_state:
-        st.session_state["ezm_zqc_idx"] = 0
-    idx = max(0, min(int(st.session_state["ezm_zqc_idx"]), n - 1))
+    idx_state_key = pkey(PANE, "idx")
+    if idx_state_key not in st.session_state:
+        st.session_state[idx_state_key] = 0
+    idx = max(0, min(int(st.session_state[idx_state_key]), n - 1))
 
     col_prev, col_idx, col_next, col_count = st.columns([1, 2, 1, 2])
     with col_prev:
-        if st.button("Prev", key="ezm_zqc_prev", disabled=idx <= 0):
-            st.session_state["ezm_zqc_idx"] = idx - 1
+        if st.button("Prev", key=pkey(PANE, "prev"), disabled=idx <= 0):
+            st.session_state[idx_state_key] = idx - 1
             st.rerun()
     with col_next:
-        if st.button("Next", key="ezm_zqc_next", disabled=idx >= n - 1):
-            st.session_state["ezm_zqc_idx"] = idx + 1
+        if st.button("Next", key=pkey(PANE, "next"), disabled=idx >= n - 1):
+            st.session_state[idx_state_key] = idx + 1
             st.rerun()
     with col_idx:
         new_idx = st.number_input(
             "Index", min_value=0, max_value=n - 1, value=idx, step=1,
-            key="ezm_zqc_idx_input",
+            key=pkey(PANE, "idx_input"),
         )
         if int(new_idx) != idx:
             idx = int(new_idx)
-            st.session_state["ezm_zqc_idx"] = idx
+            st.session_state[idx_state_key] = idx
     with col_count:
         st.markdown(f"**{idx + 1} / {n}** experiments")
 
@@ -196,7 +148,7 @@ def render_ezm_zones_qc(*, workspace_root: Optional[str], project_path: Path) ->
         .get("ezm_open_closed", {})
         .get("exploration_settings") or {}
     )
-    _k_inv = f"ezm_zqc_exp_inv_{exp_id}"
+    _k_inv = pkey(PANE, f"inv__{exp_id}")
     if _k_inv not in st.session_state:
         st.session_state[_k_inv] = _saved_settings.get("invert_open_closed", False)
     invert_open_closed = st.checkbox("Invert open/closed", key=_k_inv)
@@ -248,7 +200,7 @@ def render_ezm_zones_qc(*, workspace_root: Optional[str], project_path: Path) ->
     if reviewed_at:
         st.caption(f"Last reviewed: {reviewed_at[:19]}")
 
-    _k_status = f"ezm_zqc_status_{exp_id}"
+    _k_status = pkey(PANE, f"status__{exp_id}")
     if _k_status not in st.session_state:
         if existing_status in _STATUS_OPTIONS:
             st.session_state[_k_status] = existing_status
@@ -259,7 +211,7 @@ def render_ezm_zones_qc(*, workspace_root: Optional[str], project_path: Path) ->
         "Status", options=_STATUS_OPTIONS, horizontal=True, key=_k_status,
     )
 
-    _k_notes = f"ezm_zqc_notes_{exp_id}"
+    _k_notes = pkey(PANE, f"notes__{exp_id}")
     if _k_notes not in st.session_state:
         st.session_state[_k_notes] = existing_notes
 
@@ -273,7 +225,7 @@ def render_ezm_zones_qc(*, workspace_root: Optional[str], project_path: Path) ->
     # ── Save ─────────────────────────────────────────────────────────
     if st.button(
         "Save arena QC",
-        key=f"ezm_zqc_save_{exp_id}", type="primary",
+        key=pkey(PANE, f"save__{exp_id}"), type="primary",
     ):
         fresh = json.loads(exp_json_path.read_text())
         am_f = fresh.setdefault("arena_markings", {})
@@ -298,6 +250,6 @@ def render_ezm_zones_qc(*, workspace_root: Optional[str], project_path: Path) ->
         }
 
         exp_json_path.write_text(json.dumps(fresh, indent=2) + "\n", encoding="utf-8")
-        st.cache_data.clear()
+        invalidate_after_write()
         st.toast("Saved arena QC.")
         st.rerun()

@@ -35,15 +35,9 @@ from ..ezm_trajectory_overlay import (
     load_dlc_tracks,
 )
 
-try:
-    from ..cohorts import (
-        cohort_member_ids,
-        list_cohorts,
-        load_cohort,
-    )
-    _HAS_COHORTS = True
-except ImportError:
-    _HAS_COHORTS = False
+from ..filters import invalidate_after_write, mode_settings, pkey, render_filters
+
+PANE = "ezm_tracking"
 
 # ZoneDefinition import for building from dict
 _ZONES_DIR = str(Path(__file__).resolve().parents[4] / "workspace" / "dlc_ezm_open_closed")
@@ -81,16 +75,14 @@ def render_ezm_tracking_qc(*, workspace_root: Optional[str], project_path: Path)
     st.header("EZM Tracking QC")
     st.caption("Compute metrics, review tracking quality, flag issues.")
 
-    if st.button("Refresh (clear cache)", key="ezm_tqc_refresh"):
-        st.cache_data.clear()
+    if st.button("Refresh (clear cache)", key=pkey(PANE, "refresh")):
+        invalidate_after_write()
         st.rerun()
 
     if not workspace_root:
         st.error("This view requires `--workspace-root`.")
         st.stop()
-    project_root = project_path.parent
     experiment_data_root = project_path / "experiment_data"
-    cohorts_dir = project_path / "cohorts"
 
     # ── Discover experiments ──────────────────────────────────────────
     all_rows = load_ezm_experiments(str(experiment_data_root))
@@ -100,84 +92,49 @@ def render_ezm_tracking_qc(*, workspace_root: Optional[str], project_path: Path)
         st.info(f"No EZM experiment folders found under `{experiment_data_root / 'EZM'}`.")
         st.stop()
 
-    # ── Sidebar ───────────────────────────────────────────────────────
-    st.sidebar.header("Arena requirement")
-    arena_req = st.sidebar.selectbox(
-        "Arena source",
-        ["Auto from wedge points", "Require arena QC approved"],
-        key="ezm_tqc_arena_req",
+    # Tracking QC always requires wedge points; pre-filter before showing
+    # the universal filter widgets so the Filter expander only offers
+    # values present in the eligible pool.
+    has_wedge_rows = [r for r in all_rows if r.get("has_wedge_points")]
+
+    # ── Universal Filters block (cohort scope read from session_state) ──
+    state, filtered = render_filters(
+        rows=has_wedge_rows,
+        fields={"qc_statuses", "genotypes", "sexes", "text"},
+        key_prefix=PANE,
+        qc_field="qc_status",
+        project_path=project_path,
     )
 
-    st.sidebar.header("Filters")
-    show_trajectory = st.sidebar.checkbox("Show trajectory", value=True, key="ezm_tqc_show_traj")
-
-    qc_filter = st.sidebar.selectbox(
-        "Tracking QC status",
-        options=["All", "Unreviewed", "Reviewed", "Flagged", "needs_re_review"],
-        index=0, key="ezm_tqc_qc_filter",
-    )
-    genotypes = sorted({r["genotype"] for r in all_rows if r["genotype"]})
-    genotype_filter = st.sidebar.selectbox(
-        "Genotype", options=["All"] + genotypes, index=0, key="ezm_tqc_genotype",
-    )
-
-    # Cohort filter (read-only)
-    cohort_filter_ids: Optional[set] = None
-    if _HAS_COHORTS:
-        cohort_summaries = list_cohorts(cohorts_dir, task_type="EZM")
-        cohort_names = ["(none)"] + [c["name"] for c in cohort_summaries]
-        cohort_filter = st.sidebar.selectbox(
-            "Cohort", options=cohort_names, index=0, key="ezm_tqc_cohort_filter",
+    # ── Pane-specific Display + arena/sort settings ─────────────────
+    with mode_settings("Display", key_prefix=PANE):
+        show_trajectory = st.checkbox(
+            "Show trajectory", value=True, key=pkey(PANE, "show_traj"),
         )
-        if cohort_filter != "(none)":
-            match = [c for c in cohort_summaries if c["name"] == cohort_filter]
-            if match:
-                active_cohort = load_cohort(Path(match[0]["path"]))
-                cohort_filter_ids = cohort_member_ids(active_cohort)
+        arena_req = st.selectbox(
+            "Arena source",
+            ["Auto from wedge points", "Require arena QC approved"],
+            key=pkey(PANE, "arena_req"),
+            help="`Require arena QC approved` hides experiments whose "
+                 "wedge-point QC isn't 'keep'.",
+        )
+        sort_by_artifact = st.checkbox(
+            "Sort by artifact rate (worst first)",
+            value=False, key=pkey(PANE, "sort_artifact"),
+        )
+        high_correction_only = st.checkbox(
+            "High correction only (>5%)",
+            value=False, key=pkey(PANE, "high_corr"),
+        )
 
-    name_filter = st.sidebar.text_input("Filter (substring)", value="", key="ezm_tqc_name_filter")
-
-    st.sidebar.header("Consensus QC")
-    sort_by_artifact = st.sidebar.checkbox(
-        "Sort by artifact rate (worst first)",
-        value=False, key="ezm_tqc_sort_artifact",
-    )
-    high_correction_only = st.sidebar.checkbox(
-        "High correction only (>5%)",
-        value=False, key="ezm_tqc_high_corr",
-    )
-
-    # ── Filter experiments ────────────────────────────────────────────
-    filtered = []
-    for r in all_rows:
-        # Must have wedge points
-        if not r["has_wedge_points"]:
-            continue
-        # Arena QC requirement
-        if arena_req == "Require arena QC approved" and r["arena_qc_status"] != "keep":
-            continue
-        # QC filters
-        if qc_filter == "Unreviewed" and r["qc_reviewed_at"]:
-            continue
-        if qc_filter == "Reviewed" and not r["qc_reviewed_at"]:
-            continue
-        if qc_filter == "Flagged" and r["qc_status"] not in (
-            "poor_tracking", "exclude", "needs_re_review",
-        ):
-            continue
-        if qc_filter == "needs_re_review" and r["qc_status"] != "needs_re_review":
-            continue
-        if genotype_filter != "All" and r["genotype"] != genotype_filter:
-            continue
-        if cohort_filter_ids is not None and r["experiment_id"] not in cohort_filter_ids:
-            continue
-        if name_filter.strip() and name_filter.strip().lower() not in r["experiment_id"].lower():
-            continue
-        if high_correction_only:
-            corr = r.get("corrected_fraction")
-            if corr is None or corr <= 0.05:
-                continue
-        filtered.append(r)
+    # Apply pane-specific filters that don't fit the generic widgets
+    if arena_req == "Require arena QC approved":
+        filtered = [r for r in filtered if r.get("arena_qc_status") == "keep"]
+    if high_correction_only:
+        filtered = [
+            r for r in filtered
+            if (r.get("corrected_fraction") or 0.0) > 0.05
+        ]
 
     # Sort by artifact rate if requested (worst first)
     if sort_by_artifact:
@@ -653,7 +610,7 @@ def render_ezm_tracking_qc(*, workspace_root: Optional[str], project_path: Path)
         }
 
         exp_json_path.write_text(json.dumps(fresh, indent=2) + "\n", encoding="utf-8")
-        st.cache_data.clear()
+        invalidate_after_write()
         st.toast("Saved: settings + metrics + QC.")
         st.rerun()
 
