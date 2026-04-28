@@ -137,6 +137,16 @@ def render_ezm_zones_qc(*, workspace_root: Optional[str], project_path: Path) ->
     if fit_warning:
         st.warning(fit_warning)
 
+    # Predicted (UNet auto-suggest) block
+    predicted_block = (am.get("predicted") or {}).get("ezm_wedge_points") or {}
+    pred_points = predicted_block.get("points") or []
+    pred_status = predicted_block.get("qc_status", "")
+    pred_zone_payload, pred_fit_warning = (None, None)
+    if len(pred_points) == 4:
+        pred_zone_payload, pred_fit_warning = build_zone_payload_from_wedge_points(
+            pred_points, frame_rgb.shape
+        )
+
     # ── Load tracks for overlay ──────────────────────────────────────
     tracks = None
     if dlc_csv_path is not None and dlc_csv_path.exists():
@@ -253,3 +263,104 @@ def render_ezm_zones_qc(*, workspace_root: Optional[str], project_path: Path) ->
         invalidate_after_write()
         st.toast("Saved arena QC.")
         st.rerun()
+
+    # ── Predicted (UNet auto-suggest) review ─────────────────────────
+    if predicted_block:
+        st.markdown("---")
+        st.markdown("**Predicted wedge points (UNet auto-suggest)**")
+        col_meta, col_actions = st.columns([3, 2])
+        with col_meta:
+            model_ver = predicted_block.get("model_version", "")
+            pred_at = predicted_block.get("predicted_at", "")
+            n_used = predicted_block.get("n_frames_sampled", 0)
+            quality = predicted_block.get("quality", {}) or {}
+            st.caption(
+                f"Predicted at {pred_at[:19] if pred_at else '?'} "
+                f"from {n_used} frames; status={pred_status or 'predicted_unreviewed'}"
+            )
+            st.caption(f"Model: `{model_ver}`")
+            of = quality.get("open_pixel_fraction")
+            cf = quality.get("closed_pixel_fraction")
+            if of is not None and cf is not None:
+                st.caption(
+                    f"Mask quality: open_frac={of:.3f}, closed_frac={cf:.3f}, "
+                    f"open_components={quality.get('n_open_components', '?')}"
+                )
+            # Per-point displacement vs manual (if manual exists)
+            if len(wp) == 4 and len(pred_points) == 4:
+                disps = []
+                for (mx, my), (px, py) in zip(wp, pred_points):
+                    dx = float(px) - float(mx)
+                    dy = float(py) - float(my)
+                    disps.append((dx * dx + dy * dy) ** 0.5)
+                st.caption(
+                    f"Manual ↔ predicted displacement (px): "
+                    f"min={min(disps):.1f}, mean={sum(disps)/4:.1f}, max={max(disps):.1f}"
+                )
+
+        # Render predicted overlay (separate so user can compare)
+        if pred_zone_payload is not None:
+            try:
+                pred_overlay = draw_ezm_qc_overlay(
+                    frame_rgb, pred_zone_payload, tracks or {}, "head",
+                    show_trajectory=False, show_legend=False,
+                    invert_open_closed=bool(invert_open_closed),
+                )
+                st.image(pred_overlay, caption="Predicted overlay (auto-suggest)",
+                          use_container_width=True)
+            except Exception as e:
+                st.warning(f"Could not render predicted overlay: {e}")
+        else:
+            st.warning("Predicted points present but zone fit failed.")
+            if pred_fit_warning:
+                st.warning(pred_fit_warning)
+
+        with col_actions:
+            st.markdown("**Predicted-mark actions**")
+            c1, c2 = st.columns(2)
+            with c1:
+                if st.button("Accept → manual",
+                              key=pkey(PANE, f"pred_accept__{exp_id}"),
+                              type="primary",
+                              disabled=(pred_status == "accepted_promoted"
+                                        or len(pred_points) != 4)):
+                    fresh = json.loads(exp_json_path.read_text())
+                    am_f = fresh.setdefault("arena_markings", {})
+                    # Promote predicted → manual ezm_wedge_points
+                    wp_existing = am_f.get("ezm_wedge_points", {}) or {}
+                    am_f["ezm_wedge_points"] = {
+                        "points": pred_points,
+                        "frame_shape": predicted_block.get("frame_shape",
+                                                           list(frame_rgb.shape)),
+                        "flag_review": False,
+                        "note": (wp_existing.get("note", "") or "").strip()
+                                + " [promoted from UNet prediction]",
+                        "marked_at": datetime.now(timezone.utc).isoformat(),
+                        "promoted_from_prediction": True,
+                        "qc": wp_existing.get("qc", {}),
+                    }
+                    pred_blk = am_f.setdefault("predicted", {}).setdefault(
+                        "ezm_wedge_points", {})
+                    pred_blk["qc_status"] = "accepted_promoted"
+                    pred_blk["accepted_at"] = datetime.now(timezone.utc).isoformat()
+                    exp_json_path.write_text(
+                        json.dumps(fresh, indent=2) + "\n", encoding="utf-8")
+                    invalidate_after_write()
+                    st.toast("Predicted marks promoted to manual.")
+                    st.rerun()
+            with c2:
+                if st.button("Reject prediction",
+                              key=pkey(PANE, f"pred_reject__{exp_id}"),
+                              disabled=(pred_status == "rejected")):
+                    fresh = json.loads(exp_json_path.read_text())
+                    pred_blk = fresh.setdefault("arena_markings", {}).setdefault(
+                        "predicted", {}).setdefault("ezm_wedge_points", {})
+                    pred_blk["qc_status"] = "rejected"
+                    pred_blk["rejected_at"] = datetime.now(timezone.utc).isoformat()
+                    exp_json_path.write_text(
+                        json.dumps(fresh, indent=2) + "\n", encoding="utf-8")
+                    invalidate_after_write()
+                    st.toast("Predicted marks rejected.")
+                    st.rerun()
+            st.caption("To edit the predicted points before accepting, "
+                        "open the EZM Wedge Marking pane.")
