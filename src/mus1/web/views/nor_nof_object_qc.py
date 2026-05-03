@@ -1,4 +1,12 @@
-"""NOR/NOF Object QC -- review and confirm object assignments per experiment.
+"""NOR/NOF Object Association — assign L/R objects + novel side per experiment.
+
+Where the experimenter confirms which physical object is on which side of
+the arena and (for NOR) which side is novel, side-by-side with the
+linked NOR↔NOF partner so laterality matches across the pair. The pane's
+historical name was "Object QC" but it's really an *association* step
+(the L/R names + novel-side metadata are the output, not a quality
+gate). Downstream visual QC of the actual mark coordinates lives in the
+NOR/NOF Interaction QC pane.
 
 Source of truth: experiment JSON files on disk.
 DB sync happens separately via workspace_db_sync; this view only writes JSON.
@@ -171,25 +179,44 @@ def _load_nor_nof_experiments(experiment_data_root: Path) -> List[_ExperimentRow
 # ---------------------------------------------------------------------------
 
 def _load_pair_info(experiment_data_root: Path, paired_eid: Optional[str]) -> Optional[dict]:
-    """Load key fields from the paired experiment's JSON."""
+    """Load key fields from the paired experiment's JSON.
+
+    Searches every configured data root via the multi-root discovery layer
+    so validation cohorts (in ``validation_data/``) resolve correctly.
+    *experiment_data_root* is retained as the project-path anchor for
+    back-compat — its parent is treated as the project_path passed to
+    discovery.
+    """
     if not paired_eid:
         return None
-    parts = paired_eid.split("_", 1)
-    if len(parts) < 2:
-        return None
-    task = parts[0]  # NOR or NOF
-    pair_json = experiment_data_root / task / paired_eid / f"{paired_eid}.json"
-    if not pair_json.exists():
-        return None
+    from mus1.web.discovery import find_experiment_dir, find_experiment_json
+
+    project_path = Path(experiment_data_root).parent
+    exp_dir = find_experiment_dir(project_path, paired_eid)
+    pair_json: Optional[Path] = None
+    if exp_dir is not None:
+        pair_json = find_experiment_json(exp_dir)
+    if pair_json is None:
+        # Last-resort fallback to the legacy single-root path so callers
+        # still using ``data/experiment_data/`` directly keep working.
+        parts = paired_eid.split("_", 1)
+        task = parts[0] if parts else ""
+        legacy = experiment_data_root / task / paired_eid / f"{paired_eid}.json"
+        if legacy.exists():
+            pair_json = legacy
+        else:
+            return None
     try:
         data = json.loads(pair_json.read_text())
     except Exception:
         return None
     el = data.get("metadata", {}).get("experiment_level", {})
     oqc = data.get("object_qc") or {}
+    task = (data.get("experiment_type")
+            or paired_eid.split("_", 1)[0])
     return {
         "experiment_id": paired_eid,
-        "experiment_type": data.get("experiment_type", task),
+        "experiment_type": task,
         "toys_raw": el.get("toys_raw") or el.get("toy_raw") or "",
         "object_left": el.get("object_left"),
         "object_right": el.get("object_right"),
@@ -338,22 +365,37 @@ def _change_experiment_type(
         "paired_experiment_type": opposite_task,
     }
 
-    # Update the former pair's reference to point to the new experiment id
+    # Update the former pair's reference to point to the new experiment id.
+    # Resolve through multi-root discovery so validation pairs in
+    # ``validation_data/`` are also located.
     if old_paired_eid:
-        old_pair_parts = old_paired_eid.split("_", 1)
-        if len(old_pair_parts) >= 2:
-            pair_task = old_pair_parts[0]
-            pair_json = experiment_data_root / pair_task / old_paired_eid / f"{old_paired_eid}.json"
-            if pair_json.exists():
-                try:
-                    pair_data = json.loads(pair_json.read_text())
-                    pair_data["nor_nof_pair"] = {
-                        "paired_experiment_id": new_id,
-                        "paired_experiment_type": new_type,
-                    }
-                    pair_json.write_text(json.dumps(pair_data, indent=2, default=str) + "\n")
-                except Exception:
-                    pass
+        from mus1.web.discovery import find_experiment_dir, find_experiment_json
+
+        project_path = Path(experiment_data_root).parent
+        partner_dir = find_experiment_dir(project_path, old_paired_eid)
+        pair_json: Optional[Path] = (
+            find_experiment_json(partner_dir) if partner_dir else None
+        )
+        if pair_json is None:
+            # Legacy single-root fallback
+            old_pair_parts = old_paired_eid.split("_", 1)
+            if len(old_pair_parts) >= 2:
+                legacy = (experiment_data_root / old_pair_parts[0]
+                          / old_paired_eid / f"{old_paired_eid}.json")
+                if legacy.exists():
+                    pair_json = legacy
+        if pair_json is not None:
+            try:
+                pair_data = json.loads(pair_json.read_text())
+                pair_data["nor_nof_pair"] = {
+                    "paired_experiment_id": new_id,
+                    "paired_experiment_type": new_type,
+                }
+                pair_json.write_text(
+                    json.dumps(pair_data, indent=2, default=str) + "\n"
+                )
+            except Exception:
+                pass
 
     new_json.write_text(json.dumps(data, indent=2, default=str) + "\n")
     return None
@@ -369,7 +411,11 @@ def render_nor_nof_object_qc(
     workspace_root: Optional[str],
     db_path: Path,
 ) -> None:
-    st.header("NOR/NOF Object QC")
+    st.header("NOR/NOF Object Association")
+    st.caption(
+        "Confirm L/R object names + novel side; view the linked NOR↔NOF "
+        "partner side-by-side to verify laterality matches across the pair."
+    )
     st.caption("Review object assignments per experiment. Edits write directly to JSON; DB syncs separately.")
 
     experiment_data_root = project_path / "experiment_data"

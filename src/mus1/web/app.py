@@ -78,7 +78,7 @@ def main() -> None:
             # QC (review)
             "EZM Zones QC",
             "EZM Tracking QC",
-            "NOR/NOF Object QC",
+            "NOR/NOF Object Association",
             "NOR/NOF Interaction QC",
             # Cohort
             "Cohort Management",
@@ -106,7 +106,7 @@ def main() -> None:
     if view == "EZM Tracking QC":
         render_ezm_tracking_qc(workspace_root=workspace_root, project_path=project_path)
         st.stop()
-    if view == "NOR/NOF Object QC":
+    if view == "NOR/NOF Object Association":
         render_nor_nof_object_qc(project_path=project_path, workspace_root=workspace_root, db_path=db_path)
         st.stop()
     if view == "NOR/NOF Interaction QC":
