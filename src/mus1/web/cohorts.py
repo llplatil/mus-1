@@ -164,18 +164,134 @@ def create_cohort(
     *,
     task_types: Optional[List[str]] = None,
     description: str = "",
+    objects: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
-    """Return a new cohort dict (not yet saved to disk)."""
+    """Return a new cohort dict (not yet saved to disk).
+
+    *objects* is the optional NOR/NOF object vocabulary for this cohort
+    (e.g. ``["fish", "atom", "dino", "tube"]``). The marking + QC panes
+    union the ``objects`` lists from every cohort an experiment belongs
+    to and offer that union in the object selector. Per-experiment
+    ``metadata.experiment_level.object_left/right`` values take
+    precedence — the cohort list only seeds defaults for un-marked
+    experiments.
+    """
     return {
         "name": name,
         "version": 1,
         "description": description,
         "task_types": task_types or [],
+        "objects": [_normalize_object(o) for o in (objects or [])],
         "created_at": _now_iso(),
         "updated_at": _now_iso(),
         "criteria": {"type": "manual", "description": ""},
         "members": [],
     }
+
+
+# ---------------------------------------------------------------------------
+# Object vocabulary (per-cohort, with experiment-level override)
+# ---------------------------------------------------------------------------
+
+def _normalize_object(name: str) -> str:
+    """Lowercase + strip whitespace; keep alnum/underscore/dash only."""
+    return str(name).strip().lower()
+
+
+def cohort_objects(cohort: Dict[str, Any]) -> List[str]:
+    """Return the cohort's object vocabulary (always a list of strings).
+
+    Tolerates the legacy schema (no ``objects`` key) by returning ``[]``.
+    """
+    raw = cohort.get("objects")
+    if not raw or not isinstance(raw, list):
+        return []
+    out: List[str] = []
+    seen = set()
+    for v in raw:
+        n = _normalize_object(v)
+        if n and n not in seen:
+            out.append(n)
+            seen.add(n)
+    return out
+
+
+def set_cohort_objects(cohort: Dict[str, Any], objects: List[str]) -> Dict[str, Any]:
+    """Replace the cohort's object vocabulary (in place; idempotent)."""
+    cohort["objects"] = []
+    seen = set()
+    for v in objects:
+        n = _normalize_object(v)
+        if n and n not in seen:
+            cohort["objects"].append(n)
+            seen.add(n)
+    return cohort
+
+
+def add_cohort_object(cohort: Dict[str, Any], name: str) -> bool:
+    """Add a single object to the cohort's vocabulary. Returns True if added."""
+    n = _normalize_object(name)
+    if not n:
+        return False
+    objs = cohort.setdefault("objects", [])
+    existing = {_normalize_object(o) for o in objs}
+    if n in existing:
+        return False
+    objs.append(n)
+    return True
+
+
+def remove_cohort_object(cohort: Dict[str, Any], name: str) -> bool:
+    """Remove an object from the cohort's vocabulary. Returns True if removed."""
+    n = _normalize_object(name)
+    objs = cohort.get("objects") or []
+    new_objs = [o for o in objs if _normalize_object(o) != n]
+    if len(new_objs) == len(objs):
+        return False
+    cohort["objects"] = new_objs
+    return True
+
+
+def resolve_object_vocabulary(
+    project_path: Path,
+    experiment_id: str,
+    *,
+    fallback: Optional[List[str]] = None,
+) -> List[str]:
+    """Return the object vocabulary an experiment should be marked with.
+
+    Lookup order:
+      1. Union of ``objects`` from every cohort whose ``members[]`` contains
+         this experiment_id (preserves cohort order).
+      2. If no cohort declares any objects, the *fallback* list (typically
+         the global ``CANONICAL_OBJECTS`` from
+         :mod:`mus1.web.views.nor_nof_object_qc`).
+
+    Per-experiment values stored in ``metadata.experiment_level.object_left``
+    or ``object_right`` are *not* enforced by this function — call sites
+    that render selectors should default to those values when present and
+    use the returned vocabulary as the dropdown options.
+    """
+    cohorts_dir = Path(project_path) / "cohorts"
+    if not cohorts_dir.is_dir():
+        return list(fallback or [])
+    union: List[str] = []
+    seen = set()
+    for p in sorted(cohorts_dir.glob("*.json")):
+        try:
+            c = json.loads(p.read_text())
+        except Exception:
+            continue
+        member_ids = {m.get("experiment_id") for m in (c.get("members") or [])}
+        if experiment_id not in member_ids:
+            continue
+        for o in cohort_objects(c):
+            if o not in seen:
+                union.append(o)
+                seen.add(o)
+    if union:
+        return union
+    return list(fallback or [])
 
 
 def load_cohort(cohort_path: Path) -> Dict[str, Any]:
@@ -244,6 +360,7 @@ def list_cohorts(
         if task_type and task_type not in (c.get("task_types") or []):
             continue
         summary = c.get("summary") or {}
+        objs = cohort_objects(c)
         out.append({
             "name": c.get("name", p.stem),
             "path": str(p),
@@ -251,6 +368,8 @@ def list_cohorts(
             "n_members": len(c.get("members") or []),
             "n_subjects": summary.get("n_subjects"),
             "task_types": c.get("task_types", []),
+            "objects": objs,
+            "n_objects": len(objs),
             "updated_at": c.get("updated_at", ""),
         })
     return out

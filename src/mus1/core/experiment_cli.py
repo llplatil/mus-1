@@ -205,10 +205,73 @@ def register_commands(app: typer.Typer) -> None:
                 rich_print(f"  [yellow]warnings:[/yellow]")
                 for w in s["warnings"]:
                     rich_print(f"    - {w}")
+        objs = c.get("objects") or []
+        if objs:
+            rich_print(f"  objects:     {objs}")
         if members:
             rich_print(f"  members ({len(c.get('members') or [])}):")
             for m in c.get("members") or []:
                 rich_print(f"    - {m.get('experiment_id')}  added={m.get('added_at','')[:10]}")
+
+    @cohort_app.command("set-objects")
+    def cohort_set_objects(
+        name: str = typer.Argument(..., help="Cohort name."),
+        objects: List[str] = typer.Argument(..., help="Object names (lowercase, e.g. fish atom dino tube). Replaces the entire list."),
+        project_path: Optional[Path] = typer.Option(None, "--project-path", "-p"),
+    ):
+        """Replace a cohort's NOR/NOF object vocabulary."""
+        from mus1.web.cohorts import load_cohort, save_cohort, set_cohort_objects, cohort_objects
+
+        proj = _resolve_project_path(project_path)
+        path = _resolve_cohort_path(_cohorts_dir_for(proj), name)
+        if not path.is_file():
+            rich_print(f"[red]Cohort not found: {path}[/red]"); raise typer.Exit(1)
+        coh = load_cohort(path)
+        before = cohort_objects(coh)
+        set_cohort_objects(coh, list(objects))
+        save_cohort(path, coh)
+        after = cohort_objects(coh)
+        rich_print(f"[green]✓[/green] Cohort '{name}' objects set: {after} (was {before})")
+
+    @cohort_app.command("add-object")
+    def cohort_add_object(
+        name: str = typer.Argument(..., help="Cohort name."),
+        object_name: str = typer.Argument(..., help="Object name to append (case-insensitive)."),
+        project_path: Optional[Path] = typer.Option(None, "--project-path", "-p"),
+    ):
+        """Append a single object to a cohort's vocabulary (idempotent)."""
+        from mus1.web.cohorts import add_cohort_object, load_cohort, save_cohort, cohort_objects
+
+        proj = _resolve_project_path(project_path)
+        path = _resolve_cohort_path(_cohorts_dir_for(proj), name)
+        if not path.is_file():
+            rich_print(f"[red]Cohort not found: {path}[/red]"); raise typer.Exit(1)
+        coh = load_cohort(path)
+        if add_cohort_object(coh, object_name):
+            save_cohort(path, coh)
+            rich_print(f"[green]✓[/green] Added '{object_name.lower()}' to '{name}'. Now: {cohort_objects(coh)}")
+        else:
+            rich_print(f"[yellow]·[/yellow] '{object_name}' already in '{name}'. Now: {cohort_objects(coh)}")
+
+    @cohort_app.command("remove-object")
+    def cohort_remove_object(
+        name: str = typer.Argument(...),
+        object_name: str = typer.Argument(...),
+        project_path: Optional[Path] = typer.Option(None, "--project-path", "-p"),
+    ):
+        """Remove an object from a cohort's vocabulary."""
+        from mus1.web.cohorts import remove_cohort_object, load_cohort, save_cohort, cohort_objects
+
+        proj = _resolve_project_path(project_path)
+        path = _resolve_cohort_path(_cohorts_dir_for(proj), name)
+        if not path.is_file():
+            rich_print(f"[red]Cohort not found: {path}[/red]"); raise typer.Exit(1)
+        coh = load_cohort(path)
+        if remove_cohort_object(coh, object_name):
+            save_cohort(path, coh)
+            rich_print(f"[green]✓[/green] Removed '{object_name.lower()}' from '{name}'. Now: {cohort_objects(coh)}")
+        else:
+            rich_print(f"[yellow]·[/yellow] '{object_name}' was not in '{name}'.")
 
     @cohort_app.command("create")
     def cohort_create(

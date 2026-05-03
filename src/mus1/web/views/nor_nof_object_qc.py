@@ -25,7 +25,15 @@ PANE = "nor_nof_oqc"
 # Canonical object vocabulary
 # ---------------------------------------------------------------------------
 
-CANONICAL_OBJECTS = ["diamond", "pyramid", "silo"]
+# Canonical object vocabulary across cohorts:
+#   - publication 3D-printed: diamond, pyramid, silo
+#   - validation_2026 pilot/everyday objects: fish, atom, dino, tube
+# When new objects are added (e.g., a future pilot), append them here and add
+# any common typos to ``_NORMALIZE_MAP`` below. Names are stored lowercase.
+CANONICAL_OBJECTS = [
+    "diamond", "pyramid", "silo",
+    "fish", "atom", "dino", "tube",
+]
 
 _NORMALIZE_MAP: Dict[str, str] = {}
 for _canon in CANONICAL_OBJECTS:
@@ -36,6 +44,9 @@ _NORMALIZE_MAP.update({
     "dimonds": "diamond",
     "pyramind": "pyramid",
     "pryamid": "pyramid",
+    "fishy": "fish",        # validation CSV used "Fishy" for fish
+    "dinosaur": "dino",     # full word → short
+    "dinos": "dino",
 })
 
 
@@ -498,7 +509,20 @@ def render_nor_nof_object_qc(
     # --- Edit form ---
     st.markdown("---")
 
-    obj_options = CANONICAL_OBJECTS + ["(other)"]
+    # Object vocabulary: prefer the union of objects[] from every cohort
+    # this experiment belongs to (data-driven). Fall back to the global
+    # CANONICAL_OBJECTS for legacy experiments not in any object-aware cohort.
+    from ..cohorts import resolve_object_vocabulary
+    cohort_vocab = resolve_object_vocabulary(
+        project_path, row.experiment_id, fallback=CANONICAL_OBJECTS,
+    )
+    # If the experiment already has names assigned, ensure they appear in the
+    # selector even if the cohort vocab doesn't list them yet (so we don't
+    # silently force "(other)" on already-marked experiments).
+    for existing in (row.object_left, row.object_right):
+        if existing and existing not in cohort_vocab:
+            cohort_vocab = list(cohort_vocab) + [existing]
+    obj_options = cohort_vocab + ["(other)"]
 
     def _default_idx(val: Optional[str], options: List[str]) -> int:
         if val and val in options:

@@ -147,10 +147,27 @@ mus1 cohort remove-member validation_2026 EZM_VAL_1017_2026-04-08 -p /path/to/da
 mus1 cohort add-where validation_2026 \
     --task EZM --root validation_data --unassigned --dry-run \
     -p /path/to/data
+
+# Manage the cohort's NOR/NOF object vocabulary (e.g. fish/atom/dino/tube).
+# This list seeds the marking + QC selectors; per-experiment values still win.
+mus1 cohort set-objects   validation_2026 fish atom dino tube  -p /path/to/data
+mus1 cohort add-object    validation_2026 sponge               -p /path/to/data
+mus1 cohort remove-object validation_2026 sponge               -p /path/to/data
 ```
 
 Every write triggers `compute_cohort_summary()`, so the cohort JSON's
 `summary` block (subject counts, group breakdown, warnings) stays in sync.
+
+**Object vocabulary resolution** (NOR/NOF only): when an experiment is
+displayed in the marking or QC pane, the dropdown options come from the
+*union* of `objects` lists across every cohort the experiment is a
+member of (preserving order). If no cohort declares any objects, the
+fallback is the global `CANONICAL_OBJECTS` list in
+`web/views/nor_nof_object_qc.py`. Per-experiment values stored in
+`metadata.experiment_level.object_left/right` always seed the selector
+default and are kept available even if not in the cohort vocabulary
+(they appear at the end of the dropdown so existing marks aren't
+forced to "(other)").
 
 ---
 

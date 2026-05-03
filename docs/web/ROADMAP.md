@@ -30,7 +30,7 @@ writes back. All panes scan the canonical data roots
 | QC | **EZM Tracking QC** | Approve DLC tracks against marked arena (per-experiment) | EZM JSON + DLC CSV + 8-variant computed metrics | EZM JSON: `computed_metrics.ezm_open_closed.qc_review.{status,notes}` |
 | QC | **NOR/NOF Object QC** | Visually approve object marks + arena ROI | NOR/NOF JSON + paired-experiment lookup | NOR/NOF JSON: `object_qc.{status,notes,reviewed_at}` |
 | QC | **NOR/NOF Interaction QC** | Approve interaction zones (radius around objects) + nose trajectory | NOR/NOF JSON + DLC CSV | NOR/NOF JSON: `computed_metrics.nor_nof.qc_review` |
-| Cohort | **Cohort Management** | Add/remove members, auto-link NOR↔NOF pairs, export training CSVs | All experiment JSONs across both data roots; `data/cohorts/*.json` | `data/cohorts/*.json` (members[], description, summary block recomputed on save); per-experiment `nor_nof_pair` blocks |
+| Cohort | **Cohort Management** | Add/remove members, auto-link NOR↔NOF pairs, edit per-cohort NOR/NOF object vocabulary, export training CSVs | All experiment JSONs across both data roots; `data/cohorts/*.json` | `data/cohorts/*.json` (members[], description, objects[], summary block recomputed on save); per-experiment `nor_nof_pair` blocks |
 | Train | **EZM ML** | Submit U-Net training jobs, review predicted-mask QC | Cohort JSON + EZM masks (`mus1.compute.ezm_masks`) | Slurm job submission via `mus1_runs/` registry |
 | Train | **ML Genotype** | Build datasets, submit training, monitor learning curves | Cohort JSON + per-experiment KPMS labels | Dataset YAML + Slurm submission via `mus1_runs/` |
 | Train | **Training Monitor** | Slurm job status + metric trend plots for U-Net + ML tracking | `mus1_runs/` registry, log files in `ml_workspace/*/logs/` | — |
@@ -291,3 +291,7 @@ These features are in research/exploration phase. They will be revisited when th
 - FastAPI TestClient needs `httpx` package (not installed by default with fastapi)
 - `TaskDefinition` attribute names differ from what was assumed in router code (`qc_auto_flag_names` doesn't exist, it's `qc_flag_vocabulary`) — always check actual API before wiring
 - **Phase 1 → 2 → 3 completed in one session** (2026-04-01): task registry, service layer, compute extraction, harness, FastAPI backend with 19 tested endpoints
+
+
+### Bugs im seeing 5/2/26
+- EZM ML: It should really be a arena marking inference qc pane and function as one. make the EZM inference colors the same as the wedge marking colors and the EZM arena detection qc rn looks good enough to actually use as an arena marking mode variant if the functionality is built out 

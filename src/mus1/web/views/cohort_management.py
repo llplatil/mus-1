@@ -203,6 +203,52 @@ def render_cohort_management(*, project_path: Path) -> None:
             for w in warnings:
                 st.warning(w)
 
+    # ── NOR/NOF object vocabulary ─────────────────────────────────────
+    # Each cohort can declare a list of object names ("fish", "atom",
+    # "dino", "tube", "pyramid", …). The marking + QC panes union these
+    # across every cohort an experiment belongs to and offer that union
+    # as the dropdown. Per-experiment metadata.experiment_level.object_*
+    # values still take precedence — this list is what's shown when the
+    # selector goes to "(other)" or seeds defaults for a new mark.
+    from mus1.web.cohorts import (
+        cohort_objects as _cohort_objects,
+        set_cohort_objects as _set_cohort_objects,
+    )
+    if {"NOR", "NOF"} & set(coh.get("task_types") or []) or not coh.get("task_types"):
+        st.markdown("#### NOR/NOF object vocabulary")
+        st.caption(
+            "Comma- or space-separated object names this cohort uses. Stored "
+            "lowercase. Per-experiment marks always win; this list seeds the "
+            "selector for unmarked or freshly-added experiments."
+        )
+        current_objs = _cohort_objects(coh)
+        col_objs, col_save = st.columns([4, 1])
+        with col_objs:
+            objs_input = st.text_input(
+                "Objects",
+                value=", ".join(current_objs),
+                key="cm_edit_objects",
+                placeholder="e.g. fish, atom, dino, tube",
+                label_visibility="collapsed",
+            )
+        with col_save:
+            if st.button("Save objects", key="cm_save_objects"):
+                import re as _re
+                new_objs = [
+                    s.strip().lower()
+                    for s in _re.split(r"[,\s]+", objs_input)
+                    if s.strip()
+                ]
+                _set_cohort_objects(coh, new_objs)
+                save_cohort(coh_path, coh, experiment_lookup=exp_lookup)
+                st.success(f"Saved: {_cohort_objects(coh)}")
+                st.cache_data.clear()
+                st.rerun()
+        if current_objs:
+            st.caption(f"Current: `{', '.join(current_objs)}`")
+        else:
+            st.caption("No objects declared. Marking selector will fall back to global CANONICAL_OBJECTS.")
+
     # ── Members table ─────────────────────────────────────────────────
     st.markdown("#### Members")
     members_list = coh.get("members") or []
