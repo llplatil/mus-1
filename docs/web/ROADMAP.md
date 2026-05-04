@@ -1,297 +1,660 @@
 # MUS1 Web App Roadmap
 
-Priorities for the mus1 platform. Ordered by impact.
+Forward-looking work, ordered by impact. Anything already shipped lives
+in [`ARCHITECTURE_CURRENT.md`](ARCHITECTURE_CURRENT.md), not here.
 
-**Last updated:** 2026-03-27
+**Last updated:** 2026-05-03
 
-## Current project context
+## Project context
 
-mus1 is being **rewritten from Streamlit to FastAPI + React** for open-source release targeting rodent behavior labs. The core value — annotation workflows, experiment JSON as source of truth, calculation variant comparison, and QC with provenance — is preserved. Hardcoded task types, cluster paths, and object definitions are being replaced with a configurable task definition system.
+mus1 is being rewritten from Streamlit to FastAPI + React for
+open-source release targeting rodent behavior labs. The core value —
+annotation workflows, experiment JSON as source of truth, calculation
+variant comparison, and QC with provenance — is preserved. Phases 1–3
+of the rewrite (TaskRegistry, service layer, FastAPI backend) are
+complete; Phase 4 (React frontend) is the major outstanding milestone.
+Streamlit improvements in this roadmap are scoped to **changes that
+also benefit the React port** — anything Streamlit-shaped that
+wouldn't survive the port is rejected.
 
 Full rewrite plan: `~/.claude/plans/ancient-jumping-ritchie.md`
 Manuscript skeleton: `reports_workspace/manuscript_unified.tex`
 Per-task methods+results: `reports_workspace/{ezm,nof_nor,of,rr}/*_methods_results.md`
 
-## What work happens where (Streamlit pane map)
+---
 
-Quick reference for "which pane do I use for X?" Each row lists the pane,
-the canonical task you use it for, what it reads from disk, and what it
-writes back. All panes scan the canonical data roots
-(`experiment_data/` + `validation_data/`) — see
-[`AGENT_RUNBOOK.md`](AGENT_RUNBOOK.md) for the discovery rules.
+## Iteration 2 — Marking dashboard landing pane (NEXT)
 
-| Group | Pane | Use it for | Reads | Writes |
-|---|---|---|---|---|
-| Browse | **Subjects** | Per-subject summary across all task types | `subjects` SQLite table + experiment JSONs (for timepoint enrichment) | — |
-| Browse | **Experiments** | Browse all experiments, filter by task/cohort/QC | `experiments` SQLite table | — |
-| Mark | **EZM Wedge Marking** | Click 4 wedge points on a frame to define EZM arena | EZM experiment JSONs (`arena_markings.ezm_wedge_points` empty) | EZM JSON: `arena_markings.ezm_wedge_points.points[]` + provenance |
-| Mark | **NOR/NOF Object Marking** | Click left + right object centers on a frame | NOR/NOF JSON without `arena_markings.object_left_xy` | NOR/NOF JSON: `arena_markings.{object_left_xy,object_right_xy,arena_boundary}`, optional task-type fix |
-| QC | **EZM Zones QC** | Visually approve/reject the wedge-fit circle overlay | EZM JSON `arena_markings.ezm_wedge_points` + computed circle fit | EZM JSON: `arena_markings.ezm_wedge_points.qc.{status,notes,reviewed_at}` |
-| QC | **EZM Tracking QC** | Approve DLC tracks against marked arena (per-experiment) | EZM JSON + DLC CSV + 8-variant computed metrics | EZM JSON: `computed_metrics.ezm_open_closed.qc_review.{status,notes}` |
-| QC | **NOR/NOF Object Association** | Confirm L/R object names + novel side; view linked NOR↔NOF partner side-by-side to check laterality | NOR/NOF JSON + paired-experiment lookup (multi-root: experiment_data + validation_data) | NOR/NOF JSON: `metadata.experiment_level.{object_left,object_right,novel_side}` + `object_qc.{status,notes,reviewed_at}` |
-| QC | **NOR/NOF Interaction QC** | Approve interaction zones (radius around objects) + nose trajectory | NOR/NOF JSON + DLC CSV | NOR/NOF JSON: `computed_metrics.nor_nof.qc_review` |
-| Cohort | **Cohort Management** | Add/remove members, auto-link NOR↔NOF pairs, edit per-cohort NOR/NOF object vocabulary, export training CSVs | All experiment JSONs across both data roots; `data/cohorts/*.json` | `data/cohorts/*.json` (members[], description, objects[], summary block recomputed on save); per-experiment `nor_nof_pair` blocks |
-| Train | **EZM ML** | Submit U-Net training jobs, review predicted-mask QC | Cohort JSON + EZM masks (`mus1.compute.ezm_masks`) | Slurm job submission via `mus1_runs/` registry |
-| Train | **ML Genotype** | Build datasets, submit training, monitor learning curves | Cohort JSON + per-experiment KPMS labels | Dataset YAML + Slurm submission via `mus1_runs/` |
-| Train | **Training Monitor** | Slurm job status + metric trend plots for U-Net + ML tracking | `mus1_runs/` registry, log files in `ml_workspace/*/logs/` | — |
+Replace the current "Subjects/Experiments" landing with a dashboard
+that shows, at a glance, what work is owed across every cohort:
 
-Removed in 2026-04-27 cleanup: `Annotator` (legacy embed of arena_annotation app, separate discovery), `NOR/NOF QC` aka "Paired QC Review" (CSV-driven), `NOR/NOF ROI` (CSV-driven). All three were superseded by the per-task Mark/QC panes above.
-
-**Conventions:**
-- "Reads" and "Writes" are about per-experiment JSONs; the `mus1.db` SQLite is a rebuildable index, not a source of truth.
-- Marking panes auto-discover work to do by scanning JSONs for an empty/missing `arena_markings.*` block; the count is recomputed on each page load (cached for 5 min — hit the sidebar Refresh after intake to invalidate sooner).
-- QC panes write a structured `qc` or `qc_review` block alongside the data they reviewed, with `reviewed_at` timestamps and optional operator notes; nothing is overwritten silently.
-
-**Adding new experiments** is purely a "drop the JSON in the right place"
-operation — there is no registration step. See `AGENT_RUNBOOK.md` §3 for
-the canonical layout. After files land on disk, the relevant panes will
-list them within one cache TTL window (5 minutes) or immediately on
-sidebar refresh.
-
-## Open-source rewrite (active)
-
-### Phase 1: Task Definition System — COMPLETE (2026-03-27)
-- `TaskDefinition` ABC with annotation fields, arena geometry, QC flags, calculation variants
-- 5 built-in tasks: EZM (8 variants), NOR, NOF, OF, RR
-- `TaskRegistry` loads builtins + custom YAML tasks (`mus1_tasks.yaml`)
-- `ProjectConfig` replaces hardcoded `paths.py` with `mus1.yaml`
-- `YAMLTaskDefinition` allows agents/labs to define tasks without Python
-- Files: `src/mus1/tasks/`, `src/mus1/server/config.py`
-
-### Phase 2: Service Layer + Compute Extraction — COMPLETE (2026-04-01)
-- `ExperimentService`: consolidated experiment discovery (895 experiments, <5s scan, <1ms cached). Fixed: RR JSONs have `video: null` / `qc_flags: null` — use `or {}` not `get(key, {})`.
-- `CohortService`: wraps existing cohorts.py with ExperimentService-backed metadata resolution
-- `QCService`: task-registry-aware auto-flag computation (delegates to TaskDefinition)
-- `AnnotationService`: annotation read/write with provenance frame export (PNG overlay)
-- Compute library: 7 modules extracted (~3500 LOC) — arena_geometry, ezm_zones_model, ezm_zones, tracking, nor_nof_interaction, overlay, ezm_masks
-- `ComputeHarness`: determinism check, parameter sweep, snapshot regression, benchmark, human-readable reports
-- Session index CSV deprecated; experiment JSONs declared sole source of truth
-- Files: `src/mus1/server/services/`, `src/mus1/compute/`
-
-### Phase 3: FastAPI Backend — COMPLETE (2026-04-01)
-- 6 routers: `/api/tasks`, `/api/experiments`, `/api/cohorts`, `/api/qc`, `/api/annotations`, `/api/compute`
-- 19 endpoints, all tested against 895 real experiments (19/19 pass)
-- OpenAPI spec auto-generated at `/docs` (Swagger UI) and `/openapi.json`
-- CLI: `mus1 serve --data-root PATH --port 8100`
-- Dependency injection via `ServiceContainer` (singleton services per app lifetime)
-- Video frame extraction as JPEG, provenance overlay as PNG
-- Compute endpoint: NOR/NOF interaction metrics computed on-demand from DLC CSV + arena markings
-- Files: `src/mus1/server/app.py`, `src/mus1/server/deps.py`, `src/mus1/server/routers/`
-
-### Phase 4: React Frontend — PLANNED
-- Vite + React Router + TanStack Query + Tailwind
-- Fabric.js/Konva.js annotation canvas (replaces streamlit-drawable-canvas)
-- Pages: ExperimentBrowser, AnnotationWorkflow, QCReview, VariantComparison, CohortManagement
-- Static build bundled in pip package (no Node.js on HPC at runtime)
-
-## Streamlit UI overhaul plan (2026-04-27)
-
-The current Streamlit app accumulated multiple generations of marking/QC
-flows over the manuscript push: a mix of "good" per-task panes, "legacy"
-CSV-driven panes, and an embedded `Annotator` that duplicated discovery
-logic. The roadmap below cuts that surface area down so each lifecycle
-stage has exactly one pane, every loader uses the multi-root discovery
-layer, and cohort affordances cover the gaps that previously required
-shell scripts (NOR↔NOF pairing, cohort task-type filters).
-
-### Iteration 1.5 — UI standardization (DONE 2026-04-28)
-
-Three-tier sidebar contract (Scope · Filters · Display) backed by a single
-shared module. Concrete deliverables:
-
-- **`web/filters.py`** — single source of truth for filter state and UI:
-  - `FilterState` (frozen dataclass): cohort + marking_status + qc_statuses
-    + genotypes + sexes + text + date_range. Pure data; testable without
-    a Streamlit runtime.
-  - `render_scope_picker(project_path)` — universal cohort selector at
-    the top of the sidebar; persists to `st.session_state[SCOPE_KEY]`.
-  - `render_filters(rows, fields, key_prefix, marking_field, qc_field)`
-    — renders the standard "Filters" expander, returns
-    `(state, filtered_rows)`. Filter widgets only render when the pane
-    opts in via `fields={…}` (subset of `KNOWN_FIELDS`).
-  - `mode_settings(label, key_prefix)` — context manager that opens the
-    standard "Display" expander for pane-specific toggles (overlays,
-    color choices, frame stride, …).
-  - `filter_by_cohort(rows, cohort, project_path)` — predicate used by
-    every loader-consumer.
-  - `pkey(pane, widget)` — namespaced key builder, prevents silent
-    state-bleed between panes.
-  - `invalidate_after_write()` — replaces scattered
-    `st.cache_data.clear()` calls; called once per JSON write.
-- **Sidebar layout** in every migrated pane is now identical:
-  Scope (top) → View radio → Filters expander → Display expander.
-- **Migrated panes:** `EZM Zones QC`, `EZM Tracking QC`, `EZM Wedge
-  Marking`, `NOR/NOF Object QC`, `NOR/NOF Object Marking`,
-  `NOR/NOF Interaction QC`. Each lost its bespoke Cohort/Genotype/Sex/
-  Status/Search filter widgets; gained the shared ones (which adapt
-  automatically to additions like new genotypes or QC statuses).
-- **Cohort Management** retains its own "cohort being edited" picker
-  plus its data-source / unassigned-only filters (cohort-add-specific),
-  but now also honors the universal scope picker — set scope to cohort
-  X, edit cohort Y, and the add-experiments pool restricts to X's
-  members. Surfaces a banner so the side-effect is obvious.
-- **Net code:** `web/filters.py` is ~370 LOC; net diff across panes is
-  −300 LOC after consolidating duplicate filter blocks.
-
-### Iteration 1 — Pane consolidation (DONE 2026-04-27)
-- **Removed (file deleted + sidebar entry dropped):**
-  `Annotator` (`views/annotator_embed.py`), `NOR/NOF QC` aka "Paired QC
-  Review" (`views/nor_nof_qc.py`, CSV-driven), `NOR/NOF ROI`
-  (`views/nor_nof_roi.py`, CSV-driven). Each was superseded by a per-task
-  pane that uses the canonical experiment-JSON discovery.
-- **Promoted to top-level pane:** `EZM Wedge Marking`. Previously only
-  reachable through the deleted Annotator embed; now first-class.
-- **Sidebar ordering:** grouped by lifecycle (Browse → Mark → QC →
-  Cohort → Train) for cognitive load reduction. Mark panes immediately
-  precede their QC pane.
-- **Cohort task_types auto-fill:** `cohorts.save_cohort()` now derives
-  `task_types` from `summary.task_type_counts` whenever the field is
-  empty. Fixes the EZM Tracking/Zones QC cohort dropdown silently
-  hiding cohorts (e.g. `validation_2026` had no `task_types` so
-  `list_cohorts(task_type="EZM")` filtered it out).
-- **NOR↔NOF auto-pair:** new `link_nor_nof_pairs()` in `cohorts.py`
-  joins by `(subject_id, date_recorded)`; surfaced as
-  `mus1 cohort link-nor-nof [<cohort>]` and a button in the Cohort
-  Management pane. Idempotent; flags conflicts; never overwrites an
-  existing-but-different link.
-
-### Iteration 2 — One-stop "Marking Dashboard" landing pane (NEXT)
-
-With the shared filter module in place from Iteration 1.5, this is now
-straightforward: the dashboard reuses `render_filters` against the
-discovery output and emits one row per (task, marking-status) pairing
-with deep-links into the relevant pane.
-
-
-Replace the current "Subjects/Experiments" landing with a dashboard that
-shows, at a glance, what work is owed across every cohort:
-
-  EZM       │ N experiments need wedge points  · click → Wedge Marking
-  EZM       │ N experiments need zone QC       · click → Zones QC
-  NOR/NOF   │ N experiments need object marks  · click → Object Marking
-  NOR/NOF   │ N experiments need object QC     · click → Object QC
-  NOR/NOF   │ N experiments unpaired           · click → "Auto-link" flow
-  …
+```
+EZM       │ N experiments need wedge points  · click → Wedge Marking
+EZM       │ N experiments need zone QC       · click → Zones QC
+EZM       │ N experiments need tracking QC   · click → Tracking QC
+NOR/NOF   │ N experiments need object marks  · click → Object Marking
+NOR/NOF   │ N experiments need object QC     · click → Object QC
+NOR/NOF   │ N experiments need interaction QC · click → Interaction QC
+NOR/NOF   │ N experiments unpaired           · click → Auto-link flow
+…
+```
 
 Each row is one filter applied to the canonical discovery scan. The
 target pane opens with the filter pre-applied (Streamlit query params).
-Implementation: ~150 LOC in a new `views/marking_dashboard.py`; reuses
-the existing per-pane filter predicates verbatim.
 
-### Iteration 3 — Surface QC gaps, not just marking gaps
-Today the marking dashboards count "missing arena_markings.X." Add the
-mirror counts for QC: "marked but not yet QC-approved/rejected." Wire
-this through the same dashboard.
-
-### Iteration 4 — Cohort templates
-Half the cohort JSONs in `data/cohorts/` are minor variants of one
-another (publication cohorts per task, validation cohort, pilots).
-Add a "Clone cohort with filter" UI and corresponding `mus1 cohort
-clone <src> <dst> --add-where ...` so common operations (e.g. "make a
-QC-only subset of the publication cohort") don't require hand-editing
-JSON.
-
-### Iteration 5 — Phase 4 React rewrite
-Existing roadmap goal. The work above intentionally minimises
-"Streamlit-shaped" features so the React port can lift each pane
-1:1 against the FastAPI service layer (`server/services/`) without
-inheriting Streamlit-specific affordances (caching contracts,
-session_state hacks, etc.).
-
-### Loose ends for future iterations
-- `views/ezm_ml.py` still uses `sys.path.insert()` to reach
-  `workspace/torch_ml/`; should move into `mus1.compute.ezm_zones_model`.
-- `views/experiments.py` still uses the legacy `has_nor_nof_roi` artifact
-  flag in its filter; that flag was meaningful when the v2 ROI pane
-  produced its own JSONs but is now redundant with `arena_markings`.
-- `mus1.db` is a rebuildable index but several views still query it
-  directly (`Subjects`, `Experiments`); migrating those to
-  `ExperimentService` keeps a single discovery contract.
+**Implementation**
+- New `views/marking_dashboard.py`, ~150 LOC.
+- Reuses `discovery.discover_experiments()` + `render_filters` predicates.
+- Each row's link sets `?pane=...&filter=...` so the target pane lands
+  on the pre-filtered subset.
+- Counts respect the active scope (cohort) from `SCOPE_KEY`.
 
 ---
 
-## Manuscript-related work (continuing in parallel)
+## Iteration 3 — Surface QC gaps, not just marking gaps
 
-### EZM tracking QC completion
-- Phase 3 visual QC: sort 155 experiments by artifact_rate, review in tracking QC pane
-- Mark QC status in experiment JSONs via app
-- Consensus multi-track overlay (head=blue, neck=green, nose=orange) already implemented
+Today the marking dashboard counts "missing `arena_markings.X`." Add
+the mirror counts for QC: "marked but not yet QC-approved/rejected."
 
-### NOR/NOF QC flags in views
-- QC flags seeded on all 339 experiments (shared module `qc_flags_shared.py`)
-- Wire flags into NOR/NOF views
-- 5 new partner experiments need arena marking in app
+**Surfaces**
+- "EZM experiments with wedge points but no `arena_markings.ezm_wedge_points.qc.status`"
+- "EZM experiments with computed metrics but no `qc_review.status`"
+- "NOR/NOF experiments with `interaction` metrics but no `interaction_qc.reviewed_at`"
+- "NOR/NOF unpaired (where pair would be expected from cohort task_type_counts)"
 
-### EZM arena annotation: COMPLETE
-All 171 EZM experiments marked and QC-passed. 4-point wedge marking approach fully deployed.
+**Discipline**: every row corresponds to a single predicate against
+the canonical loader output — no bespoke counters. New rows are added
+by writing a predicate function, not new SQL.
 
-### Configurable object definitions: ADDRESSED IN PHASE 1
-The task definition system makes object names, counts, and roles configurable per task. NOR/NOF `ObjectDefinition` supports any number of objects with custom labels and roles. Pilot NOR (P_NO) can define its own object set via YAML.
+---
+
+## Iteration 4 — Cohort templates / clone-with-filter
+
+Half the cohort JSONs in `data/cohorts/` are minor variants of one
+another (publication cohorts per task, validation cohort, pilots).
+Add a "Clone cohort with filter" UI plus `mus1 cohort clone <src>
+<dst> --add-where ...` so common operations (e.g. "make a QC-only
+subset of the publication cohort") don't require hand-editing JSON.
+
+---
+
+## Iteration 5 — Phase 4 React rewrite
+
+The work above intentionally minimises "Streamlit-shaped" features so
+the React port can lift each pane 1:1 against the FastAPI service
+layer (`server/services/`) without inheriting Streamlit-specific
+affordances (caching contracts, session_state hacks). Vite + React
+Router + TanStack Query + Tailwind; Fabric.js or Konva.js for the
+annotation canvas (replaces `streamlit-drawable-canvas`). Static
+build bundled in the pip package — no Node.js on HPC at runtime.
+
+---
+
+## Iteration 5.4 — Pre-Phase-B cleanup (must land before 5.5)
+
+The Phase A foundations work (2026-05-04) revealed duplication that
+will compound if Phase B (Iteration 5.5) lands on top of it. These
+five small refactors are scheduled FIRST so 5.5 gets a clean substrate
+— each is mechanical, has zero behavior change, and is independently
+testable. They map to items in the original cleanup catalog (now moved
+to "Cleanup follow-ups" below for post-5.5 work).
+
+### 5.4a — Lift mount-alias normalization to `mus1.paths`
+
+Today the `/center1/` ↔ `/import/c1/` swap is reimplemented in 5+
+places (`web/paths.py`, `web/ezm_qc_shared.py:resolve_path`,
+`web/views/nor_nof_interaction_qc.py`, `core/importers/arena_zones.py`,
+the new `core/compute_cli.py`). Phase B's compute button + frame nav
+will touch this code path again — fixing it once now prevents copy 6.
+
+**Plan**: new `mus1.paths.resolve_with_mount_aliases(p) -> Optional[Path]`
+in a new top-level `mus1.paths` module (the package level, not
+`web/paths.py`). All five existing implementations become one-line
+wrappers or are deleted outright. Acceptance: every `/center1/` /
+`/import/c1/` literal is gone outside the new helper + tests.
+
+### 5.4b — Move `resolve_dlc_csv_path` from `web.discovery` to `compute.tracking`
+
+It's a pure function over an `extraction` dict — no Streamlit, no
+filesystem, no UI coupling. CLI + FastAPI both already import it from
+`web/`, which is backwards. Phase B will call it from one more place
+(the pane's compute path); now is the time.
+
+**Plan**: physical move to `mus1.compute.tracking`, leave a deprecation
+alias in `web.discovery` for one release. Update the four current
+import sites (`ezm_qc_shared`, `nor_nof_interaction_qc`,
+`compute_cli`, `experiment_service`).
+
+### 5.4c — Migrate `nor_nof_interaction_qc` + `ezm_tracking_qc` to `try_read_dlc_csv`
+
+Phase B adds a Compute button to NOR/NOF Tracking QC. Today the file
+has its own inline `pd.read_csv(p, header=[0,1,2], index_col=0)` plus
+`droplevel(0)` plus its own bodypart-bound nose-correction logic. The
+canonical reader at `compute.tracking.try_read_dlc_csv` already exists
+(8 callers reinvent it; this iteration migrates the two we're about
+to touch). The other six are deferred (post-5.5 cleanup).
+
+**Plan**: `_load_nose_track_corrected` reads via `try_read_dlc_csv`;
+`ezm_tracking_qc`'s in-pane Compute path does the same. Both retain
+their post-read filtering logic — the migration is the read step
+only. Acceptance: no `pd.read_csv(.. header=[0,1,2] ..)` literal in
+either pane file.
+
+### 5.4d — Extract `TRACKING_QUALITY_FLAGS` to `compute.tracking_flags` + flag merger
+
+Two related reorganizations done together because Phase B needs both:
+
+1. The Phase A3 vocabulary lives in `web/qc_flags_shared.py` today,
+   which is misnamed (it's universal, not NOR/NOF-only). Move
+   `TRACKING_QUALITY_FLAGS` to `mus1.compute.tracking_flags`. Re-export
+   from `qc_flags_shared` for one release for backwards compat.
+2. Add `mus1.compute.tracking_flags.merge_into_qc_flags(qf, tc) -> qf`
+   — the single helper that copies `tracking_confidence.flags` into
+   `qc_flags.auto_flags`. Phase B's Compute button calls this; the
+   CLI `--write` path calls it too. **One merger, two call sites,
+   guaranteed not to drift.** This is "Better approach D" from the
+   original cleanup catalog, promoted to prep because it's small and
+   actively prevents a Phase B bug.
+
+**Plan**: new `mus1.compute.tracking_flags` (~50 LOC + tests). Wire
+the CLI `--write` path now (single line); Phase B wires the pane.
+
+### 5.4e — Delete hardcoded `EXPERIMENT_DATA_ROOT` in `nor_nof_interaction_qc.py:55`
+
+Trivial. Discovery already covers multi-root scanning; the hardcoded
+absolute path is a dead fallback. Acceptance: line removed, no
+referencing call sites broken.
+
+### 5.4 acceptance gate
+
+All five 5.4 items must pass before 5.5 starts:
+- [ ] `pytest` — existing 19 tests still pass + at least 5 new tests
+      across the 5 items (one happy path each, minimum)
+- [ ] No literal `/center1/` or `/import/c1/` strings outside
+      `mus1.paths` and its tests
+- [ ] `grep -rn "tracking_file_path"` returns only doc strings + the
+      resolver itself
+- [ ] `grep -rn "header=\[0, 1, 2\]"` returns 6 instances down from 8
+      (the remaining 6 are tracked under "Cleanup follow-ups")
+- [ ] `mus1 compute tracking-confidence --write …` writes flags into
+      both `extraction.tracking_confidence.flags` AND
+      `qc_flags.auto_flags` (via the new merger)
+
+LOC estimate: ~200 added (mostly tests), ~150 deleted (dedup), net
++50. No behavior change for users.
+
+---
+
+## Iteration 5.5 — NOR/NOF Tracking QC function parity (was: Interaction QC)
+
+The pane formerly named **"NOR/NOF Interaction QC"** has been renamed
+to **"NOR/NOF Tracking QC"** to mirror EZM Tracking QC, since both
+panes serve the same lifecycle role (review DLC tracks against marked
+arena/objects). The rename ships now (2026-05-03); this iteration is
+the function-parity work that makes the renamed pane behave like its
+EZM counterpart.
+
+### Current state vs. EZM Tracking QC
+
+| Capability | EZM Tracking QC | NOR/NOF Tracking QC (today) |
+|---|---|---|
+| Per-experiment frame navigation | ✓ slider + frame buttons | ✗ mid-frame only |
+| Variant selector | ✓ 8 zone-classification variants | ✗ no variant concept yet |
+| In-pane "Compute metrics" button | ✓ | ✗ (CLI/batch only) |
+| Auto-flag display | ✓ | partial (tracking_qc only) |
+| Save QC review block | ✓ `qc_review.{status,notes,reviewed_at}` | partial (`interaction_qc.{notes,reviewed_at}`, no status) |
+| Graceful degradation when metrics absent | ✓ | ✓ (shipped 2026-05-03) |
+
+### Plan
+
+**5.5a — Frame navigation.** Add the same frame slider + ◀ 1s / ◀ /
+▶ / 1s ▶ cluster used by EZM Tracking QC, scoped per-experiment via
+`pkey(PANE, "frame_{exp_id}")`. The overlay re-renders at the chosen
+frame; trajectory polyline still draws over the full session.
+
+**5.5b — Radius variants treated like EZM variants.** Today the radius
+selector (2 / 3 / 4 cm) is a Display setting and selects which metric
+block to render. Promote it to a "Variant" selector that also tags the
+QC write block, so a session can be reviewed-with-r3cm-OK and
+re-reviewed-with-r4cm separately if needed (matches the EZM variant
+model where each (position_mode, bodypart, LH) tuple is a variant).
+Variant naming convention: `r{2,3,4}cm`.
+
+**5.5c — In-pane compute button.** Wire
+`mus1.compute.nor_nof_interaction.compute_interaction_metrics` to a
+"Compute interaction metrics" button. The wrapper that produces the
+`r{2,3,4}cm` blocks lives today in the batch script
+(`reports_workspace/.../nor_nof_compute_metrics.py` or similar) — lift
+it into `mus1.server.services.compute_service.compute_nor_nof_interaction_for_experiment(json_path)`
+and call from both the pane and the existing CLI batch. The button
+writes session-state metrics (unsaved) until the user clicks Save,
+matching the EZM flow.
+
+**5.5d — Standardize the QC write block.** Replace the partial
+`interaction_qc.{notes,reviewed_at}` write with the full EZM-style
+`qc_review.{status,notes,reviewed_at,auto_flags}` block at
+`computed_metrics.nor_nof.qc_review`. Status options: `(not reviewed)`,
+`good`, `poor_tracking`, `exclude`, `needs_re_review` — same vocabulary
+as EZM Tracking QC. Migrate any existing `interaction_qc` blocks to
+the new path on first save (preserve original keys; one-time
+migration captured in provenance).
+
+**5.5e — Visual identity.** Use the canonical EZM/wedge palette
+(Iteration 6a) for any zone-tinted overlays. Trajectory keeps the
+existing temporal gradient (cyan → green → yellow) since it's
+session-time-coloring, not zone classification — same convention as
+EZM Tracking QC.
+
+### Acceptance
+
+- [ ] Pane name is `NOR/NOF Tracking QC` everywhere (sidebar, header,
+      docs, view file). View filename rename is deferred to avoid
+      breaking import statements; tracked separately under Loose ends.
+- [ ] Frame navigation works (matches EZM Tracking QC affordances).
+- [ ] Variant selector exposes r2/r3/r4cm with the EZM variant pattern.
+- [ ] "Compute interaction metrics" button populates session-state
+      metrics; Save & next persists them under
+      `computed_metrics.nor_nof.r{N}cm.metrics`.
+- [ ] QC review block matches EZM schema.
+
+---
+
+## Iteration 6 — Unify EZM ML into the arena-marking lifecycle
+
+> *(Unpacked from the user's note on the prior roadmap line 318:*
+> *"EZM ML: It should really be an arena marking inference qc pane and*
+> *function as one. make the EZM inference colors the same as the wedge*
+> *marking colors and the EZM arena detection qc rn looks good enough*
+> *to actually use as an arena marking mode variant if the functionality*
+> *is built out.")*
+
+Today the EZM U-Net work is split across panes whose lifecycle
+boundaries don't match what the user actually does:
+
+| Pane | Today | Issue |
+|---|---|---|
+| EZM ML | Mixed: cohort overview, validation inference *preview*, training set mask preview, training submission, post-training QC | Tries to be three different things; "preview" is QC in disguise |
+| EZM Wedge Marking | Manual 4-click marking only | Can't take a U-Net suggestion as a starting point |
+| EZM Zones QC | Reviews wedge-circle-fit overlay only | Could review U-Net masks the same way |
+
+Color drift compounds the confusion: wedge marking uses green points
+(`#00ff00`), the trajectory overlay uses green/blue zone tints
+(`(0,200,0)`/`(80,80,255)`), and the U-Net mask overlay uses
+yellow-for-open + blue-for-closed (`(255,255,0)`/`(0,0,255)` from
+`ezm_masks.blend_mask_overlay`). A reviewer comparing GT vs. prediction
+sees green-vs-yellow for the same conceptual region.
+
+### Plan (3 sub-iterations)
+
+**6a — Color unification (small, blocks nothing).** Adopt the wedge
+marking palette as the EZM canonical palette in `mus1.compute.overlay`:
+
+```
+OPEN    = (0, 200, 0)     # green   (matches wedge fill_color, zones QC)
+CLOSED  = (80, 80, 255)   # blue    (matches zones QC)
+WEDGE_PT= (0, 255, 0)     # bright green  (matches st_canvas stroke)
+PREDICTED_OPEN   = (0, 200, 0,  α=0.45)   # solid green tint
+PREDICTED_CLOSED = (80, 80, 255, α=0.45)  # solid blue tint
+DELTA_TINT = (255, 80, 255)  # magenta — predicted ≠ GT
+```
+
+Update `ezm_masks.blend_mask_overlay()` to read those constants.
+Yellow disappears from the EZM workflow. EZM Tracking QC's
+"corrected frames" tint already uses magenta — keep it; magenta now
+also marks "predicted-vs-GT disagreement" in the new pane (semantic:
+"a frame the human should look at"). This is a 1-file change with no
+downstream rewires.
+
+**6b — New pane `EZM Arena Inference QC`.** Replace the EZM ML
+"Validation Inference Preview" + "Training Set Mask Preview" sections
+with a first-class QC pane that follows the QC pane contract:
+
+- Inputs filter: `has_wedge_points` AND has-active-model.
+- Layout matches EZM Zones QC: experiment list (filtered by scope), one
+  experiment per render, mid-frame view, navigation, save+next.
+- Overlay shows three layers, toggleable:
+  1. GT mask from wedge points (green/blue, α=0.30)
+  2. U-Net prediction (green/blue, α=0.45)
+  3. Disagreement mask (magenta) — pixels where GT ≠ pred
+- Per-frame metrics in the right column: IoU(open), IoU(closed),
+  pixel-disagreement %.
+- QC actions write `arena_markings.ezm_inference_qc.{status,notes,reviewed_at}`
+  (status: `keep` / `re_train` / `disagree_visual_only`).
+- Cohort/genotype filters carried through the standard `render_filters`.
+
+**6c — "U-Net suggestion" as a wedge-marking input variant.** In
+`EZM Wedge Marking`, add a `Suggestion source` selector:
+
+| Option | Behavior |
+|---|---|
+| Manual (default) | Today's blank canvas, user clicks 4 points |
+| U-Net auto-suggest | Run inference → derive 4 boundary points from the predicted open/closed border crossings → pre-populate the canvas. User accepts (Save) or edits (drag/replace) before saving. |
+
+The auto-suggest path writes a richer provenance block:
+
+```json
+"arena_markings": {
+  "ezm_wedge_points": {
+    "points": [...],
+    "provenance": {
+      "method": "unet_suggested+human_accepted" | "unet_suggested+human_edited" | "manual",
+      "model_path": "...",
+      "model_sha": "...",
+      "edits": [{"original_xy": [...], "final_xy": [...]}, ...]
+    }
+  }
+}
+```
+
+This makes the U-Net a **marking-mode variant** without dropping the
+4-point contract that downstream zone fitting depends on. The model
+remains optional; users without the model just see "Manual".
+
+### Demolition
+
+After 6b ships, the existing `EZM ML` pane shrinks to the parts that
+don't fit the QC contract: cohort overview, training submission, and
+post-training run-status. Rename it `EZM Arena Inference Training`
+(or merge into `Training Monitor`). The validation inference preview
+moves to 6b; the training set mask preview is dropped (its only user
+was developer debugging, which the harness covers).
+
+### Acceptance
+
+- [ ] No yellow anywhere in the EZM workflow.
+- [ ] Validation cohort viewable end-to-end through the new pane with
+      no DLC dependency (arena inference is upstream of tracking).
+- [ ] Wedge marking pane offers the "U-Net auto-suggest" toggle when a
+      model is registered, falls back gracefully when not.
+- [ ] Provenance distinguishes manual / suggested-accepted /
+      suggested-edited.
+- [ ] EZM Wedge Marking + EZM Inference QC + EZM Zones QC share a
+      visual identity (same colors, same overlay primitives in
+      `mus1.compute.overlay`).
+
+---
+
+## Iteration 7 — Save-and-advance workflow
+
+Today the QC panes use a "Save" button that writes the QC block and
+re-renders the same experiment. Operators QC'ing 100+ experiments
+in a row repeatedly Save → click Next → wait for re-render. The Save
+and Next steps belong together.
+
+### Plan
+
+**7a — Single primary action "Save & next".** Replace the current
+"Save…" button in every QC pane with a single primary action that:
+
+1. Persists the QC block (existing logic).
+2. Calls `invalidate_after_write()` so the count caches refresh.
+3. Advances `idx` to the next experiment in the filtered list. If at
+   the end, shows a "Review complete" toast and stays put.
+4. Triggers `st.rerun()` once, not twice.
+
+A secondary "Save & stay" button (de-emphasized) covers the "I want
+to keep tweaking this one" case. Keyboard shortcut `Shift+Enter` for
+"Save & next" once we add the keybinding helper (Iteration 8 below).
+
+**7b — Skip-already-reviewed by default.** Add a sidebar toggle
+"Show only unreviewed" (default ON for QC panes). When ON, "Save &
+next" advances past the just-reviewed experiment by virtue of the
+filter, not by walking past it manually. This is the natural QC
+loop: open pane → review → save → review next → … → "Review complete."
+
+**7c — Auto-save on intent, not on every keystroke.** The current
+code keys widget state on `(pane, exp_id)` so partial inputs survive
+re-renders, but the actual write only happens on click. Keep this —
+auto-save would conflict with the "Save & stay" intent. Document
+the explicit-save invariant in the QC pane contract.
+
+**7d — Surface the queue position prominently.** Today the count is
+`5 / 23 experiments` in a markdown caption. Promote it: a thin
+progress bar at the top of the pane (`st.progress(idx / n)`) plus
+the X / Y in the same row. After "Save & next" the bar fills
+incrementally, giving a visceral sense of progress for long QC
+sessions.
+
+### Acceptance
+
+- [ ] `Save & next` is the *only* primary button in every QC pane.
+- [ ] Stays put at the end of the queue with a clear "Review complete" toast.
+- [ ] "Show only unreviewed" toggle is sticky per pane, defaults ON
+      for QC panes, OFF for marking panes (where you may want to revisit).
+- [ ] Progress bar visible at top of every QC pane.
+- [ ] Behavior is identical across all four QC panes (EZM Zones, EZM
+      Tracking, NOR/NOF Object Association, NOR/NOF Interaction).
+
+---
+
+## Iteration 8 — Navigation reliability + redundancy elimination
+
+The navigation cluster currently rendered as `[Prev] [Index ± input]
+[Next] [n / N]` is **redundant and historically unreliable**:
+
+```
+col_prev, col_idx, col_next, col_count = st.columns([1, 2, 1, 2])
+```
+
+- The `st.number_input` already exposes ± spinner buttons that step by 1.
+- `[Prev]` and `[Next]` step by 1.
+- All three do the same thing.
+- The Prev/Next buttons write `st.session_state["{pane}_idx"]` while
+  `st.number_input` writes `st.session_state["{pane}_idx_input"]`
+  (separate keys). Race conditions during `st.rerun()` cause the two
+  to desync, producing the "I clicked Next and it jumped two
+  experiments / went back / showed a stale frame" symptoms.
+- When the active filter set narrows the list, `idx` may exceed the
+  new `max_value`; the number input clamps silently while the canonical
+  `_idx` key keeps the old value, so the next Prev click "jumps."
+
+### Plan
+
+**8a — Single source of truth for the navigation index.** Build
+`web/navigation.py`:
+
+```python
+def render_nav(
+    *, pane: str, n: int, label: str = "experiment",
+) -> int:
+    """Render the standard pane navigator and return the resolved idx.
+
+    Single canonical session-state key: `pkey(pane, "nav_idx")`.
+    Clamps to [0, n-1] on every render. Renders the buttons + a
+    progress display; widgets share the same key, so there is no
+    second-state drift.
+    """
+```
+
+Layout:
+
+```
+[◀ prev]   [ Frame 5 of 23 ]      [next ▶]
+══════════════════════════════════════════
+[━━━━━━━━━━━━━━ progress ━━━━━━━━━━━━━━━━ ]
+```
+
+- Drop the `st.number_input` entirely. It was redundant with
+  Prev/Next.
+- Provide a "Jump to experiment_id…" `st.text_input` separately for
+  the rare case where the user knows which experiment they want.
+  This is a lookup, not a stepper, so it doesn't fight with Prev/Next.
+- Keyboard: `←` / `→` arrow keys via `streamlit-shortcuts` (or
+  equivalent) wired in 8c.
+
+**8b — Filter-change resync.** When `n` shrinks, clamp the canonical
+index *before* widgets render, and emit a single `st.toast(
+"Filters changed — jumped to first match.")` if the previous idx was
+out of bounds. No silent jumps.
+
+**8c — Keybindings.** Add the shortcut layer once in `web/navigation.py`:
+- `←` / `→` — prev / next
+- `Shift+Enter` — Save & next (Iteration 7a)
+- `j` / `k` — vim-style prev/next (off by default; toggle in
+  user-level settings file at `~/.config/mus1/keybindings.toml`)
+
+**8d — Migrate panes one at a time.** Order matches QC priority:
+EZM Tracking QC → EZM Zones QC → NOR/NOF Interaction QC →
+NOR/NOF Object Association → EZM Wedge Marking → NOR/NOF Object
+Marking. Each migration is one file, ~15 LOC removed, ~5 added (the
+old custom 4-column nav cluster swapped for a single
+`render_nav(...)` call).
+
+### Acceptance
+
+- [ ] Exactly one canonical session_state key per pane for the
+      navigation index.
+- [ ] Prev/Next buttons survive a filter change with no jump or
+      desync.
+- [ ] No `st.number_input` step-by-one widgets in any pane (jump-to-id
+      uses a different control).
+- [ ] Keyboard shortcuts work in every QC pane.
+- [ ] Progress visible at all times.
+
+### Why this matters beyond ergonomics
+
+Every QC session that has to be redone because "Prev jumped two
+experiments" wastes operator time and corrupts the audit trail
+(`reviewed_at` timestamps no longer reflect actual review order).
+Reliability of navigation is a correctness property, not a polish item.
+
+---
+
+## Cleanup follow-ups (post-5.5; not blocking Phase B)
+
+These items were catalogued during the Phase A sweep (2026-05-04) but
+do *not* gate Iteration 5.5. The five items that DO block 5.5 were
+promoted into Iteration 5.4 above. Everything below is genuine
+follow-up work.
+
+### Already shipped during Phase A (2026-05-04)
+- `tracking_file_path` direct reads in FastAPI/services — `server/routers/compute.py` (×2) and `server/services/experiment_service.py` were using the legacy field directly. All three now use `resolve_dlc_csv_path`. (The helper itself moves to `compute.tracking` in 5.4b.)
+
+### Deferred refactors (no Phase B dependency)
+
+**1. Migrate the remaining 6 inline DLC reads to `try_read_dlc_csv`.**
+After 5.4c, the panes Phase B touches are clean. Six callers remain:
+- `compute/ezm_zones.py`, `compute/overlay.py`
+- `web/ezm_compute_bridge.py`, `web/ezm_trajectory_overlay.py`
+- `compute/tracking_confidence.py:_try_read_dlc_csv` (deliberate
+  Phase-A decoupling; remove once `compute.tracking` is the single
+  canonical reader)
+- one more in `web/views/ezm_tracking_qc.py` if 5.4c only catches the
+  primary read path
+Migrate each with a small commit to the existing canonical reader.
+
+**2. CLI default project-path resolution.**
+`compute_cli` and `experiment_cli` share `_resolve_project_path` via
+a private-name import (`from .experiment_cli import _resolve_project_path`).
+Promote to `mus1.core.cli_helpers` (new tiny module). One change,
+two import-site updates.
+
+### Better-approach proposals (architectural, not just cleanup)
+
+**A. `try_read_dlc_csv` should return a typed `DLCTracks` object.**
+Today it returns a `pd.DataFrame` with a 2-level column MultiIndex,
+and every consumer remembers to call `.droplevel(0)` first. The
+shape encodes a precondition checked nowhere. Wrap into a
+`DLCTracks` dataclass with explicit accessors
+(`tracks.likelihood("nose") -> np.ndarray`,
+`tracks.xy("head") -> tuple[np.ndarray, np.ndarray]`,
+`tracks.bodyparts -> list[str]`). Type checking finds mistakes a
+year sooner. Net: ~150 LOC across all callers, mostly mechanical.
+
+**B. Full split of `qc_flags_shared`.**
+5.4d extracts `TRACKING_QUALITY_FLAGS`. The remaining work:
+- `mus1.tasks.{task}.flags` — task-specific vocabularies (currently
+  `NOR_NOF_FLAG_VOCABULARY` plus EZM's auto-flags in
+  `ezm_qc_shared`), owned by each TaskDefinition.
+- `mus1.experiments.qc_block` — readers/writers for the `qc_flags`
+  block in the experiment JSON (currently `read_qc_flags`,
+  `set_status`, `set_notes`, `set_auto_flags`, history helpers).
+Composes with the TaskRegistry from Phase 1 — task vocabularies
+travel with the task definition rather than living in a shared web
+module.
+
+**C. Shared `mus1.experiments` facade for views + routers.**
+Today, panes do their own discovery and their own JSON reads.
+Phase 2 introduced `ExperimentService`; only the FastAPI side uses
+it. Streamlit panes would benefit from a thin facade exposing the
+read-side API both can share. Reduces "this loader is in the wrong
+place" questions and lets the Phase 4 React port lift each pane's
+data-access pattern unchanged.
+
+---
+
+## Loose ends for future iterations
+
+- **NOR/NOF Tracking QC trajectory rendering — VERIFIED RENDERS CORRECTLY
+  AFTER CACHE INVALIDATION (2026-05-03).** User initially reported
+  trajectory not visible on `NOR_VAL_1002_2026-04-07`. End-to-end
+  reproduction outside Streamlit (loader → overlay drawer) confirms
+  the trajectory renders: 36066/36067 valid frames, ~6.7% of pixels
+  changed by the overlay (zones + trajectory + dividers + radius
+  circle), trajectory cleanly visible cyan→green→yellow across the
+  arena. Output verified at `/tmp/test_overlay.png` during diagnosis.
+  Validation videos are 1080×1080 (vs. 1280×720 for publication) — no
+  bug, just a different resolution; DLC and overlay coordinates are
+  consistent because both reference the same source video. **Root
+  cause of the user-visible symptom: stale Streamlit cache served
+  from before the DLC schema fix shipped.** Fix shipped 2026-05-03:
+  added `Refresh (clear cache)` button to the pane (matching the EZM
+  panes). One-time workaround for already-running sessions: hit the
+  new Refresh button or restart `streamlit run`.
+- **`views/nor_nof_interaction_qc.py` filename should track the rename
+  to `NOR/NOF Tracking QC`.** The display label was renamed
+  2026-05-03; the file rename is deferred to avoid breaking the
+  `from .views.nor_nof_interaction_qc import render_nor_nof_interaction_qc`
+  import chain in `app.py`. Do as part of Iteration 5.5d.
+- **Training Monitor → Job Monitor.** The current name "Training
+  Monitor" undersells the pane: it tracks any Slurm job created via
+  the `mus1_runs/` registry, not just training. Rename when scope
+  expands beyond ML training (e.g., compute jobs from Iteration 5.5c
+  surfaced through the same registry).
+- `views/ezm_ml.py` still uses `sys.path.insert()` to reach
+  `workspace/torch_ml/`; the model definition should move into
+  `mus1.compute.ezm_zones_model` (in progress; see Iteration 6).
+- `views/experiments.py` still uses the legacy `has_nor_nof_roi`
+  artifact flag in its filter; that flag was meaningful when the v2
+  ROI pane produced its own JSONs but is now redundant with
+  `arena_markings`.
+- `mus1.db` is a rebuildable index but `Subjects` and `Experiments`
+  panes still query it directly; migrate them to `ExperimentService`
+  to keep a single discovery contract.
+- **DB schema migrations.** Today `create_all()` is the only schema
+  evolution mechanism. Phase 4 should add Alembic-style forward-only
+  migrations; SQLite stays as a rebuildable cache.
+- **Frame export for publication supplements.** Per the user note in
+  ARCHITECTURE_CURRENT.md §12, QC panes should support "save the
+  reviewed frame as PNG with overlays burned in" so manuscript
+  supplements can include the exact frame the human verified.
+  AnnotationService already exports provenance frames; expose a
+  per-pane button.
+
+---
 
 ## Future research (deferred, tracked)
 
-These features are in research/exploration phase. They will be revisited when the core platform is stable and their upstream dependencies mature.
+These features are in research/exploration phase. Revisit when the
+core platform is stable and their upstream dependencies mature.
 
 | Feature | Depends on | Notes |
 |---------|-----------|-------|
-| Arena inference (automated boundary detection) | U-Net training pipeline, geometric fitting | EZM: U-Net predicts open/closed masks. NOR/NOF: brightness edge detection. Would reduce manual annotation burden at scale. |
-| ML genotype classifier | KPMS syllable extraction complete | Predict genotype/phenotype from behavioral syllable profiles. Promising but needs more data. |
-| ML tracking metadata model | KPMS extraction + cross-task fingerprint | Classify sessions by behavioral regime. Currently stale (was built on trim30s syllables). |
-| Figure viewer + stats integration | Stats package extracted as separate pip package | Display generated figures in app, trigger stats re-runs, diff outputs |
-| Training monitor for DLC/SLEAP | React UI rebuild | Monitor GPU job status, view training curves. Project-specific but useful for any lab training models on cluster. |
+| Arena inference (automated boundary detection) | U-Net training pipeline (EZM in progress, NOR/NOF research) | EZM addressed by Iteration 6. NOR/NOF: brightness edge detection. |
+| ML genotype classifier | KPMS syllable extraction complete | Predict genotype/phenotype from behavioral syllable profiles. Promising but data-limited. |
+| ML tracking metadata model | KPMS extraction + cross-task fingerprint | Classify sessions by behavioral regime. Currently stale (built on trim30s syllables). |
+| Figure viewer + stats integration | Stats package extracted as a separate pip package | Display generated figures in app, trigger stats re-runs, diff outputs. |
+| Training monitor for DLC/SLEAP | React UI rebuild | Monitor GPU job status, view training curves. Useful for any lab training models on cluster. |
+| LLM/MCP-wrapped lab interface | Service layer + FastAPI complete (DONE) | Per the user note in ARCHITECTURE_CURRENT.md §12: integrate the consistently-used stats and good layouts as MCP tools, leave deterministic computation deterministic. |
 
-## Lower priority
+---
 
-### DB schema evolution
-- Current schema uses `create_all()` (no migrations) — Phase 3 will add versioned forward-only migrations
-- SQLite stays as rebuildable cache; experiment JSONs remain source of truth
+## Recently shipped (one-line tail; full detail in ARCHITECTURE_CURRENT.md)
 
-### Path alignment: ADDRESSED IN PHASE 1
-- `ProjectConfig` (`mus1.yaml`) replaces all hardcoded paths
-- Mount-alias normalization (`/center1` vs `/import/c1`) no longer needed — paths are relative to project root
-
-## Completed
-
-- Streamlit web app with 14 view modes
-- CLI import pipeline (workspace-db-sync, arena-zones, rotarod, KPMS, EZM/ML runs)
-- mus1.db schema (subjects, experiments, artifacts, QC events, assay data)
-- EZM annotator: 4-point wedge marking, full zone annotation, undo/clear, preview overlay
-- NOR/NOF v2 annotation flow (clean reset, embedded annotator handoff)
-- EZM compute bridge: 8 zone classification variants, consensus multi-bodypart voting
-- EZM tracking QC pane: frame navigation, crosshair trajectory, variant selector
-- NOR/NOF object marking: all 339 sessions marked, arena_boundary geometric circle fit
-- Cohort management view (all task types)
-- QC flags system: unified schema across EZM/NOR/NOF, auto-flags + manual status
-- ML tracking training submission with MUS1 run records
-- Mount-alias aware path deduplication
-- Training monitor with Slurm job status and metric plots
-- RR publication cohort built (135 sessions, 45 subjects)
-- All 4 publication cohort JSONs created (`data/cohorts/`)
-- **Phase 1: Task definition system** (2026-03-27) — 5 built-in tasks, YAML extensibility, configurable objects
-- **Phase 2 (partial): Service layer** (2026-03-27) — ExperimentService, CohortService, QCService, AnnotationService, compute README
-
-## Lessons learned during rewrite
-
-### What worked well in the original app
-- Experiment JSON as single source of truth (metadata + QC + metrics + provenance in one file)
-- 4-point wedge marking for EZM (simple, fast, reliable)
-- 8-variant calculation comparison for visual QC of analysis methodology
-- Cohort auto-summary computation on save (no stale counts)
-- QC flag audit history (append-only, operator attribution)
-
-### What didn't work / needed fixing
-- Hardcoded task types scattered across 10+ files — now replaced by TaskRegistry
-- `video: null` in RR JSONs crashed parsers that used `.get("video", {})` — Python's `.get()` returns the stored `None`, not the default. Use `or {}` pattern.
-- Session index CSV contract was fragile (needed manual refresh after rebuilds) — replaced by ExperimentService scanning JSONs directly
-- 6 separate importers for different data sources — replaced by single ExperimentService scan
-- NOR/NOF object names hardcoded to `object_a`/`object_b` — now configurable via ObjectDefinition
-- Streamlit `@st.cache_data` was the only caching; NOR/NOF views had no caching at all — service layer uses in-memory dict cache with explicit invalidation
-- `ezm_compute_bridge.py` used `sys.path.insert()` to import `ezm_open_closed_zones` from workspace — extracted into proper package import `mus1.compute.ezm_zones_model`
-- DLC CSV reading was duplicated in 3 files (ezm_compute_bridge, nor_nof_object_interactions, overlay) — consolidated into `mus1.compute.tracking`
-- FastAPI TestClient needs `httpx` package (not installed by default with fastapi)
-- `TaskDefinition` attribute names differ from what was assumed in router code (`qc_auto_flag_names` doesn't exist, it's `qc_flag_vocabulary`) — always check actual API before wiring
-- **Phase 1 → 2 → 3 completed in one session** (2026-04-01): task registry, service layer, compute extraction, harness, FastAPI backend with 19 tested endpoints
-
-
-### Bugs im seeing 5/2/26
-- EZM ML: It should really be a arena marking inference qc pane and function as one. make the EZM inference colors the same as the wedge marking colors and the EZM arena detection qc rn looks good enough to actually use as an arena marking mode variant if the functionality is built out 
+- 2026-05-04 — **Phase A foundations shipped** (5 modules + 19 tests passing): `docs/web/SCHEMA_VARIANTS.md` (three-layer compute schema), `mus1.compute.tracking_confidence` (task-agnostic DLC baseline confidence), `TRACKING_QUALITY_FLAGS` vocabulary in `qc_flags_shared`, `mus1.preferences` (cascading user → project YAML), `mus1 compute tracking-confidence <id|--cohort>` CLI; FastAPI/services migrated off direct `tracking_file_path` reads (same bug class as the web fix); cleanup sweep cataloged in this doc
+- 2026-05-03 — Sidebar reorder (task-aligned lifecycle: Browse → Cohort → EZM Mark/QC → NOR/NOF Mark/QC → Train); pane rename `NOR/NOF Interaction QC` → `NOR/NOF Tracking QC` (display label only — file rename deferred); `Refresh (clear cache)` button added to NOR/NOF Tracking QC (parity with EZM panes); Tracking QC Review block in NOR/NOF Tracking QC now matches EZM (5-status radio: `(not reviewed)`/`good`/`poor_tracking`/`exclude`/`needs_re_review` — schema migration to `computed_metrics.nor_nof.qc_review` deferred to Iteration 5.5d)
+- 2026-05-03 — DLC schema duality resolver; per-pane scope banner; QC pane contract codified; NOR/NOF Tracking QC degrades gracefully when metrics absent
+- 2026-04-28 — Iteration 1.5: three-tier sidebar contract (`web/filters.py`); 6 panes migrated; net −300 LOC
+- 2026-04-27 — Iteration 1: pane consolidation (Annotator / NOR/NOF QC / NOR/NOF ROI removed; EZM Wedge Marking promoted; sidebar grouped by lifecycle; `cohorts.save_cohort()` auto-derives `task_types`; NOR↔NOF auto-pair)
+- 2026-04-01 — Phases 1+2+3 complete in one session: TaskRegistry, ExperimentService / CohortService / QCService / AnnotationService, compute library, ComputeHarness, FastAPI backend (19 endpoints, all tested)
+- 2026-03-27 — Phase 1: Task definition system (5 built-ins, YAML extensibility, configurable objects)

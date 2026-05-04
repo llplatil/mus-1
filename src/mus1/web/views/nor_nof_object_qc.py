@@ -25,7 +25,13 @@ import cv2
 import numpy as np
 import streamlit as st
 
-from ..filters import SCOPE_KEY, _cohort_member_ids, invalidate_after_write, pkey
+from ..filters import (
+    SCOPE_KEY,
+    _cohort_member_ids,
+    invalidate_after_write,
+    pkey,
+    render_scope_banner,
+)
 
 PANE = "nor_nof_oqc"
 
@@ -417,6 +423,7 @@ def render_nor_nof_object_qc(
         "partner side-by-side to verify laterality matches across the pair."
     )
     st.caption("Review object assignments per experiment. Edits write directly to JSON; DB syncs separately.")
+    render_scope_banner()
 
     experiment_data_root = project_path / "experiment_data"
     if not experiment_data_root.is_dir():

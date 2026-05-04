@@ -39,7 +39,31 @@ VALID_STATUSES = (
     "needs_review",
 )
 
-# ── Flag vocabulary (NOR/NOF; EZM uses its own via ezm_qc_shared) ────────────
+# ── Flag vocabulary ──────────────────────────────────────────────────────────
+#
+# Two layers, with different semantics:
+#
+#   1. TRACKING_QUALITY_FLAGS  — task-agnostic, derived from the DLC
+#      predictions CSV alone. Computed by
+#      ``mus1.compute.tracking_confidence``. These flags say whether the
+#      experiment is *worth* deeper task-specific QC at all (the
+#      "don't try to polish garbage" gate).
+#
+#   2. NOR_NOF_FLAG_VOCABULARY / EZM auto-flags — task-specific, derived
+#      from computed metrics (zone classification, interaction zones,
+#      …). Meaningful only after the relevant batch_run / exploratory_run
+#      exists.
+#
+# Both layers can coexist in ``qc_flags.auto_flags[]``. UI panes display
+# tracking-quality flags first because they gate the rest.
+
+#: Universal tracking-quality flags. Vocabulary is fixed by
+#: ``mus1.compute.tracking_confidence``.
+TRACKING_QUALITY_FLAGS = [
+    "LOW_LIKELIHOOD_OVERALL",
+    "BODYPART_FAILURE",
+    "LIKELIHOOD_DROPOUT_RUN",
+]
 
 NOR_NOF_FLAG_VOCABULARY = [
     "LOW_TRACKING",

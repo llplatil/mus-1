@@ -63,26 +63,28 @@ def main() -> None:
     next_view = st.session_state.pop("mus1_view_mode_next", None)
     if next_view:
         st.session_state["mus1_view_mode"] = str(next_view)
-    # Sidebar groups panes by lifecycle: Browse / Mark / QC / Cohort / Train.
-    # Marking panes write to JSONs; QC panes review what marking produced.
-    # See docs/web/ROADMAP.md "What work happens where" for the canonical map.
+    # Pane order, by task-aligned lifecycle: Browse → Cohort scoping →
+    # EZM Mark → EZM QC (arena → tracking) → NOR/NOF Mark → NOR/NOF QC
+    # (arena → tracking) → Train. Cohort Management sits up top because
+    # users define / pick a cohort *before* doing Mark or QC work.
+    # See docs/web/ARCHITECTURE_CURRENT.md §1.2 for pane responsibilities.
     view = st.sidebar.radio(
         "Mode",
         options=[
             # Browse
             "Subjects",
             "Experiments",
-            # Mark (input)
+            # Cohort scoping (defined before Mark/QC work)
+            "Cohort Management",
+            # EZM lifecycle (Mark → arena QC → tracking QC)
             "EZM Wedge Marking",
-            "NOR/NOF Object Marking",
-            # QC (review)
             "EZM Zones QC",
             "EZM Tracking QC",
+            # NOR/NOF lifecycle (Mark → arena/object QC → tracking QC)
+            "NOR/NOF Object Marking",
             "NOR/NOF Object Association",
-            "NOR/NOF Interaction QC",
-            # Cohort
-            "Cohort Management",
-            # Train / Monitor
+            "NOR/NOF Tracking QC",
+            # Train / Monitor (renamed to "Job Monitor" planned — see ROADMAP)
             "EZM ML",
             "ML Genotype",
             "Training Monitor",
@@ -109,7 +111,7 @@ def main() -> None:
     if view == "NOR/NOF Object Association":
         render_nor_nof_object_qc(project_path=project_path, workspace_root=workspace_root, db_path=db_path)
         st.stop()
-    if view == "NOR/NOF Interaction QC":
+    if view == "NOR/NOF Tracking QC":
         render_nor_nof_interaction_qc(project_path=project_path, workspace_root=workspace_root)
         st.stop()
     if view == "Cohort Management":

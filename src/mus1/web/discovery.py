@@ -204,3 +204,28 @@ def task_dirs_across_roots(
     for root in roots:
         out.extend(task_dirs_for_root(root, task))
     return out
+
+
+def resolve_dlc_csv_path(extraction: Optional[Dict]) -> str:
+    """Return the DLC tracking CSV path from either supported JSON schema.
+
+    Two schemas exist in the canonical data roots:
+      • Legacy (publication batches): ``extraction.tracking_file_path``
+      • New (validation_2026 batches): ``extraction.dlc_runs[-1].output.csv``
+
+    The newer pipeline records every DLC run as an append-only entry under
+    ``dlc_runs[]`` and never writes the legacy flat field, so loaders that
+    only read ``tracking_file_path`` silently miss tracking for those
+    experiments. Use this resolver instead.
+    """
+    if not isinstance(extraction, dict):
+        return ""
+    legacy = extraction.get("tracking_file_path") or ""
+    if legacy:
+        return legacy
+    runs = extraction.get("dlc_runs") or []
+    if runs:
+        last = runs[-1] if isinstance(runs[-1], dict) else {}
+        out = last.get("output") or {}
+        return out.get("csv") or ""
+    return ""

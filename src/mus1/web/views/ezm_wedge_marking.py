@@ -18,7 +18,13 @@ import streamlit as st
 from streamlit_drawable_canvas import st_canvas
 
 from ..cohorts import cohort_member_ids, list_cohorts, load_cohort
-from ..filters import SCOPE_KEY, _cohort_member_ids, invalidate_after_write, pkey
+from ..filters import (
+    SCOPE_KEY,
+    _cohort_member_ids,
+    invalidate_after_write,
+    pkey,
+    render_scope_banner,
+)
 
 PANE = "ezm_wedge"
 
@@ -367,6 +373,7 @@ def render_ezm_wedge_marking(
         "Order does not matter. Accept saves and advances. "
         "Trash icon on canvas clears clicks."
     )
+    render_scope_banner()
 
     experiment_data_root = project_path / "experiment_data"
     if not experiment_data_root.is_dir():

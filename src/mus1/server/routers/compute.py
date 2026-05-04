@@ -37,7 +37,8 @@ def compute_interaction(
     if not data:
         raise HTTPException(404, f"Experiment not found: {req.experiment_id}")
 
-    dlc_path = (data.get("extraction") or {}).get("tracking_file_path")
+    from mus1.web.discovery import resolve_dlc_csv_path
+    dlc_path = resolve_dlc_csv_path(data.get("extraction"))
     if not dlc_path:
         raise HTTPException(422, "No tracking file linked to this experiment")
 
@@ -100,7 +101,8 @@ def list_bodyparts(
     if not data:
         raise HTTPException(404, f"Experiment not found: {experiment_id}")
 
-    dlc_path = (data.get("extraction") or {}).get("tracking_file_path")
+    from mus1.web.discovery import resolve_dlc_csv_path
+    dlc_path = resolve_dlc_csv_path(data.get("extraction"))
     if not dlc_path:
         raise HTTPException(422, "No tracking file linked")
 

@@ -22,7 +22,13 @@ from ..ezm_qc_shared import (
     LOCKED_LH_THRESHOLD,
 )
 from ..ezm_trajectory_overlay import draw_ezm_qc_overlay, load_dlc_tracks
-from ..filters import invalidate_after_write, mode_settings, pkey, render_filters
+from ..filters import (
+    invalidate_after_write,
+    mode_settings,
+    pkey,
+    render_filters,
+    render_scope_banner,
+)
 
 
 PANE = "ezm_zones"
@@ -32,6 +38,7 @@ _STATUS_OPTIONS = ["(not reviewed)", "keep", "re_mark", "exclude"]
 def render_ezm_zones_qc(*, workspace_root: Optional[str], project_path: Path) -> None:
     st.header("EZM Zones QC")
     st.caption("Review arena circle fit from wedge point markings.")
+    render_scope_banner()
 
     if st.button("Refresh (clear cache)", key=pkey(PANE, "refresh")):
         invalidate_after_write()

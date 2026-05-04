@@ -51,7 +51,7 @@ LOCKED_LH_THRESHOLD = 0.6
 # Experiment JSON discovery
 # ---------------------------------------------------------------------------
 
-from .discovery import CACHE_TTL_SECONDS  # noqa: E402  (after stdlib block above)
+from .discovery import CACHE_TTL_SECONDS, resolve_dlc_csv_path  # noqa: E402
 
 
 @st.cache_data(show_spinner="Loading EZM experiments...", ttl=CACHE_TTL_SECONDS)
@@ -96,7 +96,7 @@ def load_ezm_experiments(experiment_data_root: str) -> List[Dict[str, Any]]:
         ext = data.get("extraction") or {}
 
         zone_json_path = az.get("zone_json_path", "")
-        dlc_path = ext.get("tracking_file_path", "")
+        dlc_path = resolve_dlc_csv_path(ext)
         am = data.get("arena_markings") or {}
         wp_data = am.get("ezm_wedge_points") or {}
         wp = wp_data.get("points") or []

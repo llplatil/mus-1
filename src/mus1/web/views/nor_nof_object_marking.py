@@ -16,7 +16,13 @@ import numpy as np
 import streamlit as st
 from streamlit_drawable_canvas import st_canvas
 
-from ..filters import SCOPE_KEY, _cohort_member_ids, invalidate_after_write, pkey
+from ..filters import (
+    SCOPE_KEY,
+    _cohort_member_ids,
+    invalidate_after_write,
+    pkey,
+    render_scope_banner,
+)
 
 PANE = "nor_nof_om"
 
@@ -123,6 +129,7 @@ def render_nor_nof_object_marking(
         "Click **left object center**, then **right object center** on the frame. "
         "Accept saves and advances. Trash icon on canvas clears clicks."
     )
+    render_scope_banner()
 
     experiment_data_root = project_path / "experiment_data"
     if not experiment_data_root.is_dir():

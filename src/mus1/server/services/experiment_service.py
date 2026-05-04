@@ -125,7 +125,10 @@ class ExperimentService:
         elif task_id == "OF":
             has_annotation = bool(am.get("arena_boundary"))
 
-        has_tracking = bool(ext.get("tracking_file_path"))
+        # Resolve tracking presence across both legacy + new DLC schemas.
+        # See web.discovery.resolve_dlc_csv_path for schema duality.
+        from mus1.web.discovery import resolve_dlc_csv_path
+        has_tracking = bool(resolve_dlc_csv_path(ext))
 
         # Check for computed metrics under the task's key
         task_def = self._tasks.get_or_none(task_id)

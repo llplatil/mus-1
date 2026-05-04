@@ -143,6 +143,24 @@ def _list_cohort_names(project_path_str: str) -> List[str]:
     return out
 
 
+def render_scope_banner() -> Optional[str]:
+    """Render an inline caption showing the active cohort scope, if any.
+
+    Call once near the top of each pane that honors the universal scope
+    picker. Gives users a per-pane breadcrumb so the silent narrowing
+    applied by :func:`render_filters` / :func:`filter_by_cohort` is
+    discoverable without scanning the sidebar. Returns the active scope
+    name (or None) so callers can branch on it without re-reading state.
+    """
+    scope = st.session_state.get(SCOPE_KEY)
+    if scope:
+        st.caption(
+            f"Scope: cohort `{scope}` "
+            "(set in sidebar — clear to see all experiments)."
+        )
+    return scope
+
+
 def render_scope_picker(
     project_path: Path,
     *,

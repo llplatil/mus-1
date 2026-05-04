@@ -17,7 +17,15 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-from ..filters import SCOPE_KEY, _cohort_member_ids, mode_settings, pkey
+from ..discovery import resolve_dlc_csv_path
+from ..filters import (
+    SCOPE_KEY,
+    _cohort_member_ids,
+    invalidate_after_write,
+    mode_settings,
+    pkey,
+    render_scope_banner,
+)
 
 PANE = "nor_nof_iqc"
 
@@ -489,8 +497,17 @@ def render_nor_nof_interaction_qc(
     project_path: Path,
     workspace_root: Optional[str] = None,
 ) -> None:
-    st.header("NOR/NOF Interaction QC")
-    st.caption("Visual overlay of object interaction zones and nose trajectory on arena frame.")
+    st.header("NOR/NOF Tracking QC")
+    st.caption(
+        "Approve DLC tracks against marked objects (per-experiment). "
+        "Mirrors EZM Tracking QC for the NOR/NOF lifecycle: object zones, "
+        "nose trajectory, and (when computed) interaction metrics."
+    )
+    render_scope_banner()
+
+    if st.button("Refresh (clear cache)", key=pkey(PANE, "refresh")):
+        invalidate_after_write()
+        st.rerun()
 
     # --- Load experiments ---
     experiment_data_root = project_path / "experiment_data"
@@ -565,11 +582,17 @@ def render_nor_nof_interaction_qc(
     if genotype_filter != "All":
         filtered = [e for e in filtered if genotype_by_eid.get(e.experiment_id) == genotype_filter]
 
-    # Only keep experiments with computed_metrics (implies arena markings + tracking exist)
-    def _has_computed(row: _ExperimentRow) -> bool:
+    # QC pane contract (see docs/web/ROADMAP.md): filter by *input* prereqs
+    # only — object markings + a readable JSON. The metrics this pane
+    # reviews (`computed_metrics.interaction.*`) may be absent on freshly
+    # tracked cohorts; the per-experiment view degrades gracefully.
+    def _has_inputs(row: _ExperimentRow) -> bool:
         d = _read_experiment_json(row)
-        return d is not None and "computed_metrics" in d
-    filtered = [e for e in filtered if _has_computed(e)]
+        if d is None:
+            return False
+        am = d.get("arena_markings") or {}
+        return bool(am.get("object_left_xy") and am.get("object_right_xy"))
+    filtered = [e for e in filtered if _has_inputs(e)]
 
     # Apply QC filter
     if qc_filter != "All":
@@ -589,7 +612,12 @@ def render_nor_nof_interaction_qc(
         filtered = [e for e in filtered if _qc_match(e)]
 
     if not filtered:
-        st.warning("No experiments match the selected filters (with computed metrics).")
+        st.warning(
+            "No experiments match the selected filters. "
+            "(Pane requires `arena_markings.object_left_xy` + "
+            "`object_right_xy`; metric blocks are not required — the per-"
+            "experiment view degrades gracefully when metrics are absent.)"
+        )
         return
 
     filtered.sort(key=lambda e: e.experiment_id)
@@ -625,7 +653,12 @@ def render_nor_nof_interaction_qc(
 
     row = filtered[idx]
     data = _read_experiment_json(row)
-    cm = data.get("computed_metrics", {})
+    if data is None:
+        st.error(f"Could not read JSON: {row.json_path}")
+        return
+    # `computed_metrics` may be absent (fresh cohorts) or None (some legacy
+    # JSONs). Coerce to dict so downstream `.get()` calls don't crash.
+    cm = data.get("computed_metrics") or {}
     md = data.get("metadata", {})
     el = md.get("experiment_level", {})
     am = data.get("arena_markings", {})
@@ -654,7 +687,7 @@ def render_nor_nof_interaction_qc(
         return
 
     # --- Load corrected nose track ---
-    tp = data.get("extraction", {}).get("tracking_file_path", "")
+    tp = resolve_dlc_csv_path(data.get("extraction"))
     tracking_path = tp.replace("/center1/", "/import/c1/") if tp else None
     nose_data = _load_nose_track_corrected(tracking_path) if tracking_path else None
     nose_x = nose_data[0] if nose_data else None
@@ -726,32 +759,42 @@ def render_nor_nof_interaction_qc(
         info_df = pd.DataFrame([(k, str(v)) for k, v in info_items.items()], columns=["Field", "Value"])
         st.dataframe(info_df, hide_index=True, width="stretch")
 
-        # Interaction metrics from computed_metrics
-        interaction = cm.get("interaction", {})
-        radius_data = interaction.get(radius_key, {})
-        if radius_data:
-            st.markdown(f"**Interaction metrics ({radius_cm:.0f} cm)**")
-            metrics = {
-                "Left time (s)": f"{radius_data.get('left_time_s', 0):.1f}",
-                "Right time (s)": f"{radius_data.get('right_time_s', 0):.1f}",
-                "Left bouts": f"{radius_data.get('left_bouts', 0)}",
-                "Right bouts": f"{radius_data.get('right_bouts', 0)}",
-                "Total interaction (s)": f"{radius_data.get('total_interaction_s', 0):.1f}",
-            }
-            if row.experiment_type == "NOR" and "d2" in radius_data:
-                d2_val = radius_data["d2"]
-                metrics["d2"] = f"{d2_val:.3f}" if d2_val is not None else "N/A"
-                metrics["Novel time (s)"] = f"{radius_data.get('novel_time_s', 0):.1f}"
-                metrics["Familiar time (s)"] = f"{radius_data.get('familiar_time_s', 0):.1f}"
-            left_lat = radius_data.get("left_latency_s")
-            right_lat = radius_data.get("right_latency_s")
-            metrics["Left latency (s)"] = f"{left_lat:.1f}" if left_lat is not None else "N/A"
-            metrics["Right latency (s)"] = f"{right_lat:.1f}" if right_lat is not None else "N/A"
-
-            metrics_df = pd.DataFrame(list(metrics.items()), columns=["Metric", "Value"])
-            st.dataframe(metrics_df, hide_index=True, width="stretch")
+        # Interaction metrics from computed_metrics (may be absent on
+        # freshly tracked cohorts — see QC pane contract in ROADMAP.md).
+        interaction = cm.get("interaction") or {}
+        if not interaction:
+            st.info(
+                "Interaction metrics not yet computed for this experiment. "
+                "Visual QC of object zones and trajectory above is "
+                "independent of metrics and works without them. Run "
+                "`mus1 compute nor-nof-interaction` (or wait for the "
+                "scheduled batch) to populate `computed_metrics.interaction`."
+            )
         else:
-            st.info("No interaction data for this radius.")
+            radius_data = interaction.get(radius_key) or {}
+            if radius_data:
+                st.markdown(f"**Interaction metrics ({radius_cm:.0f} cm)**")
+                metrics = {
+                    "Left time (s)": f"{radius_data.get('left_time_s', 0):.1f}",
+                    "Right time (s)": f"{radius_data.get('right_time_s', 0):.1f}",
+                    "Left bouts": f"{radius_data.get('left_bouts', 0)}",
+                    "Right bouts": f"{radius_data.get('right_bouts', 0)}",
+                    "Total interaction (s)": f"{radius_data.get('total_interaction_s', 0):.1f}",
+                }
+                if row.experiment_type == "NOR" and "d2" in radius_data:
+                    d2_val = radius_data["d2"]
+                    metrics["d2"] = f"{d2_val:.3f}" if d2_val is not None else "N/A"
+                    metrics["Novel time (s)"] = f"{radius_data.get('novel_time_s', 0):.1f}"
+                    metrics["Familiar time (s)"] = f"{radius_data.get('familiar_time_s', 0):.1f}"
+                left_lat = radius_data.get("left_latency_s")
+                right_lat = radius_data.get("right_latency_s")
+                metrics["Left latency (s)"] = f"{left_lat:.1f}" if left_lat is not None else "N/A"
+                metrics["Right latency (s)"] = f"{right_lat:.1f}" if right_lat is not None else "N/A"
+
+                metrics_df = pd.DataFrame(list(metrics.items()), columns=["Metric", "Value"])
+                st.dataframe(metrics_df, hide_index=True, width="stretch")
+            else:
+                st.info(f"No interaction data for radius {radius_cm:.0f} cm (other radii may be present).")
 
         # Dim zone metrics (shown when dim zone overlay is active)
         if show_dim_zone:
@@ -819,34 +862,65 @@ def render_nor_nof_interaction_qc(
             dist_df = pd.DataFrame(list(dist_metrics.items()), columns=["Metric", "Value"])
             st.dataframe(dist_df, hide_index=True, width="stretch")
 
-    # --- QC Notes ---
+    # --- Tracking QC Review ---
+    # Mirrors EZM Tracking QC's review block (same status vocabulary +
+    # widget layout) so operators see one consistent QC contract across
+    # task types. Persists under `interaction_qc` for backwards compat
+    # with existing filter logic; the schema migration to
+    # `computed_metrics.nor_nof.qc_review` is tracked under Iteration
+    # 5.5d in ROADMAP.md.
     st.markdown("---")
-    iqc = data.get("interaction_qc", {})
+    iqc = data.get("interaction_qc") or {}
+    existing_status = iqc.get("status", "")
     existing_notes = iqc.get("notes", "")
     reviewed_at = iqc.get("reviewed_at", "")
 
-    st.markdown("**QC Notes**")
+    st.markdown("**Tracking QC Review**")
     if reviewed_at:
-        st.caption(f"Last reviewed: {reviewed_at}")
+        st.caption(f"Last reviewed: {reviewed_at[:19]}")
+
+    _STATUS_OPTIONS = [
+        "(not reviewed)", "good", "poor_tracking", "exclude", "needs_re_review",
+    ]
+    status_key = f"iqc_status_{row.experiment_id}"
+    if status_key not in st.session_state:
+        st.session_state[status_key] = (
+            existing_status if existing_status in _STATUS_OPTIONS
+            else "(not reviewed)"
+        )
+    qc_status = st.radio(
+        "Status",
+        options=_STATUS_OPTIONS,
+        horizontal=True,
+        key=status_key,
+    )
 
     notes_key = f"iqc_notes_{row.experiment_id}"
+    if notes_key not in st.session_state:
+        st.session_state[notes_key] = existing_notes
     new_notes = st.text_area(
         "Notes",
-        value=existing_notes,
         placeholder="e.g., tracking looks off near right object, exclude from d2...",
         key=notes_key,
         label_visibility="collapsed",
         height=100,
     )
 
-    if st.button("Save QC notes", key=f"iqc_save_{row.experiment_id}"):
+    if st.button(
+        "Save QC review",
+        key=f"iqc_save_{row.experiment_id}",
+        type="primary",
+    ):
+        status_val = qc_status if qc_status != "(not reviewed)" else ""
         data["interaction_qc"] = {
-            "notes": new_notes,
+            "status": status_val,
+            "notes": new_notes.strip(),
             "reviewed_at": datetime.now(timezone.utc).isoformat(),
         }
         try:
             row.json_path.write_text(json.dumps(data, indent=2) + "\n")
-            st.success("Notes saved.")
+            invalidate_after_write()
+            st.toast("Saved tracking QC review.")
         except Exception as exc:
             st.error(f"Failed to save: {exc}")
 

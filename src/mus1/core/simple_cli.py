@@ -60,6 +60,10 @@ app.add_typer(runs_app, name="runs")
 from .experiment_cli import register_commands as _register_experiment_cohort_commands
 _register_experiment_cohort_commands(app)
 
+# Compute subcommand group — deterministic compute over experiments / cohorts.
+from .compute_cli import register_commands as _register_compute_commands
+_register_compute_commands(app)
+
 
 @app.command("serve")
 def serve_api(

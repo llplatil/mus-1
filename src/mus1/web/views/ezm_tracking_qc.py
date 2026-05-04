@@ -35,7 +35,13 @@ from ..ezm_trajectory_overlay import (
     load_dlc_tracks,
 )
 
-from ..filters import invalidate_after_write, mode_settings, pkey, render_filters
+from ..filters import (
+    invalidate_after_write,
+    mode_settings,
+    pkey,
+    render_filters,
+    render_scope_banner,
+)
 
 PANE = "ezm_tracking"
 
@@ -74,6 +80,7 @@ def _build_zone_definition_from_payload(zone_payload: dict) -> _ZD:
 def render_ezm_tracking_qc(*, workspace_root: Optional[str], project_path: Path) -> None:
     st.header("EZM Tracking QC")
     st.caption("Compute metrics, review tracking quality, flag issues.")
+    render_scope_banner()
 
     if st.button("Refresh (clear cache)", key=pkey(PANE, "refresh")):
         invalidate_after_write()
@@ -327,6 +334,13 @@ def render_ezm_tracking_qc(*, workspace_root: Optional[str], project_path: Path)
     tracks = None
     if dlc_csv_path is not None and dlc_csv_path.exists():
         tracks = load_dlc_tracks(dlc_csv_path, likelihood_threshold=active_lh)
+    else:
+        st.info(
+            "No DLC CSV linked for this experiment — trajectory overlay "
+            "and metric compute are disabled. Run DLC inference, then "
+            "ensure the JSON's `extraction.tracking_file_path` or "
+            "`extraction.dlc_runs[*].output.csv` points to the result."
+        )
 
     # ── Compute corrected head track for consensus mode ─────────────
     _is_consensus = active_pos_mode == "consensus"
