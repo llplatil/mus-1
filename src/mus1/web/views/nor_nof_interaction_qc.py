@@ -187,10 +187,16 @@ def _compute_dim_mask(
 
 
 @st.cache_resource(show_spinner=False)
-def _load_nose_track_corrected(csv_path: str) -> Optional[Tuple[np.ndarray, np.ndarray, np.ndarray]]:
+def _load_nose_track_corrected(
+    csv_path: str,
+    likelihood_threshold: float = LIKELIHOOD_THRESHOLD,
+    bodypart_bound_px: float = BODYPART_BOUND_PX,
+) -> Optional[Tuple[np.ndarray, np.ndarray, np.ndarray]]:
     """Load DLC CSV, apply likelihood filter + bodypart-bound correction.
 
-    Returns (nose_x, nose_y, ok_mask) with ghost points removed.
+    Returns (nose_x, nose_y, ok_mask) with ghost points removed. Cache
+    key includes the params so changing variant axes in the pane
+    correctly invalidates.
     """
     from ...compute.tracking import try_read_dlc_csv
     df = try_read_dlc_csv(Path(csv_path))
@@ -203,7 +209,7 @@ def _load_nose_track_corrected(csv_path: str) -> Optional[Tuple[np.ndarray, np.n
     nx = pd.to_numeric(df[("nose", "x")], errors="coerce")
     ny = pd.to_numeric(df[("nose", "y")], errors="coerce")
     nl = pd.to_numeric(df[("nose", "likelihood")], errors="coerce")
-    above_n = nl >= LIKELIHOOD_THRESHOLD
+    above_n = nl >= likelihood_threshold
     nx_f = nx.where(above_n).interpolate(limit=MAX_INTERP_GAP, limit_direction="both")
     ny_f = ny.where(above_n).interpolate(limit=MAX_INTERP_GAP, limit_direction="both")
     nose_ok = (nx_f.notna() & ny_f.notna()).to_numpy(dtype=bool)
@@ -214,7 +220,7 @@ def _load_nose_track_corrected(csv_path: str) -> Optional[Tuple[np.ndarray, np.n
     hx = pd.to_numeric(df[("head", "x")], errors="coerce")
     hy = pd.to_numeric(df[("head", "y")], errors="coerce")
     hl = pd.to_numeric(df[("head", "likelihood")], errors="coerce")
-    above_h = hl >= LIKELIHOOD_THRESHOLD
+    above_h = hl >= likelihood_threshold
     hx_f = hx.where(above_h).interpolate(limit=MAX_INTERP_GAP, limit_direction="both")
     hy_f = hy.where(above_h).interpolate(limit=MAX_INTERP_GAP, limit_direction="both")
     head_ok = (hx_f.notna() & hy_f.notna()).to_numpy(dtype=bool)
@@ -226,7 +232,7 @@ def _load_nose_track_corrected(csv_path: str) -> Optional[Tuple[np.ndarray, np.n
     for i in range(n):
         if nose_ok[i] and head_ok[i]:
             d = ((nose_x[i] - head_x[i])**2 + (nose_y[i] - head_y[i])**2) ** 0.5
-            if d > BODYPART_BOUND_PX:
+            if d > bodypart_bound_px:
                 nose_x[i] = np.nan
                 nose_y[i] = np.nan
                 nose_ok[i] = False
@@ -236,6 +242,219 @@ def _load_nose_track_corrected(csv_path: str) -> Optional[Tuple[np.ndarray, np.n
     ys = pd.Series(nose_y).interpolate(limit=MAX_INTERP_GAP, limit_direction="both")
     ok2 = (xs.notna() & ys.notna()).to_numpy(dtype=bool)
     return xs.to_numpy(dtype=float), ys.to_numpy(dtype=float), ok2
+
+
+# ---------------------------------------------------------------------------
+# Variant slug + parameter helpers (per docs/web/SCHEMA_VARIANTS.md §2)
+# ---------------------------------------------------------------------------
+
+def _build_variant_slug(
+    radius_cm: float, lh: float, buffer_mode: str, bb_px: float,
+) -> str:
+    """Deterministic, reversible variant name.
+
+    Format: ``r{N}cm_lh{NN}_{fix|ots}_bb{NN}`` — e.g. ``r3cm_lh06_fix_bb60``.
+    The slug is for display + dedup; the ``parameters`` field is
+    authoritative.
+    """
+    lh_short = f"{int(round(lh * 10)):02d}"
+    buf_short = "fix" if buffer_mode == "fixed" else "ots"
+    return f"r{int(radius_cm)}cm_lh{lh_short}_{buf_short}_bb{int(bb_px)}"
+
+
+def _build_exploratory_run(
+    *,
+    radius_cm: float, lh: float, buffer_mode: str, bb_px: float,
+    metrics: Dict, fps: float,
+) -> Dict:
+    """Construct an ``exploratory_runs[]`` entry per SCHEMA_VARIANTS.md."""
+    return {
+        "name": _build_variant_slug(radius_cm, lh, buffer_mode, bb_px),
+        "parameters": {
+            "radius_cm": radius_cm,
+            "likelihood_threshold": lh,
+            "buffer_mode": buffer_mode,
+            "bodypart_bound_px": bb_px,
+            "fps": fps,
+        },
+        "metrics": metrics,
+        "computed_at": datetime.now(timezone.utc)
+                       .replace(microsecond=0).isoformat(),
+        "computed_by": "mus1_browser",
+    }
+
+
+@st.cache_resource(show_spinner=False)
+def _compute_baseline_confidence(csv_path: str, pcutoff: float = 0.6) -> Optional[Dict]:
+    """Run mus1.compute.tracking_confidence on the resolved DLC CSV."""
+    from ...compute.tracking_confidence import compute_tracking_confidence
+    return compute_tracking_confidence(Path(csv_path), pcutoff=pcutoff)
+
+
+def _compute_interaction_for_pane(
+    csv_path: str,
+    left_xy: Tuple[float, float], right_xy: Tuple[float, float],
+    *,
+    radius_cm: float, px_to_mm: float,
+    likelihood_threshold: float, bodypart_bound_px: float,
+    buffer_mode: str,
+    novel_side: str, is_nor: bool,
+) -> Dict:
+    """Run the interaction compute pipeline for one experiment.
+
+    Returns ``{"metrics": <dict>, "fps": <float>}`` to be stored in
+    session state. Pure-ish: no JSON write, no logging — pane code
+    decides when to persist via ``_persist_exploratory_run``.
+    """
+    from ...compute.nor_nof_interaction import (
+        ObjectROI, compute_interaction_metrics,
+    )
+    nose_data = _load_nose_track_corrected(
+        csv_path, likelihood_threshold, bodypart_bound_px)
+    if nose_data is None:
+        return {"metrics": {"error": "could not load DLC CSV"}, "fps": 30.0}
+    nx, ny, nok = nose_data
+
+    # Roles for novelty (NOR-only)
+    role_left, role_right = "", ""
+    if is_nor:
+        ns = (novel_side or "").lower()
+        if ns == "left":
+            role_left, role_right = "novel", "familiar"
+        elif ns == "right":
+            role_left, role_right = "familiar", "novel"
+
+    radius_px = radius_cm * 10.0 / px_to_mm
+    objects = [
+        ObjectROI(name="left", cx=left_xy[0], cy=left_xy[1],
+                  radius_px=radius_px, role=role_left),
+        ObjectROI(name="right", cx=right_xy[0], cy=right_xy[1],
+                  radius_px=radius_px, role=role_right),
+    ]
+    arena_cx = (left_xy[0] + right_xy[0]) / 2.0
+    fps = 30.0  # NOR/NOF videos. (TODO: read from video metadata once
+                # the per-experiment fps probe is unified — Phase E.)
+    metrics = compute_interaction_metrics(
+        x=nx, y=ny, ok=nok,
+        objects=objects, arena_center_x=arena_cx,
+        fps=fps, buffer_mode=buffer_mode, buffer_px=20.0,
+    )
+    return {"metrics": metrics, "fps": fps}
+
+
+def _persist_exploratory_run(json_path: Path, run: Dict) -> None:
+    """Append *run* to ``computed_metrics.nor_nof_interaction.qc_review.exploratory_runs[]``.
+
+    Per SCHEMA_VARIANTS.md: the canonical home for exploratory runs is
+    inside the QC review block of the task-specific computed_metrics
+    namespace. Append-only.
+    """
+    data = json.loads(json_path.read_text())
+    cm = data.setdefault("computed_metrics", {})
+    nn = cm.setdefault("nor_nof_interaction", {})
+    qc = nn.setdefault("qc_review", {})
+    runs = qc.setdefault("exploratory_runs", [])
+    runs.append(run)
+    json_path.write_text(json.dumps(data, indent=2) + "\n")
+
+
+def _save_qc_review(
+    json_path: Path,
+    *,
+    status: str,
+    notes: str,
+    migrated_from_legacy: bool,
+) -> None:
+    """Persist QC review to ``computed_metrics.nor_nof_interaction.qc_review``.
+
+    On first save for an experiment that has a legacy top-level
+    ``interaction_qc`` block, copies its contents into the new home and
+    records the migration in ``qc_review.history``. Subsequent saves
+    update the new home in-place and append history entries.
+    """
+    data = json.loads(json_path.read_text())
+    cm = data.setdefault("computed_metrics", {})
+    nn = cm.setdefault("nor_nof_interaction", {})
+    qc = nn.setdefault("qc_review", {})
+
+    if migrated_from_legacy:
+        legacy = data.get("interaction_qc") or {}
+        # Preserve the legacy block in history so prior reviews aren't lost.
+        qc.setdefault("history", []).append({
+            "action": "migrated_from_legacy",
+            "at": datetime.now(timezone.utc).isoformat(),
+            "by": "mus1_browser",
+            "detail": json.dumps({
+                "from": "interaction_qc",
+                "to": "computed_metrics.nor_nof_interaction.qc_review",
+                "legacy_value": legacy,
+            }),
+        })
+
+    prior_status = qc.get("status", "")
+    qc["status"] = status
+    qc["notes"] = notes
+    qc["reviewed_at"] = datetime.now(timezone.utc).isoformat()
+    if prior_status != status:
+        qc.setdefault("history", []).append({
+            "action": "status_change",
+            "at": qc["reviewed_at"],
+            "by": "mus1_browser",
+            "detail": f"{prior_status or '(not_set)'} -> {status or '(cleared)'}",
+        })
+
+    json_path.write_text(json.dumps(data, indent=2) + "\n")
+
+
+def _load_saved_exploratory_runs(data: Dict) -> List[Dict]:
+    """Return the list of saved exploratory runs for the current experiment.
+
+    Reads the new schema home (per SCHEMA_VARIANTS.md). Legacy
+    pre-2026-05-04 metric blocks under ``computed_metrics.interaction.r{N}cm``
+    are not surfaced here — they are batch-canonical-candidates, not
+    exploratory runs (different audience).
+    """
+    cm = data.get("computed_metrics") or {}
+    nn = cm.get("nor_nof_interaction") or {}
+    qc = nn.get("qc_review") or {}
+    runs = qc.get("exploratory_runs") or []
+    return runs if isinstance(runs, list) else []
+
+
+def _render_metrics_table(
+    metrics: Dict, fps: float, *, is_nor: bool, title: Optional[str] = None,
+) -> None:
+    """Render an interaction-metrics dict as a small table.
+
+    Shared by the unsaved-compute display and the compare-against-saved
+    display so layout stays consistent. Field names match
+    ``compute_interaction_metrics`` (left/right object prefix) plus the
+    novelty-index aliases when roles are set.
+    """
+    if title:
+        st.caption(title)
+    if metrics.get("error"):
+        st.warning(f"Compute error: {metrics['error']}")
+        return
+    rows = [
+        ("Left time (s)",  f"{metrics.get('left_time_s', 0):.1f}"),
+        ("Right time (s)", f"{metrics.get('right_time_s', 0):.1f}"),
+        ("Left bouts",     f"{metrics.get('left_bouts', 0)}"),
+        ("Right bouts",    f"{metrics.get('right_bouts', 0)}"),
+    ]
+    if is_nor and metrics.get("novel_time_s") is not None:
+        rows.append(("Novel time (s)",    f"{metrics.get('novel_time_s', 0):.1f}"))
+        rows.append(("Familiar time (s)", f"{metrics.get('familiar_time_s', 0):.1f}"))
+        ni = metrics.get("novelty_index")
+        if ni is not None:
+            rows.append(("d2 (novelty index)", f"{ni:.3f}"
+                         if isinstance(ni, (int, float)) and ni == ni  # NaN check
+                         else "N/A"))
+    rows.append(("ok fraction", f"{metrics.get('ok_fraction', 0):.3f}"))
+    st.dataframe(
+        pd.DataFrame(rows, columns=["Metric", "Value"]),
+        hide_index=True, width="stretch",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -546,19 +765,48 @@ def render_nor_nof_interaction_qc(
     )
 
     with mode_settings("Display", key_prefix=PANE):
+        st.markdown("**Tracking variant** — sets the parameters used by the "
+                    "in-pane Compute button. Each combination is an "
+                    "exploratory run (saved to `qc_review.exploratory_runs[]` "
+                    "on Save).")
         radius_cm = st.radio(
             "Zone radius",
             options=[2.0, 3.0, 4.0],
             index=2,
             format_func=lambda x: f"{x:.0f} cm",
             key=pkey(PANE, "radius"),
+            horizontal=True,
         )
+        var_lh = st.slider(
+            "Likelihood threshold",
+            min_value=0.4, max_value=0.95, value=LIKELIHOOD_THRESHOLD, step=0.05,
+            key=pkey(PANE, "var_lh"),
+        )
+        var_buf_mode = st.radio(
+            "Buffer mode",
+            options=["fixed", "otsu"],
+            index=0,
+            key=pkey(PANE, "var_buf_mode"),
+            horizontal=True,
+            help="`fixed` adds a constant buffer around the radius; "
+                 "`otsu` derives the buffer from the per-session distance "
+                 "distribution (auto-thresholding).",
+        )
+        var_bb = st.slider(
+            "Bodypart bound (px)",
+            min_value=20.0, max_value=120.0, value=BODYPART_BOUND_PX, step=10.0,
+            key=pkey(PANE, "var_bb"),
+            help="Max nose-to-head distance before a nose frame is "
+                 "treated as a tracking glitch and re-interpolated.",
+        )
+        st.divider()
         show_trajectory = st.checkbox("Show trajectory", value=True, key=pkey(PANE, "show_traj"))
         show_divider = st.checkbox("Show hemisphere divider", value=False, key=pkey(PANE, "show_div"))
         show_dim_zone = st.checkbox("Show dim zone", value=False, key=pkey(PANE, "show_dim"))
         use_clean_dim = st.checkbox("Clean dim zone (morph filter)", value=True, key=pkey(PANE, "clean_dim"))
         show_arena_fit = st.checkbox("Show arena fit", value=False, key=pkey(PANE, "show_arena_fit"))
     radius_key = f"r{int(radius_cm)}cm"
+    variant_slug = _build_variant_slug(radius_cm, var_lh, var_buf_mode, var_bb)
 
     # --- Filter experiments ---
     filtered = experiments
@@ -584,18 +832,27 @@ def render_nor_nof_interaction_qc(
         return bool(am.get("object_left_xy") and am.get("object_right_xy"))
     filtered = [e for e in filtered if _has_inputs(e)]
 
-    # Apply QC filter
+    # Apply QC filter (reads new schema home first, falls back to legacy
+    # top-level ``interaction_qc``; covers experiments that haven't been
+    # re-saved into the new home yet).
     if qc_filter != "All":
         def _qc_match(row: _ExperimentRow) -> bool:
             d = _read_experiment_json(row)
             if d is None:
                 return False
-            iqc = d.get("interaction_qc", {})
-            tqc = d.get("tracking_qc", {})
+            qc_review = (
+                ((d.get("computed_metrics") or {})
+                 .get("nor_nof_interaction") or {})
+                .get("qc_review") or {}
+            )
+            legacy_iqc = d.get("interaction_qc") or {}
+            tqc = d.get("tracking_qc") or {}
+            reviewed = bool(qc_review.get("reviewed_at")
+                            or legacy_iqc.get("reviewed_at"))
             if qc_filter == "Unreviewed only":
-                return "reviewed_at" not in iqc
+                return not reviewed
             elif qc_filter == "Reviewed only":
-                return "reviewed_at" in iqc
+                return reviewed
             elif qc_filter == "Flagged tracking":
                 return not tqc.get("nose_reliable", True)
             return True
@@ -678,11 +935,14 @@ def render_nor_nof_interaction_qc(
         st.error(f"Could not load video frame: {video_path}")
         return
 
-    # --- Load corrected nose track ---
+    # --- Load corrected nose track (with variant params) ---
     tp = resolve_dlc_csv_path(data.get("extraction"))
     resolved_tp = resolve_with_mount_aliases(tp) if tp else None
     tracking_path = str(resolved_tp) if resolved_tp else None
-    nose_data = _load_nose_track_corrected(tracking_path) if tracking_path else None
+    nose_data = (
+        _load_nose_track_corrected(tracking_path, var_lh, var_bb)
+        if tracking_path else None
+    )
     nose_x = nose_data[0] if nose_data else None
     nose_y = nose_data[1] if nose_data else None
     ok = nose_data[2] if nose_data else None
@@ -731,7 +991,49 @@ def render_nor_nof_interaction_qc(
         st.image(overlay, width="stretch")
 
     with col_metrics:
-        # Session info
+        # ── Baseline DLC tracking confidence (always-shown gate) ────
+        # The "don't try to polish garbage" check — surfaces DLC quality
+        # before any task-specific compute. See compute.tracking_confidence.
+        st.markdown("**Tracking confidence (DLC baseline)**")
+        if tracking_path:
+            tc_summary = _compute_baseline_confidence(tracking_path, var_lh)
+        else:
+            tc_summary = None
+        if tc_summary is None:
+            st.caption("No DLC CSV linked — baseline confidence unavailable.")
+        elif tc_summary.get("error"):
+            st.warning(f"Confidence: {tc_summary['error']}")
+        else:
+            o = tc_summary.get("overall") or {}
+            n_frames = o.get("n_frames", 0)
+            mfa = o.get("median_frac_above_pcutoff") or 0.0
+            mba = o.get("min_bodypart_frac_above_pcutoff") or 0.0
+            st.caption(
+                f"frames={n_frames} | median ≥{var_lh:.2f}: {mfa*100:.1f}% | "
+                f"min bp: {mba*100:.1f}% | longest dropout: "
+                f"{o.get('longest_any_dropout_run_frames', 0)} fr"
+            )
+            flags = tc_summary.get("flags") or []
+            if flags:
+                st.warning("Tracking quality flags: " + ", ".join(flags))
+            else:
+                st.success("No tracking-quality flags.")
+            with st.expander("Per-bodypart detail", expanded=False):
+                rows_bp = []
+                for bp, st_bp in (tc_summary.get("per_bodypart") or {}).items():
+                    rows_bp.append({
+                        "bodypart": bp,
+                        "mean_lh": f"{st_bp.get('mean_likelihood', 0) or 0:.3f}",
+                        "frac ≥pcutoff": f"{(st_bp.get('frac_above_pcutoff') or 0)*100:.1f}%",
+                        "longest dropout": st_bp.get('longest_dropout_run_frames', 0),
+                    })
+                if rows_bp:
+                    st.dataframe(pd.DataFrame(rows_bp), hide_index=True,
+                                 width="stretch")
+
+        st.divider()
+
+        # ── Session info ─────────────────────────────────────────────
         st.markdown("**Session info**")
         info_items = {
             "Type": row.experiment_type,
@@ -751,6 +1053,106 @@ def render_nor_nof_interaction_qc(
 
         info_df = pd.DataFrame([(k, str(v)) for k, v in info_items.items()], columns=["Field", "Value"])
         st.dataframe(info_df, hide_index=True, width="stretch")
+
+        # ── Compute exploratory metrics (variant-driven, append-only on Save) ──
+        # Per SCHEMA_VARIANTS.md, exploratory runs append to
+        # qc_review.exploratory_runs[] only when the user clicks Save —
+        # not on every Compute click. This block manages session state
+        # for the unsaved compute result and the comparison dropdown.
+        st.markdown("**Compute exploratory metrics**")
+        st.caption(f"Variant: `{variant_slug}`")
+        unsaved_key = f"iqc_unsaved_{row.experiment_id}"
+        compute_disabled = (
+            tracking_path is None or left_xy is None or right_xy is None
+        )
+        cb1, cb2 = st.columns([1, 1])
+        with cb1:
+            if st.button(
+                "Compute (unsaved)",
+                key=f"iqc_compute_{row.experiment_id}",
+                type="secondary", disabled=compute_disabled,
+                help="Run interaction-metric compute with the current "
+                     "variant. Result is held in session state — click "
+                     "Save below to append it to exploratory_runs[].",
+            ):
+                _result = _compute_interaction_for_pane(
+                    tracking_path, left_xy, right_xy,
+                    radius_cm=radius_cm,
+                    px_to_mm=px_to_mm,
+                    likelihood_threshold=var_lh,
+                    bodypart_bound_px=var_bb,
+                    buffer_mode=var_buf_mode,
+                    novel_side=novel_side,
+                    is_nor=(row.experiment_type == "NOR"),
+                )
+                st.session_state[unsaved_key] = _result
+                st.rerun()
+        with cb2:
+            if st.button(
+                "Save exploratory run",
+                key=f"iqc_save_explore_{row.experiment_id}",
+                type="primary",
+                disabled=unsaved_key not in st.session_state,
+                help="Append the current unsaved compute result to "
+                     "computed_metrics.nor_nof_interaction.qc_review.exploratory_runs[].",
+            ):
+                _persist_exploratory_run(
+                    row.json_path,
+                    _build_exploratory_run(
+                        radius_cm=radius_cm, lh=var_lh,
+                        buffer_mode=var_buf_mode, bb_px=var_bb,
+                        metrics=st.session_state[unsaved_key]["metrics"],
+                        fps=st.session_state[unsaved_key]["fps"],
+                    ),
+                )
+                st.session_state.pop(unsaved_key, None)
+                invalidate_after_write()
+                st.toast("Saved exploratory run.")
+                st.rerun()
+
+        if compute_disabled:
+            missing = []
+            if not tracking_path:
+                missing.append("DLC CSV")
+            if not left_xy or not right_xy:
+                missing.append("object markings")
+            st.caption(
+                f"Compute disabled — missing: {', '.join(missing)}. "
+                "Visual QC and tracking-confidence above still work."
+            )
+
+        if unsaved_key in st.session_state:
+            unsaved = st.session_state[unsaved_key]
+            st.markdown("**Computed (unsaved)**")
+            _render_metrics_table(unsaved["metrics"], unsaved["fps"],
+                                  is_nor=(row.experiment_type == "NOR"))
+
+        # ── Compare against a saved exploratory run ─────────────────
+        # Reads from BOTH the new schema home (qc_review.exploratory_runs)
+        # and the legacy in-JSON variant blocks so users can diff against
+        # batch-computed `computed_metrics.interaction.r{N}cm` too.
+        saved_runs = _load_saved_exploratory_runs(data)
+        if saved_runs:
+            st.markdown("**Compare against saved**")
+            options = ["(none)"] + [
+                f"{r['name']}  ({r.get('computed_at', '')[:10]})"
+                for r in saved_runs
+            ]
+            sel = st.selectbox(
+                "Saved run", options=options,
+                key=f"iqc_compare_{row.experiment_id}",
+                label_visibility="collapsed",
+            )
+            if sel != "(none)":
+                idx_sel = options.index(sel) - 1
+                _render_metrics_table(
+                    saved_runs[idx_sel].get("metrics", {}),
+                    saved_runs[idx_sel].get("parameters", {}).get("fps", 30.0),
+                    is_nor=(row.experiment_type == "NOR"),
+                    title=f"Saved: {saved_runs[idx_sel]['name']}",
+                )
+
+        st.divider()
 
         # Interaction metrics from computed_metrics (may be absent on
         # freshly tracked cohorts — see QC pane contract in ROADMAP.md).
@@ -856,21 +1258,32 @@ def render_nor_nof_interaction_qc(
             st.dataframe(dist_df, hide_index=True, width="stretch")
 
     # --- Tracking QC Review ---
-    # Mirrors EZM Tracking QC's review block (same status vocabulary +
-    # widget layout) so operators see one consistent QC contract across
-    # task types. Persists under `interaction_qc` for backwards compat
-    # with existing filter logic; the schema migration to
-    # `computed_metrics.nor_nof.qc_review` is tracked under Iteration
-    # 5.5d in ROADMAP.md.
+    # Canonical home is computed_metrics.nor_nof_interaction.qc_review
+    # (per docs/web/SCHEMA_VARIANTS.md). On first save, any existing
+    # legacy ``interaction_qc`` block is migrated into the new home and
+    # noted in qc_review.history. Reads consult the new home first, then
+    # fall back to the legacy block, so saved-state stays visible during
+    # the rollout window.
     st.markdown("---")
-    iqc = data.get("interaction_qc") or {}
-    existing_status = iqc.get("status", "")
-    existing_notes = iqc.get("notes", "")
-    reviewed_at = iqc.get("reviewed_at", "")
+    qc_review_block = (
+        ((data.get("computed_metrics") or {})
+         .get("nor_nof_interaction") or {})
+        .get("qc_review") or {}
+    )
+    legacy_iqc = data.get("interaction_qc") or {}
+    # Prefer the new home, fall back to legacy.
+    existing_status = qc_review_block.get("status") or legacy_iqc.get("status", "")
+    existing_notes = qc_review_block.get("notes") or legacy_iqc.get("notes", "")
+    reviewed_at = qc_review_block.get("reviewed_at") or legacy_iqc.get("reviewed_at", "")
 
     st.markdown("**Tracking QC Review**")
     if reviewed_at:
         st.caption(f"Last reviewed: {reviewed_at[:19]}")
+    if legacy_iqc and not qc_review_block:
+        st.caption(
+            "ⓘ Legacy `interaction_qc` block detected; will migrate to "
+            "`computed_metrics.nor_nof_interaction.qc_review` on next Save."
+        )
 
     _STATUS_OPTIONS = [
         "(not reviewed)", "good", "poor_tracking", "exclude", "needs_re_review",
@@ -905,13 +1318,13 @@ def render_nor_nof_interaction_qc(
         type="primary",
     ):
         status_val = qc_status if qc_status != "(not reviewed)" else ""
-        data["interaction_qc"] = {
-            "status": status_val,
-            "notes": new_notes.strip(),
-            "reviewed_at": datetime.now(timezone.utc).isoformat(),
-        }
         try:
-            row.json_path.write_text(json.dumps(data, indent=2) + "\n")
+            _save_qc_review(
+                row.json_path,
+                status=status_val,
+                notes=new_notes.strip(),
+                migrated_from_legacy=bool(legacy_iqc and not qc_review_block),
+            )
             invalidate_after_write()
             st.toast("Saved tracking QC review.")
         except Exception as exc:
