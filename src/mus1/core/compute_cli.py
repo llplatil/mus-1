@@ -193,7 +193,7 @@ def _resolve_targets(
 def _compute_one(json_path: Path, thresholds: Dict[str, Any]) -> Dict[str, Any]:
     """Read DLC csv path from JSON, run compute, return the result dict."""
     from ..compute.tracking_confidence import compute_tracking_confidence
-    from ..web.discovery import resolve_dlc_csv_path
+    from ..compute.tracking import resolve_dlc_csv_path
 
     try:
         data = json.loads(json_path.read_text())
@@ -204,24 +204,32 @@ def _compute_one(json_path: Path, thresholds: Dict[str, Any]) -> Dict[str, Any]:
     if not csv_path_str:
         return {"error": "no DLC CSV path found in extraction.* (legacy or dlc_runs)"}
 
-    # Mount-alias normalization (web layer convention; see ezm_qc_shared.resolve_path)
-    candidates = [
-        Path(csv_path_str),
-        Path(csv_path_str.replace("/center1/", "/import/c1/")),
-        Path(csv_path_str.replace("/import/c1/", "/center1/")),
-    ]
-    csv_path = next((p for p in candidates if p.exists()), Path(csv_path_str))
+    from ..paths import resolve_with_mount_aliases
+    csv_path = resolve_with_mount_aliases(csv_path_str) or Path(csv_path_str)
 
     return compute_tracking_confidence(csv_path, **thresholds)
 
 
 def _persist_to_json(json_path: Path, result: Dict[str, Any]) -> None:
-    """Write ``result`` into ``extraction.tracking_confidence`` (overwrite)."""
+    """Write ``result`` into ``extraction.tracking_confidence`` AND merge
+    its flags into ``qc_flags.auto_flags`` via the shared merger.
+
+    The two-target write is the same operation the QC pane's Compute
+    button does — see ``mus1.compute.tracking_flags.merge_into_qc_flags``.
+    Single helper, two call sites, guaranteed not to drift.
+    """
+    from ..compute.tracking_flags import merge_into_qc_flags
+
     data = json.loads(json_path.read_text())
     ext = data.setdefault("extraction", {})
     # Strip the synthesized experiment_id key; it lives at top level of JSON.
     payload = {k: v for k, v in result.items() if k != "experiment_id"}
     ext["tracking_confidence"] = payload
+
+    # Merge universal-layer flags into qc_flags.auto_flags (additive,
+    # preserves task-specific flags already present).
+    data["qc_flags"] = merge_into_qc_flags(data.get("qc_flags"), payload)
+
     json_path.write_text(json.dumps(data, indent=2) + "\n")
 
 

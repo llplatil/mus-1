@@ -7,14 +7,43 @@ EZM and NOR/NOF compute pipelines.
 These are the same patterns duplicated in ezm_compute_bridge._bp_track(),
 nor_nof_object_interactions._bp_track(), and overlay.load_dlc_tracks().
 Consolidated here as the single implementation.
+
+Schema-duality resolver ``resolve_dlc_csv_path`` also lives here (moved
+2026-05-04 from ``mus1.web.discovery`` per ROADMAP §5.4b — it is a
+pure function over an ``extraction`` dict with no UI coupling).
 """
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 import numpy as np
 import pandas as pd
+
+
+def resolve_dlc_csv_path(extraction: Optional[Dict[str, Any]]) -> str:
+    """Return the DLC tracking CSV path from either supported JSON schema.
+
+    Two schemas exist in the canonical data roots:
+      • Legacy (publication batches): ``extraction.tracking_file_path``
+      • New (validation_2026 batches): ``extraction.dlc_runs[-1].output.csv``
+
+    The newer pipeline records every DLC run as an append-only entry
+    under ``dlc_runs[]`` and never writes the legacy flat field. Code
+    that only reads ``tracking_file_path`` silently misses the new
+    cohort. Use this resolver instead.
+    """
+    if not isinstance(extraction, dict):
+        return ""
+    legacy = extraction.get("tracking_file_path") or ""
+    if legacy:
+        return legacy
+    runs = extraction.get("dlc_runs") or []
+    if runs:
+        last = runs[-1] if isinstance(runs[-1], dict) else {}
+        out = last.get("output") or {}
+        return out.get("csv") or ""
+    return ""
 
 
 def try_read_dlc_csv(path: Path) -> Optional[pd.DataFrame]:

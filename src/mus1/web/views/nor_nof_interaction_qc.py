@@ -17,7 +17,8 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-from ..discovery import resolve_dlc_csv_path
+from ...compute.tracking import resolve_dlc_csv_path
+from ...paths import resolve_with_mount_aliases
 from ..filters import (
     SCOPE_KEY,
     _cohort_member_ids,
@@ -53,7 +54,6 @@ def _get_px_to_mm(meta: dict) -> float:
 MAX_INTERP_GAP = 10
 BODYPART_BOUND_PX = 60.0
 
-EXPERIMENT_DATA_ROOT = Path("/import/c1/WDMOSEQ2/llplatil/WDMOSEQ2/data/experiment_data")
 
 
 # ---------------------------------------------------------------------------
@@ -192,18 +192,9 @@ def _load_nose_track_corrected(csv_path: str) -> Optional[Tuple[np.ndarray, np.n
 
     Returns (nose_x, nose_y, ok_mask) with ghost points removed.
     """
-    p = Path(csv_path)
-    if not p.exists():
-        return None
-    try:
-        df = pd.read_csv(p, header=[0, 1, 2], index_col=0)
-    except Exception:
-        return None
-    if not isinstance(df.columns, pd.MultiIndex) or df.columns.nlevels != 3:
-        return None
-    try:
-        df.columns = df.columns.droplevel(0)
-    except Exception:
+    from ...compute.tracking import try_read_dlc_csv
+    df = try_read_dlc_csv(Path(csv_path))
+    if df is None:
         return None
     if ("nose", "x") not in df.columns:
         return None
@@ -510,11 +501,10 @@ def render_nor_nof_interaction_qc(
         st.rerun()
 
     # --- Load experiments ---
+    # The loader scans every configured root via discovery.task_dirs_across_roots;
+    # an `experiment_data` subdir under project_path is the canonical anchor
+    # but not strictly required (validation_data alone is fine).
     experiment_data_root = project_path / "experiment_data"
-    if not experiment_data_root.is_dir():
-        # Tolerate projects whose only data root is e.g. validation_data;
-        # the loader scans every configured root via mus1.toml anyway.
-        experiment_data_root = EXPERIMENT_DATA_ROOT
     experiments = _load_nor_nof_experiments(experiment_data_root)
     if not experiments:
         st.error("No NOR/NOF experiments found.")
@@ -678,7 +668,9 @@ def render_nor_nof_interaction_qc(
         return
 
     novel_side = el.get("novel_side", "") if row.experiment_type == "NOR" else ""
-    video_path = (data.get("video", {}).get("path", "") or row.video_path).replace("/center1/", "/import/c1/")
+    raw_vp = data.get("video", {}).get("path", "") or row.video_path
+    resolved_vp = resolve_with_mount_aliases(raw_vp)
+    video_path = str(resolved_vp) if resolved_vp else str(raw_vp)
 
     # --- Load frame ---
     frame = _read_mid_frame(video_path, row.frame_count)
@@ -688,7 +680,8 @@ def render_nor_nof_interaction_qc(
 
     # --- Load corrected nose track ---
     tp = resolve_dlc_csv_path(data.get("extraction"))
-    tracking_path = tp.replace("/center1/", "/import/c1/") if tp else None
+    resolved_tp = resolve_with_mount_aliases(tp) if tp else None
+    tracking_path = str(resolved_tp) if resolved_tp else None
     nose_data = _load_nose_track_corrected(tracking_path) if tracking_path else None
     nose_x = nose_data[0] if nose_data else None
     nose_y = nose_data[1] if nose_data else None

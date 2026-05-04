@@ -207,25 +207,13 @@ def task_dirs_across_roots(
 
 
 def resolve_dlc_csv_path(extraction: Optional[Dict]) -> str:
-    """Return the DLC tracking CSV path from either supported JSON schema.
+    """Deprecated alias — moved to :func:`mus1.compute.tracking.resolve_dlc_csv_path`.
 
-    Two schemas exist in the canonical data roots:
-      • Legacy (publication batches): ``extraction.tracking_file_path``
-      • New (validation_2026 batches): ``extraction.dlc_runs[-1].output.csv``
-
-    The newer pipeline records every DLC run as an append-only entry under
-    ``dlc_runs[]`` and never writes the legacy flat field, so loaders that
-    only read ``tracking_file_path`` silently miss tracking for those
-    experiments. Use this resolver instead.
+    This function is a pure operation over an ``extraction`` dict with
+    no UI coupling, so its canonical home is the compute layer (2026-05-04
+    relocation, ROADMAP §5.4b). The alias here keeps existing imports
+    working for one release; new code should import from
+    ``mus1.compute.tracking``.
     """
-    if not isinstance(extraction, dict):
-        return ""
-    legacy = extraction.get("tracking_file_path") or ""
-    if legacy:
-        return legacy
-    runs = extraction.get("dlc_runs") or []
-    if runs:
-        last = runs[-1] if isinstance(runs[-1], dict) else {}
-        out = last.get("output") or {}
-        return out.get("csv") or ""
-    return ""
+    from ..compute.tracking import resolve_dlc_csv_path as _impl
+    return _impl(extraction)

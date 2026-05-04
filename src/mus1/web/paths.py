@@ -67,15 +67,18 @@ def resolve_dlc_project_config_from_id(workspace_root: Optional[str], dlc_projec
         # Legacy: under moseq2_workspace/data/behavior_videos/dlc_projects
         candidates.append(ws / "data" / "behavior_videos" / "dlc_projects" / dlc_project_id / "config.yaml")
     # Common mount alias between workspace and project config.
+    from mus1.paths import mount_alias_variants
     for c in list(candidates):
-        s = str(c)
-        if s.startswith("/center1/"):
-            candidates.append(Path("/import/c1/" + s[len("/center1/") :]))
-        elif s.startswith("/import/c1/"):
-            candidates.append(Path("/center1/" + s[len("/import/c1/") :]))
-    # Fallback absolute lookups (Stage 2 layout first).
-    base = Path("/center1/WDMOSEQ2/llplatil/WDMOSEQ2")
-    for base_path in (base, Path("/import/c1/WDMOSEQ2/llplatil/WDMOSEQ2")):
+        for variant in mount_alias_variants(c):
+            if variant != str(c):
+                candidates.append(Path(variant))
+    # Fallback absolute lookups (Stage 2 layout first). Both mount
+    # variants of the project root are tried.
+    project_roots = [
+        Path("/center1/WDMOSEQ2/llplatil/WDMOSEQ2"),
+        Path("/import/c1/WDMOSEQ2/llplatil/WDMOSEQ2"),
+    ]
+    for base_path in project_roots:
         candidates.append(base_path / "dlc_workspace" / "projects" / dlc_project_id / "config.yaml")
         candidates.append(base_path / "moseq2_workspace" / "data" / "behavior_videos" / "dlc_projects" / dlc_project_id / "config.yaml")
     seen: set[str] = set()
@@ -91,25 +94,20 @@ def resolve_dlc_project_config_from_id(workspace_root: Optional[str], dlc_projec
 
 
 def path_aliases(p: Path) -> List[str]:
-    """
-    Return a small set of canonical/aliased path strings for matching.
+    """Return canonical + mount-aliased + resolved-symlink string forms.
 
-    This workspace commonly references the same files via both:
-    - /center1/... (canonical)
-    - /import/c1/... (alternate mount path)
+    Wraps :func:`mus1.paths.mount_alias_variants` and adds the
+    ``Path.resolve()`` form for callers that need to match against
+    symlink targets too (e.g. importers deduping artifacts).
     """
-    out: List[str] = []
-    s = str(p)
-    out.append(s)
+    from mus1.paths import mount_alias_variants
+    out: List[str] = list(mount_alias_variants(p))
     try:
-        out.append(str(p.resolve()))
+        resolved = str(p.resolve())
     except Exception:
-        pass
-    if s.startswith("/import/c1/"):
-        out.append("/center1/" + s[len("/import/c1/") :])
-    elif s.startswith("/center1/"):
-        out.append("/import/c1/" + s[len("/center1/") :])
-    # unique, preserve order
+        resolved = ""
+    if resolved and resolved not in out:
+        out.append(resolved)
     uniq: List[str] = []
     seen: set[str] = set()
     for x in out:

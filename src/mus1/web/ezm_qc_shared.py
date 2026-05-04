@@ -51,7 +51,8 @@ LOCKED_LH_THRESHOLD = 0.6
 # Experiment JSON discovery
 # ---------------------------------------------------------------------------
 
-from .discovery import CACHE_TTL_SECONDS, resolve_dlc_csv_path  # noqa: E402
+from .discovery import CACHE_TTL_SECONDS  # noqa: E402
+from ..compute.tracking import resolve_dlc_csv_path  # noqa: E402
 
 
 @st.cache_data(show_spinner="Loading EZM experiments...", ttl=CACHE_TTL_SECONDS)
@@ -137,19 +138,14 @@ def load_ezm_experiments(experiment_data_root: str) -> List[Dict[str, Any]]:
 # ---------------------------------------------------------------------------
 
 def resolve_path(p_str: str) -> Optional[Path]:
-    """Resolve a path, handling /center1 vs /import/c1 mount aliasing."""
-    if not p_str:
-        return None
-    p = Path(p_str)
-    if p.exists():
-        return p
-    alt = str(p).replace("/center1/", "/import/c1/")
-    if Path(alt).exists():
-        return Path(alt)
-    alt2 = str(p).replace("/import/c1/", "/center1/")
-    if Path(alt2).exists():
-        return Path(alt2)
-    return None
+    """Resolve a path, handling /center1 vs /import/c1 mount aliasing.
+
+    Thin wrapper around :func:`mus1.paths.resolve_with_mount_aliases` —
+    kept here for back-compat with callers that already import this
+    name; new code should call the package-level helper directly.
+    """
+    from mus1.paths import resolve_with_mount_aliases
+    return resolve_with_mount_aliases(p_str)
 
 
 # ---------------------------------------------------------------------------

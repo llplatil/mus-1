@@ -31,35 +31,21 @@ class ArenaZonesIndexStats:
 
 
 def _path_aliases(p: Path) -> list[str]:
-    """
-    Return a small set of canonical/aliased path strings for matching.
+    """Return canonical + mount-aliased + resolved-symlink string forms.
 
-    This workspace commonly references the same files via both:
-    - /center1/... (canonical)
-    - /import/c1/... (alternate mount path)
+    Wraps :func:`mus1.paths.mount_alias_variants` and adds the
+    ``Path.resolve()`` form so importers that scan symlinked artifacts
+    can dedupe across both mounts and symlink targets.
     """
-    out: list[str] = []
-    s = str(p)
-    out.append(s)
-
+    from mus1.paths import mount_alias_variants
+    out: list[str] = list(mount_alias_variants(p))
     try:
-        out.append(str(p.resolve()))
+        resolved = str(p.resolve())
     except Exception:
-        pass
-
-    if s.startswith("/import/c1/"):
-        out.append("/center1/" + s[len("/import/c1/"):])
-    elif s.startswith("/center1/"):
-        out.append("/import/c1/" + s[len("/center1/"):])
-
-    # unique, preserve order
-    uniq: list[str] = []
-    seen: set[str] = set()
-    for x in out:
-        if x not in seen:
-            seen.add(x)
-            uniq.append(x)
-    return uniq
+        resolved = ""
+    if resolved and resolved not in out:
+        out.append(resolved)
+    return out
 
 
 def _read_session_index_by_video_path(session_index_csv: Path) -> Dict[str, Dict[str, str]]:

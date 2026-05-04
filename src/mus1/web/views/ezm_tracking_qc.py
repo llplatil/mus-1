@@ -346,12 +346,8 @@ def render_ezm_tracking_qc(*, workspace_root: Optional[str], project_path: Path)
     _is_consensus = active_pos_mode == "consensus"
     _corrected_track = None
     if _is_consensus and tracks and dlc_csv_path is not None:
-        import pandas as _pd
-        try:
-            _raw_df = _pd.read_csv(dlc_csv_path, header=[0, 1, 2], index_col=0)
-            _raw_df.columns = _raw_df.columns.droplevel(0)
-        except Exception:
-            _raw_df = None
+        from ...compute.tracking import try_read_dlc_csv
+        _raw_df = try_read_dlc_csv(Path(dlc_csv_path))
         _corrected_track = compute_corrected_head_track(
             tracks, primary_bp="head",
             fallback_bps=["neck_base", "nose"],

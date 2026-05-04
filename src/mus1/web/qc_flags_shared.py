@@ -47,7 +47,8 @@ VALID_STATUSES = (
 #      predictions CSV alone. Computed by
 #      ``mus1.compute.tracking_confidence``. These flags say whether the
 #      experiment is *worth* deeper task-specific QC at all (the
-#      "don't try to polish garbage" gate).
+#      "don't try to polish garbage" gate). Canonical home is
+#      ``mus1.compute.tracking_flags``; re-exported here for back-compat.
 #
 #   2. NOR_NOF_FLAG_VOCABULARY / EZM auto-flags — task-specific, derived
 #      from computed metrics (zone classification, interaction zones,
@@ -57,13 +58,12 @@ VALID_STATUSES = (
 # Both layers can coexist in ``qc_flags.auto_flags[]``. UI panes display
 # tracking-quality flags first because they gate the rest.
 
-#: Universal tracking-quality flags. Vocabulary is fixed by
-#: ``mus1.compute.tracking_confidence``.
-TRACKING_QUALITY_FLAGS = [
-    "LOW_LIKELIHOOD_OVERALL",
-    "BODYPART_FAILURE",
-    "LIKELIHOOD_DROPOUT_RUN",
-]
+# Canonical universal-layer vocabulary lives in compute.tracking_flags.
+# Re-export for callers still importing from this module.
+from ..compute.tracking_flags import (  # noqa: E402  (after stdlib block above)
+    TRACKING_QUALITY_FLAGS,
+    merge_into_qc_flags as merge_tracking_confidence_into_qc_flags,
+)
 
 NOR_NOF_FLAG_VOCABULARY = [
     "LOW_TRACKING",

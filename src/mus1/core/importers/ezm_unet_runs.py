@@ -38,44 +38,35 @@ def _path_aliases(p: Path) -> list[str]:
     """
     Return canonical/aliased path strings for matching existing artifacts.
 
-    This workspace commonly references the same files via both:
-    - /center1/... (canonical)
-    - /import/c1/... (alternate mount path)
+    Wraps :func:`mus1.paths.mount_alias_variants` and adds the
+    resolved-symlink form for callers that need to dedupe artifacts
+    across mounts AND symlink targets.
     """
-    out: list[str] = []
-    s = str(p)
-    out.append(s)
-
+    from mus1.paths import mount_alias_variants
+    out: list[str] = list(mount_alias_variants(p))
     try:
-        out.append(str(p.resolve()))
+        resolved = str(p.resolve())
     except Exception:
-        pass
-
-    if s.startswith("/import/c1/"):
-        out.append("/center1/" + s[len("/import/c1/") :])
-    elif s.startswith("/center1/"):
-        out.append("/import/c1/" + s[len("/center1/") :])
-
-    uniq: list[str] = []
-    seen: set[str] = set()
-    for x in out:
-        if x in seen:
-            continue
-        seen.add(x)
-        uniq.append(x)
-    return uniq
+        resolved = ""
+    if resolved and resolved not in out:
+        out.append(resolved)
+    return out
 
 
 def _canonical_store_path(p: Path) -> str:
-    """
-    Choose a stable stored path to reduce mount-alias duplicates.
+    """Choose a stable stored path to reduce mount-alias duplicates.
+
+    Resolves through symlinks first, then normalizes the
+    ``/import/c1/`` form to the canonical ``/center1/`` mount.
     """
     try:
         s = str(p.resolve())
     except Exception:
         s = str(p)
-    if s.startswith("/import/c1/"):
-        return "/center1/" + s[len("/import/c1/") :]
+    from mus1.paths import mount_alias_variants
+    for v in mount_alias_variants(s):
+        if v.startswith("/center1/"):
+            return v
     return s
 
 

@@ -126,8 +126,8 @@ class ExperimentService:
             has_annotation = bool(am.get("arena_boundary"))
 
         # Resolve tracking presence across both legacy + new DLC schemas.
-        # See web.discovery.resolve_dlc_csv_path for schema duality.
-        from mus1.web.discovery import resolve_dlc_csv_path
+        # See compute.tracking.resolve_dlc_csv_path for schema duality.
+        from mus1.compute.tracking import resolve_dlc_csv_path
         has_tracking = bool(resolve_dlc_csv_path(ext))
 
         # Check for computed metrics under the task's key

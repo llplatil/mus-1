@@ -306,8 +306,9 @@ def _enrich_with_experiment_data(
         else:
             has_video.append("no")
 
+        from ...compute.tracking import resolve_dlc_csv_path
         ext = ed.get("extraction", {})
-        tp_raw = ext.get("tracking_file_path") or ""
+        tp_raw = resolve_dlc_csv_path(ext)
         h5_paths = [
             r.get("kpms_stats_path", "")
             for r in ext.get("analysis_runs", [])
