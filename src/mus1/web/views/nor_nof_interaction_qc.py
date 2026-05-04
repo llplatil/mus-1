@@ -765,10 +765,13 @@ def render_nor_nof_interaction_qc(
     )
 
     with mode_settings("Display", key_prefix=PANE):
-        st.markdown("**Tracking variant** — sets the parameters used by the "
-                    "in-pane Compute button. Each combination is an "
-                    "exploratory run (saved to `qc_review.exploratory_runs[]` "
-                    "on Save).")
+        st.markdown("**Tracking variant**")
+        st.caption(
+            "Sets parameters for the in-pane Compute button below. "
+            "Changing axes here updates the variant slug + the next "
+            "Compute result; existing displayed metrics from prior runs "
+            "(legacy or saved) do not retroactively change."
+        )
         radius_cm = st.radio(
             "Zone radius",
             options=[2.0, 3.0, 4.0],
@@ -788,9 +791,10 @@ def render_nor_nof_interaction_qc(
             index=0,
             key=pkey(PANE, "var_buf_mode"),
             horizontal=True,
-            help="`fixed` adds a constant buffer around the radius; "
-                 "`otsu` derives the buffer from the per-session distance "
-                 "distribution (auto-thresholding).",
+            help="`fixed` adds a constant 20px buffer beyond the radius; "
+                 "`otsu` derives the buffer from the per-session "
+                 "nose-to-object distance distribution. Effect only "
+                 "shows after clicking Compute.",
         )
         var_bb = st.slider(
             "Bodypart bound (px)",
@@ -1085,6 +1089,10 @@ def render_nor_nof_interaction_qc(
                     novel_side=novel_side,
                     is_nor=(row.experiment_type == "NOR"),
                 )
+                # Stamp the result with the variant slug it was computed
+                # with — distinct from the *current* slug if the user
+                # changes the axes after Compute.
+                _result["variant_slug"] = variant_slug
                 st.session_state[unsaved_key] = _result
                 st.rerun()
         with cb2:
@@ -1123,7 +1131,16 @@ def render_nor_nof_interaction_qc(
 
         if unsaved_key in st.session_state:
             unsaved = st.session_state[unsaved_key]
+            stale = unsaved.get("variant_slug") != variant_slug
             st.markdown("**Computed (unsaved)**")
+            if stale:
+                st.caption(
+                    f"⚠ Computed for `{unsaved.get('variant_slug', '?')}` "
+                    f"— current variant is now `{variant_slug}`. "
+                    "Click Compute again to refresh."
+                )
+            else:
+                st.caption(f"Variant: `{unsaved['variant_slug']}`")
             _render_metrics_table(unsaved["metrics"], unsaved["fps"],
                                   is_nor=(row.experiment_type == "NOR"))
 

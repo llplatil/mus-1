@@ -273,41 +273,17 @@ def render_ezm_tracking_qc(*, workspace_root: Optional[str], project_path: Path)
     if _k_frame not in st.session_state:
         st.session_state[_k_frame] = min(2100, total_frames - 1)
 
-    frame_nav_cols = st.columns([1, 1, 1, 4, 1, 1])
-    with frame_nav_cols[0]:
-        if st.button("\u23ea", key=f"ezm_tqc_fstart_{exp_id}",
-                     help="Jump to start"):
-            st.session_state[_k_frame] = 0
-            st.rerun()
-    with frame_nav_cols[1]:
-        step_back = max(0, st.session_state[_k_frame] - 60)
-        if st.button("\u25c0 1s", key=f"ezm_tqc_fback_{exp_id}",
-                     help="Back 1 second (60 frames)"):
-            st.session_state[_k_frame] = step_back
-            st.rerun()
-    with frame_nav_cols[2]:
-        step_back1 = max(0, st.session_state[_k_frame] - 1)
-        if st.button("\u25c0", key=f"ezm_tqc_fprev_{exp_id}",
-                     help="Previous frame"):
-            st.session_state[_k_frame] = step_back1
-            st.rerun()
-    with frame_nav_cols[3]:
-        frame_idx = st.slider(
-            "Frame", min_value=0, max_value=total_frames - 1,
-            key=_k_frame, label_visibility="collapsed",
-        )
-    with frame_nav_cols[4]:
-        step_fwd1 = min(total_frames - 1, st.session_state[_k_frame] + 1)
-        if st.button("\u25b6", key=f"ezm_tqc_fnext_{exp_id}",
-                     help="Next frame"):
-            st.session_state[_k_frame] = step_fwd1
-            st.rerun()
-    with frame_nav_cols[5]:
-        step_fwd = min(total_frames - 1, st.session_state[_k_frame] + 60)
-        if st.button("1s \u25b6", key=f"ezm_tqc_ffwd_{exp_id}",
-                     help="Forward 1 second (60 frames)"):
-            st.session_state[_k_frame] = step_fwd
-            st.rerun()
+    # Slider only \u2014 the prior step-buttons cluster was removed
+    # 2026-05-04: it raised StreamlitAPIException whenever a button
+    # tried to write back to the slider's session_state key after the
+    # slider widget had been instantiated in the same render. The
+    # operator never used them; the slider supports keyboard arrow
+    # keys + drag, which covers normal review flow. Iteration 8 (nav
+    # reliability) will add a unified prev/next via web/navigation.py.
+    frame_idx = st.slider(
+        "Frame", min_value=0, max_value=total_frames - 1,
+        key=_k_frame, label_visibility="collapsed",
+    )
 
     cur_time_s = float(frame_idx) / 60.0
     st.caption(f"Frame {frame_idx} / {total_frames - 1}  |  {cur_time_s:.1f}s")

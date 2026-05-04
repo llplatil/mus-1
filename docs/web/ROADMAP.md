@@ -583,6 +583,139 @@ data-access pattern unchanged.
 
 ---
 
+## Iteration 9 — Performance: smart-fetch vs auto-fetch frames
+
+The current frame-by-frame UX in EZM Tracking QC reads each requested
+frame on demand (`cv2.VideoCapture` seek + read). For long sessions
+(18k–36k frames) and slow filesystem mounts, the slider feels laggy
+because every drag emits a new render that re-opens the video.
+Operators on Chinook tolerate it; new users won't.
+
+The user has asked for this to live behind a **preference toggle** so
+the trade-off is explicit:
+
+| Mode | Behavior | When to pick |
+|---|---|---|
+| `smart_fetch` (default) | On-demand seek+read with a small lookahead window | Daily QC, mount usually warm |
+| `auto_fetch_all` | Pre-decode the full video into memory at experiment-load time | Long QC sessions on cold mounts; expensive but smooth |
+
+### Plan
+
+1. Extend `mus1.preferences` with a `compute.video_fetch` section:
+   ```yaml
+   compute:
+     video_fetch:
+       mode: smart_fetch  # | auto_fetch_all
+       prefetch_window_frames: 60
+       max_inmemory_seconds_per_session: 600
+   ```
+2. New module `mus1.compute.video_cache` providing two backend classes
+   that share a `read_frame(idx)` interface; pane code does not need to
+   know which backend is active.
+3. EZM Tracking QC + NOR/NOF Tracking QC consume the preference at
+   pane-load time and render through the same slider.
+4. Auto-fetch backend gated by an explicit progress bar (so the
+   operator sees the upfront cost) and a
+   `max_inmemory_seconds_per_session` ceiling that triggers a fallback
+   to smart-fetch with a toast.
+
+This is a **preference-driven choice**, not a heuristic — agents can
+populate it in `~/.config/mus1/preferences.yaml` from a chat about
+"my mount is slow today, prefetch please" and the app picks it up
+next render. Composes with Iteration 8's nav reliability work.
+
+---
+
+## Iteration 10 — Cohort-canonical arena boundary (pitch deferred)
+
+> **User ask (2026-05-04, paraphrased)**: "Is Arena boundary fit wired
+> to the cohort? If so, the cohort should be updatable by an agent in
+> the CLI to use the known outer arena marking from either inferred
+> arena (once implemented fully) or the geometric fit based on the
+> marked experiments. Note in docs with a plan to pitch to me later."
+
+### Current state (so the pitch starts on solid ground)
+
+- Per-experiment arena boundary lives in `arena_markings.arena_boundary`
+  (NOR/NOF) or is derived from `arena_markings.ezm_wedge_points`
+  (EZM). Each experiment has its *own* fit.
+- Cohort JSONs do not record any arena-boundary information. There is
+  no concept of "the cohort's canonical arena" today.
+- Two arena-boundary sources exist or are in flight:
+  - **Marked**: per-experiment circle/ellipse from the user's clicks
+    (current SOT).
+  - **Inferred**: U-Net predictions (Iteration 6 — EZM Arena Inference
+    QC). Not yet a marking-mode variant.
+
+### What "cohort-canonical arena" would mean
+
+A cohort whose recordings share an arena geometry (same room, same
+camera, same arena physical artifact) could carry one canonical
+boundary that overrides per-experiment fits — useful when individual
+fits diverge due to sparse edge points or dim frames.
+
+Proposed cohort JSON additions:
+
+```json
+"canonical_arena": {
+  "source": "marked_aggregate" | "inference" | "manual",
+  "geometry": { "ellipse": {...}, "fit_residual_px": ..., "n_contributing": ... },
+  "computed_at": "...",
+  "computed_by": "mus1 cohort fit-arena ..."
+}
+```
+
+Stats + overlay code reads `cohort.canonical_arena` first, falls back
+to per-experiment marking if absent. Switching is one line in the
+overlay code per pane.
+
+### Open design questions (the pitch)
+
+Before building this, decide:
+
+1. **Authoritativeness.** When `canonical_arena` and per-experiment
+   markings disagree, who wins?
+   (a) Cohort wins for cohort-scoped analyses; per-experiment wins
+       for ad-hoc views.
+   (b) Cohort is a *suggestion*; per-experiment markings remain SOT.
+   (c) Cohort is canonical and per-experiment markings get a
+       provenance tag pointing at the cohort fit.
+   Lean: (a) — cohort-scoped analyses use cohort geometry; cohort
+   QC dashboards already enforce that scope.
+
+2. **Aggregation method.** "Marked aggregate" could be per-coordinate
+   median, circle fit through all per-experiment centers + radii, or
+   outlier-resistant geometric mean. Default suggestion: median
+   ellipse + reject any contributing fit beyond 2σ in axes / center
+   distance.
+
+3. **Inference path.** Iteration 6 ships EZM U-Net QC; until then,
+   cohort-canonical arena is marked-aggregate only for EZM. NOR/NOF
+   has no inference pipeline planned today.
+
+4. **Trigger.** Explicit (`mus1 cohort fit-arena <name>`) or
+   recomputed on every `save_cohort()`. Lean: explicit — silent
+   recomputation makes downstream stats results vary based on
+   cohort-edit history rather than scientific decisions.
+
+5. **CLI surface (the user's specific ask)**:
+   - `mus1 cohort fit-arena <name> --source marked` (today)
+   - `mus1 cohort fit-arena <name> --source inference` (post-Iter 6)
+   - `mus1 cohort fit-arena <name> --source manual --ellipse '{...}'`
+     for explicit overrides.
+   - `mus1 cohort show-arena <name>` prints the current canonical.
+
+### When to bring this back to the user
+
+Deferred for explicit pitch + go-ahead before implementation. Not
+gated on Iteration 6 (marked-aggregate works standalone), more useful
+once inference exists. The pitch should include a side-by-side
+overlay of marked-aggregate vs three example-experiment fits for
+one publication cohort and one validation cohort — visual evidence
+drives the design decisions above.
+
+---
+
 ## Loose ends for future iterations
 
 - **NOR/NOF Tracking QC trajectory rendering — VERIFIED RENDERS CORRECTLY
@@ -651,6 +784,7 @@ core platform is stable and their upstream dependencies mature.
 
 ## Recently shipped (one-line tail; full detail in ARCHITECTURE_CURRENT.md)
 
+- 2026-05-04 — **Bug fix + UX clarity**: dropped buggy frame-nav button cluster from EZM Tracking QC (StreamlitAPIException after slider instantiation; operator never used the buttons; emojis annoying); slider remains. Added "effect only on Compute" caption to NOR/NOF Tracking QC variant section; unsaved-compute display now stamps the variant slug it was computed for and shows ⚠ when current axes drift from it. Iterations 9 + 10 added to roadmap (frame-fetch preference; cohort-canonical arena boundary — pitch deferred).
 - 2026-05-04 — **Iteration 5.5 (Phase B) — NOR/NOF Tracking QC parity**: 4-axis variant picker (radius / LH / buffer mode / bodypart bound), baseline DLC confidence panel at top of pane, in-pane Compute (session state, "(unsaved)") + Save → `qc_review.exploratory_runs[]`, Compare-against-saved dropdown, QC review schema migrated to `computed_metrics.nor_nof_interaction.qc_review` with one-time legacy migration on first save (history-preserving). 10 new helper tests (46/46 passing).
 - 2026-05-04 — **Iteration 5.4 — pre-Phase-B cleanup**: `mus1.paths.resolve_with_mount_aliases` (5 reimplementations collapsed); `resolve_dlc_csv_path` moved `web.discovery → compute.tracking` (alias kept); two QC panes migrated to `compute.tracking.try_read_dlc_csv` (8→6 inline DLC reads); `mus1.compute.tracking_flags` (vocabulary + `merge_into_qc_flags` helper, single source for CLI `--write` and pane); dead `EXPERIMENT_DATA_ROOT` deleted; `views/subjects.py` and `core/importers/ezm_unet_runs.py` migrated off direct `tracking_file_path` reads. 17 new tests.
 - 2026-05-04 — **Phase A foundations shipped** (5 modules + 19 tests passing): `docs/web/SCHEMA_VARIANTS.md` (three-layer compute schema), `mus1.compute.tracking_confidence` (task-agnostic DLC baseline confidence), `TRACKING_QUALITY_FLAGS` vocabulary in `qc_flags_shared`, `mus1.preferences` (cascading user → project YAML), `mus1 compute tracking-confidence <id|--cohort>` CLI; FastAPI/services migrated off direct `tracking_file_path` reads (same bug class as the web fix); cleanup sweep cataloged in this doc
