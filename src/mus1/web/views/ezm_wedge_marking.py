@@ -164,22 +164,38 @@ def _save_wedge_marking(
     frame_shape: List[int],
     flag_review: bool,
     note: str,
+    suggested_points: Optional[List[List[float]]] = None,
+    model_run_id: str = "",
 ) -> bool:
     """Save wedge points into arena_markings.ezm_wedge_points.
 
     Preserves other arena_markings subsections (e.g. ezm_boundary_points).
+    When *suggested_points* is provided, classifies the marking provenance
+    as manual / unet_suggested+accepted / unet_suggested+edited per ROADMAP
+    Iteration 6c (T10).
+
     Returns True if this was an overwrite of existing wedge points.
     """
+    from ..ezm_wedge_autosuggest import classify_marking_provenance
+
     data = _read_json(json_path)
     am = data.get("arena_markings") or {}
     was_overwrite = bool((am.get("ezm_wedge_points") or {}).get("points"))
-    am["ezm_wedge_points"] = {
+    method, edits = classify_marking_provenance(
+        points, suggested_points=suggested_points,
+    )
+    block: Dict[str, Any] = {
         "points": points,
         "frame_shape": frame_shape,
         "flag_review": flag_review,
         "note": note,
         "marked_at": datetime.now(tz=timezone.utc).isoformat(),
+        "provenance": {"method": method},
     }
+    if method != "manual":
+        block["provenance"]["model_run_id"] = model_run_id
+        block["provenance"]["edits"] = edits
+    am["ezm_wedge_points"] = block
     data["arena_markings"] = am
     json_path.write_text(json.dumps(data, indent=2, default=str) + "\n")
     return was_overwrite
@@ -269,7 +285,50 @@ def render_ezm_wedge_for_annotator(
     scale = canvas_w / img_w
     canvas_h = int(img_h * scale)
 
+    # ── Suggestion source (T10: U-Net auto-suggest) ──────────────────
+    from ..ezm_wedge_autosuggest import (
+        build_canvas_initial_drawing,
+        read_predicted_block,
+    )
+    predicted_block = read_predicted_block(json_path)
+    suggested_points: List[List[float]] = []
+    suggested_run_id: str = ""
+    initial_drawing = None
+    suggestion_options = ["Manual"]
+    if predicted_block and len(predicted_block.get("points") or []) == 4:
+        suggestion_options.append("U-Net auto-suggest")
+    src_key = f"ewm_suggest_src__{experiment_id}"
+    suggestion_source = st.selectbox(
+        "Suggestion source",
+        options=suggestion_options,
+        index=0,
+        key=src_key,
+        help=(
+            "Pre-populate the canvas with U-Net predictions. "
+            "Drag points to edit before saving; provenance records "
+            "whether predictions were accepted as-is or edited."
+        ),
+    )
+    if suggestion_source == "U-Net auto-suggest" and predicted_block:
+        suggested_points = list(predicted_block.get("points") or [])
+        suggested_run_id = (
+            predicted_block.get("model_run_id", "")
+            or predicted_block.get("model_version", "")
+        )
+        initial_drawing = build_canvas_initial_drawing(
+            suggested_points, scale=scale,
+        )
+        st.caption(
+            f"Pre-filled 4 points from model `{suggested_run_id}`. "
+            f"Drag any point to edit. Save records `unet_suggested+human_accepted` "
+            "if no edits, `unet_suggested+human_edited` otherwise."
+        )
+
     # Canvas
+    # The key includes the suggestion source so toggling between Manual
+    # and U-Net auto-suggest resets the canvas (otherwise Streamlit
+    # caches the canvas widget state and ignores the new initial_drawing).
+    canvas_key = f"ewm_canvas__{experiment_id}__{suggestion_source}"
     canvas_result = st_canvas(
         fill_color="rgba(0, 255, 0, 0.3)",
         stroke_width=0,
@@ -279,7 +338,8 @@ def render_ezm_wedge_for_annotator(
         point_display_radius=8,
         height=canvas_h,
         width=canvas_w,
-        key=f"ewm_canvas__{experiment_id}",
+        initial_drawing=initial_drawing,
+        key=canvas_key,
     )
 
     # Extract clicks
@@ -336,6 +396,8 @@ def render_ezm_wedge_for_annotator(
                 frame_shape=[img_h, img_w],
                 flag_review=flag_review,
                 note=note,
+                suggested_points=suggested_points if suggestion_source == "U-Net auto-suggest" else None,
+                model_run_id=suggested_run_id,
             )
             if was_overwrite:
                 st.toast(f"Overwrote existing wedge markings for {experiment_id}")

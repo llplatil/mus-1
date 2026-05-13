@@ -98,49 +98,60 @@ class TaskDefinition(ABC):
         ...
 
     @property
-    def arena_physical_dimensions(self) -> Dict[str, float]:
-        """Physical dimensions of the arena in mm.
+    def arena_profile_id(self) -> Optional[str]:
+        """Identifier of the default :class:`mus1.arena_profiles.ArenaProfile`.
 
-        Used for px-to-real-world scaling. Examples:
-        - Annular (EZM): {"outer_diameter_mm": 460.0, "inner_ratio": 0.761}
-        - Circular (OF/NOR): {"diameter_mm": 441.325}
-        - Rectangular: {"width_mm": 600.0, "height_mm": 400.0}
-        - None (rotarod): {}
+        Tasks declare their default *physical artifact* (e.g. NOR uses
+        the ``tamco_black_bucket`` profile). Per-experiment overrides
+        live in ``arena_markings.arena_profile.profile_id``; cohort
+        canonical (Iteration 10) is a future layer above. Returns
+        ``None`` for tasks with no arena (rotarod).
         """
+        return None
+
+    @property
+    def arena_physical_dimensions(self) -> Dict[str, float]:
+        """Back-compat shim — derived from :attr:`arena_profile_id`.
+
+        Pre-2026-05-04, tasks declared dimensions inline. Now they
+        reference an :class:`ArenaProfile` and dimensions live there.
+        Subclasses may still override this for tasks that don't use a
+        profile, but new code should set ``arena_profile_id`` instead.
+        """
+        if self.arena_profile_id is None:
+            return {}
+        # Lazy import to avoid circular: tasks → arena_profiles → tasks.
+        from mus1.arena_profiles.registry import ArenaProfileRegistry
+        from mus1.arena_profiles.base import (
+            AnnularGeometry, CircularGeometry,
+        )
+        prof = ArenaProfileRegistry().get_or_none(self.arena_profile_id)
+        if prof is None:
+            return {}
+        g = prof.geometry
+        if isinstance(g, CircularGeometry):
+            return {"diameter_mm": g.diameter_mm}
+        if isinstance(g, AnnularGeometry):
+            return {
+                "outer_diameter_mm": g.outer_diameter_mm,
+                "inner_ratio": g.inner_ratio,
+            }
         return {}
 
     def compute_px_to_mm(self, arena_annotation: Dict[str, Any]) -> float:
         """Compute pixel-to-mm conversion from arena annotation.
 
-        Default implementation uses circular arena: diameter_mm / mean_pixel_diameter.
-        Override for non-circular arenas.
-
-        Returns NaN if conversion cannot be computed.
+        Now delegates to :func:`mus1.compute.scaling.compute_px_to_mm`,
+        which handles per-experiment override → task default → "missing"
+        cascade. Returns ``nan`` if conversion cannot be computed; the
+        canonical helper returns ``(value, source)`` and is preferred
+        for new callers.
         """
-        import math
-        dims = self.arena_physical_dimensions
-        if not dims:
-            return float("nan")
-
-        diameter_mm = dims.get("diameter_mm") or dims.get("outer_diameter_mm")
-        if not diameter_mm:
-            return float("nan")
-
-        # Try to get pixel diameter from arena boundary ellipse
-        boundary = arena_annotation.get("arena_boundary", {})
-        ellipse = boundary.get("ellipse", {})
-        axes = ellipse.get("axes_xy") or ellipse.get("axes")
-        if axes and len(axes) >= 2:
-            mean_diameter_px = (axes[0] + axes[1]) / 2.0
-            if mean_diameter_px > 0:
-                return float(diameter_mm) / mean_diameter_px
-
-        # Fallback: check for explicit pixel diameter
-        diameter_px = boundary.get("diameter_px")
-        if diameter_px and float(diameter_px) > 0:
-            return float(diameter_mm) / float(diameter_px)
-
-        return float("nan")
+        from mus1.compute.scaling import compute_px_to_mm
+        value, _source = compute_px_to_mm(
+            {"arena_markings": arena_annotation}, self,
+        )
+        return value if value is not None else float("nan")
 
     # ── Annotation ──────────────────────────────────────────────────────────
 
@@ -324,7 +335,15 @@ class YAMLTaskDefinition(TaskDefinition):
         return self._config.get("arena_type", "custom")
 
     @property
+    def arena_profile_id(self) -> Optional[str]:
+        return self._config.get("arena_profile_id")
+
+    @property
     def arena_physical_dimensions(self) -> Dict[str, float]:
+        # Prefer the profile-driven path; fall back to inline YAML for
+        # back-compat with task YAMLs written before the profile system.
+        if self.arena_profile_id:
+            return super().arena_physical_dimensions
         return self._config.get("arena_physical_dimensions", {})
 
     @property

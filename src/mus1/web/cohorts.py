@@ -33,9 +33,17 @@ def _resolve_experiment_metadata(
 
     Searches *data_roots* in order; returns the first match. *data_roots*
     is the list returned by :func:`mus1.web.discovery.get_data_roots`.
+
+    Task type is inferred by matching the experiment_id prefix against
+    :data:`mus1.web.discovery.SUPPORTED_TASKS` (longest match wins —
+    so ``NOR_PILOT_351_UNK`` resolves as task ``NOR``, not ``N``).
     """
-    parts = experiment_id.split("_", 1)
-    task = parts[0] if parts else ""
+    from mus1.web.discovery import SUPPORTED_TASKS
+    task = ""
+    for candidate_task in sorted(SUPPORTED_TASKS, key=len, reverse=True):
+        if experiment_id.startswith(candidate_task + "_"):
+            task = candidate_task
+            break
     exp_dir: Optional[Path] = None
     for root in data_roots:
         candidate = root / task / experiment_id
@@ -165,6 +173,7 @@ def create_cohort(
     task_types: Optional[List[str]] = None,
     description: str = "",
     objects: Optional[List[str]] = None,
+    canonical_arena: Optional[Dict[str, str]] = None,
 ) -> Dict[str, Any]:
     """Return a new cohort dict (not yet saved to disk).
 
@@ -175,8 +184,19 @@ def create_cohort(
     ``metadata.experiment_level.object_left/right`` values take
     precedence — the cohort list only seeds defaults for un-marked
     experiments.
+
+    *canonical_arena* is the optional cohort-level arena profile + state.
+    A lightweight stub for the eventual cohort-canonical-arena work
+    (Iteration 10): captures which physical arena this cohort was run
+    in. Does NOT yet override per-experiment scaling — that's planned
+    for the full Iteration 10 implementation. Shape::
+
+        {"profile_id": "tamco_black_bucket", "state_id": "resanded"}
+
+    The ``state_id`` may be empty for profiles without states (e.g.
+    EZM, Home Depot bucket).
     """
-    return {
+    cohort: Dict[str, Any] = {
         "name": name,
         "version": 1,
         "description": description,
@@ -187,6 +207,51 @@ def create_cohort(
         "criteria": {"type": "manual", "description": ""},
         "members": [],
     }
+    if canonical_arena:
+        normalized = _normalize_canonical_arena(canonical_arena)
+        if normalized.get("profile_id"):
+            cohort["canonical_arena"] = normalized
+    return cohort
+
+
+def _normalize_canonical_arena(raw: Dict[str, Any]) -> Dict[str, str]:
+    """Coerce a canonical_arena dict to the stored shape.
+
+    Drops empty fields so callers can pass ``state_id=""`` without
+    polluting the cohort JSON. ``profile_id`` is required when present.
+    """
+    profile_id = str(raw.get("profile_id") or "").strip()
+    state_id = str(raw.get("state_id") or "").strip()
+    out: Dict[str, str] = {}
+    if profile_id:
+        out["profile_id"] = profile_id
+    if state_id:
+        out["state_id"] = state_id
+    return out
+
+
+def cohort_canonical_arena(cohort: Dict[str, Any]) -> Dict[str, str]:
+    """Return the cohort's canonical_arena dict (always normalized; ``{}``
+    when unset)."""
+    raw = cohort.get("canonical_arena")
+    if not isinstance(raw, dict):
+        return {}
+    return _normalize_canonical_arena(raw)
+
+
+def set_cohort_canonical_arena(
+    cohort: Dict[str, Any],
+    profile_id: Optional[str],
+    state_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Set or clear the cohort canonical_arena. Returns the cohort."""
+    if not (profile_id or "").strip():
+        cohort.pop("canonical_arena", None)
+        return cohort
+    cohort["canonical_arena"] = _normalize_canonical_arena(
+        {"profile_id": profile_id, "state_id": state_id}
+    )
+    return cohort
 
 
 # ---------------------------------------------------------------------------

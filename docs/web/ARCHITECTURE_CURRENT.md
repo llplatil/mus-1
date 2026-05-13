@@ -189,6 +189,44 @@ in `web/paths.py`. Used by FastAPI; the Streamlit app still uses
 
 ---
 
+## 3.5 Arena profile system (`src/mus1/arena_profiles/`)
+
+A small layer beneath tasks that owns the *physical artifact* — bucket,
+EZM ring, OF box. Each profile carries invariant geometry plus an
+optional list of named states (e.g. Tamco bucket `new` / `old` / `unk`
+/ `resanded`; states don't change dimensions but flag interpretation
+context).
+
+| Module | Role |
+|---|---|
+| `base.py` | `ArenaProfile`, `Geometry` ABC, `CircularGeometry`, `AnnularGeometry`, `ArenaState` |
+| `builtins.py` | `tamco_black_bucket` (NOR/NOF/OF, 4 states: new/old/unk/resanded), `home_depot_5gal_orange` (pilot_publication, no states), `ezm_460mm` (EZM) |
+| `registry.py` | `ArenaProfileRegistry` — builtins + YAML extension via `load_from_yaml` + `from_config(project_path)` (user YAML → project YAML cascade) |
+
+A task references a default profile via `arena_profile_id`. Per-experiment
+override at `arena_markings.arena_profile.{profile_id,state_id}`. Cohort
+canonical lives at `cohort.canonical_arena = {profile_id, state_id}`
+(lightweight stub; full Iteration 10 work is pending). Resolution lives
+in a single helper, `mus1.compute.scaling.compute_px_to_mm`, which
+returns `(value, source)` so panes can show whether scaling came from a
+per-experiment override, the task default, or a missing-data fallback.
+
+`SUPPORTED_TASKS` is `(OF, EZM, NOR, NOF, RR)`. The `P_NO` task was
+retired 2026-05-07; pilot subjects were restructured into
+`data/pilot_data/{NOR,NOF,OF}/`. Multi-token task ids in `pilot_data/`
+(e.g. `NOR_PILOT_351_UNK`) are resolved by longest-prefix match so
+the parent task (`NOR`) is identified.
+
+Active U-Net models per profile are registered in
+`data/arena_models.yaml` and loaded via
+`mus1.compute.arena_models.ArenaModelRegistry`. Inference loaders and
+post-processor dispatch live in `mus1.compute.arena_unet` and
+`mus1.compute.arena_post_processors`. See ROADMAP "Recently shipped"
+2026-05-12 for the Iteration 6 follow-on (panes: Arena Inference QC
++ Arena Training; CLI: `mus1 arena-models {list,activate,deactivate}`).
+
+---
+
 ## 4. Task definition system (`src/mus1/tasks/`)
 
 Replaces all hardcoded task types with a configurable registry. Status:

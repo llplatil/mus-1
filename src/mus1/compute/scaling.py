@@ -3,9 +3,9 @@
 Replaces the hardcoded ``BUCKET_DIAMETER_MM = 441.325`` /
 ``DEFAULT_FLOOR_DIAMETER_PX = 705.0`` patterns scattered across panes
 and compute modules pre-2026-05-04. Drives off
-:class:`mus1.arena_profiles.ArenaProfile` so adding a new arena (P_NO's
-Home Depot bucket, a new lab's box) is a registry entry, not Python
-edits.
+:class:`mus1.arena_profiles.ArenaProfile` so adding a new arena (the
+pilot Home Depot bucket, a new lab's box) is a registry entry, not
+Python edits.
 
 Resolution cascade (per experiment):
 

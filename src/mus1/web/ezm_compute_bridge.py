@@ -719,6 +719,10 @@ def compute_open_closed_metrics(
     hysteresis_deg: float = 2.0,
     # 1c: immobility
     immobility_cm_s: float = 2.0,
+    # outer_diameter_mm: see compute.ezm_zones — sourced from arena
+    # profiles (mus1.arena_profiles.builtins.EZM_460MM) for task-aware
+    # callers. Default kept for legacy callers; pane code passes the
+    # resolved profile value.
     outer_diameter_mm: float = 460.0,
     # bodypart-bounded ghost rejection
     bodypart_bound_px: float = 0.0,

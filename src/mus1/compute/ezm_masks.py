@@ -332,12 +332,16 @@ def make_ezm_open_closed_mask(
 def blend_mask_overlay(frame_rgb: np.ndarray, mask: np.ndarray) -> np.ndarray:
     """
     Overlay mask on RGB frame for quick QC.
-    - open (1): yellow
-    - closed (2): blue
+
+    Uses the canonical EZM palette from :mod:`mus1.compute.colors` so GT,
+    prediction, and zone-sector renders share the same green/blue identity.
     """
+    from mus1.compute import colors
+
     rgb = np.asarray(frame_rgb).copy()
     overlay = rgb.copy()
-    overlay[mask == 1] = (255, 255, 0)  # yellow in RGB
-    overlay[mask == 2] = (0, 0, 255)  # blue in RGB
-    return cv2.addWeighted(rgb, 0.62, overlay, 0.38, 0)
+    overlay[mask == 1] = colors.OPEN
+    overlay[mask == 2] = colors.CLOSED
+    return cv2.addWeighted(rgb, 1.0 - colors.PREDICTED_OVERLAY_ALPHA,
+                           overlay, colors.PREDICTED_OVERLAY_ALPHA, 0)
 

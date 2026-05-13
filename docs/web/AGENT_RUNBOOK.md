@@ -26,20 +26,38 @@ data/
 │   ├── NOF/...
 │   ├── OF/...
 │   └── RR/...
-└── validation_data/         # additional data root (validation cohorts)
+├── validation_data/         # additional data root (validation cohorts)
+│   └── (same per-task layout)
+└── pilot_data/              # pilot / supplementary cohorts
     └── (same per-task layout)
 ```
 
-**Data roots** are the directories the app scans for experiments. By
-design there are exactly two:
+**Data roots** are the directories the app scans for experiments. The
+defaults are:
 
   - `experiment_data/` — publication-grade experiments
   - `validation_data/` — held-out validation experiments
+  - `pilot_data/`      — pilot / supplementary cohorts
 
-This set is hard-coded in `src/mus1/web/discovery.py` (`DATA_ROOTS`); there
-is no config-file override. If you genuinely need a new root, edit the
-constant and ship it as a code change — usually though the right answer is
-a new cohort manifest in `data/cohorts/`, not a new directory.
+This list is **config-driven** via `mus1.toml` at the project path. To
+add or reorder roots, write the override:
+
+```toml
+# data/mus1.toml
+[paths]
+data_roots = ["experiment_data", "validation_data", "pilot_data", "external_lab_data"]
+```
+
+Resolution order (override → fallback):
+
+  1. `[paths] data_roots` in `<project_path>/mus1.toml`
+  2. The hard-coded defaults above (when the file is absent or the key
+     unset)
+
+For most workflows, adding a new cohort manifest in `data/cohorts/` is
+the right answer rather than a new root. New roots are appropriate when
+you need a structurally separate task-folder tree (different naming,
+different validator constraints, different ownership).
 
 Every experiment lives in `{ROOT}/{TASK}/{EXP_ID}/` with a single
 `{EXP_ID}.json` file inside. `EXP_ID` follows `{TASK}_{SUBJECT}_{DATE}`
@@ -55,16 +73,18 @@ JSON contents.
 ## 2. Print the configured data roots
 
 Always start by confirming what mus1 will scan, so you don't write JSONs
-into a directory the app ignores. The output reflects which canonical
-roots actually exist on disk for this project.
+into a directory the app ignores. The output now also prints the
+**source** of the configured list (`config` if read from `mus1.toml`,
+`default` if using the built-in defaults).
 
 ```bash
 mus1 experiment data-roots -p /path/to/data
 ```
 
-If a canonical root is missing from the printed list, create it on disk —
-it will be picked up automatically on next scan (no registration step).
-The set of recognized roots is fixed by code; see §1.
+If a configured root is missing from the printed list, create it on
+disk — it will be picked up automatically on next scan (no registration
+step). To add a non-default root, edit `<project_path>/mus1.toml` and
+re-run the command — no code change required.
 
 ---
 
@@ -97,16 +117,29 @@ The set of recognized roots is fixed by code; see §1.
        "birthdate": "2026-01-08",
        "experiment_level": {
          "timepoint": 1,
-         "bucket": "C",
-         "cohort": "validation_2026"
+         "cohort": "validation_2026",
+         "notes": "bucket_subletter=C"
        },
        "age_in_days": 90
      },
      "extraction": {},
-     "arena_markings": {},
+     "arena_markings": {
+       "arena_profile": {
+         "profile_id": "tamco_black_bucket",
+         "state_id":   "resanded"
+       }
+     },
      "artifacts": []
    }
    ```
+
+   The `experiment_level.bucket` field used to carry two unrelated
+   meanings (Brio station id A/B/C/D, *or* bucket condition NEW/OLD/
+   UNK). It was retired by the 2026-05-07 migration: A/B/C/D values
+   now live in `experiment_level.notes` as `bucket_subletter=<X>`,
+   and NEW/OLD/UNK values were promoted into
+   `arena_markings.arena_profile.state_id` (the registered tamco
+   states are `new`, `old`, `unk`, `resanded`).
 
 4. Verify discovery picks it up:
 
@@ -117,6 +150,31 @@ The set of recognized roots is fixed by code; see §1.
 There is no DB write step — discovery is on-demand from the JSONs on disk.
 If a Streamlit pane caches the previous scan, click *Refresh* in its sidebar
 or wait for the 120 s TTL to expire.
+
+### Arena profile + state (per-experiment override)
+
+When an experiment is recorded in a non-default arena (or in a known
+state of the default arena, e.g. resanded vs. original surface), record
+that under `arena_markings`:
+
+```json
+"arena_markings": {
+  "arena_profile": {
+    "profile_id": "tamco_black_bucket",
+    "state_id":   "resanded"
+  }
+}
+```
+
+Profile ids are sourced from the arena profile registry — built-ins are
+`tamco_black_bucket`, `home_depot_5gal_orange`, `ezm_460mm`. Add lab-specific
+profiles by writing `<project_path>/arena_profiles.yaml` (or
+`~/.config/mus1/arena_profiles.yaml` for user-level entries). State ids are
+profile-specific; use `""` (or omit) for profiles without states.
+
+This per-experiment block takes precedence over the cohort-level default
+(see §4) and over the task default at compute time. See
+`mus1.compute.scaling.compute_px_to_mm` for the resolution cascade.
 
 For batch ingest, write a small Python intake script that ffprobes each
 video and emits one JSON per experiment. See
@@ -157,6 +215,24 @@ mus1 cohort remove-object validation_2026 sponge               -p /path/to/data
 
 Every write triggers `compute_cohort_summary()`, so the cohort JSON's
 `summary` block (subject counts, group breakdown, warnings) stays in sync.
+
+**Canonical arena (cohort default)**: a cohort may carry a
+cohort-level arena profile + state at `cohort.canonical_arena`:
+
+```json
+"canonical_arena": {
+  "profile_id": "tamco_black_bucket",
+  "state_id":   "resanded"
+}
+```
+
+This is a lightweight cohort-level default — it does NOT yet override
+per-experiment `arena_markings.arena_profile` at compute time
+(planned for Iteration 10). Use the Cohort Management pane's *Canonical
+arena (cohort default)* row to set or change it via the UI; the same
+field is accepted by `create_cohort(canonical_arena={...})` and the
+helpers `cohort_canonical_arena()` / `set_cohort_canonical_arena()` in
+`mus1.web.cohorts`.
 
 **Object vocabulary resolution** (NOR/NOF only): when an experiment is
 displayed in the marking or QC pane, the dropdown options come from the

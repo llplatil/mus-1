@@ -1,17 +1,23 @@
-"""Shared experiment discovery across the canonical mus1 data roots.
+"""Shared experiment discovery across the configured mus1 data roots.
 
-mus1 scans exactly two directories under the project path for
-per-experiment JSONs:
+mus1 scans one or more directories under the project path for
+per-experiment JSONs. The default set is::
 
   • ``experiment_data/``  — publication-grade experiments
   • ``validation_data/``  — held-out validation experiments
+  • ``pilot_data/``       — pilot / supplementary cohorts
 
-This pair is hard-coded by design (see :data:`DATA_ROOTS`). Adding a third
-root is a code-level decision, not a config tweak — the goal is that
-"where do experiments live?" has the same answer in every environment.
-If you genuinely need a third root, edit :data:`DATA_ROOTS` and update
-the runbook; usually though the right answer is a new cohort manifest,
-not a new directory.
+A project may override this list by writing ``mus1.toml`` at the project
+path (typically ``data/mus1.toml``)::
+
+    [paths]
+    data_roots = ["experiment_data", "validation_data", "pilot_data", "external_lab_data"]
+
+Resolution order (override → fallback):
+
+  1. ``[paths] data_roots`` in ``<project_path>/mus1.toml``
+  2. :data:`DEFAULT_DATA_ROOTS` (used when the file is absent or the key
+     is unset)
 
 Each root has the same internal layout::
 
@@ -32,13 +38,29 @@ import json
 from pathlib import Path
 from typing import Dict, Iterator, List, Optional, Sequence, Tuple
 
-#: Canonical data roots, in scan order. The first root that contains an
-#: experiment with a given ID wins (publication > validation). Hard-coded
-#: by design — see module docstring.
-DATA_ROOTS: Tuple[str, ...] = ("experiment_data", "validation_data")
+try:  # Python 3.11+
+    import tomllib as _tomllib
+except ImportError:  # Python 3.10 fallback
+    import tomli as _tomllib  # type: ignore
 
-#: Backwards-compatible alias for ``DATA_ROOTS``. Prefer the new name.
-DEFAULT_DATA_ROOTS: Tuple[str, ...] = DATA_ROOTS
+#: Default data roots, in scan order. Used when ``[paths] data_roots``
+#: is not configured in ``mus1.toml``. The first root that contains an
+#: experiment with a given ID wins (publication > validation > pilot).
+DEFAULT_DATA_ROOTS: Tuple[str, ...] = (
+    "experiment_data",
+    "validation_data",
+    "pilot_data",
+)
+
+#: Deprecated module-level alias. Use :data:`DEFAULT_DATA_ROOTS` for the
+#: default list, or :func:`get_configured_data_root_names` for what the
+#: project is actually scanning right now (config-aware). Kept for
+#: backwards compat with callers that imported the old name.
+DATA_ROOTS: Tuple[str, ...] = DEFAULT_DATA_ROOTS
+
+#: Filename of the optional project-level config (lives at
+#: ``<project_path>/mus1.toml``).
+PROJECT_CONFIG_FILENAME: str = "mus1.toml"
 
 #: Supported task type folder names. Adding a new task requires updating
 #: this tuple plus a per-task pane in ``web/views/``.
@@ -51,17 +73,59 @@ SUPPORTED_TASKS: Tuple[str, ...] = ("OF", "EZM", "NOR", "NOF", "RR")
 CACHE_TTL_SECONDS: int = 300
 
 
-def get_data_roots(project_path: Path) -> List[Path]:
-    """Return the canonical data-root directories that exist for *project_path*.
+def _load_project_config(project_path: Path) -> Dict:
+    """Read ``<project_path>/mus1.toml`` if present; return its parsed dict.
 
-    Always returns a subset of :data:`DATA_ROOTS` (in declaration order),
-    keeping only roots that exist on disk. Roots that don't exist are
-    dropped silently so the call site never sees a missing path.
+    Returns an empty dict when the file is absent. A malformed TOML file
+    is reported (raises ``ValueError``) rather than silently dropped —
+    the file drives discovery, so a silent fallback could hide
+    experiments from the operator.
+    """
+    cfg_path = Path(project_path) / PROJECT_CONFIG_FILENAME
+    if not cfg_path.is_file():
+        return {}
+    try:
+        with cfg_path.open("rb") as f:
+            return _tomllib.load(f) or {}
+    except _tomllib.TOMLDecodeError as e:
+        raise ValueError(f"{cfg_path} is not valid TOML: {e}")
+
+
+def get_configured_data_root_names(project_path: Path) -> Tuple[Tuple[str, ...], str]:
+    """Return ``(root_names, source)`` for *project_path*.
+
+    *source* is one of ``"config"`` (read from ``mus1.toml``) or
+    ``"default"`` (built-in :data:`DEFAULT_DATA_ROOTS`). Names are
+    returned exactly as configured — they are not validated against the
+    filesystem (use :func:`get_data_roots` for that).
+    """
+    cfg = _load_project_config(Path(project_path))
+    paths = cfg.get("paths") if isinstance(cfg, dict) else None
+    if isinstance(paths, dict):
+        roots = paths.get("data_roots")
+        if isinstance(roots, list) and all(isinstance(r, str) and r for r in roots):
+            return tuple(roots), "config"
+        if roots is not None:
+            raise ValueError(
+                f"{Path(project_path) / PROJECT_CONFIG_FILENAME}: "
+                "[paths] data_roots must be a list of non-empty strings"
+            )
+    return DEFAULT_DATA_ROOTS, "default"
+
+
+def get_data_roots(project_path: Path) -> List[Path]:
+    """Return the configured data-root directories that exist for *project_path*.
+
+    Reads the configured root names (see
+    :func:`get_configured_data_root_names`), then keeps only those that
+    exist on disk. Missing roots are dropped silently so the call site
+    never sees a non-existent path.
     """
     project_path = Path(project_path).resolve()
+    names, _source = get_configured_data_root_names(project_path)
     out: List[Path] = []
     seen: set = set()
-    for name in DATA_ROOTS:
+    for name in names:
         p = (project_path / name).resolve()
         if p.is_dir() and p not in seen:
             out.append(p)
@@ -175,7 +239,16 @@ def find_experiment_dir(
     data_roots: Optional[Sequence[Path]] = None,
 ) -> Optional[Path]:
     """Locate the folder for *experiment_id* across all data roots."""
-    task = experiment_id.split("_", 1)[0]
+    # Match the longest task prefix in SUPPORTED_TASKS so multi-token
+    # task ids (e.g. ``NOF_PILOT_351_UNK``) resolve to the correct
+    # task rather than a naive-split prefix.
+    task = ""
+    for candidate_task in sorted(SUPPORTED_TASKS, key=len, reverse=True):
+        if experiment_id.startswith(candidate_task + "_"):
+            task = candidate_task
+            break
+    if not task:
+        return None
     roots = list(data_roots) if data_roots is not None else get_data_roots(project_path)
     for root in roots:
         candidate = root / task / experiment_id

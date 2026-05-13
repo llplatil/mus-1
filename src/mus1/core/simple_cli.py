@@ -64,6 +64,10 @@ _register_experiment_cohort_commands(app)
 from .compute_cli import register_commands as _register_compute_commands
 _register_compute_commands(app)
 
+# Arena models subcommand group — manage data/arena_models.yaml.
+from .arena_cli import register_commands as _register_arena_commands
+_register_arena_commands(app)
+
 
 @app.command("serve")
 def serve_api(

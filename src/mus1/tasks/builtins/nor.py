@@ -45,8 +45,8 @@ class NORTask(TaskDefinition):
         return "circular"
 
     @property
-    def arena_physical_dimensions(self) -> Dict[str, float]:
-        return {"diameter_mm": BUCKET_DIAMETER_MM}
+    def arena_profile_id(self) -> Optional[str]:
+        return "tamco_black_bucket"
 
     @property
     def annotation_fields(self) -> List[AnnotationField]:

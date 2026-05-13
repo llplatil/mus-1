@@ -121,3 +121,33 @@ class ArenaProfileRegistry:
             self.register(_build_profile(raw))
             n += 1
         return n
+
+    # ── Factory ──────────────────────────────────────────────────────────
+    @classmethod
+    def from_config(
+        cls,
+        project_path: Optional[Path] = None,
+        *,
+        user_yaml_path: Optional[Path] = None,
+    ) -> "ArenaProfileRegistry":
+        """Build a registry: builtins → user YAML → project YAML.
+
+        Layer precedence (later wins on id collision):
+
+          1. Built-in profiles (always loaded).
+          2. User-level YAML at ``~/.config/mus1/arena_profiles.yaml``
+             (or *user_yaml_path* if given).
+          3. Project-level YAML at
+             ``<project_path>/arena_profiles.yaml`` if *project_path*
+             is given.
+
+        Either YAML layer may be absent — missing files are silently
+        skipped. Malformed YAML raises ``ValueError`` (same contract as
+        :meth:`load_from_yaml`).
+        """
+        registry = cls()
+        user_path = user_yaml_path or Path("~/.config/mus1/arena_profiles.yaml").expanduser()
+        registry.load_from_yaml(user_path)
+        if project_path is not None:
+            registry.load_from_yaml(Path(project_path) / "arena_profiles.yaml")
+        return registry

@@ -13,6 +13,7 @@ import streamlit as st
 
 from ..cohorts import (
     add_member,
+    cohort_canonical_arena,
     cohort_member_ids,
     create_cohort,
     export_training_csv,
@@ -20,9 +21,51 @@ from ..cohorts import (
     load_cohort,
     remove_member,
     save_cohort,
+    set_cohort_canonical_arena,
 )
 
 _TASK_TYPES = ["EZM", "NOR", "NOF", "OF", "RR"]
+
+
+# ---------------------------------------------------------------------------
+# Arena profile registry (cached per-pane render so YAML is read once)
+# ---------------------------------------------------------------------------
+
+@st.cache_resource(show_spinner=False)
+def _arena_profile_registry(project_path_str: str):
+    """Build a config-aware ArenaProfileRegistry (builtins → user → project)."""
+    from mus1.arena_profiles.registry import ArenaProfileRegistry
+    return ArenaProfileRegistry.from_config(Path(project_path_str))
+
+
+def _profile_label(profile_id: str, registry) -> str:
+    if not profile_id:
+        return "(none — per-experiment markings only)"
+    profile = registry.get_or_none(profile_id)
+    if profile is None:
+        return f"{profile_id} (unknown)"
+    return f"{profile_id} — {profile.description}"
+
+
+def _state_options(profile_id: str, registry) -> List[str]:
+    if not profile_id:
+        return [""]
+    profile = registry.get_or_none(profile_id)
+    if profile is None or not profile.states:
+        return [""]
+    return [""] + list(profile.state_ids())
+
+
+def _state_label(state_id: str, profile_id: str, registry) -> str:
+    if not state_id:
+        return "(default)"
+    profile = registry.get_or_none(profile_id) if profile_id else None
+    if profile is None:
+        return state_id
+    state = profile.get_state(state_id)
+    if state is None:
+        return f"{state_id} (unknown)"
+    return f"{state_id} — {state.description}" if state.description else state_id
 
 
 # ---------------------------------------------------------------------------
@@ -93,6 +136,7 @@ def render_cohort_management(*, project_path: Path) -> None:
 
     all_experiments = _load_all_experiments(str(experiment_data_root))
     exp_lookup = _build_experiment_lookup(all_experiments)
+    arena_registry = _arena_profile_registry(str(project_path))
 
     # ── Sidebar ───────────────────────────────────────────────────────
     st.sidebar.header("Cohort Management")
@@ -115,14 +159,41 @@ def render_cohort_management(*, project_path: Path) -> None:
     new_tasks = st.sidebar.multiselect(
         "Task types", options=_TASK_TYPES, default=["EZM"], key="cm_new_tasks",
     )
+    profile_options = [""] + arena_registry.list_ids()
+    new_profile = st.sidebar.selectbox(
+        "Arena profile (optional)",
+        options=profile_options,
+        format_func=lambda pid: _profile_label(pid, arena_registry),
+        index=0,
+        key="cm_new_profile",
+        help="Cohort-level default for the physical arena. Per-experiment "
+             "arena_markings still take precedence at compute time.",
+    )
+    state_options_new = _state_options(new_profile, arena_registry)
+    new_state = ""
+    if len(state_options_new) > 1:
+        new_state = st.sidebar.selectbox(
+            "Arena state",
+            options=state_options_new,
+            format_func=lambda sid: _state_label(sid, new_profile, arena_registry),
+            index=0,
+            key="cm_new_state",
+        )
     if st.sidebar.button("Create", key="cm_create", disabled=not new_name.strip()):
         slug = re.sub(r"[^a-z0-9]+", "_", new_name.lower().strip()).strip("_")
         coh_path = cohorts_dir / f"{slug}.json"
         if coh_path.exists():
             st.sidebar.error(f"Cohort file already exists: {coh_path.name}")
         else:
+            canonical_arena = (
+                {"profile_id": new_profile, "state_id": new_state}
+                if new_profile else None
+            )
             coh = create_cohort(
-                new_name.strip(), task_types=new_tasks, description=new_desc.strip(),
+                new_name.strip(),
+                task_types=new_tasks,
+                description=new_desc.strip(),
+                canonical_arena=canonical_arena,
             )
             save_cohort(coh_path, coh, experiment_lookup=exp_lookup)
             st.sidebar.success(f"Created: {new_name}")
@@ -180,6 +251,50 @@ def render_cohort_management(*, project_path: Path) -> None:
             coh["description"] = new_desc_val
             save_cohort(coh_path, coh, experiment_lookup=exp_lookup)
             st.success("Description updated.")
+            st.rerun()
+
+    # ── Canonical arena (cohort-level default; per-experiment still wins) ──
+    st.markdown("#### Canonical arena (cohort default)")
+    st.caption(
+        "Physical arena this cohort was run in. Per-experiment "
+        "`arena_markings.arena_profile` overrides still win at compute time; "
+        "this is the default for new experiments and a hint for stats grouping."
+    )
+    current_arena = cohort_canonical_arena(coh)
+    profile_options_edit = [""] + arena_registry.list_ids()
+    current_profile = current_arena.get("profile_id", "")
+    profile_idx = (
+        profile_options_edit.index(current_profile)
+        if current_profile in profile_options_edit
+        else 0
+    )
+    col_prof, col_state, col_save_arena = st.columns([3, 2, 1])
+    with col_prof:
+        edit_profile = st.selectbox(
+            "Profile",
+            options=profile_options_edit,
+            format_func=lambda pid: _profile_label(pid, arena_registry),
+            index=profile_idx,
+            key=f"cm_edit_profile_{coh_path.name}",
+        )
+    state_opts_edit = _state_options(edit_profile, arena_registry)
+    current_state = current_arena.get("state_id", "")
+    state_idx = state_opts_edit.index(current_state) if current_state in state_opts_edit else 0
+    with col_state:
+        edit_state = st.selectbox(
+            "State",
+            options=state_opts_edit,
+            format_func=lambda sid: _state_label(sid, edit_profile, arena_registry),
+            index=state_idx,
+            key=f"cm_edit_state_{coh_path.name}",
+            disabled=(len(state_opts_edit) <= 1),
+        )
+    with col_save_arena:
+        if st.button("Save arena", key=f"cm_save_arena_{coh_path.name}"):
+            set_cohort_canonical_arena(coh, edit_profile or None, edit_state or None)
+            save_cohort(coh_path, coh, experiment_lookup=exp_lookup)
+            st.success("Canonical arena updated.")
+            st.cache_data.clear()
             st.rerun()
 
     # ── Summary: group breakdown ──────────────────────────────────────

@@ -718,6 +718,15 @@ drives the design decisions above.
 
 ## Loose ends for future iterations
 
+- **P_NO JSON shape divergence**: P_NO experiment JSONs put
+  `subject_id` at the top level, while every other task nests it under
+  `metadata.subject_id`. As a result `cohort.summary.n_subjects` is 0
+  for `p_no_pilot` and a "duplicate subject+date" warning fires for
+  every member (all share an empty subject+date key). Fix: one-time
+  migration that copies `subject_id` into `metadata.subject_id` on
+  every P_NO JSON, plus a one-line fallback in
+  `cohorts._resolve_experiment_metadata` for legacy shapes. Tracked,
+  not blocking — DLC + tracking QC don't read subject_id.
 - **NOR/NOF Tracking QC trajectory rendering — VERIFIED RENDERS CORRECTLY
   AFTER CACHE INVALIDATION (2026-05-03).** User initially reported
   trajectory not visible on `NOR_VAL_1002_2026-04-07`. End-to-end
@@ -744,6 +753,19 @@ drives the design decisions above.
   the `mus1_runs/` registry, not just training. Rename when scope
   expands beyond ML training (e.g., compute jobs from Iteration 5.5c
   surfaced through the same registry).
+- **Retire `ezm-zones` conda env into `mus1-dev`.** The standalone
+  `ezm-zones` env (~617 MB on home fs) backs the scripts in
+  `statistics_workspace/scripts/dlc_ezm_open_closed/`
+  (compute_ezm_open_closed_time, ezm_open_closed_zones,
+  generate_ezm_*_qc, ml_boundary_rotation_*, run_*.slurm,
+  start_jupyter_ezm_zones.sh). The compute logic was already lifted
+  into the EZM compute bridge (Phases 1a–1f), so the env's remaining
+  role is "host the standalone scripts + notebook." Migrate any
+  still-useful logic into `mus1.compute.ezm_zones` / a pane action,
+  archive the rest to `_workspace_noisy_archive/`, then delete the
+  env. Acceptance: no script outside `_workspace_noisy_archive/`
+  invokes `conda activate ezm-zones`; `start_jupyter_ezm_zones.sh`
+  is gone or repointed to `mus1-dev`.
 - `views/ezm_ml.py` still uses `sys.path.insert()` to reach
   `workspace/torch_ml/`; the model definition should move into
   `mus1.compute.ezm_zones_model` (in progress; see Iteration 6).
@@ -784,6 +806,33 @@ core platform is stable and their upstream dependencies mature.
 
 ## Recently shipped (one-line tail; full detail in ARCHITECTURE_CURRENT.md)
 
+- 2026-05-12 — **Iteration 6 + arena-detection seamless workflow** (T8–T12 from
+  the 2026-05-07 plan): canonical color palette `mus1.compute.colors` with
+  EZM yellow retired (T12); profile-aware arena U-Net loader
+  (`mus1.compute.arena_unet.load_arena_unet`), active-model registry
+  (`data/arena_models.yaml` + `ArenaModelRegistry`), post-processor dispatch
+  (`mus1.compute.arena_post_processors`), and `mus1 arena-models {list,
+  activate, deactivate}` CLI (T8). New panes: **Arena Inference QC** (T9 /
+  Iter 6b — profile-parameterized QC of predictions, pins `model_run_id` on
+  every save) and **Arena Training** (T11 — per-profile training-set state,
+  run history, in-pane activate/deactivate). **U-Net auto-suggest** in EZM
+  Wedge Marking (T10 / Iter 6c) with `Suggestion source` selectbox,
+  pre-filled canvas, and provenance distinguishing
+  `unet_suggested+human_accepted` from `unet_suggested+human_edited`. 22 new
+  tests (135/135 passing).
+- 2026-05-07 — **Data + config layer** (T1–T6 from the same plan):
+  `mus1.toml [paths] data_roots` (T1, `pilot_data` now a default root);
+  cohort `canonical_arena` + arena profile selectors in Cohort Management
+  (T3); `ArenaProfileRegistry.from_config` (builtins → user YAML → project
+  YAML); 4-state `tamco_black_bucket` (new/old/unk/resanded); 750-JSON
+  migration relocating bucket A/B/C/D → notes and bucket NEW/OLD/UNK →
+  `arena_profile.state_id` (T4); 53 pilot subjects restructured from
+  `experiment_data/P_NO/` → `pilot_data/{NOR,NOF,OF}/` with 154 new
+  experiments and CSV as source-of-truth (T6); `P_NO` removed from
+  `SUPPORTED_TASKS` (T2). Pilot videos preserved with multi-acq retries as
+  recording/ siblings.
+
+- 2026-05-04 — **Iteration 5.6 — Arena profile system**: new `mus1.arena_profiles` package with `ArenaProfile` (geometry + states), three builtins (`tamco_black_bucket` w/ original+resanded states, `home_depot_5gal_orange`, `ezm_460mm`), registry + YAML loader. `mus1.compute.scaling.compute_px_to_mm` is the single cascade entry point (override → task default → missing). Hardcoded `BUCKET_DIAMETER_MM` / `DEFAULT_FLOOR_DIAMETER_PX` removed from NOR/NOF Tracking QC. NOR/NOF/OF/EZM tasks declare `arena_profile_id`. **`P_NOTask`** added (subclass of NORTask, Home Depot bucket profile). `P_NO` joins `SUPPORTED_TASKS`; multi-token id resolver (`P_NO_351` → task `P_NO`) fixes both discovery + cohort summary. Pane shows scaling source + profile/state in caption. 16 new tests (62/62 passing).
 - 2026-05-04 — **Bug fix + UX clarity**: dropped buggy frame-nav button cluster from EZM Tracking QC (StreamlitAPIException after slider instantiation; operator never used the buttons; emojis annoying); slider remains. Added "effect only on Compute" caption to NOR/NOF Tracking QC variant section; unsaved-compute display now stamps the variant slug it was computed for and shows ⚠ when current axes drift from it. Iterations 9 + 10 added to roadmap (frame-fetch preference; cohort-canonical arena boundary — pitch deferred).
 - 2026-05-04 — **Iteration 5.5 (Phase B) — NOR/NOF Tracking QC parity**: 4-axis variant picker (radius / LH / buffer mode / bodypart bound), baseline DLC confidence panel at top of pane, in-pane Compute (session state, "(unsaved)") + Save → `qc_review.exploratory_runs[]`, Compare-against-saved dropdown, QC review schema migrated to `computed_metrics.nor_nof_interaction.qc_review` with one-time legacy migration on first save (history-preserving). 10 new helper tests (46/46 passing).
 - 2026-05-04 — **Iteration 5.4 — pre-Phase-B cleanup**: `mus1.paths.resolve_with_mount_aliases` (5 reimplementations collapsed); `resolve_dlc_csv_path` moved `web.discovery → compute.tracking` (alias kept); two QC panes migrated to `compute.tracking.try_read_dlc_csv` (8→6 inline DLC reads); `mus1.compute.tracking_flags` (vocabulary + `merge_into_qc_flags` helper, single source for CLI `--write` and pane); dead `EXPERIMENT_DATA_ROOT` deleted; `views/subjects.py` and `core/importers/ezm_unet_runs.py` migrated off direct `tracking_file_path` reads. 17 new tests.

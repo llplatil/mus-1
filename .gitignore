@@ -100,3 +100,9 @@ config.local.json
 
 # Chinook local curated workspace (copied from moseq2_workspace)
 workspace/
+
+# Retired / superseded files (project-wide convention; see CLAUDE.md)
+_workspace_noisy_archive/
+
+# Scratch / dev sandbox files
+.nn_cal_unknown.json

@@ -43,9 +43,9 @@ def test_builtins_registered_with_expected_dimensions():
     tamco = reg.get("tamco_black_bucket")
     assert isinstance(tamco.geometry, CircularGeometry)
     assert tamco.geometry.diameter_mm == pytest.approx(441.325)
-    # Two states; default = original
-    assert tamco.state_ids() == ["original", "resanded"]
-    assert tamco.default_state_id == "original"
+    # 4 states matching the bucket condition vocabulary; default = unk
+    assert tamco.state_ids() == ["new", "old", "unk", "resanded"]
+    assert tamco.default_state_id == "unk"
 
     hd = reg.get("home_depot_5gal_orange")
     assert isinstance(hd.geometry, CircularGeometry)
@@ -72,15 +72,16 @@ def test_annular_mm_per_pixel_uses_outer_diameter():
 def test_state_lookup_and_resolution():
     reg = ArenaProfileRegistry()
     tamco = reg.get("tamco_black_bucket")
-    assert tamco.get_state("resanded").description.startswith("Surface re-sanded")
+    assert tamco.get_state("resanded").description.startswith("RESANDED")
+    assert tamco.get_state("old").description.startswith("OLD")
     assert tamco.get_state("nonexistent") is None
     # Explicit request honored even if known
     assert tamco.resolve_state_id("resanded") == "resanded"
     # Unknown request: returned as-is (we don't silently rewrite operator input)
     assert tamco.resolve_state_id("unknown") == "unknown"
     # Unset: falls back to default
-    assert tamco.resolve_state_id(None) == "original"
-    assert tamco.resolve_state_id("") == "original"
+    assert tamco.resolve_state_id(None) == "unk"
+    assert tamco.resolve_state_id("") == "unk"
 
 
 # ---------------------------------------------------------------------------
@@ -199,7 +200,7 @@ def test_resolve_state_picks_default_when_unset():
     task = _FakeTask("tamco_black_bucket")
     state, profile = resolve_arena_state(exp, task)
     assert profile.id == "tamco_black_bucket"
-    assert state == "original"
+    assert state == "unk"
 
 
 def test_resolve_state_explicit_request_honored():
@@ -232,9 +233,12 @@ def test_task_arena_physical_dimensions_reads_through_profile():
     assert dims.get("diameter_mm") == pytest.approx(441.325)
 
 
-def test_p_no_task_uses_home_depot_profile():
-    from mus1.tasks.builtins.p_no import PNOTask
-    task = PNOTask()
-    assert task.arena_profile_id == "home_depot_5gal_orange"
-    dims = task.arena_physical_dimensions
-    assert dims.get("diameter_mm") == 292.0
+def test_home_depot_profile_still_registered_after_p_no_retired():
+    """P_NO task was retired 2026-05-07; pilot subjects now live as NOR/NOF/OF
+    under pilot_data/. The home_depot_5gal_orange arena profile stays in the
+    registry for any future pilot work that wants to reuse it (per-experiment
+    override via arena_markings.arena_profile.profile_id)."""
+    reg = ArenaProfileRegistry()
+    hd = reg.get_or_none("home_depot_5gal_orange")
+    assert hd is not None
+    assert hd.geometry.diameter_mm == 292.0

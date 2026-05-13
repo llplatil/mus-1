@@ -9,6 +9,8 @@ import streamlit as st
 from .db import connect
 from .filters import render_scope_picker
 from .paths import resolve_db_path
+from .views.arena_inference_qc import render_arena_inference_qc
+from .views.arena_training import render_arena_training
 from .views.cohort_management import render_cohort_management
 from .views.ezm_ml import render_ezm_ml
 from .views.ezm_tracking_qc import render_ezm_tracking_qc
@@ -84,6 +86,9 @@ def main() -> None:
             "NOR/NOF Object Marking",
             "NOR/NOF Object Association",
             "NOR/NOF Tracking QC",
+            # Arena U-Net (cross-profile inference review + training mgmt)
+            "Arena Inference QC",
+            "Arena Training",
             # Train / Monitor (renamed to "Job Monitor" planned — see ROADMAP)
             "EZM ML",
             "ML Genotype",
@@ -116,6 +121,15 @@ def main() -> None:
         st.stop()
     if view == "Cohort Management":
         render_cohort_management(project_path=project_path)
+        st.stop()
+    if view == "Arena Inference QC":
+        render_arena_inference_qc(workspace_root=workspace_root, project_path=project_path)
+        st.stop()
+    if view == "Arena Training":
+        render_arena_training(
+            workspace_root=workspace_root, project_path=project_path,
+            db_path=db_path,
+        )
         st.stop()
     if view == "EZM ML":
         render_ezm_ml(con, workspace_root=workspace_root, db_path=db_path)

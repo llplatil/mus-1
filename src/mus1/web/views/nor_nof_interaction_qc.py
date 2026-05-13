@@ -36,21 +36,32 @@ from .nor_nof_object_qc import _ExperimentRow, _load_nor_nof_experiments
 # Constants
 # ---------------------------------------------------------------------------
 
-BUCKET_DIAMETER_MM = 441.325  # 17 3/8 inches
-DEFAULT_FLOOR_DIAMETER_PX = 705.0  # fallback when arena_boundary is missing
 RADII_CM = [2.0, 3.0, 4.0]
 LIKELIHOOD_THRESHOLD = 0.6
 
 
-def _get_px_to_mm(meta: dict) -> float:
-    """Per-session px-to-mm from arena_boundary ellipse axes."""
-    ab = meta.get("arena_boundary", {})
-    ell = ab.get("ellipse") if ab else None
-    if ell and ell.get("axes"):
-        mean_diam = (ell["axes"][0] + ell["axes"][1]) / 2.0
-        if mean_diam > 0:
-            return BUCKET_DIAMETER_MM / mean_diam
-    return BUCKET_DIAMETER_MM / DEFAULT_FLOOR_DIAMETER_PX
+def _get_px_to_mm(experiment_data: dict, task_id: str) -> tuple:
+    """Per-session px-to-mm via the canonical scaling cascade.
+
+    Returns ``(value_or_None, source_str)`` per
+    :func:`mus1.compute.scaling.compute_px_to_mm`. Pane code surfaces
+    *source* in a caption so reviewers see whether scaling came from
+    a per-experiment override, the task's default arena profile, or
+    is missing because no arena_boundary was marked.
+
+    *task_id* is the experiment's task type (``NOR`` / ``NOF``); we
+    look up the TaskDefinition lazily through the registry to avoid
+    threading it from every call site.
+    """
+    from ...compute.scaling import compute_px_to_mm
+    from ...tasks.registry import TaskRegistry
+
+    task_def = TaskRegistry().get_or_none(task_id)
+    if task_def is None:
+        return None, "missing_task"
+    return compute_px_to_mm(experiment_data, task_def)
+
+
 MAX_INTERP_GAP = 10
 BODYPART_BOUND_PX = 60.0
 
@@ -291,6 +302,16 @@ def _compute_baseline_confidence(csv_path: str, pcutoff: float = 0.6) -> Optiona
     return compute_tracking_confidence(Path(csv_path), pcutoff=pcutoff)
 
 
+def _resolve_task_for_row(row: "_ExperimentRow"):
+    """Look up the TaskDefinition for an experiment row's task type.
+
+    Lazy-imports the registry so the module remains usable without the
+    task registry initialized at import time.
+    """
+    from ...tasks.registry import TaskRegistry
+    return TaskRegistry().get_or_none(row.experiment_type)
+
+
 def _compute_interaction_for_pane(
     csv_path: str,
     left_xy: Tuple[float, float], right_xy: Tuple[float, float],
@@ -503,7 +524,7 @@ def _draw_interaction_qc_overlay(
     arena_mask: Optional[np.ndarray] = None,
     arena_ellipse: Optional[Dict] = None,
     gradient_info: Optional[Dict] = None,
-    px_to_mm: float = BUCKET_DIAMETER_MM / DEFAULT_FLOOR_DIAMETER_PX,
+    px_to_mm: float = 0.626,  # placeholder default; callers always pass via the scaling cascade
     show_arena_fit: bool = False,
     fit_params: Optional[Dict] = None,
 ) -> np.ndarray:
@@ -914,8 +935,14 @@ def render_nor_nof_interaction_qc(
     el = md.get("experiment_level", {})
     am = data.get("arena_markings", {})
 
-    # Per-session calibration from arena boundary
-    px_to_mm = _get_px_to_mm(data)
+    # Per-session calibration via the scaling cascade (per-experiment
+    # override → task default → missing). Source label is surfaced in
+    # the right column so reviewers see which fallback fired.
+    px_to_mm, scaling_source = _get_px_to_mm(data, row.experiment_type)
+    if px_to_mm is None or px_to_mm <= 0:
+        # No usable calibration. Set a placeholder so layout doesn't
+        # crash and let the right-column banner explain the situation.
+        px_to_mm = 0.626  # Tamco default; flagged via scaling_source
     mm_to_px = 1.0 / px_to_mm
     radius_px = radius_cm * 10.0 * mm_to_px
 
@@ -995,6 +1022,40 @@ def render_nor_nof_interaction_qc(
         st.image(overlay, width="stretch")
 
     with col_metrics:
+        # ── Arena scaling banner ─────────────────────────────────────
+        # Shows the resolved px-to-mm + which fallback fired
+        # (per-experiment override / task default / missing). Critical
+        # context for any millimetre measurements that follow.
+        from ...compute.scaling import (
+            SOURCE_MISSING_BOUNDARY,
+            SOURCE_MISSING,
+            SOURCE_PER_EXPERIMENT_OVERRIDE,
+            SOURCE_TASK_DEFAULT,
+            resolve_arena_state,
+        )
+        state_id, profile = resolve_arena_state(data, _resolve_task_for_row(row))
+        profile_label = (
+            f"{profile.id}{f' [{state_id}]' if state_id else ''}"
+            if profile else "(no profile)"
+        )
+        if scaling_source in (SOURCE_TASK_DEFAULT, SOURCE_PER_EXPERIMENT_OVERRIDE):
+            st.caption(
+                f"Scaling: {px_to_mm:.4f} mm/px • {scaling_source} • {profile_label}"
+            )
+        elif scaling_source == SOURCE_MISSING_BOUNDARY:
+            st.warning(
+                f"⚠ No `arena_markings.arena_boundary` for this experiment "
+                f"({profile_label}). Falling back to a placeholder px/mm; "
+                "millimetre numbers below are unreliable until the arena "
+                "is marked."
+            )
+        else:
+            st.warning(
+                f"⚠ Could not resolve arena scaling (source: `{scaling_source}`). "
+                "Mark the arena boundary or set "
+                "`arena_markings.arena_profile.profile_id`."
+            )
+
         # ── Baseline DLC tracking confidence (always-shown gate) ────
         # The "don't try to polish garbage" check — surfaces DLC quality
         # before any task-specific compute. See compute.tracking_confidence.

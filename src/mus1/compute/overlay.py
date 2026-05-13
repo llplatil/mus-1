@@ -16,6 +16,8 @@ from typing import Any, Dict, List, Optional, Tuple
 import cv2
 import numpy as np
 
+from mus1.compute import colors
+
 TAU = 2.0 * math.pi
 
 
@@ -164,8 +166,8 @@ def _draw_zone_sectors(
     closed_px = in_annulus & (~open_mask_px)
 
     tint = np.zeros_like(img)
-    tint[open_px] = [0, 200, 0]     # green for open
-    tint[closed_px] = [80, 80, 255]  # blue for closed
+    tint[open_px] = list(colors.OPEN)
+    tint[closed_px] = list(colors.CLOSED)
     return cv2.addWeighted(img, 1.0 - alpha, tint, alpha, 0)
 
 
@@ -379,11 +381,11 @@ def _draw_legend(img: np.ndarray, *, show_zones: bool = True) -> np.ndarray:
 
     if show_zones:
         row += 16
-        cv2.rectangle(img, (lx, ly + row), (lx + 20, ly + row + 10), (0, 200, 0), -1)
+        cv2.rectangle(img, (lx, ly + row), (lx + 20, ly + row + 10), colors.OPEN, -1)
         cv2.putText(img, "open arm", (lx + 25, ly + row + 10),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.35, (0, 200, 0), 1, cv2.LINE_AA)
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.35, colors.OPEN, 1, cv2.LINE_AA)
         row += 16
-        cv2.rectangle(img, (lx, ly + row), (lx + 20, ly + row + 10), (80, 80, 255), -1)
+        cv2.rectangle(img, (lx, ly + row), (lx + 20, ly + row + 10), colors.CLOSED, -1)
         cv2.putText(img, "closed arm", (lx + 25, ly + row + 10),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.35, (120, 120, 255), 1, cv2.LINE_AA)
 
@@ -470,7 +472,7 @@ def compute_corrected_head_track(
 # Main entry point
 # ---------------------------------------------------------------------------
 
-_CORRECTED_COLOR = (255, 80, 255)  # magenta for corrected frames
+_CORRECTED_COLOR = colors.CORRECTED  # magenta for corrected frames
 
 
 def draw_ezm_qc_overlay(
@@ -562,7 +564,7 @@ def draw_ezm_qc_overlay(
                                markerSize=20, thickness=thickness, line_type=cv2.LINE_AA)
             # Red dot if direct head, magenta if corrected
             corr = hlight_track.get("corrected")
-            dot_color = _CORRECTED_COLOR if (corr is not None and corr[highlight_frame]) else (255, 60, 60)
+            dot_color = _CORRECTED_COLOR if (corr is not None and corr[highlight_frame]) else colors.HIGHLIGHT_DOT
             cv2.circle(img, (hx, hy), 4, dot_color, -1, cv2.LINE_AA)
 
     if show_legend:

@@ -34,11 +34,8 @@ class EZMTask(TaskDefinition):
         return "annular"
 
     @property
-    def arena_physical_dimensions(self) -> Dict[str, float]:
-        return {
-            "outer_diameter_mm": 460.0,
-            "inner_ratio": 0.761,
-        }
+    def arena_profile_id(self) -> Optional[str]:
+        return "ezm_460mm"
 
     @property
     def annotation_fields(self) -> List[AnnotationField]:

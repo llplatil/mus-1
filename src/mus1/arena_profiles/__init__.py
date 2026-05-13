@@ -10,7 +10,7 @@ This is one level below ``mus1.tasks``: a task references a default
 profile by id, and individual experiments may record a state (and, in
 rare cases, override the profile entirely). Px-to-mm conversion reads
 from the profile, not from the task constants directly — so adding a new
-arena (P_NO's Home Depot bucket, a new lab's box) is a registry entry,
+arena (the pilot Home Depot bucket, a new lab's box) is a registry entry,
 not Python edits to compute paths.
 
 See ``docs/web/SCHEMA_VARIANTS.md`` for how profile + state are recorded

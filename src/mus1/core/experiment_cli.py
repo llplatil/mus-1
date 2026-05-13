@@ -137,17 +137,28 @@ def register_commands(app: typer.Typer) -> None:
     def experiment_data_roots(
         project_path: Optional[Path] = typer.Option(None, "--project-path", "-p"),
     ):
-        """Print the canonical data roots that exist for this project."""
-        from mus1.web.discovery import DATA_ROOTS, get_data_roots
+        """Print the configured data roots that exist for this project."""
+        from mus1.web.discovery import (
+            PROJECT_CONFIG_FILENAME,
+            get_configured_data_root_names,
+            get_data_roots,
+        )
 
         proj = _resolve_project_path(project_path)
+        names, source = get_configured_data_root_names(proj)
         roots = get_data_roots(proj)
         rich_print(f"[bold]Project path:[/bold] {proj}")
-        rich_print(f"[bold]Canonical data roots:[/bold] {list(DATA_ROOTS)}")
+        if source == "config":
+            cfg_path = proj / PROJECT_CONFIG_FILENAME
+            rich_print(f"[bold]Configured data roots:[/bold] {list(names)}")
+            rich_print(f"[dim]Source: config ({cfg_path})[/dim]")
+        else:
+            rich_print(f"[bold]Default data roots:[/bold] {list(names)}")
+            rich_print(f"[dim]Source: default (no \\[paths] data_roots in {PROJECT_CONFIG_FILENAME})[/dim]")
         rich_print(f"[bold]Present on disk ({len(roots)}):[/bold]")
         for r in roots:
             rich_print(f"  • {r}")
-        missing = [n for n in DATA_ROOTS if not (proj / n).is_dir()]
+        missing = [n for n in names if not (proj / n).is_dir()]
         if missing:
             rich_print(f"[dim]Not on disk: {missing} (will appear here once created).[/dim]")
 

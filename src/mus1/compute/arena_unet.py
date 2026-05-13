@@ -1,17 +1,29 @@
-"""Arena U-Net inference utilities (EZM open/closed; NOR/NOF coming next).
+"""Arena U-Net inference utilities — profile-aware.
 
-Backend-agnostic. Loads a TinyUNet checkpoint, runs inference on a single
-RGB/grayscale frame, and post-processes the predicted mask into the schema
-expected by the existing marking panes (4 wedge points for EZM).
+Backend-agnostic. Loads a TinyUNet checkpoint for any registered
+:class:`mus1.arena_profiles.ArenaProfile`, runs inference on a single
+RGB/grayscale frame, and dispatches a post-processor that converts the
+predicted mask into the marking shape expected by the relevant pane
+(4 wedge points for EZM, ellipse boundary for circular arenas, …).
 
-Usage:
-    from mus1.compute.arena_unet import (
-        load_ezm_unet, sample_video_frame, infer_ezm_mask, ezm_mask_to_wedge_points,
-    )
-    model = load_ezm_unet(path)
-    frame = sample_video_frame(video_path, frame_idx)
-    mask, meta = infer_ezm_mask(model, frame)
-    wedges = ezm_mask_to_wedge_points(mask, meta)
+Two layered APIs:
+
+  1. **Profile-aware (T8, recommended for new code)**::
+
+         model = load_arena_unet("ezm_460mm", project_path="data")
+         mask, meta = infer_arena_mask(model, frame)
+         marking = run_post_processor("ezm_wedge_points", mask, meta)
+
+  2. **Legacy EZM-specific (kept for back-compat)**::
+
+         model = load_ezm_unet(path)
+         mask, meta = infer_ezm_mask(model, frame)
+         wedges = ezm_mask_to_wedge_points(mask, meta)
+
+The profile-aware loader reads ``data/arena_models.yaml`` to discover
+which checkpoint is currently active for each profile. See
+:mod:`mus1.compute.arena_models` for the schema and
+:mod:`mus1.compute.arena_post_processors` for the dispatch table.
 """
 from __future__ import annotations
 
@@ -385,3 +397,92 @@ def model_version_string(checkpoint_path: str) -> str:
         for chunk in iter(lambda: f.read(65536), b""):
             h.update(chunk)
     return f"{p.parent.parent.name}@{p.parent.name}@sha256:{h.hexdigest()[:16]}"
+
+
+# ---------------------------------------------------------------------------
+# Profile-aware API (T8)
+# ---------------------------------------------------------------------------
+
+
+def load_arena_unet(
+    profile_id: str,
+    project_path,
+    *,
+    device: str = "cpu",
+    n_classes: Optional[int] = None,
+):
+    """Load the active U-Net for *profile_id* from ``data/arena_models.yaml``.
+
+    Returns the model in eval mode. Raises ``LookupError`` if no active
+    model is registered for the profile, or ``FileNotFoundError`` if
+    the configured checkpoint is missing on disk.
+
+    *n_classes* defaults to the value in the registry entry (typically
+    3 for EZM, 2 for a binary arena/background mask). Pass an explicit
+    value only for testing.
+    """
+    from mus1.compute.arena_models import ArenaModelRegistry
+    registry = ArenaModelRegistry.load(Path(project_path))
+    entry = registry.get(profile_id)
+    if entry is None:
+        raise LookupError(
+            f"no active arena U-Net for profile {profile_id!r} "
+            f"(check {registry.source_path or 'arena_models.yaml'})"
+        )
+    if not entry.checkpoint.is_file():
+        raise FileNotFoundError(
+            f"checkpoint missing for profile {profile_id!r}: {entry.checkpoint}"
+        )
+    n_cls = int(n_classes if n_classes is not None else entry.n_classes)
+
+    import torch
+    model = _build_tiny_unet(in_ch=1, n_classes=n_cls, base=16).to(device)
+    state = torch.load(entry.checkpoint, map_location=device, weights_only=False)
+    if isinstance(state, dict) and "model" in state:
+        state = state["model"]
+    model.load_state_dict(state)
+    model.eval()
+    # Tag the model so callers can pin run_id on QC writes (activation discipline)
+    setattr(model, "_mus1_run_id", entry.run_id)
+    setattr(model, "_mus1_profile_id", profile_id)
+    setattr(model, "_mus1_mask_to_marking", entry.mask_to_marking)
+    return model
+
+
+def infer_arena_mask(
+    model, gray_frame: np.ndarray, *, img_size: int = 256,
+) -> Tuple[np.ndarray, LetterboxMeta]:
+    """Generic per-frame inference. Same letterbox + argmax as
+    :func:`infer_ezm_mask`, just renamed for non-EZM callers.
+
+    Returns ``(mask_256, letterbox_meta)`` where ``mask_256`` is a
+    uint8 array at *img_size* × *img_size*.
+    """
+    return infer_ezm_mask(model, gray_frame, img_size=img_size)
+
+
+def run_post_processor(
+    name: str, mask_256: np.ndarray, letterbox_meta: LetterboxMeta, **kwargs,
+) -> Optional[dict]:
+    """Dispatch a registered post-processor by *name*.
+
+    Returns whatever the post-processor returns (typically a marking-shape
+    dict), or raises ``KeyError`` if the name is not registered. Use
+    :func:`mus1.compute.arena_post_processors.list_names` to discover
+    available processors.
+    """
+    from mus1.compute.arena_post_processors import get as _get_post_processor
+    fn = _get_post_processor(name)
+    if fn is None:
+        raise KeyError(f"unknown arena post-processor: {name!r}")
+    return fn(mask_256, letterbox_meta, **kwargs)
+
+
+def model_run_id(model) -> str:
+    """Return the run_id pinned on a model loaded via :func:`load_arena_unet`.
+
+    Empty string for models loaded the legacy way (via
+    :func:`load_ezm_unet`); QC writes from those paths fall back to
+    using :func:`model_version_string` for provenance.
+    """
+    return str(getattr(model, "_mus1_run_id", "") or "")

@@ -13,6 +13,41 @@ generations.
 
 ---
 
+## 0. Arena profile + state (input layer)
+
+Arena physical dimensions are **not** carried per-task as constants.
+A task references a default :class:`ArenaProfile` by id (e.g. NOR →
+`tamco_black_bucket`); the profile owns the geometry and a list of
+named states. Per-experiment override + cohort canonical (Iter 10)
+sit above this.
+
+```json
+"arena_markings": {
+  "arena_profile": {
+    "profile_id": "tamco_black_bucket",   ← override; omit to use task default
+    "state_id":   "resanded"              ← optional state hint
+  },
+  "arena_boundary": { "ellipse": {...} }, ← per-experiment fit
+  "object_left_xy":  [...],
+  "object_right_xy": [...]
+}
+```
+
+Resolution cascade — `mus1.compute.scaling.compute_px_to_mm`:
+
+1. `arena_markings.arena_profile.profile_id` (per-experiment override)
+2. `task_def.arena_profile_id` (task default)
+3. (Iteration 10) cohort-canonical
+4. Missing — return `(None, "missing_*")`. Pane surfaces a banner; no
+   silent guess.
+
+`profile_id` cascades; `state_id` is independent and may be set even
+when the profile_id is the task default. Profiles + states are
+catalogued in `mus1.arena_profiles.builtins`; labs can extend via
+`mus1.arena_profiles.registry.ArenaProfileRegistry.load_from_yaml`.
+
+---
+
 ## 1. Three layers of compute output
 
 | Layer | What it is | Where it lives | Who writes it | Who reads it |
