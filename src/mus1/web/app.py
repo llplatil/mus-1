@@ -9,6 +9,7 @@ import streamlit as st
 from .db import connect
 from .filters import render_scope_picker
 from .paths import resolve_db_path
+from .views.arena_boundary_marking import render_arena_boundary_marking
 from .views.arena_inference_qc import render_arena_inference_qc
 from .views.arena_training import render_arena_training
 from .views.cohort_management import render_cohort_management
@@ -84,6 +85,7 @@ def main() -> None:
             "EZM Tracking QC",
             # NOR/NOF lifecycle (Mark → arena/object QC → tracking QC)
             "NOR/NOF Object Marking",
+            "NOR/NOF Arena Boundary",
             "NOR/NOF Object Association",
             "NOR/NOF Tracking QC",
             # Arena U-Net (cross-profile inference review + training mgmt)
@@ -106,6 +108,9 @@ def main() -> None:
         st.stop()
     if view == "NOR/NOF Object Marking":
         render_nor_nof_object_marking(project_path=project_path, workspace_root=workspace_root, db_path=db_path)
+        st.stop()
+    if view == "NOR/NOF Arena Boundary":
+        render_arena_boundary_marking(project_path=project_path, workspace_root=workspace_root, db_path=db_path)
         st.stop()
     if view == "EZM Zones QC":
         render_ezm_zones_qc(workspace_root=workspace_root, project_path=project_path)

@@ -3,6 +3,14 @@
 Workflow: click 4 points where open/closed borders meet the outer edge
 of the EZM track. Order does not matter. Accept saves to experiment JSON
 and advances. Use the canvas trash icon to clear and re-mark.
+
+Two render functions share the same canvas + suggestion + save helper
+(T16 dedup):
+
+- ``render_ezm_wedge_for_annotator`` — runs inside the unified annotator
+  dispatch with parent-controlled navigation (``advance_callback``).
+- ``render_ezm_wedge_marking`` — standalone pane with its own
+  filter/navigation sidebar.
 """
 from __future__ import annotations
 
@@ -10,7 +18,7 @@ import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 import cv2
 import numpy as np
@@ -202,6 +210,166 @@ def _save_wedge_marking(
 
 
 # ---------------------------------------------------------------------------
+# Shared canvas + suggestion + save block (T16 dedup)
+# ---------------------------------------------------------------------------
+
+def _render_canvas_and_save(
+    *,
+    json_path: Path,
+    experiment_id: str,
+    pil_img,
+    existing_wp: Dict[str, Any],
+    on_save: Callable[[], None],
+    accept_button_label: str = "Accept + Save + Next",
+) -> Dict[str, Any]:
+    """Render the canvas, suggestion-source selector, click extraction,
+    status display, flag/note inputs, and the Accept+Save button.
+
+    *on_save* is called AFTER a successful save — it owns parent-specific
+    bookkeeping (advance callback, session-state mutation, ``st.rerun()``).
+
+    Returns ``{"n_points": int, "saved": bool, "was_overwrite": bool}``
+    so the caller can use the result for logging or progress UI.
+    """
+    from ..ezm_wedge_autosuggest import (
+        build_canvas_initial_drawing,
+        read_predicted_block,
+    )
+
+    img_w, img_h = pil_img.size
+    canvas_w = min(img_w, 800)
+    scale = canvas_w / img_w
+    canvas_h = int(img_h * scale)
+
+    # ── Suggestion source (T10) ──────────────────────────────────────
+    predicted_block = read_predicted_block(json_path)
+    suggested_points: List[List[float]] = []
+    suggested_run_id: str = ""
+    initial_drawing = None
+    suggestion_options = ["Manual"]
+    if predicted_block and len(predicted_block.get("points") or []) == 4:
+        suggestion_options.append("U-Net auto-suggest")
+    suggestion_source = st.selectbox(
+        "Suggestion source",
+        options=suggestion_options,
+        index=0,
+        key=f"ewm_suggest_src__{experiment_id}",
+        help=(
+            "Pre-populate the canvas with U-Net predictions. "
+            "Drag points to edit before saving; provenance records "
+            "whether predictions were accepted as-is or edited."
+        ),
+    )
+    if suggestion_source == "U-Net auto-suggest" and predicted_block:
+        suggested_points = list(predicted_block.get("points") or [])
+        suggested_run_id = (
+            predicted_block.get("model_run_id", "")
+            or predicted_block.get("model_version", "")
+        )
+        initial_drawing = build_canvas_initial_drawing(
+            suggested_points, scale=scale,
+        )
+        st.caption(
+            f"Pre-filled 4 points from model `{suggested_run_id}`. "
+            f"Drag any point to edit. Save records "
+            f"`unet_suggested+human_accepted` if no edits, "
+            f"`unet_suggested+human_edited` otherwise."
+        )
+
+    # ── Canvas ───────────────────────────────────────────────────────
+    # Canvas key includes the suggestion source so toggling between
+    # Manual and U-Net auto-suggest resets the canvas (otherwise
+    # Streamlit caches widget state and ignores the new initial_drawing).
+    canvas_key = f"ewm_canvas__{experiment_id}__{suggestion_source}"
+    canvas_result = st_canvas(
+        fill_color="rgba(0, 255, 0, 0.3)",
+        stroke_width=0,
+        stroke_color="#00ff00",
+        background_image=pil_img,
+        drawing_mode="point",
+        point_display_radius=8,
+        height=canvas_h,
+        width=canvas_w,
+        initial_drawing=initial_drawing,
+        key=canvas_key,
+    )
+
+    # ── Extract clicks ──────────────────────────────────────────────
+    _pt_r = 8  # must match point_display_radius
+    points: List[List[float]] = []
+    if canvas_result.json_data is not None:
+        for obj in canvas_result.json_data.get("objects", []):
+            if obj.get("type") == "circle":
+                cx = obj.get("left", 0) + _pt_r
+                cy = obj.get("top", 0)
+                points.append([round(cx / scale, 1), round(cy / scale, 1)])
+
+    # ── Click status ────────────────────────────────────────────────
+    n_points = len(points)
+    if n_points == 0:
+        st.info("Click 4 points on the outer rim at open/closed borders.")
+    elif n_points < 4:
+        st.info(f"{n_points}/4 points placed. Click {4 - n_points} more.")
+    elif n_points == 4:
+        st.success("4 points placed. Ready to save.")
+    else:
+        st.warning(f"{n_points} clicks -- only first 4 used. Clear to redo.")
+
+    ready = n_points >= 4
+
+    # ── Flag for review + note ──────────────────────────────────────
+    fc_flag, fc_note = st.columns([1, 3])
+    with fc_flag:
+        flag_review = st.checkbox(
+            "Flag for review",
+            value=existing_wp.get("flag_review", False),
+            key=f"ewm_flag__{experiment_id}",
+        )
+    with fc_note:
+        note = st.text_input(
+            "Note",
+            value=existing_wp.get("note", ""),
+            key=f"ewm_note__{experiment_id}",
+            placeholder="Optional note for this marking",
+        )
+
+    # ── Accept + Save ───────────────────────────────────────────────
+    saved = False
+    was_overwrite = False
+    ac1, ac2 = st.columns(2)
+    with ac1:
+        if st.button(
+            accept_button_label,
+            key=f"ewm_accept__{experiment_id}",
+            type="primary",
+            disabled=not ready,
+        ):
+            was_overwrite = _save_wedge_marking(
+                json_path,
+                points=points[:4],
+                frame_shape=[img_h, img_w],
+                flag_review=flag_review,
+                note=note,
+                suggested_points=(
+                    suggested_points
+                    if suggestion_source == "U-Net auto-suggest"
+                    else None
+                ),
+                model_run_id=suggested_run_id,
+            )
+            if was_overwrite:
+                st.toast(f"Overwrote existing wedge markings for {experiment_id}")
+            else:
+                st.toast(f"Saved wedge markings for {experiment_id}")
+            saved = True
+            on_save()
+    with ac2:
+        st.caption("Use the trash icon on the canvas toolbar to clear and re-mark.")
+
+    return {"n_points": n_points, "saved": saved, "was_overwrite": was_overwrite}
+
+
+# ---------------------------------------------------------------------------
 # Resolve experiment JSON from experiment_id
 # ---------------------------------------------------------------------------
 
@@ -280,132 +448,14 @@ def render_ezm_wedge_for_annotator(
         st.warning(f"Could not read frame from: {video_path}")
         st.stop()
 
-    img_w, img_h = pil_img.size
-    canvas_w = min(img_w, 800)
-    scale = canvas_w / img_w
-    canvas_h = int(img_h * scale)
-
-    # ── Suggestion source (T10: U-Net auto-suggest) ──────────────────
-    from ..ezm_wedge_autosuggest import (
-        build_canvas_initial_drawing,
-        read_predicted_block,
+    _render_canvas_and_save(
+        json_path=json_path,
+        experiment_id=experiment_id,
+        pil_img=pil_img,
+        existing_wp=existing_wp,
+        on_save=advance_callback,
+        accept_button_label="Accept + Save + Next",
     )
-    predicted_block = read_predicted_block(json_path)
-    suggested_points: List[List[float]] = []
-    suggested_run_id: str = ""
-    initial_drawing = None
-    suggestion_options = ["Manual"]
-    if predicted_block and len(predicted_block.get("points") or []) == 4:
-        suggestion_options.append("U-Net auto-suggest")
-    src_key = f"ewm_suggest_src__{experiment_id}"
-    suggestion_source = st.selectbox(
-        "Suggestion source",
-        options=suggestion_options,
-        index=0,
-        key=src_key,
-        help=(
-            "Pre-populate the canvas with U-Net predictions. "
-            "Drag points to edit before saving; provenance records "
-            "whether predictions were accepted as-is or edited."
-        ),
-    )
-    if suggestion_source == "U-Net auto-suggest" and predicted_block:
-        suggested_points = list(predicted_block.get("points") or [])
-        suggested_run_id = (
-            predicted_block.get("model_run_id", "")
-            or predicted_block.get("model_version", "")
-        )
-        initial_drawing = build_canvas_initial_drawing(
-            suggested_points, scale=scale,
-        )
-        st.caption(
-            f"Pre-filled 4 points from model `{suggested_run_id}`. "
-            f"Drag any point to edit. Save records `unet_suggested+human_accepted` "
-            "if no edits, `unet_suggested+human_edited` otherwise."
-        )
-
-    # Canvas
-    # The key includes the suggestion source so toggling between Manual
-    # and U-Net auto-suggest resets the canvas (otherwise Streamlit
-    # caches the canvas widget state and ignores the new initial_drawing).
-    canvas_key = f"ewm_canvas__{experiment_id}__{suggestion_source}"
-    canvas_result = st_canvas(
-        fill_color="rgba(0, 255, 0, 0.3)",
-        stroke_width=0,
-        stroke_color="#00ff00",
-        background_image=pil_img,
-        drawing_mode="point",
-        point_display_radius=8,
-        height=canvas_h,
-        width=canvas_w,
-        initial_drawing=initial_drawing,
-        key=canvas_key,
-    )
-
-    # Extract clicks
-    _pt_r = 8
-    points: List[List[float]] = []
-    if canvas_result.json_data is not None:
-        for obj in canvas_result.json_data.get("objects", []):
-            if obj.get("type") == "circle":
-                cx = obj.get("left", 0) + _pt_r
-                cy = obj.get("top", 0)
-                points.append([round(cx / scale, 1), round(cy / scale, 1)])
-
-    # Click status
-    n_points = len(points)
-    if n_points == 0:
-        st.info("Click 4 points on the outer rim at open/closed borders.")
-    elif n_points < 4:
-        st.info(f"{n_points}/4 points placed. Click {4 - n_points} more.")
-    elif n_points == 4:
-        st.success("4 points placed. Ready to save.")
-    else:
-        st.warning(f"{n_points} clicks -- only first 4 used. Clear to redo.")
-
-    # Flag for review + note
-    ready = n_points >= 4
-
-    fc_flag, fc_note = st.columns([1, 3])
-    with fc_flag:
-        flag_review = st.checkbox(
-            "Flag for review",
-            value=existing_wp.get("flag_review", False),
-            key=f"ewm_flag__{experiment_id}",
-        )
-    with fc_note:
-        note = st.text_input(
-            "Note",
-            value=existing_wp.get("note", ""),
-            key=f"ewm_note__{experiment_id}",
-            placeholder="Optional note for this marking",
-        )
-
-    # Accept + Save
-    ac1, ac2 = st.columns(2)
-    with ac1:
-        if st.button(
-            "Accept + Save + Next",
-            key=f"ewm_accept__{experiment_id}",
-            type="primary",
-            disabled=not ready,
-        ):
-            was_overwrite = _save_wedge_marking(
-                json_path,
-                points=points[:4],
-                frame_shape=[img_h, img_w],
-                flag_review=flag_review,
-                note=note,
-                suggested_points=suggested_points if suggestion_source == "U-Net auto-suggest" else None,
-                model_run_id=suggested_run_id,
-            )
-            if was_overwrite:
-                st.toast(f"Overwrote existing wedge markings for {experiment_id}")
-            else:
-                st.toast(f"Saved wedge markings for {experiment_id}")
-            advance_callback()
-    with ac2:
-        st.caption("Use the trash icon on the canvas toolbar to clear and re-mark.")
 
     # Show existing marking
     if existing_wp.get("points"):
@@ -543,87 +593,18 @@ def render_ezm_wedge_marking(
         st.warning(f"Could not read frame from: {row.video_path}")
         st.stop()
 
-    img_w, img_h = pil_img.size
-    canvas_w = min(img_w, 800)
-    scale = canvas_w / img_w
-    canvas_h = int(img_h * scale)
+    def _advance_and_rerun() -> None:
+        st.session_state["ewm_nav_idx"] = min(idx + 1, len(filtered) - 1)
+        st.rerun()
 
-    # --- Canvas ---
-    canvas_result = st_canvas(
-        fill_color="rgba(0, 255, 0, 0.3)",
-        stroke_width=0,
-        stroke_color="#00ff00",
-        background_image=pil_img,
-        drawing_mode="point",
-        point_display_radius=8,
-        height=canvas_h,
-        width=canvas_w,
-        key=f"ewm_canvas__{row.experiment_id}",
+    _render_canvas_and_save(
+        json_path=row.json_path,
+        experiment_id=row.experiment_id,
+        pil_img=pil_img,
+        existing_wp=existing_wp,
+        on_save=_advance_and_rerun,
+        accept_button_label="Accept",
     )
-
-    # --- Extract clicks ---
-    _pt_r = 8  # must match point_display_radius
-    points: List[List[float]] = []
-    if canvas_result.json_data is not None:
-        for obj in canvas_result.json_data.get("objects", []):
-            if obj.get("type") == "circle":
-                cx = obj.get("left", 0) + _pt_r
-                cy = obj.get("top", 0)
-                points.append([round(cx / scale, 1), round(cy / scale, 1)])
-
-    # --- Click status ---
-    n_points = len(points)
-    if n_points == 0:
-        st.info("Click 4 points on the outer rim at open/closed borders.")
-    elif n_points < 4:
-        st.info(f"{n_points}/4 points placed. Click {4 - n_points} more.")
-    elif n_points == 4:
-        st.success("4 points placed. Ready to save.")
-    else:
-        st.warning(f"{n_points} clicks -- only first 4 used. Clear to redo.")
-
-    # --- Flag for review + note ---
-    ready = n_points >= 4
-
-    fc_flag, fc_note = st.columns([1, 3])
-    with fc_flag:
-        flag_review = st.checkbox(
-            "Flag for review",
-            value=existing_wp.get("flag_review", False),
-            key=f"ewm_flag__{row.experiment_id}",
-        )
-    with fc_note:
-        note = st.text_input(
-            "Note",
-            value=existing_wp.get("note", ""),
-            key=f"ewm_note__{row.experiment_id}",
-            placeholder="Optional note for this marking",
-        )
-
-    # --- Accept ---
-    ac1, ac2 = st.columns(2)
-    with ac1:
-        if st.button(
-            "Accept",
-            key=f"ewm_accept__{row.experiment_id}",
-            type="primary",
-            disabled=not ready,
-        ):
-            was_overwrite = _save_wedge_marking(
-                row.json_path,
-                points=points[:4],
-                frame_shape=[img_h, img_w],
-                flag_review=flag_review,
-                note=note,
-            )
-            if was_overwrite:
-                st.toast(f"Overwrote existing wedge markings for {row.experiment_id}")
-            else:
-                st.toast(f"Saved wedge markings for {row.experiment_id}")
-            st.session_state["ewm_nav_idx"] = min(idx + 1, len(filtered) - 1)
-            st.rerun()
-    with ac2:
-        st.caption("Use the trash icon on the canvas toolbar to clear and re-mark.")
 
     # --- Show existing marking ---
     if existing_wp.get("points"):

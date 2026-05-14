@@ -68,6 +68,10 @@ _register_compute_commands(app)
 from .arena_cli import register_commands as _register_arena_commands
 _register_arena_commands(app)
 
+# Arena-inference subcommand group — generic profile-aware U-Net runner.
+from .arena_inference_cli import register_commands as _register_arena_inference_commands
+_register_arena_inference_commands(app)
+
 
 @app.command("serve")
 def serve_api(
@@ -1935,7 +1939,7 @@ def ezm_arena_infer(
                                 help="Cohort name (matches data/cohorts/<name>.json)"),
     model_path: Optional[Path] = typer.Option(
         None, "--model-path",
-        help="Path to UNet checkpoint (.pt). Default: ml_workspace/ezm_arena_unet/active_model/model_best.pt"
+        help="Path to UNet checkpoint (.pt). Default: arena_models.yaml entry for ezm_460mm."
     ),
     project_root: Optional[Path] = typer.Option(
         None, "--project-root",
@@ -1954,8 +1958,13 @@ def ezm_arena_infer(
 ):
     """Run EZM arena UNet on a cohort, write predicted wedge points to experiment JSONs.
 
-    Predictions land at `arena_markings.predicted.ezm_wedge_points` of each
-    experiment JSON (sibling to manual `arena_markings.ezm_wedge_points`).
+    .. note::
+       Legacy back-compat wrapper around :func:`arena_inference_cli._run_arena_inference`
+       with ``profile_id="ezm_460mm"`` pinned. New code should call
+       ``mus1 arena-inference run ezm_460mm --cohort <name>`` instead.
+
+    Predictions land at ``arena_markings.predicted.ezm_wedge_points`` of each
+    experiment JSON (sibling to manual ``arena_markings.ezm_wedge_points``).
     The QC pane discovers them automatically.
 
     Exit codes:
@@ -1964,187 +1973,32 @@ def ezm_arena_infer(
         3 = no experiments found in cohort
         4 = some sessions failed (successes still written)
     """
-    import sys
-    from datetime import datetime, timezone
     import os
-    import numpy as np
+    import sys as _sys
+    from .arena_inference_cli import _run_arena_inference
 
-    # Resolve project root
-    proj = Path(project_root or os.environ.get("MOSEQ2_PROJECT_PATH",
-                                                "/import/c1/WDMOSEQ2/llplatil/WDMOSEQ2"))
-    # Resolve model path
-    if model_path is None:
-        model_path = proj / "ml_workspace" / "ezm_arena_unet" / "active_model" / "model_best.pt"
-    if not model_path.exists():
-        rich_print(f"[red]✗[/red] Model checkpoint not found: {model_path}")
-        sys.exit(2)
+    rich_print("[dim]Tip: `mus1 arena-inference run ezm_460mm` is the new canonical form.[/dim]")
 
-    # Locate cohort + experiments
-    cohort_path = proj / "data" / "cohorts" / f"{cohort}.json"
-    if not cohort_path.exists():
-        rich_print(f"[red]✗[/red] Cohort file not found: {cohort_path}")
-        sys.exit(3)
-    cohort_data = json.loads(cohort_path.read_text())
-    members = cohort_data.get("members", []) or []
-    eids = [m.get("experiment_id") if isinstance(m, dict) else str(m) for m in members]
-    eids = [e for e in eids if e and e.startswith("EZM_")]
-    if not eids:
-        rich_print(f"[red]✗[/red] No EZM experiments in cohort {cohort}")
-        sys.exit(3)
-    if limit is not None:
-        eids = eids[:limit]
+    # Resolve project root → resolve project_path the new CLI expects.
+    # Legacy default mirrored: $MOSEQ2_PROJECT_PATH or the well-known absolute root.
+    proj_root = Path(project_root or os.environ.get(
+        "MOSEQ2_PROJECT_PATH", "/import/c1/WDMOSEQ2/llplatil/WDMOSEQ2"))
+    # arena-inference expects the dir containing cohorts/, which is proj_root/data.
+    project_path = proj_root / "data" if (proj_root / "data" / "cohorts").is_dir() else proj_root
 
-    rich_print(f"[cyan]EZM arena inference[/cyan]")
-    rich_print(f"  Cohort: {cohort} ({len(eids)} EZM sessions)")
-    rich_print(f"  Model: {model_path}")
-    rich_print(f"  Frames per video: {frames_per_video}")
-    rich_print(f"  Dry run: {dry_run}, overwrite: {overwrite}")
-
-    # Load compute helpers
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1].parent.parent.parent / "src"))
-    from mus1.compute.arena_unet import (
-        load_ezm_unet, sample_video_frame, infer_ezm_mask,
-        ezm_mask_to_wedge_points, model_version_string,
+    rc = _run_arena_inference(
+        profile_id="ezm_460mm",
+        cohort=cohort,
+        project_path=project_path,
+        frames_per_video=frames_per_video,
+        overwrite=overwrite,
+        dry_run=dry_run,
+        json_out=json_out,
+        limit=limit,
+        model_path_override=model_path,
     )
-
-    rich_print("[cyan]Loading model...[/cyan]")
-    try:
-        model = load_ezm_unet(str(model_path), device="cpu")
-        model_ver = model_version_string(str(model_path))
-    except Exception as e:
-        rich_print(f"[red]✗[/red] Model load failed: {e}")
-        sys.exit(2)
-    rich_print(f"  Loaded ({model_ver})")
-
-    # Process each experiment
-    n_ok, n_skipped, n_failed = 0, 0, 0
-    failures = []
-    successes = []
-    import cv2
-    for i, eid in enumerate(eids):
-        exp_dir = proj / "data" / "experiment_data" / "EZM" / eid
-        if not exp_dir.is_dir():
-            failures.append({"experiment_id": eid, "reason": "experiment_dir_missing"})
-            n_failed += 1
-            continue
-        json_files = list(exp_dir.glob("*.json"))
-        if not json_files:
-            failures.append({"experiment_id": eid, "reason": "json_missing"})
-            n_failed += 1
-            continue
-        json_path = json_files[0]
-        try:
-            data = json.loads(json_path.read_text())
-        except Exception as e:
-            failures.append({"experiment_id": eid, "reason": f"json_parse_error: {e}"})
-            n_failed += 1
-            continue
-
-        am = data.get("arena_markings") or {}
-        if (am.get("predicted") or {}).get("ezm_wedge_points") and not overwrite:
-            n_skipped += 1
-            continue
-
-        # Resolve video path
-        vpath = (data.get("video") or {}).get("path", "")
-        if not vpath:
-            failures.append({"experiment_id": eid, "reason": "video_path_missing"})
-            n_failed += 1
-            continue
-        vpath = vpath.replace("/center1/", "/import/c1/")
-        if not Path(vpath).exists():
-            failures.append({"experiment_id": eid, "reason": "video_file_missing", "path": vpath})
-            n_failed += 1
-            continue
-
-        # Sample frames evenly across the video
-        cap = cv2.VideoCapture(vpath)
-        n_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
-        cap.release()
-        if n_frames < 30:
-            failures.append({"experiment_id": eid, "reason": f"too_few_frames: {n_frames}"})
-            n_failed += 1
-            continue
-
-        sample_idx = np.linspace(int(n_frames * 0.1), int(n_frames * 0.9),
-                                  frames_per_video, dtype=int)
-        per_frame_results = []
-        for fi in sample_idx:
-            frame = sample_video_frame(vpath, int(fi))
-            if frame is None:
-                continue
-            mask, meta = infer_ezm_mask(model, frame)
-            r = ezm_mask_to_wedge_points(mask, meta)
-            if r is not None:
-                per_frame_results.append((int(fi), r))
-
-        if len(per_frame_results) == 0:
-            failures.append({"experiment_id": eid, "reason": "no_valid_predictions"})
-            n_failed += 1
-            continue
-
-        # Take median of point coordinates across the sampled frames
-        all_pts = np.array([r["points"] for _, r in per_frame_results])  # (N_ok, 4, 2)
-        median_pts = np.median(all_pts, axis=0).tolist()
-        # Use the middle frame's quality + ellipse + frame_idx as representative
-        mid_i = len(per_frame_results) // 2
-        rep_fi, rep_r = per_frame_results[mid_i]
-        frame_shape = per_frame_results[0][1]  # take src shape from first result's quality
-        # We need actual frame shape; sample one frame to record
-        f0 = sample_video_frame(vpath, sample_idx[0])
-        src_h, src_w = (int(f0.shape[0]), int(f0.shape[1])) if f0 is not None else (1080, 1080)
-
-        predicted_block = {
-            "points": median_pts,
-            "frame_shape": [src_h, src_w],
-            "qc_status": "predicted_unreviewed",
-            "predicted_at": datetime.now(tz=timezone.utc).isoformat(),
-            "model_version": model_ver,
-            "source_frame_idx": int(rep_fi),
-            "n_frames_sampled": len(per_frame_results),
-            "ellipse_orig": rep_r["ellipse_orig"],
-            "quality": rep_r["quality"],
-        }
-
-        if not dry_run:
-            am.setdefault("predicted", {})
-            am["predicted"]["ezm_wedge_points"] = predicted_block
-            data["arena_markings"] = am
-            json_path.write_text(json.dumps(data, indent=2, default=str) + "\n")
-        successes.append({"experiment_id": eid,
-                           "n_frames_used": len(per_frame_results),
-                           "open_pixel_fraction": rep_r["quality"]["open_pixel_fraction"]})
-        n_ok += 1
-        if (i + 1) % 25 == 0 or (i + 1) == len(eids):
-            rich_print(f"  [{i+1}/{len(eids)}] ok={n_ok} skipped={n_skipped} failed={n_failed}")
-
-    # Final report
-    summary = {
-        "cohort": cohort,
-        "model_version": model_ver,
-        "dry_run": dry_run,
-        "n_total": len(eids),
-        "n_predicted": n_ok,
-        "n_skipped_existing": n_skipped,
-        "n_failed": n_failed,
-        "failures": failures,
-        "frames_per_video": frames_per_video,
-    }
-    if json_out:
-        rich_print(json.dumps(summary, indent=2, default=str))
-    else:
-        rich_print(f"[green]✓[/green] EZM arena inference complete")
-        rich_print(f"  Predicted: {n_ok}/{len(eids)}, skipped (existing): {n_skipped}, failed: {n_failed}")
-        if failures:
-            rich_print(f"  [yellow]Failures:[/yellow]")
-            for f in failures[:5]:
-                rich_print(f"    {f}")
-            if len(failures) > 5:
-                rich_print(f"    ... and {len(failures) - 5} more")
-    if n_failed > 0 and n_ok > 0:
-        sys.exit(4)
-    if n_failed > 0 and n_ok == 0:
-        sys.exit(4)
+    if rc != 0:
+        _sys.exit(rc)
 
 
 # ===========================================
