@@ -368,9 +368,107 @@ def render_arena_training(
                 except Exception as e:
                     st.error(f"Activation failed: {e}")
 
-    # ── Section 4: Active model status ───────────────────────────────
+    # ── Section 4: Run inference (T17) ───────────────────────────────
     st.markdown("---")
-    st.subheader("4. Active model status")
+    st.subheader("4. Run inference")
+    if entry is None:
+        st.info(
+            "Activate a model first (Section 3) before launching inference."
+        )
+    else:
+        from ..arena_inference_launcher import (
+            build_command,
+            launch,
+            relevant_cohorts_for_profile,
+        )
+        cohorts_for_profile = relevant_cohorts_for_profile(
+            project_path=project_path, profile_id=profile_id,
+        )
+        if not cohorts_for_profile:
+            st.info(
+                f"No cohorts overlap with `{profile_id}`-defaulting tasks. "
+                "Create a cohort that includes NOR / NOF / OF (Tamco) or "
+                "EZM (ezm_460mm) experiments to enable this."
+            )
+        else:
+            col_cohort, col_frames, col_overwrite = st.columns([3, 1, 1])
+            with col_cohort:
+                cohort_choice = st.selectbox(
+                    "Cohort",
+                    options=cohorts_for_profile,
+                    key=pkey(PANE, f"infer_cohort__{profile_id}"),
+                )
+            with col_frames:
+                frames_per_video = int(st.number_input(
+                    "Frames/video",
+                    min_value=1, max_value=50, value=5, step=1,
+                    key=pkey(PANE, f"infer_frames__{profile_id}"),
+                ))
+            with col_overwrite:
+                overwrite = st.checkbox(
+                    "Overwrite",
+                    value=False,
+                    key=pkey(PANE, f"infer_overwrite__{profile_id}"),
+                    help="Re-infer experiments that already have predictions.",
+                )
+            # Preview the command so the operator sees what will run
+            preview_cmd = build_command(
+                profile_id=profile_id, cohort=cohort_choice,
+                project_path=project_path,
+                frames_per_video=frames_per_video, overwrite=overwrite,
+            )
+            st.code(" ".join(preview_cmd), language="bash")
+
+            col_launch, col_dry = st.columns([1, 1])
+            with col_launch:
+                if st.button(
+                    "Run inference now (background)",
+                    key=pkey(PANE, f"infer_launch__{profile_id}"),
+                    type="primary",
+                ):
+                    try:
+                        result = launch(
+                            project_path=project_path, db_path=db_path,
+                            profile_id=profile_id, cohort=cohort_choice,
+                            frames_per_video=frames_per_video,
+                            overwrite=overwrite,
+                        )
+                        invalidate_after_write()
+                        st.success(
+                            f"Launched. pid={result.pid}, "
+                            f"run_id=`{result.run_id}`."
+                        )
+                        st.caption(
+                            f"Logs: `{result.stdout_log}` / "
+                            f"`{result.stderr_log}`. "
+                            "Check the Training Monitor pane for status."
+                        )
+                    except Exception as e:
+                        st.error(f"Launch failed: {e}")
+            with col_dry:
+                if st.button(
+                    "Dry-run (no subprocess)",
+                    key=pkey(PANE, f"infer_dryrun__{profile_id}"),
+                ):
+                    try:
+                        result = launch(
+                            project_path=project_path, db_path=db_path,
+                            profile_id=profile_id, cohort=cohort_choice,
+                            frames_per_video=frames_per_video,
+                            overwrite=overwrite,
+                            dry_run=True,
+                        )
+                        invalidate_after_write()
+                        st.info(
+                            f"Dry-run: run dir prepared at `{result.run_dir}` "
+                            "(no subprocess launched)."
+                        )
+                    except Exception as e:
+                        st.error(f"Dry-run failed: {e}")
+
+    # ── Section 5: Active model status ───────────────────────────────
+    st.markdown("---")
+    st.subheader("5. Active model status")
     entry = models.get(profile_id)
     if entry is None:
         st.info(f"No active model for `{profile_id}`.")
