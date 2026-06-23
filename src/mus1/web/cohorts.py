@@ -255,6 +255,51 @@ def set_cohort_canonical_arena(
 
 
 # ---------------------------------------------------------------------------
+# Cohort-level DLC model selection
+# ---------------------------------------------------------------------------
+#
+# A cohort may declare which DLC tracking model its analyses should use,
+# stored under ``analysis_config.dlc_model``. The resolver
+# (:func:`mus1.compute.tracking.resolve_dlc_csv_path`) reads this block when
+# a cohort context is supplied, so downstream compute picks the chosen
+# model transparently. ``run_id`` is the stable model identifier (the DLC
+# scorer string); see ``mus1.compute.tracking.derive_run_id``.
+
+def cohort_dlc_model(cohort: Dict[str, Any]) -> Dict[str, Any]:
+    """Return the cohort's selected DLC model block (``{}`` when unset)."""
+    ac = cohort.get("analysis_config")
+    if not isinstance(ac, dict):
+        return {}
+    dm = ac.get("dlc_model")
+    return dm if isinstance(dm, dict) else {}
+
+
+def set_cohort_dlc_model(
+    cohort: Dict[str, Any],
+    model: Optional[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """Set or clear the cohort's selected DLC model. Returns the cohort.
+
+    *model* must contain at least ``run_id`` to be stored; a falsy model or
+    one without a ``run_id`` clears the selection (and drops an emptied
+    ``analysis_config`` block to keep the JSON tidy).
+    """
+    if not model or not model.get("run_id"):
+        ac = cohort.get("analysis_config")
+        if isinstance(ac, dict):
+            ac.pop("dlc_model", None)
+            if not ac:
+                cohort.pop("analysis_config", None)
+        return cohort
+    ac = cohort.get("analysis_config")
+    if not isinstance(ac, dict):
+        ac = {}
+        cohort["analysis_config"] = ac
+    ac["dlc_model"] = dict(model)
+    return cohort
+
+
+# ---------------------------------------------------------------------------
 # Object vocabulary (per-cohort, with experiment-level override)
 # ---------------------------------------------------------------------------
 

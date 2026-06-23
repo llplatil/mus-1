@@ -391,6 +391,118 @@ def _draw_legend(img: np.ndarray, *, show_zones: bool = True) -> np.ndarray:
 
 
 # ---------------------------------------------------------------------------
+# Two-tracking comparison overlay (v1 vs v2 model on the same frame)
+# ---------------------------------------------------------------------------
+
+def _draw_single_color_track(
+    img: np.ndarray,
+    track: Dict[str, np.ndarray],
+    color: Tuple[int, int, int],
+    highlight_frame: int,
+    window: int,
+) -> None:
+    """Draw one bodypart track as a single-color polyline over a frame window."""
+    x_arr = track.get("x")
+    y_arr = track.get("y")
+    ok_arr = track.get("ok")
+    if x_arr is None or y_arr is None or ok_arr is None:
+        return
+    total = len(ok_arr)
+    if total == 0:
+        return
+    hf = highlight_frame if 0 <= highlight_frame < total else total // 2
+    lo = max(0, hf - window)
+    hi = min(total, hf + window + 1)
+
+    # Build contiguous ok segments inside the window and polyline each.
+    seg: List[Tuple[float, float]] = []
+    for i in range(lo, hi):
+        if ok_arr[i] and np.isfinite(x_arr[i]) and np.isfinite(y_arr[i]):
+            seg.append((x_arr[i], y_arr[i]))
+        else:
+            if len(seg) >= 2:
+                pts = np.array(seg, dtype=np.int32).reshape((-1, 1, 2))
+                cv2.polylines(img, [pts], False, color, 1, cv2.LINE_AA)
+            seg = []
+    if len(seg) >= 2:
+        pts = np.array(seg, dtype=np.int32).reshape((-1, 1, 2))
+        cv2.polylines(img, [pts], False, color, 1, cv2.LINE_AA)
+
+
+def _comparison_point(track: Dict[str, np.ndarray], frame: int):
+    x_arr, y_arr, ok_arr = track.get("x"), track.get("y"), track.get("ok")
+    if x_arr is None or ok_arr is None or not (0 <= frame < len(ok_arr)):
+        return None
+    if not ok_arr[frame] or not np.isfinite(x_arr[frame]) or not np.isfinite(y_arr[frame]):
+        return None
+    return int(round(x_arr[frame])), int(round(y_arr[frame]))
+
+
+def draw_ezm_comparison_overlay(
+    frame_rgb: np.ndarray,
+    zone_payload: Optional[dict],
+    track_a: Optional[Dict[str, np.ndarray]],
+    track_b: Optional[Dict[str, np.ndarray]],
+    *,
+    label_a: str = "Model A",
+    label_b: str = "Model B",
+    color_a: Tuple[int, int, int] = (0, 200, 255),   # cyan
+    color_b: Tuple[int, int, int] = (255, 140, 0),   # orange
+    highlight_frame: int = -1,
+    window: int = 180,
+    show_zones: bool = True,
+) -> np.ndarray:
+    """Overlay two DLC trackings of one bodypart on a video frame.
+
+    Each model's recent path is drawn as a single-color polyline (windowed
+    around ``highlight_frame``); a filled dot marks each model's position at
+    the highlight frame, and a white line connects them so their
+    disagreement vector is visible at a glance.
+    """
+    img = np.ascontiguousarray(frame_rgb[..., :3]).copy()
+    if show_zones and zone_payload:
+        z = _parse_zone(zone_payload)
+        if z:
+            img = _draw_zone_sectors(img, z, alpha=0.12)
+            img = _draw_zone_outlines(img, z)
+
+    if track_a:
+        _draw_single_color_track(img, track_a, color_a, highlight_frame, window)
+    if track_b:
+        _draw_single_color_track(img, track_b, color_b, highlight_frame, window)
+
+    pa = _comparison_point(track_a, highlight_frame) if track_a else None
+    pb = _comparison_point(track_b, highlight_frame) if track_b else None
+    if pa and pb:
+        cv2.line(img, pa, pb, (255, 255, 255), 1, cv2.LINE_AA)
+    for pt, color in ((pa, color_a), (pb, color_b)):
+        if pt:
+            cv2.circle(img, pt, 5, color, -1, cv2.LINE_AA)
+            cv2.circle(img, pt, 5, (255, 255, 255), 1, cv2.LINE_AA)
+
+    _draw_comparison_legend(img, label_a, color_a, label_b, color_b)
+    return img
+
+
+def _draw_comparison_legend(
+    img: np.ndarray,
+    label_a: str, color_a: Tuple[int, int, int],
+    label_b: str, color_b: Tuple[int, int, int],
+) -> np.ndarray:
+    """Legend box: two color swatches + model labels (bottom-right)."""
+    h, w = img.shape[:2]
+    lx, ly = w - 230, h - 50
+    cv2.rectangle(img, (lx - 5, ly - 5), (lx + 225, ly + 45), (0, 0, 0), -1)
+    cv2.rectangle(img, (lx - 5, ly - 5), (lx + 225, ly + 45), (100, 100, 100), 1)
+    for row, (label, color) in enumerate(((label_a, color_a), (label_b, color_b))):
+        y = ly + row * 18
+        cv2.rectangle(img, (lx, y), (lx + 20, y + 10), color, -1)
+        cv2.putText(img, label[:30], (lx + 25, y + 10),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.35, (220, 220, 220), 1, cv2.LINE_AA)
+    return img
+
+
+# ---------------------------------------------------------------------------
 # Head-corrected track computation (for overlay — lightweight, no zone compute)
 # ---------------------------------------------------------------------------
 

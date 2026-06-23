@@ -72,6 +72,11 @@ _register_arena_commands(app)
 from .arena_inference_cli import register_commands as _register_arena_inference_commands
 _register_arena_inference_commands(app)
 
+# Tracking subcommand group — multiple DLC trackings per experiment,
+# comparison, and cohort-level model selection.
+from .tracking_cli import register_commands as _register_tracking_commands
+_register_tracking_commands(app)
+
 
 @app.command("serve")
 def serve_api(

@@ -15,6 +15,7 @@ from .views.arena_training import render_arena_training
 from .views.cohort_management import render_cohort_management
 from .views.ezm_ml import render_ezm_ml
 from .views.ezm_tracking_qc import render_ezm_tracking_qc
+from .views.ezm_tracking_comparison import render_ezm_tracking_comparison
 from .views.ezm_wedge_marking import render_ezm_wedge_marking
 from .views.ezm_zones_qc import render_ezm_zones_qc
 from .views.experiments import render_experiments
@@ -83,6 +84,7 @@ def main() -> None:
             "EZM Wedge Marking",
             "EZM Zones QC",
             "EZM Tracking QC",
+            "EZM Tracking Comparison",
             # NOR/NOF lifecycle (Mark → arena/object QC → tracking QC)
             "NOR/NOF Object Marking",
             "NOR/NOF Arena Boundary",
@@ -117,6 +119,9 @@ def main() -> None:
         st.stop()
     if view == "EZM Tracking QC":
         render_ezm_tracking_qc(workspace_root=workspace_root, project_path=project_path)
+        st.stop()
+    if view == "EZM Tracking Comparison":
+        render_ezm_tracking_comparison(workspace_root=workspace_root, project_path=project_path)
         st.stop()
     if view == "NOR/NOF Object Association":
         render_nor_nof_object_qc(project_path=project_path, workspace_root=workspace_root, db_path=db_path)

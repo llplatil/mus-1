@@ -14,6 +14,7 @@ import streamlit as st
 from ..cohorts import (
     add_member,
     cohort_canonical_arena,
+    cohort_dlc_model,
     cohort_member_ids,
     create_cohort,
     export_training_csv,
@@ -116,6 +117,64 @@ def _build_experiment_lookup(
 ) -> Dict[str, Dict[str, str]]:
     """Build experiment_id -> metadata dict for passing to save_cohort."""
     return {e["experiment_id"]: e for e in all_experiments}
+
+
+def _render_dlc_model_section(
+    coh: Dict[str, Any], member_ids: Set[str], project_path: Path,
+) -> None:
+    """Read-only: cohort-selected DLC model + per-pair comparison verdict tally."""
+    from ..discovery import find_experiment_dir, find_experiment_json
+    from ..tracking_comparison_store import list_comparisons
+
+    st.markdown("#### DLC tracking model")
+    dm = cohort_dlc_model(coh)
+    if dm.get("run_id"):
+        st.caption(
+            f"Selected model: **{dm['run_id']}**"
+            + (f"  (snapshot {dm['snapshot']})" if dm.get("snapshot") else "")
+        )
+        if dm.get("basis"):
+            st.caption(f"Basis: {dm['basis']}")
+        st.caption(
+            f"Selected {dm.get('selected_at', '?')[:19]} by {dm.get('selected_by', '?')}. "
+            "Set via `mus1 tracking set-cohort-model`."
+        )
+    else:
+        st.caption("No cohort-level DLC model selected (downstream uses per-experiment "
+                   "default). Select one with `mus1 tracking set-cohort-model`.")
+
+    # Aggregate comparison verdicts across members, keyed by run pair.
+    pair_counts: Dict[tuple, Dict[str, int]] = {}
+    for eid in sorted(member_ids):
+        exp_dir = find_experiment_dir(project_path, eid)
+        if exp_dir is None:
+            continue
+        jp = find_experiment_json(exp_dir)
+        if jp is None:
+            continue
+        try:
+            ext = json.loads(jp.read_text()).get("extraction")
+        except Exception:
+            continue
+        for comp in list_comparisons(ext):
+            key = (comp.get("run_a_id", ""), comp.get("run_b_id", ""))
+            tally = pair_counts.setdefault(key, {})
+            v = comp.get("verdict", "not_reviewed")
+            tally[v] = tally.get(v, 0) + 1
+
+    if pair_counts:
+        st.markdown("Tracking-comparison verdicts (across members):")
+        rows = []
+        for (a, b), tally in pair_counts.items():
+            total = sum(tally.values())
+            rows.append({
+                "model A": a, "model B": b, "reviewed": total,
+                "A better": tally.get("A_better", 0),
+                "B better": tally.get("B_better", 0),
+                "tie": tally.get("tie", 0),
+                "both bad": tally.get("both_bad", 0),
+            })
+        st.dataframe(rows, use_container_width=True, hide_index=True)
 
 
 # ---------------------------------------------------------------------------
@@ -296,6 +355,9 @@ def render_cohort_management(*, project_path: Path) -> None:
             st.success("Canonical arena updated.")
             st.cache_data.clear()
             st.rerun()
+
+    # ── DLC model selection + comparison rollup (read-only) ───────────
+    _render_dlc_model_section(coh, member_ids, project_path)
 
     # ── Summary: group breakdown ──────────────────────────────────────
     groups = summary.get("groups")
