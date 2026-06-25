@@ -3,7 +3,7 @@
 Forward-looking work, ordered by impact. Anything already shipped lives
 in [`ARCHITECTURE_CURRENT.md`](ARCHITECTURE_CURRENT.md), not here.
 
-**Last updated:** 2026-05-03
+**Last updated:** 2026-06-25
 
 ## Project context
 
@@ -20,6 +20,96 @@ wouldn't survive the port is rejected.
 Full rewrite plan: `~/.claude/plans/ancient-jumping-ritchie.md`
 Manuscript skeleton: `reports_workspace/manuscript_unified.tex`
 Per-task methods+results: `reports_workspace/{ezm,nof_nor,of,rr}/*_methods_results.md`
+
+---
+
+## Maintenance sweep M1 — repo hygiene + doc refresh (assessment 2026-06-25)
+
+A state-of-the-app assessment on 2026-06-25 found the code healthy
+(235/235 tests pass, package imports clean) but surfaced one
+test-tooling flaw and several stale docs that predate Iterations 1–6.
+None of these are feature work; they are correctness/accuracy fixes
+that should land before the next contributor (human or agent) trusts
+the top-level docs. Ordered by impact. Each task is independently
+landable with its own commit.
+
+**Acceptance for the whole sweep:** bare `pytest` (no args) passes from
+the repo root; root `README.md` and `docs/web/README.md` describe only
+panes/commands that exist in [`web/app.py`](../../src/mus1/web/app.py);
+no doc references a deleted path; `grep -rn "src/mus1/gui" docs/`
+returns nothing.
+
+### M1a — Fix bare `pytest` collection (HIGHEST: blocks CI/newcomers)
+
+Running `pytest` with no args fails collection: it recurses into
+`workspace/tmp/` and imports stale Feb one-off scripts
+(`test_fix_5sample.py` → `ModuleNotFoundError: build_calculated_ezms_full`).
+The suite only passes via the explicit `pytest tests/`.
+
+**Plan**
+- Add to `pyproject.toml`:
+  ```toml
+  [tool.pytest.ini_options]
+  testpaths = ["tests"]
+  norecursedirs = ["workspace", "projects", "logs", "_workspace_noisy_archive", ".git"]
+  ```
+- Archive the four stale scripts in `workspace/tmp/` (`test_fix_5sample.py`,
+  `ezm_infer_and_rank.py`, `nor_nof_infer_and_fit.py`,
+  `run_full_boundary_fit.py`, dated Feb) to
+  `_workspace_noisy_archive/` — they are dead one-offs, not tests.
+- **Acceptance:** `cd apps/mus1 && pytest -q` passes with 235+ green.
+
+### M1b — Refresh root `README.md` (badly stale, dated 2026-03-12)
+
+The root README predates Iteration 1 (pane consolidation, 2026-04-27)
+and Iteration 6 (arena training, 2026-05-12). Concrete errors:
+- Advertises removed panes: **Annotator**, **EZM Border QC**,
+  **NOR/NOF ROI**, **NOR/NOF QC**. Real panes are the 16 in
+  `web/app.py`'s `Mode` radio (Object Marking, Arena Boundary, Object
+  Association, Arena Inference QC, Arena Training, ML Genotype,
+  EZM Tracking Comparison, …).
+- Says "NOR/NOF model training is the next build target" — it
+  **shipped** (Arena Training, Iteration 6).
+- Says "OF is blocked on the MoSeq2 pipeline" — OF has been
+  **complete since 2026-03-16**.
+
+**Plan:** regenerate the "What this app does" + "Modes" list from the
+`Mode` radio in `web/app.py`; correct the OF/NOR-NOF status line;
+update the dated "Current project context" footer. Keep it short and
+point to `docs/web/` for detail.
+
+### M1c — Refresh `docs/web/README.md` operational walkthrough
+
+The operational reference still instructs **"Mode → Annotator"**
+throughout the EZM and NOR/NOF walkthroughs — a mode removed in
+Iteration 1. Rewrite the step-by-step to the current pane names
+(EZM Wedge Marking, EZM Zones QC, NOR/NOF Object Marking, etc.).
+
+### M1d — Purge dead `src/mus1/gui/` references
+
+`ARCHITECTURE_CURRENT.md` (and a line in this ROADMAP) tells readers to
+"ignore the legacy Qt GUI in `src/mus1/gui/`" — **that directory no
+longer exists**. Delete the caveat from both docs; it is now noise that
+implies dead code is still present.
+
+### M1e — `nor_nof_interaction_qc.py` rename (deferred from Iter 5.5)
+
+Display label is "NOR/NOF Tracking QC" but the file + `render_*`
+function still say `interaction`. ARCHITECTURE §1.2 flags it
+"(file name lags rename)". Rename file → `nor_nof_tracking_qc.py`,
+function → `render_nor_nof_tracking_qc`, update the import in
+`web/app.py`. Mechanical; do it as its own commit so the diff is a
+pure rename.
+
+### M1f — Low-priority code TODOs (do opportunistically, not gating)
+
+- `web/views/nor_nof_interaction_qc.py:356` hardcodes `fps = 30.0`
+  with a standing TODO to read fps from video metadata. Wire to the
+  probed metadata already on the experiment JSON.
+- `core/schema.py:17` uses SQLAlchemy 1.x `declarative_base()` (warns
+  under the installed SQLAlchemy 2.0). Either migrate the import to
+  `sqlalchemy.orm.declarative_base` or cap the pin in `pyproject.toml`.
+  Cosmetic now; breaks on a future SQLAlchemy major.
 
 ---
 
