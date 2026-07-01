@@ -9,10 +9,6 @@ also contains a FastAPI backend + service layer (Phases 1–3 of the
 open-source rewrite) and a deterministic compute library that the
 Streamlit panes increasingly delegate to.
 
-A legacy Qt desktop GUI exists in `src/mus1/gui/` but is not maintained.
-Treat the Streamlit web app + FastAPI backend as the architecture; ignore
-`src/mus1/gui/`.
-
 ---
 
 ## 1. Streamlit web app (`src/mus1/web/`)
