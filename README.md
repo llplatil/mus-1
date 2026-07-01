@@ -28,7 +28,7 @@ Web app mode: **Experiments**
 
 Annotate EZM open/closed zones, curate training sets, train U-Net segmentation models via Slurm, and visually QC both labeled and unlabeled predictions.
 
-Web app modes: **Annotator** (EZM full marking + **EZM Wedge** boundary refinement), **EZM Zones QC** (training set curation), **EZM Border QC** (prediction QC), **EZM ML** (submit training, review frames)
+Web app modes: **EZM Wedge Marking** (open/closed boundary marking), **EZM Zones QC** (training-set curation), **EZM Tracking QC**, **EZM Tracking Comparison** (v1 vs v2 DLC), **EZM ML** (submit training, review frames)
 
 **EZM Wedge mode** (2026-02-24): faster boundary marking that reuses existing outer ellipse data. Click 2 border points per open wedge, adjust radial center, save. Replaces the slower 4-step freehand approach for boundary refinement.
 
@@ -36,9 +36,9 @@ I want to click the 4 wedge points on a single frame now -lp (3/3/36)
 
 ### 3. NOR/NOF arena annotation and model training
 
-Annotate NOR/NOF arena boundaries and object placements, export QC CSVs, and index annotations into the DB. Model training infrastructure for NOR/NOF is the next build target.
+Annotate NOR/NOF arena boundaries and object placements, export QC CSVs, and index annotations into the DB. NOR/NOF model training (**Arena Training**) shipped in Iteration 6.
 
-Web app modes: **NOR/NOF ROI** (task list + annotation launch), **NOR/NOF QC** (annotation QC), **Annotator** (NOR/NOF marking)
+Web app modes: **NOR/NOF Object Marking**, **NOR/NOF Arena Boundary**, **NOR/NOF Object Association**, **NOR/NOF Tracking QC**; arena U-Net training via **Arena Training**
 
 ### 4. Training run monitoring
 
@@ -62,6 +62,6 @@ mus1 import ml-tracking-runs       # index ML tracking training runs
 - Roadmap & next steps: `docs/web/ROADMAP.md`
 - Figure/table workflow: `reports_workspace/FIGURE_TABLE_WORKFLOW.md`
 
-## Current project context (2026-03-12)
+## Current project context (2026-07-01)
 
-The project is assembling a single unified manuscript covering all 4 behavioral tasks. Publication cohort JSONs for all tasks are built (`data/cohorts/`). Stats scripts for EZM, NOR/NOF, and RR are complete; OF is blocked on the MoSeq2 pipeline. The app's near-term priority is shifting toward figure QC, stats iteration, and cohort management rather than new annotation features. See `docs/web/ROADMAP.md` for details.
+The project is assembling a single unified manuscript covering all 4 behavioral tasks. Publication cohort JSONs for all tasks are built (`data/cohorts/`). Stats scripts for EZM, NOR/NOF, RR, and OF are complete (the OF MoSeq2 publication pipeline finished -- see the root WDMOSEQ2 README). The app's near-term priority is figure QC, stats iteration, cohort management, and the Object Association workflow (OA1). See `docs/web/ROADMAP.md` for details.
