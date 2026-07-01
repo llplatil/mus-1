@@ -52,3 +52,7 @@ include = ["mus1*"]
 
 [tool.setuptools.dynamic]
 version = {attr = "mus1.__version__"}
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+norecursedirs = ["workspace", "projects", "logs", "_workspace_noisy_archive", ".git"]
