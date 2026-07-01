@@ -1,4 +1,4 @@
-"""NOR/NOF Interaction QC -- overlay object zones and nose trajectory on arena frame.
+"""NOR/NOF Tracking QC -- overlay object zones and nose trajectory on arena frame.
 
 Visual validation of computed interaction metrics and total distance.
 Shows: object centers, interaction zone circles at selectable radius,
@@ -723,7 +723,7 @@ def _draw_interaction_qc_overlay(
 # Main render
 # ---------------------------------------------------------------------------
 
-def render_nor_nof_interaction_qc(
+def render_nor_nof_tracking_qc(
     *,
     project_path: Path,
     workspace_root: Optional[str] = None,

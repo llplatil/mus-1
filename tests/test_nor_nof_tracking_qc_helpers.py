@@ -16,7 +16,7 @@ import pytest
 # level. If streamlit isn't installed, skip the module entirely.
 streamlit = pytest.importorskip("streamlit")
 
-from mus1.web.views.nor_nof_interaction_qc import (
+from mus1.web.views.nor_nof_tracking_qc import (
     _build_exploratory_run,
     _build_variant_slug,
     _load_saved_exploratory_runs,

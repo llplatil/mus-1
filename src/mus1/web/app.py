@@ -19,7 +19,7 @@ from .views.ezm_tracking_comparison import render_ezm_tracking_comparison
 from .views.ezm_wedge_marking import render_ezm_wedge_marking
 from .views.ezm_zones_qc import render_ezm_zones_qc
 from .views.experiments import render_experiments
-from .views.nor_nof_interaction_qc import render_nor_nof_interaction_qc
+from .views.nor_nof_tracking_qc import render_nor_nof_tracking_qc
 from .views.nor_nof_object_marking import render_nor_nof_object_marking
 from .views.nor_nof_object_qc import render_nor_nof_object_qc
 from .views.subjects import render_subject_explorer
@@ -127,7 +127,7 @@ def main() -> None:
         render_nor_nof_object_qc(project_path=project_path, workspace_root=workspace_root, db_path=db_path)
         st.stop()
     if view == "NOR/NOF Tracking QC":
-        render_nor_nof_interaction_qc(project_path=project_path, workspace_root=workspace_root)
+        render_nor_nof_tracking_qc(project_path=project_path, workspace_root=workspace_root)
         st.stop()
     if view == "Cohort Management":
         render_cohort_management(project_path=project_path)
