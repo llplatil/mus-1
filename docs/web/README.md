@@ -4,7 +4,7 @@
 
 ### 1) Annotate EZM zone JSONs
 
-- In the web app: **Mode -> Annotator**
+- In the web app: **Mode -> EZM Wedge Marking**
 - Provide a **QC CSV list** (e.g. `qc_to_label_*.csv`) containing at least:
   - `video_path` (absolute or workspace-relative)
   - `frame_idx`
@@ -14,7 +14,7 @@
 
 #### EZM Wedge: refine boundaries (recommended for boundary refinement)
 
-Annotator mode: **`EZM Wedge: refine boundaries`**
+In **EZM Wedge Marking** (wedge-refine): **`refine boundaries`**
 
 Requires an existing zone JSON for each video (outer ellipse + r_inner). Best used after initial marking or autofit.
 
@@ -32,7 +32,7 @@ Controls:
 
 #### EZM: full zone annotation (for initial marking)
 
-Annotator mode: **`EZM: open/closed zone annotation`**
+In **EZM Wedge Marking** (full-zone): **`open/closed zone annotation`**
 
 Use this when no zone JSON exists yet (first-time marking).
 
@@ -75,11 +75,11 @@ That script:
 
 ## NOR/NOF marking loop
 
-1. In the web app: **Mode -> NOR/NOF ROI**
+1. In the web app: **Mode -> NOR/NOF Object Marking**
 2. Focus the list using your DLC project (paste the project dir or `config.yaml` path)
 3. Export QC CSV list and click **Open annotator (NOR/NOF) in this app**
 4. Save v2 JSONs into `workspace/arena_zones/nor_nof_per_video_v2/`
-5. Back in NOR/NOF ROI, click **Run: `mus1 import arena-zones`** to index into DB
+5. Back in NOR/NOF Object Marking, click **Run: `mus1 import arena-zones`** to index into DB
 
 NOR/NOF object marking is **COMPLETE** — all 339 sessions marked with arena_boundary geometric circle fit. QC flags seeded on all 339 experiments. Publication cohort: 324 sessions (`data/cohorts/nor_nof_publication.json`).
 
