@@ -9,7 +9,7 @@ import json
 from datetime import datetime
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, Float, Boolean, Text, ForeignKey, Enum as SQLEnum
 from sqlalchemy import event
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import declarative_base
 from sqlalchemy.orm import relationship, sessionmaker
 from typing import List
 from .metadata import Sex, ProcessingStage, SubjectDesignation, InheritancePattern, WorkerProvider, ScanTargetKind
