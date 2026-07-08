@@ -19,6 +19,7 @@ import streamlit as st
 
 from ...compute.tracking import resolve_dlc_csv_path
 from ...paths import resolve_with_mount_aliases
+from ..ezm_qc_shared import video_fps
 from ..filters import (
     SCOPE_KEY,
     _cohort_member_ids,
@@ -316,6 +317,7 @@ def _compute_interaction_for_pane(
     csv_path: str,
     left_xy: Tuple[float, float], right_xy: Tuple[float, float],
     *,
+    fps: float,
     radius_cm: float, px_to_mm: float,
     likelihood_threshold: float, bodypart_bound_px: float,
     buffer_mode: str,
@@ -333,7 +335,7 @@ def _compute_interaction_for_pane(
     nose_data = _load_nose_track_corrected(
         csv_path, likelihood_threshold, bodypart_bound_px)
     if nose_data is None:
-        return {"metrics": {"error": "could not load DLC CSV"}, "fps": 30.0}
+        return {"metrics": {"error": "could not load DLC CSV"}, "fps": fps}
     nx, ny, nok = nose_data
 
     # Roles for novelty (NOR-only)
@@ -353,8 +355,6 @@ def _compute_interaction_for_pane(
                   radius_px=radius_px, role=role_right),
     ]
     arena_cx = (left_xy[0] + right_xy[0]) / 2.0
-    fps = 30.0  # NOR/NOF videos. (TODO: read from video metadata once
-                # the per-experiment fps probe is unified — Phase E.)
     metrics = compute_interaction_metrics(
         x=nx, y=ny, ok=nok,
         objects=objects, arena_center_x=arena_cx,
@@ -1140,8 +1140,16 @@ def render_nor_nof_tracking_qc(
                      "variant. Result is held in session state — click "
                      "Save below to append it to exploratory_runs[].",
             ):
+                # Real capture fps: prefer the experiment JSON's probed
+                # video.frame_rate (the provenance value the published
+                # metrics used); fall back to probing the video, then to
+                # the NOR/NOF standard 60.0. (M1f: never assume 30fps.)
+                _fps = float((data.get("video") or {}).get("frame_rate") or 0.0)
+                if _fps <= 1.0:
+                    _fps = video_fps(video_path)
                 _result = _compute_interaction_for_pane(
                     tracking_path, left_xy, right_xy,
+                    fps=_fps,
                     radius_cm=radius_cm,
                     px_to_mm=px_to_mm,
                     likelihood_threshold=var_lh,
@@ -1225,7 +1233,7 @@ def render_nor_nof_tracking_qc(
                 idx_sel = options.index(sel) - 1
                 _render_metrics_table(
                     saved_runs[idx_sel].get("metrics", {}),
-                    saved_runs[idx_sel].get("parameters", {}).get("fps", 30.0),
+                    saved_runs[idx_sel].get("parameters", {}).get("fps", 60.0),
                     is_nor=(row.experiment_type == "NOR"),
                     title=f"Saved: {saved_runs[idx_sel]['name']}",
                 )

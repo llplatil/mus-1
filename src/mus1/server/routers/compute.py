@@ -21,7 +21,7 @@ class InteractionRequest(BaseModel):
     max_interp_gap: int = 10
     buffer_mode: str = "fixed"
     buffer_px: float = 20.0
-    fps: float = 30.0
+    fps: Optional[float] = None  # None → resolve from experiment video.frame_rate (fallback 60.0)
     min_bout_frames: int = 3
 
 
@@ -79,11 +79,18 @@ def compute_interaction(
     if center:
         arena_cx = center[0]
 
+    # Real capture fps: an explicit request value wins; otherwise use the
+    # experiment JSON's probed video.frame_rate (provenance value), falling
+    # back to the NOR/NOF standard 60.0. (M1f: never assume 30fps.)
+    eff_fps = req.fps
+    if eff_fps is None or eff_fps <= 1.0:
+        eff_fps = float((data.get("video") or {}).get("frame_rate") or 0.0) or 60.0
+
     return compute_interaction_metrics(
         x=x, y=y, ok=ok,
         objects=objects,
         arena_center_x=arena_cx,
-        fps=req.fps,
+        fps=eff_fps,
         buffer_mode=req.buffer_mode,
         buffer_px=req.buffer_px,
         min_bout_frames=req.min_bout_frames,

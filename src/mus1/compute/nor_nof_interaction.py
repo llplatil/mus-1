@@ -18,7 +18,7 @@ Usage::
             ObjectROI(name="object_b", cx=400, cy=200, radius_px=30, role="familiar"),
         ],
         arena_center_x=250.0,
-        fps=30.0,
+        fps=60.0,
     )
 """
 from __future__ import annotations
@@ -91,7 +91,7 @@ def compute_interaction_metrics(
     ok: np.ndarray,
     objects: List[ObjectROI],
     arena_center_x: float,
-    fps: float = 30.0,
+    fps: float = 60.0,  # NOR/NOF capture standard; callers should pass the real probed fps
     buffer_mode: str = "fixed",
     buffer_px: float = 20.0,
     min_bout_frames: int = 3,
