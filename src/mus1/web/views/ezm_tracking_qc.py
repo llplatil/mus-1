@@ -38,6 +38,8 @@ from ..ezm_trajectory_overlay import (
 from ..filters import (
     invalidate_after_write,
     mode_settings,
+    nav_go,
+    nav_index,
     pkey,
     render_filters,
     render_scope_banner,
@@ -158,29 +160,17 @@ def render_ezm_tracking_qc(*, workspace_root: Optional[str], project_path: Path)
         st.info("No experiments match current filters.")
         st.stop()
 
-    # ── Navigation ────────────────────────────────────────────────────
+    # ── Navigation (index selector + Prev/Next; single source of truth) ──
     n = n_filtered
-    if "ezm_tqc_idx" not in st.session_state:
-        st.session_state["ezm_tqc_idx"] = 0
-    idx = max(0, min(int(st.session_state["ezm_tqc_idx"]), n - 1))
-
-    col_prev, col_idx, col_next, col_count = st.columns([1, 2, 1, 2])
-    with col_prev:
-        if st.button("Prev", key="ezm_tqc_prev", disabled=idx <= 0):
-            st.session_state["ezm_tqc_idx"] = idx - 1
-            st.rerun()
-    with col_next:
-        if st.button("Next", key="ezm_tqc_next", disabled=idx >= n - 1):
-            st.session_state["ezm_tqc_idx"] = idx + 1
-            st.rerun()
+    col_idx, col_prev, col_next, col_count = st.columns([2, 1, 1, 2])
     with col_idx:
-        new_idx = st.number_input(
-            "Index", min_value=0, max_value=n - 1, value=idx, step=1,
-            key="ezm_tqc_idx_input",
-        )
-        if int(new_idx) != idx:
-            idx = int(new_idx)
-            st.session_state["ezm_tqc_idx"] = idx
+        idx = nav_index(PANE, n)
+    with col_prev:
+        if st.button("◀ Prev", key="ezm_tqc_prev", width="stretch", disabled=idx <= 0):
+            nav_go(PANE, -1)
+    with col_next:
+        if st.button("Next ▶", key="ezm_tqc_next", width="stretch", disabled=idx >= n - 1):
+            nav_go(PANE, +1)
     with col_count:
         st.markdown(f"**{idx + 1} / {n}** experiments")
 

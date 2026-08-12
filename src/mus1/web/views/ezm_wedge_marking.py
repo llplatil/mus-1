@@ -30,6 +30,8 @@ from ..filters import (
     SCOPE_KEY,
     _cohort_member_ids,
     invalidate_after_write,
+    nav_go,
+    nav_index,
     pkey,
     render_scope_banner,
 )
@@ -541,35 +543,17 @@ def render_ezm_wedge_marking(
         st.success("All experiments in this filter have been marked.")
         st.stop()
 
-    # --- Navigation ---
-    if "ewm_nav_idx" not in st.session_state:
-        st.session_state["ewm_nav_idx"] = 0
-
-    n1, n2, n3 = st.columns([1, 1, 4])
-    with n1:
-        if st.button("Prev", key="ewm_prev"):
-            st.session_state["ewm_nav_idx"] = max(
-                0, st.session_state.get("ewm_nav_idx", 0) - 1
-            )
-            st.rerun()
-    with n2:
-        if st.button("Next", key="ewm_next"):
-            st.session_state["ewm_nav_idx"] = min(
-                len(filtered) - 1, st.session_state.get("ewm_nav_idx", 0) + 1
-            )
-            st.rerun()
-
-    cur = st.session_state.get("ewm_nav_idx", 0)
-    cur = max(0, min(len(filtered) - 1, cur))
-
-    with n3:
-        idx = st.number_input(
-            f"Index (0-{len(filtered)-1})",
-            min_value=0, max_value=len(filtered) - 1,
-            value=cur, step=1, key="ewm_idx_input",
-        )
-    st.session_state["ewm_nav_idx"] = idx
+    # --- Navigation (index selector + Prev/Next; Accept in the canvas panel saves + advances) ---
+    idx = nav_index(PANE, len(filtered))
     row = filtered[idx]
+    nprev, nnext, _sp = st.columns([1, 1, 4])
+    with nprev:
+        if st.button("◀ Prev", key="ewm_prev", width="stretch", disabled=idx <= 0):
+            nav_go(PANE, -1)
+    with nnext:
+        if st.button("Next ▶", key="ewm_next", width="stretch",
+                     disabled=idx >= len(filtered) - 1):
+            nav_go(PANE, +1)
 
     # --- Header ---
     exp_data = _read_json(row.json_path)
@@ -594,8 +578,7 @@ def render_ezm_wedge_marking(
         st.stop()
 
     def _advance_and_rerun() -> None:
-        st.session_state["ewm_nav_idx"] = min(idx + 1, len(filtered) - 1)
-        st.rerun()
+        nav_go(PANE, +1)
 
     _render_canvas_and_save(
         json_path=row.json_path,

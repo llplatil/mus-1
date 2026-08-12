@@ -39,7 +39,14 @@ from ..ezm_qc_shared import (
     resolve_path,
 )
 from ..ezm_trajectory_overlay import draw_ezm_qc_overlay
-from ..filters import invalidate_after_write, mode_settings, pkey, render_scope_banner
+from ..filters import (
+    invalidate_after_write,
+    mode_settings,
+    nav_go,
+    nav_index,
+    pkey,
+    render_scope_banner,
+)
 from ..discovery import CACHE_TTL_SECONDS, iter_experiment_dirs, find_experiment_json
 
 
@@ -327,30 +334,17 @@ def render_arena_inference_qc(*, workspace_root: Optional[str],
             key=pkey(PANE, "frame_idx"),
         )
 
-    # ── Navigation ───────────────────────────────────────────────────
+    # ── Navigation (index selector + Prev/Next; single source of truth) ──
     n = len(filtered)
-    idx_key = pkey(PANE, "idx")
-    if idx_key not in st.session_state:
-        st.session_state[idx_key] = 0
-    idx = max(0, min(int(st.session_state[idx_key]), n - 1))
-
-    col_prev, col_idx, col_next, col_count = st.columns([1, 2, 1, 2])
-    with col_prev:
-        if st.button("Prev", key=pkey(PANE, "prev"), disabled=idx <= 0):
-            st.session_state[idx_key] = idx - 1
-            st.rerun()
-    with col_next:
-        if st.button("Next", key=pkey(PANE, "next"), disabled=idx >= n - 1):
-            st.session_state[idx_key] = idx + 1
-            st.rerun()
+    col_idx, col_prev, col_next, col_count = st.columns([2, 1, 1, 2])
     with col_idx:
-        new_idx = st.number_input(
-            "Index", min_value=0, max_value=n - 1, value=idx, step=1,
-            key=pkey(PANE, "idx_input"),
-        )
-        if int(new_idx) != idx:
-            idx = int(new_idx)
-            st.session_state[idx_key] = idx
+        idx = nav_index(PANE, n)
+    with col_prev:
+        if st.button("◀ Prev", key=pkey(PANE, "prev"), width="stretch", disabled=idx <= 0):
+            nav_go(PANE, -1)
+    with col_next:
+        if st.button("Next ▶", key=pkey(PANE, "next"), width="stretch", disabled=idx >= n - 1):
+            nav_go(PANE, +1)
     with col_count:
         st.markdown(f"**{idx + 1} / {n}** experiments")
     st.progress((idx + 1) / n)
@@ -459,8 +453,8 @@ def render_arena_inference_qc(*, workspace_root: Optional[str],
             )
             invalidate_after_write()
             if idx + 1 < n:
-                st.session_state[idx_key] = idx + 1
                 st.toast("Saved. Advanced to next.")
+                nav_go(PANE, +1)
             else:
                 st.toast("Saved. Review complete.")
             st.rerun()

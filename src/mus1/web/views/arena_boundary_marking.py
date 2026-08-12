@@ -41,6 +41,8 @@ from ..filters import (
     SCOPE_KEY,
     _cohort_member_ids,
     invalidate_after_write,
+    nav_go,
+    nav_index,
     pkey,
     render_filters,
     render_scope_banner,
@@ -393,33 +395,10 @@ def render_arena_boundary_marking(
         st.success("No experiments match current filters.")
         st.stop()
 
-    # --- Navigation cluster (prev / index / next / count) ---
-    idx_key = pkey(PANE, "idx")
-    if idx_key not in st.session_state:
-        st.session_state[idx_key] = 0
-    cur = max(0, min(len(filtered) - 1, int(st.session_state[idx_key])))
-
-    nav1, nav2, nav3, nav4 = st.columns([1, 2, 1, 2])
-    with nav1:
-        if st.button("Prev", key=pkey(PANE, "prev"), disabled=cur <= 0):
-            st.session_state[idx_key] = cur - 1
-            st.rerun()
-    with nav3:
-        if st.button(
-            "Next", key=pkey(PANE, "next"), disabled=cur >= len(filtered) - 1,
-        ):
-            st.session_state[idx_key] = cur + 1
-            st.rerun()
+    # --- Navigation (index selector only; Prev/Next live in the action row below) ---
+    nav2, nav4 = st.columns([2, 3])
     with nav2:
-        new_idx = st.number_input(
-            f"Index (0-{len(filtered) - 1})",
-            min_value=0, max_value=len(filtered) - 1,
-            value=cur, step=1,
-            key=pkey(PANE, "idx_input"),
-        )
-        if int(new_idx) != cur:
-            cur = int(new_idx)
-            st.session_state[idx_key] = cur
+        cur = nav_index(PANE, len(filtered))
     with nav4:
         st.markdown(f"**{cur + 1} / {len(filtered)}** experiments")
     st.progress((cur + 1) / max(1, len(filtered)))
@@ -562,56 +541,55 @@ def render_arena_boundary_marking(
             st.warning(f"Ellipse fit failed: {e}")
             fit_ok = False
 
-    # --- Flag for review + note ---
-    fc_flag, fc_note = st.columns([1, 3])
-    with fc_flag:
-        flag_review = st.checkbox(
-            "Flag for review",
-            value=bool(existing_block.get("flag_review", False)),
-            key=pkey(PANE, f"flag__{row.experiment_id}"),
-        )
-    with fc_note:
-        note = st.text_input(
-            "Note",
-            value=str(existing_block.get("note", "")),
-            key=pkey(PANE, f"note__{row.experiment_id}"),
-            placeholder="Optional note for this marking",
-        )
+    # --- Note ---
+    note = st.text_input(
+        "Note",
+        value=str(existing_block.get("note", "")),
+        key=pkey(PANE, f"note__{row.experiment_id}"),
+        placeholder="Optional note for this marking",
+    )
 
-    # --- Accept + Save + Next ---
-    ac1, ac2 = st.columns(2)
-    with ac1:
-        if st.button(
-            "Accept + Save + Next",
-            key=pkey(PANE, f"accept__{row.experiment_id}"),
-            type="primary",
-            disabled=not fit_ok,
-        ):
-            was_overwrite = _save_arena_boundary(
-                row.json_path,
-                points=points,
-                frame_shape=[img_h, img_w],
-                flag_review=bool(flag_review),
-                note=note,
-                suggested_points=(
-                    suggested_points if suggestion_source == "U-Net auto-suggest"
-                    else None
-                ),
-                model_run_id=suggested_run_id,
-            )
-            if was_overwrite:
-                st.toast(
-                    f"Overwrote existing arena boundary for {row.experiment_id}"
-                )
-            else:
-                st.toast(f"Saved arena boundary for {row.experiment_id}")
-            invalidate_after_write()
-            st.session_state[idx_key] = min(cur + 1, len(filtered) - 1)
-            st.rerun()
-    with ac2:
-        st.caption(
-            "Use the trash icon on the canvas toolbar to clear and re-mark."
+    def _save(flag: bool) -> None:
+        ow = _save_arena_boundary(
+            row.json_path,
+            points=points,
+            frame_shape=[img_h, img_w],
+            flag_review=flag,
+            note=note,
+            suggested_points=(
+                suggested_points if suggestion_source == "U-Net auto-suggest" else None
+            ),
+            model_run_id=suggested_run_id,
         )
+        st.toast(("Overwrote" if ow else "Saved") + f" arena boundary for {row.experiment_id}")
+        invalidate_after_write()
+
+    # --- Action row: previous | accept | accept & next | next | flag ---
+    n_items = len(filtered)
+    b_prev, b_acc, b_acc_next, b_next, b_flag = st.columns(5)
+    with b_prev:
+        if st.button("◀ Previous", key=pkey(PANE, "prev"), width="stretch", disabled=cur <= 0):
+            nav_go(PANE, -1)
+    with b_acc:
+        if st.button("Accept", key=pkey(PANE, f"accept__{row.experiment_id}"),
+                     type="primary", width="stretch", disabled=not fit_ok):
+            _save(flag=False)
+            st.rerun()
+    with b_acc_next:
+        if st.button("Accept & next", key=pkey(PANE, f"accept_next__{row.experiment_id}"),
+                     width="stretch", disabled=not fit_ok):
+            _save(flag=False)
+            nav_go(PANE, +1)
+    with b_next:
+        if st.button("Next ▶", key=pkey(PANE, "next"), width="stretch", disabled=cur >= n_items - 1):
+            nav_go(PANE, +1)
+    with b_flag:
+        if st.button("⚑ Flag", key=pkey(PANE, f"flag_btn__{row.experiment_id}"),
+                     width="stretch", disabled=not fit_ok):
+            _save(flag=True)
+            nav_go(PANE, +1)
+    st.caption("Accept = save (clears flag) · Accept & next = save + advance · "
+               "Flag = save flagged for review · trash icon on the canvas clears clicks.")
 
     # --- Show existing block ---
     if existing_block.get("ellipse"):

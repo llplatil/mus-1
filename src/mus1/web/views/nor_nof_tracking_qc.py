@@ -25,6 +25,8 @@ from ..filters import (
     _cohort_member_ids,
     invalidate_after_write,
     mode_settings,
+    nav_go,
+    nav_index,
     pkey,
     render_scope_banner,
 )
@@ -894,32 +896,17 @@ def render_nor_nof_tracking_qc(
 
     filtered.sort(key=lambda e: e.experiment_id)
 
-    # --- Navigation ---
+    # --- Navigation (index selector + Prev/Next; single source of truth) ---
     n = len(filtered)
-    if "iqc_nav_idx" not in st.session_state:
-        st.session_state["iqc_nav_idx"] = 0
-    idx = st.session_state["iqc_nav_idx"]
-    idx = max(0, min(n - 1, idx))
-
-    col_prev, col_idx, col_next, col_count = st.columns([1, 2, 1, 2])
-    with col_prev:
-        if st.button("Prev", key="iqc_prev", disabled=idx <= 0):
-            idx = max(0, idx - 1)
-            st.session_state["iqc_nav_idx"] = idx
-            st.rerun()
-    with col_next:
-        if st.button("Next", key="iqc_next", disabled=idx >= n - 1):
-            idx = min(n - 1, idx + 1)
-            st.session_state["iqc_nav_idx"] = idx
-            st.rerun()
+    col_idx, col_prev, col_next, col_count = st.columns([2, 1, 1, 2])
     with col_idx:
-        new_idx = st.number_input(
-            "Index", min_value=0, max_value=n - 1, value=idx,
-            step=1, key="iqc_idx_input",
-        )
-        if new_idx != idx:
-            idx = new_idx
-            st.session_state["iqc_nav_idx"] = idx
+        idx = nav_index(PANE, n)
+    with col_prev:
+        if st.button("◀ Prev", key="iqc_prev", width="stretch", disabled=idx <= 0):
+            nav_go(PANE, -1)
+    with col_next:
+        if st.button("Next ▶", key="iqc_next", width="stretch", disabled=idx >= n - 1):
+            nav_go(PANE, +1)
     with col_count:
         st.markdown(f"**{idx + 1} / {n}** sessions")
 

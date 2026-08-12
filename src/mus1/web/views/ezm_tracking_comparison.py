@@ -34,6 +34,8 @@ from ..filters import (
     SCOPE_KEY,
     invalidate_after_write,
     mode_settings,
+    nav_go,
+    nav_index,
     pkey,
     render_filters,
     render_scope_banner,
@@ -93,6 +95,23 @@ def _jump_to(key: str, frame: int) -> None:
     st.session_state[key] = int(frame)
 
 
+def _worst_track_score(doc: Dict[str, Any]) -> Optional[float]:
+    """Worst head-keypoint below-threshold fraction across registered DLC models.
+
+    Reads the model-keyed ``computed_metrics.ezm_open_closed.head_qc`` block
+    (written by compute_ezm_head_qc.py) so low-tracking sessions can be surfaced
+    first. Returns the max frac_below_threshold over available models, or None.
+    """
+    hq = ((((doc or {}).get("computed_metrics") or {}).get("ezm_open_closed") or {})
+          .get("head_qc") or {})
+    vals = [float(m["frac_below_threshold"])
+            for m in (hq.get("models") or {}).values()
+            if isinstance(m.get("frac_below_threshold"), (int, float))]
+    if not vals and isinstance(hq.get("frac_below_threshold"), (int, float)):
+        vals.append(float(hq["frac_below_threshold"]))  # single-model (older) head_qc
+    return max(vals) if vals else None
+
+
 # ---------------------------------------------------------------------------
 # Pane
 # ---------------------------------------------------------------------------
@@ -129,6 +148,10 @@ def render_ezm_tracking_comparison(*, workspace_root: Optional[str], project_pat
     with mode_settings("Display", key_prefix=PANE):
         only_multi = st.checkbox("Only experiments with ≥2 trackings", value=True,
                                  key=pkey(PANE, "only_multi"))
+        worst_first = st.checkbox("Worst tracking first (head_qc)", value=True,
+                                  key=pkey(PANE, "worst_first"),
+                                  help="Sort experiments by worst head-keypoint below-threshold "
+                                       "fraction (across DLC models), lowest performers first.")
         show_zones = st.checkbox("Show EZM zones", value=True, key=pkey(PANE, "show_zones"))
         window = st.slider("Trajectory window (frames each side)", 30, 600, 180, 30,
                            key=pkey(PANE, "window"))
@@ -140,40 +163,39 @@ def render_ezm_tracking_comparison(*, workspace_root: Optional[str], project_pat
     rows2: List[Dict[str, Any]] = []
     for r in filtered:
         try:
-            ext = (json.loads(Path(r["json_path"]).read_text()).get("extraction"))
+            doc = json.loads(Path(r["json_path"]).read_text())
+            ext = doc.get("extraction")
         except Exception:
-            ext = None
+            doc, ext = {}, None
         runs = list_dlc_runs(ext)
         if only_multi and len(runs) < 2:
             continue
-        rows2.append({**r, "_n_runs": len(runs)})
+        rows2.append({**r, "_n_runs": len(runs), "_track_worst": _worst_track_score(doc)})
+
+    if worst_first:
+        # sessions with a head_qc score first, worst (highest below-thr fraction) at top
+        rows2.sort(key=lambda x: (x.get("_track_worst") is not None,
+                                  x.get("_track_worst") or 0.0), reverse=True)
 
     st.caption(f"{len(rows2)} experiments shown"
-               + (" (with ≥2 trackings)" if only_multi else "") + ".")
+               + (" (with ≥2 trackings)" if only_multi else "")
+               + (" · worst-tracking first" if worst_first else "") + ".")
     if not rows2:
         st.info("No experiments with ≥2 trackings. Register a second model with "
                 "`mus1 tracking register-run`.")
         st.stop()
 
-    # ── Navigation ──────────────────────────────────────────────────────
+    # ── Navigation (index selector + Prev/Next; single source of truth) ──
     n = len(rows2)
-    st.session_state.setdefault(pkey(PANE, "idx"), 0)
-    idx = max(0, min(int(st.session_state[pkey(PANE, "idx")]), n - 1))
-    c_prev, c_idx, c_next, c_count = st.columns([1, 2, 1, 2])
-    with c_prev:
-        if st.button("Prev", key=pkey(PANE, "prev"), disabled=idx <= 0):
-            st.session_state[pkey(PANE, "idx")] = idx - 1
-            st.rerun()
-    with c_next:
-        if st.button("Next", key=pkey(PANE, "next"), disabled=idx >= n - 1):
-            st.session_state[pkey(PANE, "idx")] = idx + 1
-            st.rerun()
+    c_idx, c_prev, c_next, c_count = st.columns([2, 1, 1, 2])
     with c_idx:
-        new_idx = st.number_input("Index", min_value=0, max_value=n - 1, value=idx, step=1,
-                                  key=pkey(PANE, "idx_input"))
-        if int(new_idx) != idx:
-            idx = int(new_idx)
-            st.session_state[pkey(PANE, "idx")] = idx
+        idx = nav_index(PANE, n)
+    with c_prev:
+        if st.button("◀ Prev", key=pkey(PANE, "prev"), width="stretch", disabled=idx <= 0):
+            nav_go(PANE, -1)
+    with c_next:
+        if st.button("Next ▶", key=pkey(PANE, "next"), width="stretch", disabled=idx >= n - 1):
+            nav_go(PANE, +1)
     with c_count:
         st.markdown(f"**{idx + 1} / {n}** experiments")
 
@@ -184,6 +206,10 @@ def render_ezm_tracking_comparison(*, workspace_root: Optional[str], project_pat
     ext = exp_data.get("extraction")
     runs = list_dlc_runs(ext)
     st.subheader(exp_id)
+    _tw = rec.get("_track_worst")
+    if _tw is not None:
+        st.caption(f"worst head-tracking below-0.6 fraction: **{_tw:.3f}**"
+                   + ("  ⚠️ low performer" if _tw >= 0.30 else ""))
 
     if len(runs) < 2:
         st.warning("Only one tracking registered for this experiment — nothing to "

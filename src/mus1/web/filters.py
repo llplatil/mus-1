@@ -106,6 +106,56 @@ def pkey(pane: str, widget: str) -> str:
     return f"{pane}__{widget}"
 
 
+# ---------------------------------------------------------------------------
+# Item navigation (index selector + Prev/Next/Accept-&-next helpers)
+# ---------------------------------------------------------------------------
+# Fixes a bug that recurred across marking/QC panes: a manually-managed index
+# (e.g. ``om_nav_idx``) and a *keyed* ``number_input`` fought each other. The
+# keyed widget's stale value overwrote the Prev/Next update on the same rerun,
+# so Prev/Next (and "accept then advance") appeared to do nothing. Here the
+# number_input's OWN session key is the single source of truth, and moves queued
+# by buttons are applied at the TOP of the next run — before the widget is
+# created — so buttons rendered anywhere on the page (including below) work.
+
+def nav_index(pane: str, n: int, *, key: str = "nav", label: str = "Index") -> int:
+    """Render an item-index selector and return the clamped current index.
+
+    Call once near the top of a pane. Move it from Prev/Next/Accept-&-next
+    buttons (rendered anywhere) via :func:`nav_go` / :func:`nav_goto`.
+    """
+    skey = pkey(pane, key + "_idx")
+    st.session_state.setdefault(skey, 0)
+    # apply any move queued by a button in the previous run (before widget exists)
+    delta = st.session_state.pop(pkey(pane, key + "_delta"), None)
+    if delta is not None:
+        st.session_state[skey] = int(st.session_state.get(skey, 0)) + int(delta)
+    goto = st.session_state.pop(pkey(pane, key + "_goto"), None)
+    if goto is not None:
+        st.session_state[skey] = int(goto)
+    hi = max(0, n - 1)
+    # clamp (n may have shrunk after a filter change) BEFORE the widget, else
+    # Streamlit raises when the stored value exceeds max_value
+    st.session_state[skey] = max(0, min(hi, int(st.session_state.get(skey, 0))))
+    idx = st.number_input(f"{label} (0-{hi})", min_value=0, max_value=hi, step=1, key=skey)
+    return int(idx)
+
+
+def nav_go(pane: str, delta: int, *, key: str = "nav") -> None:
+    """Queue a relative index move (Prev = -1, Next / Accept-&-next = +1) and rerun.
+
+    Safe to call from buttons rendered AFTER :func:`nav_index` — the move lands on
+    the next run before the number_input is created, avoiding the stale-widget bug.
+    """
+    st.session_state[pkey(pane, key + "_delta")] = int(delta)
+    st.rerun()
+
+
+def nav_goto(pane: str, idx: int, *, key: str = "nav") -> None:
+    """Queue an absolute index jump and rerun."""
+    st.session_state[pkey(pane, key + "_goto")] = int(idx)
+    st.rerun()
+
+
 def invalidate_after_write() -> None:
     """Clear every Streamlit data cache; call after any JSON write.
 

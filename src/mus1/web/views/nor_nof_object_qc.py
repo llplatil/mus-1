@@ -29,6 +29,8 @@ from ..filters import (
     SCOPE_KEY,
     _cohort_member_ids,
     invalidate_after_write,
+    nav_go,
+    nav_index,
     pkey,
     render_scope_banner,
 )
@@ -41,12 +43,19 @@ PANE = "nor_nof_oqc"
 
 # Canonical object vocabulary across cohorts:
 #   - publication 3D-printed: diamond, pyramid, silo
-#   - validation_2026 pilot/everyday objects: fish, atom, dino, tube
+#   - validation_2026 everyday objects: fish, atom, dino, tube
+#   - pilot (P_NO) everyday objects: atom, tube, dino, cap, cap_2, weird_plastic
 # When new objects are added (e.g., a future pilot), append them here and add
 # any common typos to ``_NORMALIZE_MAP`` below. Names are stored lowercase.
+# The per-cohort ``objects`` list (resolved via cohorts.resolve_object_vocabulary)
+# narrows what a given experiment's selector shows; this is only the fallback.
+# NOTE: ``cap_2`` must precede ``cap`` in substring fallback terms — but exact
+# matches in ``_NORMALIZE_MAP`` (auto-added below) resolve first, so order here
+# only affects the substring-scan fallback in ``normalize_object_name``.
 CANONICAL_OBJECTS = [
     "diamond", "pyramid", "silo",
     "fish", "atom", "dino", "tube",
+    "cap_2", "cap", "weird_plastic",
 ]
 
 _NORMALIZE_MAP: Dict[str, str] = {}
@@ -61,6 +70,15 @@ _NORMALIZE_MAP.update({
     "fishy": "fish",        # validation CSV used "Fishy" for fish
     "dinosaur": "dino",     # full word → short
     "dinos": "dino",
+    "bottlecap": "cap",     # pilot 4th object variants
+    "bottle_cap": "cap",
+    "bottle cap": "cap",
+    "cap2": "cap_2",        # second, distinct cap (pilot)
+    "cap 2": "cap_2",
+    "cap_two": "cap_2",
+    "weird plastic": "weird_plastic",   # pilot odd object
+    "weirdplastic": "weird_plastic",
+    "weird": "weird_plastic",
 })
 
 
@@ -113,12 +131,40 @@ class _ExperimentRow:
     object_left: Optional[str]
     object_right: Optional[str]
     novel_side: Optional[str]
+    novel_object: Optional[str]
     qc_status: Optional[str]
     qc_reviewed_at: Optional[str]
     qc_notes: str
     frame_count: Optional[int]
     duration_seconds: Optional[float]
     paired_experiment_id: Optional[str]
+
+
+def bucket_label(project_path: Path, row: "_ExperimentRow") -> str:
+    """Display label for an experiment's arena/bucket.
+
+    Prefers the per-experiment ``bucket`` field; otherwise resolves the owning
+    cohort's ``canonical_arena`` profile (e.g. the pilot cohort ->
+    ``home_depot_5gal_orange``). Returns ``"(not set)"`` when neither is known.
+    """
+    if row.bucket:
+        return row.bucket
+    from ..cohorts import resolve_arena_profile_id, arena_profile_label
+    pid = resolve_arena_profile_id(project_path, row.experiment_id)
+    return arena_profile_label(pid) or "(not set)"
+
+
+def has_video(row: "_ExperimentRow") -> bool:
+    """True if the experiment has a video to read a frame from.
+
+    Cheap, decode-free (does not stat the file) — reflects whether a video was
+    ever recorded/linked. Experiments with no video (e.g. pilot NOR whose test
+    recording is missing) can never be frame-marked, so panes use this to keep
+    them out of marking queues and to render a graceful "no video" state
+    instead of a hard stop. A path that is set but unreadable is a *different*
+    condition, caught at frame-decode time.
+    """
+    return bool(row.video_path)
 
 
 # ---------------------------------------------------------------------------
@@ -157,12 +203,20 @@ def _load_nor_nof_experiments(experiment_data_root: Path) -> List[_ExperimentRow
             pair_block = _pair_raw if isinstance(_pair_raw, dict) else {}
 
             toys_raw = el.get("toys_raw") or el.get("toy_raw") or ""
+            # Resolve video.path: pilot/supplementary JSONs store it relative
+            # to the project root (e.g. "pilot_data/NOR/.../x.mp4"), whereas
+            # publication JSONs store absolute paths. Anchor relatives to the
+            # project_path so the frame reader gets a resolvable path
+            # regardless of the Streamlit process CWD.
+            _video_path = vid.get("path", "")
+            if _video_path and not Path(_video_path).is_absolute():
+                _video_path = str(project_path / _video_path)
             rows.append(_ExperimentRow(
                 experiment_id=data.get("experiment_id", exp_dir.name),
                 experiment_type=data.get("experiment_type", task),
                 subject_id=str(md.get("subject_id", "")),
                 date_recorded=str(md.get("date_recorded", "")),
-                video_path=vid.get("path", ""),
+                video_path=_video_path,
                 video_filename=vid.get("filename", ""),
                 json_path=jf,
                 toys_raw=toys_raw,
@@ -170,6 +224,7 @@ def _load_nor_nof_experiments(experiment_data_root: Path) -> List[_ExperimentRow
                 object_left=el.get("object_left"),
                 object_right=el.get("object_right"),
                 novel_side=el.get("novel_side"),
+                novel_object=el.get("novel_object"),
                 qc_status=oqc.get("status") if oqc else None,
                 qc_reviewed_at=oqc.get("reviewed_at") if oqc else None,
                 qc_notes=oqc.get("notes", "") if oqc else "",
@@ -263,6 +318,7 @@ def _save_qc_to_json(
     object_left: str,
     object_right: str,
     novel_side: Optional[str],
+    novel_object: Optional[str] = None,
     experiment_type: str,
     notes: str,
 ) -> None:
@@ -273,8 +329,17 @@ def _save_qc_to_json(
     el["object_right"] = object_right
     if experiment_type == "NOR":
         el["novel_side"] = novel_side
-    elif "novel_side" in el:
-        del el["novel_side"]
+        # Identity of the novel object (which physical object was swapped in for
+        # the test). For distinct_pair_familiarization cohorts this is a new
+        # object; for identical_familiarization it is the object on novel_side.
+        if novel_object:
+            el["novel_object"] = novel_object
+        elif "novel_object" in el:
+            del el["novel_object"]
+    else:
+        for k in ("novel_side", "novel_object"):
+            if k in el:
+                del el[k]
 
     changed_type = data.get("experiment_type") != experiment_type
     original_type = data.get("experiment_type") if changed_type else None
@@ -297,6 +362,7 @@ def _change_experiment_type(
     object_left: str,
     object_right: str,
     novel_side: Optional[str],
+    novel_object: Optional[str] = None,
     notes: str,
 ) -> Optional[str]:
     """
@@ -310,20 +376,30 @@ def _change_experiment_type(
     old_id = row.experiment_id
     new_id = old_id.replace(f"{old_type}_", f"{new_type}_", 1)
 
-    old_folder = experiment_data_root / old_type / old_id
-    new_folder = experiment_data_root / new_type / new_id
+    # Locate the experiment in whichever data root it actually lives in
+    # (experiment_data/, pilot_data/, validation_data/, ...) instead of
+    # assuming experiment_data/. row.json_path is the on-disk JSON, so its
+    # parent is the experiment folder; fall back to multi-root discovery.
+    old_folder = row.json_path.parent
+    if not old_folder.is_dir():
+        from mus1.web.discovery import find_experiment_dir
+        located = find_experiment_dir(Path(experiment_data_root).parent, old_id)
+        if located:
+            old_folder = located
+    # Keep the experiment in the same data root; only the task subdir changes.
+    new_task_dir = old_folder.parent.parent / new_type
+    new_folder = new_task_dir / new_id
 
     if new_folder.exists():
         return f"Target folder already exists: {new_folder}"
     if not old_folder.exists():
         return f"Source folder not found: {old_folder}"
 
-    new_task_dir = experiment_data_root / new_type
     new_task_dir.mkdir(parents=True, exist_ok=True)
 
     shutil.move(str(old_folder), str(new_folder))
 
-    old_json = new_folder / f"{old_id}.json"
+    old_json = new_folder / row.json_path.name
     new_json = new_folder / f"{new_id}.json"
     if old_json.exists():
         old_json.rename(new_json)
@@ -344,11 +420,16 @@ def _change_experiment_type(
     el["object_right"] = object_right
     if new_type == "NOR":
         el["novel_side"] = novel_side
+        if novel_object:
+            el["novel_object"] = novel_object
+        elif "novel_object" in el:
+            del el["novel_object"]
         if "toy_raw" in el:
             el["toys_raw"] = el.pop("toy_raw")
     else:
-        if "novel_side" in el:
-            del el["novel_side"]
+        for k in ("novel_side", "novel_object"):
+            if k in el:
+                del el[k]
         if "toys_raw" in el:
             el["toy_raw"] = el.pop("toys_raw")
 
@@ -478,35 +559,17 @@ def render_nor_nof_object_qc(
         st.success("All experiments in this filter have been QC'd.")
         st.stop()
 
-    # --- Navigation ---
-    # Use a separate session key for the "desired" index so we never write
-    # to the widget key after the widget has been instantiated.
-    if "oqc_nav_idx" not in st.session_state:
-        st.session_state["oqc_nav_idx"] = 0
-
-    nav1, nav2, nav3 = st.columns([1, 1, 4])
-    with nav1:
-        if st.button("Prev", key="oqc_prev"):
-            st.session_state["oqc_nav_idx"] = max(0, st.session_state.get("oqc_nav_idx", 0) - 1)
-            st.rerun()
-    with nav2:
-        if st.button("Next", key="oqc_next"):
-            st.session_state["oqc_nav_idx"] = min(len(filtered) - 1, st.session_state.get("oqc_nav_idx", 0) + 1)
-            st.rerun()
-
-    cur_nav = st.session_state.get("oqc_nav_idx", 0)
-    cur_nav = max(0, min(len(filtered) - 1, cur_nav))
-
-    with nav3:
-        idx = st.number_input(
-            f"Index (0-{len(filtered)-1})",
-            min_value=0,
-            max_value=len(filtered) - 1,
-            value=cur_nav,
-            step=1,
-            key="oqc_idx_input",
-        )
-    st.session_state["oqc_nav_idx"] = idx
+    # --- Navigation (index selector + Prev/Next; single source of truth) ---
+    nidx, nprev, nnext = st.columns([3, 1, 1])
+    with nidx:
+        idx = nav_index(PANE, len(filtered))
+    with nprev:
+        if st.button("◀ Prev", key="oqc_prev", width="stretch", disabled=idx <= 0):
+            nav_go(PANE, -1)
+    with nnext:
+        if st.button("Next ▶", key="oqc_next", width="stretch",
+                     disabled=idx >= len(filtered) - 1):
+            nav_go(PANE, +1)
 
     row = filtered[idx]
 
@@ -514,18 +577,30 @@ def render_nor_nof_object_qc(
     st.subheader(row.experiment_id)
     st.caption(
         f"Subject: {row.subject_id} | Date: {row.date_recorded} | "
-        f"Type: {row.experiment_type} | Bucket: {row.bucket}"
+        f"Type: {row.experiment_type} | Bucket: {bucket_label(project_path, row)}"
     )
 
     # --- Frame display + current state side by side ---
     col_frame, col_info = st.columns([2, 1])
 
     with col_frame:
-        frame = _read_mid_frame(row.video_path, row.frame_count)
+        frame = _read_mid_frame(row.video_path, row.frame_count) if has_video(row) else None
         if frame is not None:
             st.image(frame, caption=f"Mid-frame: {row.video_filename}", width="stretch")
+        elif not has_video(row):
+            # No video ever recorded (e.g. pilot NOR with a missing test video).
+            # Object *names* don't require the frame — they can be assigned from
+            # the linked partner + design — so guide rather than just warn.
+            st.info(
+                "**No video for this experiment.** You can still assign object "
+                "names below from the linked NOR↔NOF partner + protocol, then "
+                "click **Confirm QC** — the frame isn't needed for name assignment."
+            )
         else:
-            st.warning(f"Could not read frame from: {row.video_path}")
+            st.warning(
+                f"Could not read a frame from: {row.video_path} "
+                "(file missing or unreadable). Object names can still be assigned below."
+            )
 
     with col_info:
         st.markdown("**Current state in JSON**")
@@ -533,7 +608,8 @@ def render_nor_nof_object_qc(
         st.text(f"object_left:  {row.object_left or '(not set)'}")
         st.text(f"object_right: {row.object_right or '(not set)'}")
         st.text(f"novel_side:   {row.novel_side or '(not set)'}")
-        st.text(f"bucket:       {row.bucket}")
+        st.text(f"novel_object: {row.novel_object or '(not set)'}")
+        st.text(f"bucket:       {bucket_label(project_path, row)}")
         if row.qc_status:
             st.text(f"QC status:    {row.qc_status}")
             st.text(f"QC at:        {row.qc_reviewed_at}")
@@ -565,10 +641,23 @@ def render_nor_nof_object_qc(
     # Object vocabulary: prefer the union of objects[] from every cohort
     # this experiment belongs to (data-driven). Fall back to the global
     # CANONICAL_OBJECTS for legacy experiments not in any object-aware cohort.
-    from ..cohorts import resolve_object_vocabulary
+    from ..cohorts import resolve_object_vocabulary, resolve_no_protocol
     cohort_vocab = resolve_object_vocabulary(
         project_path, row.experiment_id, fallback=CANONICAL_OBJECTS,
     )
+    # Novel-object familiarization protocol for this experiment's cohort.
+    no_protocol = resolve_no_protocol(project_path, row.experiment_id)
+    _is_distinct = no_protocol == "distinct_pair_familiarization"
+    if _is_distinct:
+        st.caption(
+            "Protocol: **distinct-pair familiarization** — sample phase (NOF) uses "
+            "two *different* objects; the test (NOR) swaps one for a novel object."
+        )
+    else:
+        st.caption(
+            "Protocol: **identical familiarization** — sample phase (NOF) uses two "
+            "*identical* objects; the test (NOR) swaps one for a novel object."
+        )
     # If the experiment already has names assigned, ensure they appear in the
     # selector even if the cohort vocab doesn't list them yet (so we don't
     # silently force "(other)" on already-marked experiments).
@@ -630,8 +719,44 @@ def render_nor_nof_object_qc(
                 horizontal=True,
                 key=f"oqc_novel__{row.experiment_id}",
             )
+        elif _is_distinct:
+            st.caption("NOF sample: two *distinct* objects (no novel side).")
         else:
-            st.caption("NOF: both objects are familiar (no novel side)")
+            st.caption("NOF sample: two *identical* objects (no novel side).")
+
+    # Novel-object identity (NOR only): which physical object was swapped in.
+    novel_object_sel: Optional[str] = None
+    if exp_type_sel == "NOR":
+        # Default: the object currently on the novel side, else stored value.
+        _side_obj = left_sel if novel_side_sel == "left" else right_sel
+        default_novel_obj = row.novel_object or _side_obj or ""
+        nobj_options = obj_options if default_novel_obj in obj_options else obj_options + [default_novel_obj]
+        novel_object_sel = st.selectbox(
+            "Novel object (identity)",
+            options=nobj_options,
+            index=_default_idx(default_novel_obj, nobj_options),
+            key=f"oqc_novelobj__{row.experiment_id}",
+            help="Which object was novel in the test phase. In distinct-pair "
+                 "protocols this is a new object not present during sample.",
+        )
+        if novel_object_sel == "(other)":
+            novel_object_sel = st.text_input(
+                "Novel object name", value=default_novel_obj,
+                key=f"oqc_novelobj_other__{row.experiment_id}",
+            )
+
+    # Protocol-aware sanity hint on the two sample objects (NOF only).
+    if exp_type_sel == "NOF" and left_sel and right_sel and left_sel != "(other)":
+        if not _is_distinct and left_sel != right_sel:
+            st.warning(
+                "Identical-familiarization protocol expects the **same** object on "
+                "both sides during the sample phase, but LEFT and RIGHT differ."
+            )
+        if _is_distinct and left_sel == right_sel:
+            st.warning(
+                "Distinct-pair protocol expects **two different** objects during the "
+                "sample phase, but LEFT and RIGHT are the same."
+            )
 
     notes_val = st.text_input("Notes (optional)", value=row.qc_notes, key=f"oqc_notes__{row.experiment_id}")
 
@@ -658,6 +783,7 @@ def render_nor_nof_object_qc(
                 object_left=left_sel,
                 object_right=right_sel,
                 novel_side=novel_side_sel,
+                novel_object=novel_object_sel,
                 notes=notes_val,
             )
             if err:
@@ -665,20 +791,19 @@ def render_nor_nof_object_qc(
             else:
                 st.success(f"Type changed and QC saved: {row.experiment_id} -> {exp_type_sel}")
                 _read_mid_frame.clear()
-                st.session_state["oqc_nav_idx"] = min(idx + 1, len(filtered) - 1)
-                st.rerun()
+                nav_go(PANE, +1)
         else:
             _save_qc_to_json(
                 row.json_path,
                 object_left=left_sel,
                 object_right=right_sel,
                 novel_side=novel_side_sel,
+                novel_object=novel_object_sel,
                 experiment_type=exp_type_sel,
                 notes=notes_val,
             )
             st.success(f"QC saved for {row.experiment_id}")
-            st.session_state["oqc_nav_idx"] = min(idx + 1, len(filtered) - 1)
-            st.rerun()
+            nav_go(PANE, +1)
 
     # --- Progress table ---
     st.markdown("---")

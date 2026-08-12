@@ -20,6 +20,8 @@ from ..filters import (
     SCOPE_KEY,
     _cohort_member_ids,
     invalidate_after_write,
+    nav_go,
+    nav_index,
     pkey,
     render_scope_banner,
 )
@@ -30,6 +32,8 @@ from .nor_nof_object_qc import (
     _ExperimentRow,
     _load_nor_nof_experiments,
     _load_pair_info,
+    bucket_label,
+    has_video,
 )
 
 # ---------------------------------------------------------------------------
@@ -172,10 +176,21 @@ def render_nor_nof_object_marking(
     if scope_cohort:
         member_ids = _cohort_member_ids(project_path, scope_cohort)
         filtered = [r for r in filtered if r.experiment_id in member_ids]
+    # Snapshot the population after cohort scope but before the pane-specific
+    # task/marked/flagged filters. This lets the empty-result message below
+    # distinguish "nothing is in scope" (empty/stale cohort) from "everything
+    # in scope is already marked" -- the two used to be conflated into a
+    # misleading "all marked" success.
+    scoped = list(filtered)
     if task_filter != "Both":
         filtered = [r for r in filtered if r.experiment_type == task_filter]
+    task_scoped = list(filtered)
+    # Videoless experiments (e.g. pilot NOR whose test recording is missing) can
+    # never be frame-marked. Keep them out of the "Only unmarked" queue so it can
+    # actually reach zero; they stay visible/countable when the box is off.
+    videoless = [r for r in task_scoped if not has_video(r)]
     if only_unmarked:
-        filtered = [r for r in filtered if not _has_marking(r)]
+        filtered = [r for r in filtered if not _has_marking(r) and has_video(r)]
     if only_flagged:
         def _is_flagged(r: _ExperimentRow) -> bool:
             try:
@@ -188,39 +203,58 @@ def render_nor_nof_object_marking(
     filtered.sort(key=lambda r: getattr(r, sort_by))
 
     total_marked = sum(1 for r in all_rows if _has_marking(r))
+    # Note attaches to "Showing" (the current filtered view), not to the global
+    # Total/Marked — videoless are hidden when the queue is on, else included.
+    _vl_note = ""
+    if videoless:
+        _vl_note = (
+            f" ({len(videoless)} videoless hidden — can't be marked)"
+            if only_unmarked else
+            f" (incl. {len(videoless)} videoless — can't be marked)"
+        )
     st.caption(
         f"Total: {len(all_rows)} | Marked: {total_marked} | "
-        f"Remaining: {len(all_rows) - total_marked} | Showing: {len(filtered)}"
+        f"Remaining: {len(all_rows) - total_marked} | Showing: {len(filtered)}{_vl_note}"
     )
 
     if not filtered:
-        st.success("All experiments in this filter have been marked.")
+        _where = f" in cohort **{scope_cohort}**" if scope_cohort else ""
+        if scope_cohort and not scoped:
+            st.warning(
+                f"No experiments are in scope for cohort **{scope_cohort}** — it is "
+                f"either empty or references experiment IDs that are not present on "
+                f"disk. Clear the scope in the sidebar to browse all experiments, or "
+                f"fix the cohort's membership."
+            )
+        elif not task_scoped:
+            st.info(f"No **{task_filter}** experiments{_where}.")
+        elif only_flagged:
+            st.info(f"No experiments flagged for review{_where}.")
+        elif only_unmarked:
+            _markable = len(task_scoped) - len(videoless)
+            if _markable == 0 and videoless:
+                st.info(
+                    f"No markable experiments{_where} matching this task filter — "
+                    f"all {len(videoless)} have no video and can't be frame-marked "
+                    f"(assign object names in the Object Association pane instead)."
+                )
+            else:
+                _vl_tail = (
+                    f" ({len(videoless)} more have no video and can't be marked)"
+                    if videoless else ""
+                )
+                st.success(
+                    f"All {_markable} markable experiment(s){_where} matching this "
+                    f"task filter are already marked{_vl_tail}."
+                )
+        else:
+            st.info("No experiments match the current filters.")
         st.stop()
 
-    # --- Navigation ---
-    if "om_nav_idx" not in st.session_state:
-        st.session_state["om_nav_idx"] = 0
-
-    n1, n2, n3 = st.columns([1, 1, 4])
-    with n1:
-        if st.button("Prev", key="om_prev"):
-            st.session_state["om_nav_idx"] = max(0, st.session_state.get("om_nav_idx", 0) - 1)
-            st.rerun()
-    with n2:
-        if st.button("Next", key="om_next"):
-            st.session_state["om_nav_idx"] = min(len(filtered) - 1, st.session_state.get("om_nav_idx", 0) + 1)
-            st.rerun()
-
-    cur = st.session_state.get("om_nav_idx", 0)
-    cur = max(0, min(len(filtered) - 1, cur))
-
-    with n3:
-        idx = st.number_input(
-            f"Index (0-{len(filtered)-1})",
-            min_value=0, max_value=len(filtered) - 1,
-            value=cur, step=1, key="om_idx_input",
-        )
-    st.session_state["om_nav_idx"] = idx
+    # --- Navigation (index selector only; Prev/Next live in the action row below) ---
+    nc, _ = st.columns([2, 5])
+    with nc:
+        idx = nav_index(PANE, len(filtered))
     row = filtered[idx]
 
     # --- Read full JSON once for this experiment ---
@@ -243,12 +277,13 @@ def render_nor_nof_object_marking(
     with hdr_cols[4]:
         st.markdown(f":blue[**RIGHT: {el.get('object_right', '?')}**]")
 
+    _bucket = bucket_label(project_path, row)
     if row.experiment_type == "NOR":
         ns = el.get("novel_side", "unknown")
         if ns and ns != "unknown":
-            st.caption(f"Novel side: **{ns}** | Bucket: {el.get('bucket', '?')}")
+            st.caption(f"Novel side: **{ns}** | Bucket: {_bucket}")
         else:
-            st.caption(f"Novel side: unknown | Bucket: {el.get('bucket', '?')}")
+            st.caption(f"Novel side: unknown | Bucket: {_bucket}")
 
         pair_info = _load_pair_info(experiment_data_root, row.paired_experiment_id)
         if pair_info:
@@ -257,7 +292,7 @@ def render_nor_nof_object_marking(
                 f"L: {pair_info['object_left'] or '?'} | R: {pair_info['object_right'] or '?'}"
             )
     else:
-        st.caption(f"Bucket: {el.get('bucket', '?')}")
+        st.caption(f"Bucket: {_bucket}")
         pair_info = _load_pair_info(experiment_data_root, row.paired_experiment_id)
         if pair_info:
             ns_tag = pair_info.get("novel_side") or "?"
@@ -268,10 +303,23 @@ def render_nor_nof_object_marking(
             )
 
     # --- Load frame ---
-    pil_img = _get_pil_image_for_canvas(row.video_path, row.frame_count)
+    # Only decode when a video exists; render a graceful state otherwise so the
+    # pane stays usable (Prev/Next above still work) instead of a hard st.stop().
+    pil_img = _get_pil_image_for_canvas(row.video_path, row.frame_count) if has_video(row) else None
     if pil_img is None:
-        st.warning(f"Could not read frame from: {row.video_path}")
-        st.stop()
+        if not has_video(row):
+            st.info(
+                "**No video for this experiment** — it can't be object-marked, so "
+                "it's excluded from the *Only unmarked* queue. Object *names* can "
+                "still be assigned in the **NOR/NOF Object Association** pane from "
+                "the linked partner. Use **Prev/Next** to continue."
+            )
+        else:
+            st.warning(
+                f"Could not read a frame from: {row.video_path} — the file may be "
+                "missing or unreadable. Use **Prev/Next** to continue."
+            )
+        return  # keep the pane alive; skip the canvas/accept UI for this row
 
     img_w, img_h = pil_img.size
 
@@ -331,45 +379,50 @@ def render_nor_nof_object_marking(
         if len(points) > 2:
             st.warning(f"{len(points)} clicks -- only first 2 used. Clear to redo.")
 
-    # --- Flag for review + note ---
+    # --- Note ---
     ready = left_xy is not None and right_xy is not None
+    note = st.text_input(
+        "Note",
+        value=existing_am.get("note", ""),
+        key=f"om_note__{row.experiment_id}",
+        placeholder="Optional note for this marking",
+    )
 
-    fc_flag, fc_note = st.columns([1, 3])
-    with fc_flag:
-        flag_review = st.checkbox(
-            "Flag for review",
-            value=existing_am.get("flag_review", False),
-            key=f"om_flag__{row.experiment_id}",
-        )
-    with fc_note:
-        note = st.text_input(
-            "Note",
-            value=existing_am.get("note", ""),
-            key=f"om_note__{row.experiment_id}",
-            placeholder="Optional note for this marking",
-        )
+    def _save(flag: bool) -> None:
+        # Flag can fire without a fresh 2-object click; preserve any existing
+        # coords so flagging never erases a prior marking.
+        lx = left_xy if left_xy is not None else existing_am.get("object_left_xy")
+        rx = right_xy if right_xy is not None else existing_am.get("object_right_xy")
+        fs = [img_h, img_w] if ready else existing_am.get("frame_shape", [img_h, img_w])
+        _save_marking(row.json_path, left_xy=lx, right_xy=rx, frame_shape=fs,
+                      flag_review=flag, note=note)
 
-    # --- Accept ---
-    ac1, ac2 = st.columns(2)
-    with ac1:
-        if st.button(
-            "Accept",
-            key=f"om_accept__{row.experiment_id}",
-            type="primary",
-            disabled=not ready,
-        ):
-            _save_marking(
-                row.json_path,
-                left_xy=left_xy,
-                right_xy=right_xy,
-                frame_shape=[img_h, img_w],
-                flag_review=flag_review,
-                note=note,
-            )
-            st.session_state["om_nav_idx"] = min(idx + 1, len(filtered) - 1)
+    # --- Action row: previous | accept | accept & next | next | flag ---
+    n_items = len(filtered)
+    b_prev, b_acc, b_acc_next, b_next, b_flag = st.columns(5)
+    with b_prev:
+        if st.button("◀ Previous", key="om_prev", width="stretch", disabled=idx <= 0):
+            nav_go(PANE, -1)
+    with b_acc:
+        if st.button("Accept", key=f"om_accept__{row.experiment_id}", type="primary",
+                     width="stretch", disabled=not ready):
+            _save(flag=False)
             st.rerun()
-    with ac2:
-        st.caption("Use the trash icon on the canvas toolbar to clear and re-mark.")
+    with b_acc_next:
+        if st.button("Accept & next", key=f"om_accept_next__{row.experiment_id}",
+                     width="stretch", disabled=not ready):
+            _save(flag=False)
+            nav_go(PANE, +1)
+    with b_next:
+        if st.button("Next ▶", key="om_next", width="stretch", disabled=idx >= n_items - 1):
+            nav_go(PANE, +1)
+    with b_flag:
+        if st.button("⚑ Flag", key=f"om_flag_btn__{row.experiment_id}", width="stretch"):
+            _save(flag=True)
+            nav_go(PANE, +1)
+
+    st.caption("Accept = save (clears flag) · Accept & next = save + advance · "
+               "Flag = mark for review (keeps existing marks) · trash icon on the canvas clears clicks.")
 
     # --- Show existing marking ---
     if existing_am.get("object_left_xy"):
