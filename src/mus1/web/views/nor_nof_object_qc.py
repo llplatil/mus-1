@@ -319,6 +319,7 @@ def _save_qc_to_json(
     object_right: str,
     novel_side: Optional[str],
     novel_object: Optional[str] = None,
+    familiar_object: Optional[str] = None,
     experiment_type: str,
     notes: str,
 ) -> None:
@@ -329,15 +330,23 @@ def _save_qc_to_json(
     el["object_right"] = object_right
     if experiment_type == "NOR":
         el["novel_side"] = novel_side
-        # Identity of the novel object (which physical object was swapped in for
-        # the test). For distinct_pair_familiarization cohorts this is a new
-        # object; for identical_familiarization it is the object on novel_side.
-        if novel_object:
-            el["novel_object"] = novel_object
-        elif "novel_object" in el:
-            del el["novel_object"]
+        # Identities are derived from novel_side by the caller, never entered
+        # separately -- a standalone control for them let the two copies of the
+        # same fact drift apart. Recompute here as well so a caller that passes
+        # neither still writes a consistent record rather than a stale one.
+        if novel_side in ("left", "right") and object_left and object_right:
+            el["novel_object"] = (
+                novel_object or (object_left if novel_side == "left" else object_right)
+            )
+            el["familiar_object"] = (
+                familiar_object or (object_right if novel_side == "left" else object_left)
+            )
+        else:
+            for k in ("novel_object", "familiar_object"):
+                if k in el:
+                    del el[k]
     else:
-        for k in ("novel_side", "novel_object"):
+        for k in ("novel_side", "novel_object", "familiar_object"):
             if k in el:
                 del el[k]
 
@@ -363,6 +372,7 @@ def _change_experiment_type(
     object_right: str,
     novel_side: Optional[str],
     novel_object: Optional[str] = None,
+    familiar_object: Optional[str] = None,
     notes: str,
 ) -> Optional[str]:
     """
@@ -420,14 +430,22 @@ def _change_experiment_type(
     el["object_right"] = object_right
     if new_type == "NOR":
         el["novel_side"] = novel_side
-        if novel_object:
-            el["novel_object"] = novel_object
-        elif "novel_object" in el:
-            del el["novel_object"]
+        # Same derivation as _save_qc_to_json: identities follow from novel_side.
+        if novel_side in ("left", "right") and object_left and object_right:
+            el["novel_object"] = (
+                novel_object or (object_left if novel_side == "left" else object_right)
+            )
+            el["familiar_object"] = (
+                familiar_object or (object_right if novel_side == "left" else object_left)
+            )
+        else:
+            for k in ("novel_object", "familiar_object"):
+                if k in el:
+                    del el[k]
         if "toy_raw" in el:
             el["toys_raw"] = el.pop("toy_raw")
     else:
-        for k in ("novel_side", "novel_object"):
+        for k in ("novel_side", "novel_object", "familiar_object"):
             if k in el:
                 del el[k]
         if "toys_raw" in el:
@@ -739,38 +757,30 @@ def render_nor_nof_object_qc(
         else:
             st.caption("NOF sample: two *identical* objects (no novel side).")
 
-    # Novel-object identity (NOR only): which physical object was swapped in.
+    # Novel-object identity (NOR only) is DERIVED, never entered.
+    #
+    # It is fully determined by novel_side plus the two object slots: the novel
+    # object is whatever sits on the novel side, under both protocols. Offering a
+    # separate control for it meant the same fact was entered twice and the two
+    # copies could disagree -- which is exactly what happened. Across the pilot
+    # the standalone dropdown wrote the FAMILIAR object into novel_object on
+    # roughly half the NOR records, and in validation novel_object/familiar_object
+    # ended up swapped on 4 of 12. One fact, one input.
     novel_object_sel: Optional[str] = None
-    if exp_type_sel == "NOR":
-        # Only a *stored* value pre-selects this. It previously defaulted to the
-        # object sitting on the novel side, so a wrong novel_side silently
-        # propagated into novel_object -- and when both were unset the widget
-        # fell through to index 0 of the vocabulary. Across the pilot that wrote
-        # the FAMILIAR object into novel_object on roughly half the NOR records.
-        stored_novel_obj = row.novel_object or ""
-        nobj_options = list(obj_options)
-        if stored_novel_obj and stored_novel_obj not in nobj_options:
-            nobj_options.append(stored_novel_obj)
-        novel_object_sel = st.selectbox(
-            "Novel object (identity)",
-            options=nobj_options,
-            index=_default_idx(stored_novel_obj, nobj_options),
-            placeholder="— not set —",
-            key=f"oqc_novelobj__{row.experiment_id}",
-            help="Which object was novel in the test phase. In distinct-pair "
-                 "protocols this is a new object not present during sample.",
+    familiar_object_sel: Optional[str] = None
+    if exp_type_sel == "NOR" and novel_side_sel and left_sel and right_sel:
+        novel_object_sel = left_sel if novel_side_sel == "left" else right_sel
+        familiar_object_sel = right_sel if novel_side_sel == "left" else left_sel
+        st.markdown(
+            f"Novel object: **{novel_object_sel}** &nbsp;·&nbsp; "
+            f"familiar: **{familiar_object_sel}** &nbsp;"
+            f"<span style='opacity:0.6'>(derived from novel side)</span>",
+            unsafe_allow_html=True,
         )
-        # Suggestions only -- shown, never auto-applied.
-        _side_obj = (
-            left_sel if novel_side_sel == "left"
-            else right_sel if novel_side_sel == "right"
-            else None
-        )
-        if _side_obj and _side_obj != "(other)":
-            st.caption(f"Novel side currently holds: **{_side_obj}**")
-        # Under either protocol the novel object is the one absent from the
-        # paired sample session, so the NOF partner arbitrates independently of
-        # novel_side. This is the OA1 rule (WORKLOG.md) surfaced as a hint.
+        # Independent cross-check: under either protocol the novel object is the
+        # one absent from the paired sample session, so the NOF partner arbitrates
+        # without reference to novel_side. This is the OA1 rule (WORKLOG.md), and
+        # it is the check that caught every defect the standalone dropdown caused.
         _partner = next(
             (r for r in all_rows if r.experiment_id == row.paired_experiment_id),
             None,
@@ -780,20 +790,22 @@ def render_nor_nof_object_qc(
             if _partner else set()
         )
         if _partner_objs:
-            _here = {o for o in (left_sel, right_sel) if o and o != "(other)"}
-            _diff = _here - _partner_objs
-            if len(_diff) == 1:
-                _derived = next(iter(_diff))
-                if _derived != novel_object_sel:
-                    st.caption(
-                        f"Derived from the paired sample session (objects "
-                        f"{sorted(_partner_objs)}): novel object should be **{_derived}**."
-                    )
-        if novel_object_sel == "(other)":
-            novel_object_sel = st.text_input(
-                "Novel object name", value=stored_novel_obj,
-                key=f"oqc_novelobj_other__{row.experiment_id}",
-            )
+            _diff = {left_sel, right_sel} - _partner_objs
+            if len(_diff) == 1 and next(iter(_diff)) != novel_object_sel:
+                st.warning(
+                    f"**Novel side disagrees with the paired sample session.** "
+                    f"The sample ({row.paired_experiment_id}) used "
+                    f"{sorted(_partner_objs)}, so the object swapped in for the test "
+                    f"is **{next(iter(_diff))}** — but novel side *{novel_side_sel}* "
+                    f"holds **{novel_object_sel}**. Check the video before saving."
+                )
+            elif len(_diff) != 1:
+                st.warning(
+                    f"**Cannot derive the novel object from the pair.** Test objects "
+                    f"{sorted({left_sel, right_sel})} vs sample {sorted(_partner_objs)} "
+                    f"leave {sorted(_diff) or 'no'} object(s) unaccounted for. Either a "
+                    f"label is wrong or the two sessions are not a valid pair."
+                )
 
     # Protocol-aware sanity hint on the two sample objects (NOF only).
     if exp_type_sel == "NOF" and left_sel and right_sel and left_sel != "(other)":
@@ -834,23 +846,10 @@ def render_nor_nof_object_qc(
         _missing.append("Object RIGHT")
     if exp_type_sel == "NOR" and not novel_side_sel:
         _missing.append("Novel side")
-    # ``novel_object`` is deliberately NOT required: it is fully determined by
-    # novel_side plus the two object slots under both protocols, and the
-    # publication cohort has never stored it (0 of 170 NOR). Requiring it would
-    # block every publication re-save. Its redundancy is what got corrupted, so
-    # it is checked for agreement instead.
+    # ``novel_object``/``familiar_object`` are not listed here: they are derived
+    # above from novel_side, so requiring them would be requiring novel_side twice.
     if _missing:
         st.info("Set " + ", ".join(_missing) + " to enable saving.")
-
-    if exp_type_sel == "NOR" and novel_object_sel and novel_side_sel:
-        _on_side = left_sel if novel_side_sel == "left" else right_sel
-        if _on_side and _on_side != "(other)" and novel_object_sel != _on_side:
-            st.warning(
-                f"**Novel object disagrees with novel side.** Novel side is "
-                f"*{novel_side_sel}*, which holds **{_on_side}**, but the novel "
-                f"object is recorded as **{novel_object_sel}**. One of the two is "
-                f"wrong — they cannot both be right."
-            )
 
     if st.button(
         "Confirm QC",
@@ -867,6 +866,7 @@ def render_nor_nof_object_qc(
                 object_right=right_sel,
                 novel_side=novel_side_sel,
                 novel_object=novel_object_sel,
+                familiar_object=familiar_object_sel,
                 notes=notes_val,
             )
             if err:
@@ -882,6 +882,7 @@ def render_nor_nof_object_qc(
                 object_right=right_sel,
                 novel_side=novel_side_sel,
                 novel_object=novel_object_sel,
+                familiar_object=familiar_object_sel,
                 experiment_type=exp_type_sel,
                 notes=notes_val,
             )
