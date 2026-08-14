@@ -666,10 +666,18 @@ def render_nor_nof_object_qc(
             cohort_vocab = list(cohort_vocab) + [existing]
     obj_options = cohort_vocab + ["(other)"]
 
-    def _default_idx(val: Optional[str], options: List[str]) -> int:
+    def _default_idx(val: Optional[str], options: List[str]) -> Optional[int]:
+        """Index of ``val`` in ``options``, or ``None`` to leave the widget unset.
+
+        This used to return 0 when ``val`` was empty or unrecognised, which
+        silently pre-selected the first entry of the cohort vocabulary --
+        ``atom`` for the pilot. An operator who reviewed a frame and pressed
+        Save then wrote an object they never chose. Returning ``None`` makes
+        "not set" representable, and the save guard below refuses to write it.
+        """
         if val and val in options:
             return options.index(val)
-        return 0
+        return None
 
     guessed_left, guessed_right = "", ""
     if row.toys_raw:
@@ -684,6 +692,7 @@ def render_nor_nof_object_qc(
             "Object LEFT",
             options=obj_options,
             index=_default_idx(default_left, obj_options),
+            placeholder="— not set —",
             key=f"oqc_left__{row.experiment_id}",
         )
         if left_sel == "(other)":
@@ -694,6 +703,7 @@ def render_nor_nof_object_qc(
             "Object RIGHT",
             options=obj_options,
             index=_default_idx(default_right, obj_options),
+            placeholder="— not set —",
             key=f"oqc_right__{row.experiment_id}",
         )
         if right_sel == "(other)":
@@ -711,11 +721,16 @@ def render_nor_nof_object_qc(
     with ecol4:
         novel_side_sel: Optional[str] = None
         if exp_type_sel == "NOR":
-            default_novel = row.novel_side or "left"
+            # No default. Falling back to "left" for unset experiments made
+            # "left" the recorded answer wherever the operator did not actively
+            # choose: the pilot reads 47 left / 3 right (binomial p ~ 4e-11
+            # against a counterbalanced design), which is a UI artifact rather
+            # than data. An unset novel side must stay visibly unset.
+            _stored_side = row.novel_side if row.novel_side in ("left", "right") else None
             novel_side_sel = st.radio(
                 "Novel side",
                 ["left", "right"],
-                index=0 if default_novel == "left" else 1,
+                index=["left", "right"].index(_stored_side) if _stored_side else None,
                 horizontal=True,
                 key=f"oqc_novel__{row.experiment_id}",
             )
@@ -727,21 +742,56 @@ def render_nor_nof_object_qc(
     # Novel-object identity (NOR only): which physical object was swapped in.
     novel_object_sel: Optional[str] = None
     if exp_type_sel == "NOR":
-        # Default: the object currently on the novel side, else stored value.
-        _side_obj = left_sel if novel_side_sel == "left" else right_sel
-        default_novel_obj = row.novel_object or _side_obj or ""
-        nobj_options = obj_options if default_novel_obj in obj_options else obj_options + [default_novel_obj]
+        # Only a *stored* value pre-selects this. It previously defaulted to the
+        # object sitting on the novel side, so a wrong novel_side silently
+        # propagated into novel_object -- and when both were unset the widget
+        # fell through to index 0 of the vocabulary. Across the pilot that wrote
+        # the FAMILIAR object into novel_object on roughly half the NOR records.
+        stored_novel_obj = row.novel_object or ""
+        nobj_options = list(obj_options)
+        if stored_novel_obj and stored_novel_obj not in nobj_options:
+            nobj_options.append(stored_novel_obj)
         novel_object_sel = st.selectbox(
             "Novel object (identity)",
             options=nobj_options,
-            index=_default_idx(default_novel_obj, nobj_options),
+            index=_default_idx(stored_novel_obj, nobj_options),
+            placeholder="— not set —",
             key=f"oqc_novelobj__{row.experiment_id}",
             help="Which object was novel in the test phase. In distinct-pair "
                  "protocols this is a new object not present during sample.",
         )
+        # Suggestions only -- shown, never auto-applied.
+        _side_obj = (
+            left_sel if novel_side_sel == "left"
+            else right_sel if novel_side_sel == "right"
+            else None
+        )
+        if _side_obj and _side_obj != "(other)":
+            st.caption(f"Novel side currently holds: **{_side_obj}**")
+        # Under either protocol the novel object is the one absent from the
+        # paired sample session, so the NOF partner arbitrates independently of
+        # novel_side. This is the OA1 rule (WORKLOG.md) surfaced as a hint.
+        _partner = next(
+            (r for r in all_rows if r.experiment_id == row.paired_experiment_id),
+            None,
+        ) if row.paired_experiment_id else None
+        _partner_objs = (
+            {o for o in (_partner.object_left, _partner.object_right) if o}
+            if _partner else set()
+        )
+        if _partner_objs:
+            _here = {o for o in (left_sel, right_sel) if o and o != "(other)"}
+            _diff = _here - _partner_objs
+            if len(_diff) == 1:
+                _derived = next(iter(_diff))
+                if _derived != novel_object_sel:
+                    st.caption(
+                        f"Derived from the paired sample session (objects "
+                        f"{sorted(_partner_objs)}): novel object should be **{_derived}**."
+                    )
         if novel_object_sel == "(other)":
             novel_object_sel = st.text_input(
-                "Novel object name", value=default_novel_obj,
+                "Novel object name", value=stored_novel_obj,
                 key=f"oqc_novelobj_other__{row.experiment_id}",
             )
 
@@ -774,7 +824,40 @@ def render_nor_nof_object_qc(
     else:
         confirm_type_change = True
 
-    if st.button("Confirm QC", type="primary", key=f"oqc_save__{row.experiment_id}", disabled=not confirm_type_change):
+    # Nothing may be written that the operator did not actively choose. The
+    # widgets above now return None when unset, so refuse the save rather than
+    # persisting a None (or a silently defaulted value) into experiment_level.
+    _missing: List[str] = []
+    if not left_sel:
+        _missing.append("Object LEFT")
+    if not right_sel:
+        _missing.append("Object RIGHT")
+    if exp_type_sel == "NOR" and not novel_side_sel:
+        _missing.append("Novel side")
+    # ``novel_object`` is deliberately NOT required: it is fully determined by
+    # novel_side plus the two object slots under both protocols, and the
+    # publication cohort has never stored it (0 of 170 NOR). Requiring it would
+    # block every publication re-save. Its redundancy is what got corrupted, so
+    # it is checked for agreement instead.
+    if _missing:
+        st.info("Set " + ", ".join(_missing) + " to enable saving.")
+
+    if exp_type_sel == "NOR" and novel_object_sel and novel_side_sel:
+        _on_side = left_sel if novel_side_sel == "left" else right_sel
+        if _on_side and _on_side != "(other)" and novel_object_sel != _on_side:
+            st.warning(
+                f"**Novel object disagrees with novel side.** Novel side is "
+                f"*{novel_side_sel}*, which holds **{_on_side}**, but the novel "
+                f"object is recorded as **{novel_object_sel}**. One of the two is "
+                f"wrong — they cannot both be right."
+            )
+
+    if st.button(
+        "Confirm QC",
+        type="primary",
+        key=f"oqc_save__{row.experiment_id}",
+        disabled=not confirm_type_change or bool(_missing),
+    ):
         if type_changed:
             err = _change_experiment_type(
                 experiment_data_root=experiment_data_root,
