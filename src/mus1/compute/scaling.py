@@ -12,11 +12,23 @@ Resolution cascade (per experiment):
   1. Per-experiment override at
      ``arena_markings.arena_profile.profile_id`` → look up that profile
      and scale by it.
-  2. Task default ``task_def.arena_profile_id`` → look up that profile
+  2. Cohort-canonical arena — the owning cohort's
+     ``canonical_arena.profile_id``, passed in as *cohort_profile_id*.
+  3. Task default ``task_def.arena_profile_id`` → look up that profile
      and scale by it.
-  3. (Future, Iteration 10) cohort-canonical arena.
-  4. Missing — return ``(NaN, "missing")``. UI surfaces this; do NOT
+  4. Missing — return ``(None, "missing")``. UI surfaces this; do NOT
      silently substitute a guess.
+
+The cohort rung sits ABOVE the task default deliberately. A task default
+is a property of the *task* ("NOR is usually run in the Tamco bucket"),
+not of the data, so it is the right answer only for the cohort the task
+was written around. The pilot runs the same NOR/NOF tasks in a Home Depot
+5-gal bucket (292.0 mm vs 441.325 mm); before this rung existed, a pilot
+experiment with no per-experiment profile fell straight through to the
+Tamco default and got a scale ~51% too large (~128% on areas) reported
+under the reassuring source string ``task_default``. Callers that know
+the cohort should always pass *cohort_profile_id* — see
+``mus1.web.cohorts.resolve_arena_profile_id``.
 
 The per-pixel diameter for each step is read from
 ``arena_markings.arena_boundary.ellipse.{axes_xy|axes}`` (mean of the
@@ -34,6 +46,7 @@ from mus1.arena_profiles.registry import ArenaProfileRegistry
 
 # Output ``source`` strings — short, machine-readable, for caption display.
 SOURCE_PER_EXPERIMENT_OVERRIDE = "per_experiment_override"
+SOURCE_COHORT_CANONICAL = "cohort_canonical"
 SOURCE_TASK_DEFAULT = "task_default"
 SOURCE_MISSING_BOUNDARY = "missing_arena_boundary"
 SOURCE_MISSING_PROFILE = "missing_arena_profile"
@@ -44,6 +57,7 @@ def compute_px_to_mm(
     experiment_data: Dict[str, Any],
     task_def: Any,
     *,
+    cohort_profile_id: Optional[str] = None,
     profile_registry: Optional[ArenaProfileRegistry] = None,
 ) -> Tuple[Optional[float], str]:
     """Return ``(value_mm_per_px, source)``.
@@ -86,7 +100,17 @@ def compute_px_to_mm(
         return value, SOURCE_PER_EXPERIMENT_OVERRIDE if value is not None \
             else SOURCE_MISSING_BOUNDARY
 
-    # 2. Task default
+    # 2. Cohort-canonical arena (beats the task default: it describes the data,
+    #    whereas a task default only describes the task's usual arena).
+    if cohort_profile_id:
+        profile = registry.get_or_none(cohort_profile_id)
+        if profile is None:
+            return None, SOURCE_MISSING_PROFILE
+        value = _scale_with_profile(profile, arena_markings)
+        return value, SOURCE_COHORT_CANONICAL if value is not None \
+            else SOURCE_MISSING_BOUNDARY
+
+    # 3. Task default
     task_profile_id = getattr(task_def, "arena_profile_id", None)
     if task_profile_id:
         profile = registry.get_or_none(task_profile_id)
@@ -96,7 +120,6 @@ def compute_px_to_mm(
         return value, SOURCE_TASK_DEFAULT if value is not None \
             else SOURCE_MISSING_BOUNDARY
 
-    # 3. Cohort-canonical (Iteration 10) — not yet implemented
     # 4. Missing
     return None, SOURCE_MISSING
 
@@ -105,6 +128,7 @@ def resolve_arena_state(
     experiment_data: Dict[str, Any],
     task_def: Any,
     *,
+    cohort_profile_id: Optional[str] = None,
     profile_registry: Optional[ArenaProfileRegistry] = None,
 ) -> Tuple[Optional[str], Optional[ArenaProfile]]:
     """Return ``(state_id, profile)`` for the current experiment.
@@ -124,7 +148,12 @@ def resolve_arena_state(
     override_profile_id = override.get("profile_id") if isinstance(override, dict) else None
     requested_state = override.get("state_id") if isinstance(override, dict) else None
 
-    profile_id = override_profile_id or getattr(task_def, "arena_profile_id", None)
+    # Same precedence as compute_px_to_mm: experiment > cohort > task default.
+    profile_id = (
+        override_profile_id
+        or cohort_profile_id
+        or getattr(task_def, "arena_profile_id", None)
+    )
     profile = registry.get_or_none(profile_id) if profile_id else None
     if profile is None:
         return None, None
