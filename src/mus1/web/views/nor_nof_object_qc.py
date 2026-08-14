@@ -44,18 +44,23 @@ PANE = "nor_nof_oqc"
 # Canonical object vocabulary across cohorts:
 #   - publication 3D-printed: diamond, pyramid, silo
 #   - validation_2026 everyday objects: fish, atom, dino, tube
-#   - pilot (P_NO) everyday objects: atom, tube, dino, cap, cap_2, weird_plastic
+#   - pilot (P_NO) everyday objects: atom, tube, dino, weird_plastic, and two
+#     physically distinct bottle caps -- cap_hexagonal and cap_round.
 # When new objects are added (e.g., a future pilot), append them here and add
 # any common typos to ``_NORMALIZE_MAP`` below. Names are stored lowercase.
 # The per-cohort ``objects`` list (resolved via cohorts.resolve_object_vocabulary)
 # narrows what a given experiment's selector shows; this is only the fallback.
-# NOTE: ``cap_2`` must precede ``cap`` in substring fallback terms — but exact
-# matches in ``_NORMALIZE_MAP`` (auto-added below) resolve first, so order here
-# only affects the substring-scan fallback in ``normalize_object_name``.
+#
+# NOTE on ordering: ``normalize_object_name`` falls back to a substring scan, so
+# the more specific names must come FIRST or "cap_hexagonal" would match bare
+# "cap". The retired ``cap_2`` never appeared in any experiment record; the bare
+# ``cap`` is kept only so the ~17 pilot records still holding it stay readable
+# until they are relabelled, and it is deliberately absent from the pilot
+# cohort's own ``objects`` list so it cannot be chosen for anything new.
 CANONICAL_OBJECTS = [
     "diamond", "pyramid", "silo",
     "fish", "atom", "dino", "tube",
-    "cap_2", "cap", "weird_plastic",
+    "cap_hexagonal", "cap_round", "cap", "weird_plastic",
 ]
 
 _NORMALIZE_MAP: Dict[str, str] = {}
@@ -70,12 +75,25 @@ _NORMALIZE_MAP.update({
     "fishy": "fish",        # validation CSV used "Fishy" for fish
     "dinosaur": "dino",     # full word → short
     "dinos": "dino",
-    "bottlecap": "cap",     # pilot 4th object variants
+    # The pilot used two physically distinct bottle caps. They were recorded as
+    # a single ambiguous "cap" (plus a declared-but-unused "cap_2"), so the bare
+    # forms below stay unresolved on purpose -- only a shape-bearing spelling
+    # maps to a shape. NOF_PILOT_601_M_WT holds BOTH caps at once, which is why
+    # "cap" cannot be blanket-migrated to either name.
+    "cap_hex": "cap_hexagonal",
+    "caphex": "cap_hexagonal",
+    "hex_cap": "cap_hexagonal",
+    "hex cap": "cap_hexagonal",
+    "hexagonal cap": "cap_hexagonal",
+    "hexagonal_cap": "cap_hexagonal",
+    "cap hexagonal": "cap_hexagonal",
+    "cap_round": "cap_round",
+    "round_cap": "cap_round",
+    "round cap": "cap_round",
+    "cap round": "cap_round",
+    "bottlecap": "cap",     # legacy ambiguous forms -> the retired bare name
     "bottle_cap": "cap",
     "bottle cap": "cap",
-    "cap2": "cap_2",        # second, distinct cap (pilot)
-    "cap 2": "cap_2",
-    "cap_two": "cap_2",
     "weird plastic": "weird_plastic",   # pilot odd object
     "weirdplastic": "weird_plastic",
     "weird": "weird_plastic",
