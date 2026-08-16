@@ -48,10 +48,13 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 
-# Ratio beyond which a rig's stored pixels are treated as non-square and an
-# isotropic scale is refused. 1% covers hand-marking noise on square rigs
-# (publication measures 0.99) without admitting the pilot's 0.826.
-SQUARE_PIXEL_TOLERANCE = 0.01
+# Departure from a 1.0 axis ratio beyond which an isotropic scale is refused.
+# Calibrated on the DISTANCE error an isotropic scale would induce, not on the
+# ratio itself: measured ratios are publication 0.992 (RMS distance error
+# 0.31%), validation 0.991 and 0.988 (0.45% / 0.34%), pilot 0.827 (6.63%).
+# Every real rig carries ~1% anisotropy from mounting and lens; 3% admits that
+# while refusing anything that would cost more than ~1.5% on a distance.
+SQUARE_PIXEL_TOLERANCE = 0.03
 
 # Multiples of MAD beyond which a ground-truth mark is rejected as an outlier.
 # MAD (not sd) so a single bad mark cannot inflate the threshold that would
@@ -131,6 +134,9 @@ class RigCalibration:
     center_max_shift_px: float
 
     n_ground_truth: int
+    #: Robust coefficient of variation of the source radii; drives
+    #: ``per_session_scaling_required``.
+    radius_spread_frac: float = 0.0
     #: Declared epoch name and its inclusive date range, when this rig is one
     #: epoch of a setup that changed (e.g. a camera move). Stored rather than
     #: inferred from the source marks: which sessions belong to which epoch is a
@@ -147,9 +153,22 @@ class RigCalibration:
     # -- geometry -----------------------------------------------------------
 
     @property
+    def measured_axis_ratio(self) -> float:
+        """x/y ratio of the arena as it actually images on this rig."""
+        return self.radius_x_px / self.radius_y_px if self.radius_y_px else 1.0
+
+    @property
     def stored_pixels_are_square(self) -> bool:
-        num, den = self.sample_aspect_ratio
-        return abs(num / den - 1.0) <= SQUARE_PIXEL_TOLERANCE if den else True
+        """Judged from the MEASURED ellipse, not the container's SAR.
+
+        SAR alone is not sufficient. The pilot's stored axis ratio is 0.828
+        where SAR 32:27 predicts 0.844 (p=1.4e-5) -- and the square-pixel rigs
+        carry ~1% anisotropy of their own (publication measures 0.991 at SAR
+        1:1) from slight off-axis mounting and lens. A fitted ellipse absorbs
+        SAR, tilt and lens in one measurement; the container tag absorbs only
+        the first and is wrong by ~1.9% here. So the ellipse decides.
+        """
+        return abs(self.measured_axis_ratio - 1.0) <= SQUARE_PIXEL_TOLERANCE
 
     def mm_per_px_axes(self, diameter_mm: float) -> Tuple[float, float]:
         """Return ``(mm_per_px_x, mm_per_px_y)`` for this rig.
@@ -188,6 +207,30 @@ class RigCalibration:
         if not date:
             return False
         return (self.epoch_from or "0000-00-00") <= date[:10] <= (self.epoch_to or "9999-99-99")
+
+    @property
+    def center_prior_is_usable(self) -> bool:
+        """Is the object-midpoint centre prior tight enough to constrain a fit?
+
+        On the pilot it is not: the offset scatters by MAD (15, 18) px and the
+        derived allowance reaches ~63% of the arena radius, which constrains
+        nothing while looking like a number. A fitter should seed the centre
+        from image content instead and treat this prior as absent.
+        """
+        r = (self.radius_x_px + self.radius_y_px) / 2.0
+        return bool(r) and (self.center_max_shift_px / r) <= 0.25
+
+    @property
+    def per_session_scaling_required(self) -> bool:
+        """True when this rig's radius varies too much to use one stratum scale.
+
+        The calibration is a SEARCH PRIOR. Whether it is also a usable scale
+        depends on rig stability: publication varies by 0.23% between sessions
+        (a stratum constant is fine), the pilot by 2.34% with one session 15%
+        off because the camera sat closer that day. On such a rig every session
+        must be scaled by its own fitted boundary, never by this median.
+        """
+        return self.radius_spread_frac > 0.01
 
     def radius_bounds_px(self) -> Tuple[float, float]:
         """Accept/reject window for a fitted radius, in mean-radius terms."""
@@ -237,6 +280,10 @@ class RigCalibration:
             ],
             "center_max_shift_px": round(self.center_max_shift_px, 3),
             "n_ground_truth": self.n_ground_truth,
+            "radius_spread_frac": round(self.radius_spread_frac, 5),
+            "measured_axis_ratio": round(self.measured_axis_ratio, 5),
+            "center_prior_is_usable": self.center_prior_is_usable,
+            "per_session_scaling_required": self.per_session_scaling_required,
             "epoch": self.epoch,
             "epoch_from": self.epoch_from,
             "epoch_to": self.epoch_to,
@@ -262,6 +309,7 @@ class RigCalibration:
             ),
             center_max_shift_px=float(d["center_max_shift_px"]),
             n_ground_truth=int(d["n_ground_truth"]),
+            radius_spread_frac=float(d.get("radius_spread_frac", 0.0)),
             epoch=d.get("epoch"),
             epoch_from=d.get("epoch_from", ""),
             epoch_to=d.get("epoch_to", ""),
@@ -400,7 +448,18 @@ def derive_calibration(
     # Tolerance from observed spread, floored so a rig that happens to have
     # very consistent marks does not get a window too tight to fit anything.
     spread = _mad([m.mean_radius_px for m in kept]) * 1.4826  # -> sd-equivalent
-    tolerance = max(4.0 * spread, 0.04 * ((rx + ry) / 2.0))
+    r_mean = (rx + ry) / 2.0
+    tolerance = max(4.0 * spread, 0.04 * r_mean)
+    # A mark excluded from ESTIMATION may still be a real session: NOF_PILOT_560
+    # was marked with 7 clicks (so it cannot set the median) yet an independent
+    # click-free image fit put its radius at 231.2px against a hand mark of
+    # 232.4px -- the camera was closer that day. Excluding it from the estimate
+    # while leaving the accept window too narrow to contain it would make the
+    # fitter reject a session whose geometry is simply different, so the window
+    # is widened to span every mark seen, estimation-worthy or not.
+    for m in marks:
+        tolerance = max(tolerance, abs(m.mean_radius_px - r_mean) * 1.15)
+    spread_frac = (spread / r_mean) if r_mean else 0.0
 
     offsets = [
         (m.center_xy[0] - m.object_midpoint_xy[0], m.center_xy[1] - m.object_midpoint_xy[1])
@@ -426,6 +485,7 @@ def derive_calibration(
         center_offset_from_object_midpoint=off,
         center_max_shift_px=center_max_shift,
         n_ground_truth=len(kept),
+        radius_spread_frac=spread_frac,
         epoch=epoch,
         epoch_from=epoch_from,
         epoch_to=epoch_to,
